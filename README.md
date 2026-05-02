@@ -182,11 +182,54 @@ python -c "from sqlalchemy import create_engine; print(create_engine('mysql+pymy
 
 ## Миграции и таблицы
 
-Проект использует Flask-Migrate. Создание схемы выполняется командой:
+Проект использует Flask-Migrate. Создание схемы и приведение структуры базы к актуальному состоянию выполняются командой:
 
 ```bash
 export FLASK_APP=app
 flask db upgrade
+```
+
+`db.create_all()` не обновляет существующие таблицы и не добавляет новые столбцы в уже созданную базу. После изменения моделей всегда применяйте миграции через Alembic/Flask-Migrate.
+
+### Обновление существующей базы
+
+Если после обновления проекта появляется ошибка:
+
+```text
+Unknown column 'ip_address' in 'field list'
+```
+
+то на сервере выполните:
+
+```bash
+sudo mysql
+USE debt_manager;
+ALTER TABLE activity_logs ADD COLUMN ip_address VARCHAR(45) NULL AFTER description;
+ALTER TABLE activity_logs ADD COLUMN user_agent TEXT NULL AFTER ip_address;
+EXIT;
+sudo systemctl restart debt_manager
+```
+
+Если сервер не поддерживает синтаксис `ADD COLUMN IF NOT EXISTS`, сначала проверьте структуру таблицы:
+
+```bash
+sudo mysql
+USE debt_manager;
+DESCRIBE activity_logs;
+DESCRIBE users;
+DESCRIBE debts;
+```
+
+Если появляется ошибка `Data truncated for column 'debt_type'`, выполните:
+
+```sql
+ALTER TABLE debts MODIFY debt_type ENUM('credit_card','split','mortgage') NOT NULL;
+```
+
+После ручного обновления таблиц снова перезапустите сервис:
+
+```bash
+sudo systemctl restart debt_manager
 ```
 
 Для существующей базы данных без `alembic_version` можно выполнить миграцию вручную с `flask db stamp head`.
