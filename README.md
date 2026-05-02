@@ -125,7 +125,7 @@ cp .env.example .env
 3. Примените миграции:
 
 ```bash
-export FLASK_APP=app
+export FLASK_APP=run.py
 flask db upgrade
 ```
 
@@ -185,11 +185,32 @@ python -c "from sqlalchemy import create_engine; print(create_engine('mysql+pymy
 Проект использует Flask-Migrate. Создание схемы и приведение структуры базы к актуальному состоянию выполняются командой:
 
 ```bash
-export FLASK_APP=app
+export FLASK_APP=run.py
 flask db upgrade
 ```
 
 `db.create_all()` не обновляет существующие таблицы и не добавляет новые столбцы в уже созданную базу. После изменения моделей всегда применяйте миграции через Alembic/Flask-Migrate.
+
+### Миграции базы данных
+
+- Для новой пустой базы достаточно:
+
+```bash
+export FLASK_APP=run.py
+flask db upgrade
+```
+
+- После изменения моделей создайте миграцию и примените её:
+
+```bash
+export FLASK_APP=run.py
+flask db migrate -m "Описание изменения"
+flask db upgrade
+```
+
+- Для существующей базы без таблицы `alembic_version` `deploy.sh` автоматически ставит базовую миграцию `73459c8513a1` и затем применяет новые миграции.
+
+- Нельзя использовать `db.drop_all()` или удалять таблицы вручную на production.
 
 ### Обновление существующей базы
 
@@ -199,18 +220,26 @@ flask db upgrade
 Unknown column 'ip_address' in 'field list'
 ```
 
-то на сервере выполните:
+то необходимо выполнить миграции:
 
 ```bash
-sudo mysql
-USE debt_manager;
-ALTER TABLE activity_logs ADD COLUMN ip_address VARCHAR(45) NULL AFTER description;
-ALTER TABLE activity_logs ADD COLUMN user_agent TEXT NULL AFTER ip_address;
-EXIT;
-sudo systemctl restart debt_manager
+export FLASK_APP=run.py
+flask db upgrade
 ```
 
-Если сервер не поддерживает синтаксис `ADD COLUMN IF NOT EXISTS`, сначала проверьте структуру таблицы:
+Если база была создана до внедрения Alembic и не содержит таблицы `alembic_version`, то `deploy.sh` автоматически помечает существующую схему базовой миграцией `73459c8513a1` и затем применяет новые изменения.
+
+Если появляется ошибка:
+
+```text
+Table 'app_settings' already exists
+```
+
+это означает, что в базе уже есть схема, а Alembic ещё не инициализирован. Обновлённый `deploy.sh` решает это, устанавливая метку `73459c8513a1` для существующей схемы и далее выполняя `flask db upgrade`.
+
+Если появляется ошибка `Data truncated for column 'debt_type'`, то миграция должна обновить `debts.debt_type` до `ENUM('credit_card','split','mortgage')`.
+
+Если нужно проверить структуру таблицы вручную:
 
 ```bash
 sudo mysql
@@ -220,19 +249,19 @@ DESCRIBE users;
 DESCRIBE debts;
 ```
 
-Если появляется ошибка `Data truncated for column 'debt_type'`, выполните:
+Если по какой-то причине миграция не прошла и требуется ручной резервный вариант:
 
 ```sql
+ALTER TABLE activity_logs ADD COLUMN ip_address VARCHAR(45) NULL AFTER description;
+ALTER TABLE activity_logs ADD COLUMN user_agent TEXT NULL AFTER ip_address;
 ALTER TABLE debts MODIFY debt_type ENUM('credit_card','split','mortgage') NOT NULL;
 ```
 
-После ручного обновления таблиц снова перезапустите сервис:
+После этого выполните:
 
 ```bash
 sudo systemctl restart debt_manager
 ```
-
-Для существующей базы данных без `alembic_version` можно выполнить миграцию вручную с `flask db stamp head`.
 
 ## Обновление старой базы
 
@@ -280,7 +309,7 @@ FLASK_DEBUG=true
 Через `ADMIN_TELEGRAM_IDS` или CLI:
 
 ```bash
-export FLASK_APP=app
+export FLASK_APP=run.py
 flask create-superadmin <telegram_id>
 ```
 
@@ -321,7 +350,7 @@ cp .env.example .env
 Настройте `.env` и базу данных, затем примените миграции:
 
 ```bash
-export FLASK_APP=app
+export FLASK_APP=run.py
 flask db upgrade
 ```
 
@@ -442,6 +471,8 @@ sudo systemctl restart debt_manager
 
 - `pymysql.err.OperationalError: Can't connect to MySQL` — проверьте настройки MySQL и `.env`.
 - `Table 'debt_manager.users' doesn't exist` — выполните `flask db upgrade`.
+- `Table 'app_settings' already exists` — база создана до Alembic, используйте обновлённый `deploy.sh`, который ставит метку `73459c8513a1` и затем выполняет `flask db upgrade`.
+- `Unknown column 'ip_address' in 'field list'` — выполните `flask db upgrade`.
 - `Data truncated for column 'debt_type'` — выполните `ALTER TABLE debts MODIFY debt_type ENUM('credit_card','split','mortgage') NOT NULL;`.
 - `Telegram Login Widget показывает Username invalid` — проверьте `TELEGRAM_BOT_USERNAME`, домен в BotFather и HTTPS.
 - `dev-login не отображается` — убедитесь, что `DEV_LOGIN_ENABLED=true` и `FLASK_DEBUG=true`.

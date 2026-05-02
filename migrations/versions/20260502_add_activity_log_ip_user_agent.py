@@ -16,40 +16,45 @@ branch_labels = None
 depends_on = None
 
 
-def _column_exists(connection, table_name, column_name):
-    dialect_name = connection.dialect.name
-    if dialect_name == 'mysql':
-        result = connection.execute(
-            sa.text(
-                "SELECT COUNT(*) FROM information_schema.COLUMNS "
-                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column"
-            ),
-            {"table": table_name, "column": column_name},
-        )
-        return result.scalar() > 0
+def table_exists(table_name):
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    return table_name in inspector.get_table_names()
 
-    if dialect_name == 'sqlite':
-        result = connection.execute(sa.text(f"PRAGMA table_info('{table_name}')"))
-        return any(row[1] == column_name for row in result.fetchall())
 
-    return False
+def column_exists(table_name, column_name):
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if not table_exists(table_name):
+        return False
+    return column_name in [col['name'] for col in inspector.get_columns(table_name)]
 
 
 def upgrade():
-    connection = op.get_bind()
-    if not _column_exists(connection, 'activity_logs', 'ip_address'):
+    if table_exists('activity_logs'):
+        if not column_exists('activity_logs', 'ip_address'):
+            op.add_column(
+                'activity_logs',
+                sa.Column('ip_address', sa.String(length=45), nullable=True)
+            )
+        if not column_exists('activity_logs', 'user_agent'):
+            op.add_column(
+                'activity_logs',
+                sa.Column('user_agent', sa.Text(), nullable=True)
+            )
+
+    if table_exists('debts'):
         op.execute(
-            "ALTER TABLE activity_logs ADD COLUMN ip_address VARCHAR(45) NULL AFTER description"
-        )
-    if not _column_exists(connection, 'activity_logs', 'user_agent'):
-        op.execute(
-            "ALTER TABLE activity_logs ADD COLUMN user_agent TEXT NULL AFTER ip_address"
+            "ALTER TABLE debts MODIFY debt_type ENUM('credit_card', 'split', 'mortgage') NOT NULL"
         )
 
 
 def downgrade():
-    connection = op.get_bind()
-    if _column_exists(connection, 'activity_logs', 'user_agent'):
-        op.execute("ALTER TABLE activity_logs DROP COLUMN user_agent")
-    if _column_exists(connection, 'activity_logs', 'ip_address'):
-        op.execute("ALTER TABLE activity_logs DROP COLUMN ip_address")
+    if table_exists('activity_logs'):
+        if column_exists('activity_logs', 'user_agent'):
+            op.drop_column('activity_logs', 'user_agent')
+        if column_exists('activity_logs', 'ip_address'):
+            op.drop_column('activity_logs', 'ip_address')
+
+    # debt_type откатить автоматически не безопасно, если в базе уже есть записи mortgage.
+    pass

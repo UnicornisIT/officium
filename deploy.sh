@@ -24,9 +24,11 @@ from flask_migrate import stamp
 with app.app_context():
     inspector = inspect(db.engine)
     tables = inspector.get_table_names()
-    if 'alembic_version' not in tables and tables:
-        print('Существующая схема найдена, добавляем метку текущей миграции...')
-        stamp()
+    has_alembic = 'alembic_version' in tables
+    has_schema_tables = bool([t for t in tables if t != 'alembic_version'])
+    if has_schema_tables and not has_alembic:
+        print('Существующая схема найдена, ставим метку initial migration 73459c8513a1...')
+        stamp(revision='73459c8513a1')
 PY
 flask db upgrade
 
