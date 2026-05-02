@@ -141,7 +141,7 @@ python -m flask run
 
 ```powershell
 .venv\Scripts\activate
-$env:FLASK_APP = 'app'
+$env:FLASK_APP = 'run.py'
 flask db upgrade
 python -m flask run
 ```
@@ -206,6 +206,15 @@ flask db upgrade
 export FLASK_APP=run.py
 flask db migrate -m "Описание изменения"
 flask db upgrade
+```
+
+- Для проверки состояния миграций используйте:
+
+```bash
+export FLASK_APP=run.py
+flask db current
+flask db heads
+flask db history
 ```
 
 - Для существующей базы без таблицы `alembic_version` `deploy.sh` автоматически ставит базовую миграцию `73459c8513a1` и затем применяет новые миграции.
@@ -471,7 +480,7 @@ sudo systemctl restart debt_manager
 
 - `pymysql.err.OperationalError: Can't connect to MySQL` — проверьте настройки MySQL и `.env`.
 - `Table 'debt_manager.users' doesn't exist` — выполните `flask db upgrade`.
-- `Table 'app_settings' already exists` — база создана до Alembic, используйте обновлённый `deploy.sh`, который ставит метку `73459c8513a1` и затем выполняет `flask db upgrade`.
+- `Table 'app_settings' already exists` — база создана до Alembic. Запустите `flask db stamp 73459c8513a1` перед `flask db upgrade`, или используйте обновлённый `deploy.sh`, который делает это автоматически.
 - `Unknown column 'ip_address' in 'field list'` — выполните `flask db upgrade`.
 - `Data truncated for column 'debt_type'` — выполните `ALTER TABLE debts MODIFY debt_type ENUM('credit_card','split','mortgage') NOT NULL;`.
 - `Telegram Login Widget показывает Username invalid` — проверьте `TELEGRAM_BOT_USERNAME`, домен в BotFather и HTTPS.

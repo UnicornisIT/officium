@@ -35,7 +35,7 @@ def upgrade():
         if not column_exists('activity_logs', 'ip_address'):
             op.add_column(
                 'activity_logs',
-                sa.Column('ip_address', sa.String(length=45), nullable=True)
+                sa.Column('ip_address', sa.String(length=100), nullable=True)
             )
         if not column_exists('activity_logs', 'user_agent'):
             op.add_column(

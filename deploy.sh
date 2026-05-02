@@ -15,11 +15,10 @@ pip install -r requirements.txt
 
 echo "Применяем миграции базы данных..."
 export FLASK_APP=run.py
-python - <<'PY'
+stamp_needed=$(python - <<'PY'
 from app import app
 from extensions import db
 from sqlalchemy import inspect
-from flask_migrate import stamp
 
 with app.app_context():
     inspector = inspect(db.engine)
@@ -27,9 +26,17 @@ with app.app_context():
     has_alembic = 'alembic_version' in tables
     has_schema_tables = bool([t for t in tables if t != 'alembic_version'])
     if has_schema_tables and not has_alembic:
-        print('Существующая схема найдена, ставим метку initial migration 73459c8513a1...')
-        stamp(revision='73459c8513a1')
+        print('yes')
+    else:
+        print('no')
 PY
+)
+if [ "$stamp_needed" = "yes" ]; then
+    echo "Существующая схема найдена, ставим метку initial migration 73459c8513a1"
+    flask db stamp 73459c8513a1
+else
+    echo "Шаблон метки alembic_version не требуется или уже установлен."
+fi
 flask db upgrade
 
 echo "Перезапускаем сервис..."
