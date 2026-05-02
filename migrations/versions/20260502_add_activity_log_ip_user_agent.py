@@ -1,6 +1,6 @@
 """Add ip_address and user_agent to activity_logs
 
-Revision ID: 20260502_add_activity_log_ip_user_agent
+Revision ID: 20260502_log_ip_ua
 Revises: 20260502_add_mortgage_debt_type
 Create Date: 2026-05-02 00:00:00.000000
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '20260502_add_activity_log_ip_user_agent'
+revision = '20260502_log_ip_ua'
 down_revision = '20260502_add_mortgage_debt_type'
 branch_labels = None
 depends_on = None

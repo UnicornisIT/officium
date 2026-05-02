@@ -246,6 +246,14 @@ Table 'app_settings' already exists
 
 это означает, что в базе уже есть схема, а Alembic ещё не инициализирован. Обновлённый `deploy.sh` решает это, устанавливая метку `73459c8513a1` для существующей схемы и далее выполняя `flask db upgrade`.
 
+Если появляется ошибка:
+
+```text
+Data too long for column 'version_num' at row 1
+```
+
+то это означает, что `revision` в файле миграции слишком длинный для поля `alembic_version.version_num` в MySQL. Ревизионный идентификатор Alembic должен быть короче 32 символов. Решение: укоротить `revision` в миграции и повторно выполнить `export FLASK_APP=run.py && flask db upgrade`.
+
 Если появляется ошибка `Data truncated for column 'debt_type'`, то миграция должна обновить `debts.debt_type` до `ENUM('credit_card','split','mortgage')`.
 
 Если нужно проверить структуру таблицы вручную:
