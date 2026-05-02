@@ -96,6 +96,7 @@
         <div class="card p-4">
             <h5 class="mb-3">Действия администратора</h5>
             <form method="post" class="d-grid gap-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if user.is_blocked %}
                 <button type="submit" name="action" value="unblock" class="btn btn-success">Разблокировать</button>
                 {% else %}

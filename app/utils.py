@@ -3,7 +3,7 @@ from collections import OrderedDict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
-from flask import request, redirect, url_for, render_template, jsonify
+from flask import request, redirect, url_for, render_template, jsonify, flash
 from flask_login import current_user
 from extensions import db
 from app.models import AppSetting, DictionaryEntry, ActivityLog
@@ -163,7 +163,7 @@ def set_setting(key, value, description=None):
     return setting
 
 
-def record_activity(action, user=None, entity_type=None, entity_id=None, description=None):
+def record_activity(action, user=None, entity_type=None, entity_id=None, description=None, ip_address=None, user_agent=None):
     user_id = getattr(user, 'id', None) if user else None
     if not isinstance(user_id, int):
         try:
@@ -177,6 +177,8 @@ def record_activity(action, user=None, entity_type=None, entity_id=None, descrip
         entity_type=entity_type,
         entity_id=entity_id,
         description=description,
+        ip_address=ip_address,
+        user_agent=user_agent,
     )
     db.session.add(log)
     db.session.commit()
@@ -187,5 +189,17 @@ def admin_required(view):
     def wrapper(*args, **kwargs):
         if not getattr(current_user, 'is_authenticated', False) or not getattr(current_user, 'is_admin', False):
             return redirect(url_for('index'))
+        return view(*args, **kwargs)
+    return wrapper
+
+
+def superadmin_required(view):
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if not getattr(current_user, 'is_authenticated', False) or not getattr(current_user, 'is_superadmin', False):
+            flash('Недостаточно прав для доступа к этому разделу.', 'warning')
+            if getattr(current_user, 'is_admin', False):
+                return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('login'))
         return view(*args, **kwargs)
     return wrapper

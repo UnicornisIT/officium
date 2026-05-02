@@ -2,13 +2,43 @@
 {% block title %}Пользователи — Админка{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-start mb-4">
+<div class="d-flex justify-content-between align-items-start mb-3">
     <div>
         <h1 class="h3">Пользователи</h1>
         <p class="text-muted">Список зарегистрированных пользователей и их статусы.</p>
     </div>
     <form method="post" action="{{ url_for('admin_impersonate_test') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-primary">Войти как тестовый пользователь</button>
+    </form>
+</div>
+
+<div class="card p-4 mb-4">
+    <form method="get" class="row g-3 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label">Поиск</label>
+            <input type="search" name="q" class="form-control" value="{{ q or '' }}" placeholder="Telegram ID, имя или username">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Роль</label>
+            <select name="role" class="form-select">
+                <option value="">Все</option>
+                <option value="user" {% if role_filter == 'user' %}selected{% endif %}>user</option>
+                <option value="admin" {% if role_filter == 'admin' %}selected{% endif %}>admin</option>
+                <option value="superadmin" {% if role_filter == 'superadmin' %}selected{% endif %}>superadmin</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Статус</label>
+            <select name="status" class="form-select">
+                <option value="">Все</option>
+                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Активные</option>
+                <option value="blocked" {% if status_filter == 'blocked' %}selected{% endif %}>Заблокированные</option>
+            </select>
+        </div>
+        <div class="col-md-2 d-grid">
+            <button type="submit" class="btn btn-primary">Применить</button>
+        </div>
     </form>
 </div>
 
@@ -33,16 +63,27 @@
                     <td>{{ user.id }}</td>
                     <td>{{ user.telegram_id }}</td>
                     <td>{{ user.first_name or user.username or '—' }}</td>
-                    <td>{{ user.role }}</td>
-                    <td>{% if user.is_blocked %}<span class="badge bg-danger">Да</span>{% else %}<span class="badge bg-success">Нет</span>{% endif %}</td>
+                    <td>
+                        {% if user.role == 'superadmin' %}
+                        <span class="badge bg-danger">superadmin</span>
+                        {% elif user.role == 'admin' %}
+                        <span class="badge bg-primary">admin</span>
+                        {% else %}
+                        <span class="badge bg-secondary">user</span>
+                        {% endif %}
+                    </td>
+                    <td>{% if user.is_blocked %}<span class="badge bg-danger">Заблокирован</span>{% else %}<span class="badge bg-success">Активен</span>{% endif %}</td>
                     <td>{{ user.login_count }}</td>
                     <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '—' }}</td>
                     <td>
                         <div class="btn-group" role="group">
                             <a href="{{ url_for('admin_user_detail', user_id=user.id) }}" class="btn btn-outline-primary btn-sm">Открыть</a>
+                            {% if current_user.is_superadmin %}
                             <form method="post" action="{{ url_for('admin_impersonate_user', user_id=user.id) }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-outline-success btn-sm">Имперсонализировать</button>
                             </form>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>

@@ -41,7 +41,8 @@ function showToast(message, type = 'success') {
 }
 
 function applyTheme(theme) {
-    document.documentElement.dataset.theme = theme;
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-bs-theme', theme);
     localStorage.setItem('debtManagerTheme', theme);
 
     const btn = document.getElementById('themeToggleBtn');
@@ -57,14 +58,13 @@ function applyTheme(theme) {
 }
 
 function toggleTheme() {
-    const current = document.documentElement.dataset.theme || 'light';
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
     applyTheme(current === 'dark' ? 'light' : 'dark');
 }
 
 function initThemeToggle() {
-    const storedTheme = localStorage.getItem('debtManagerTheme');
-    const initialTheme = storedTheme === 'dark' ? 'dark' : 'light';
-    applyTheme(initialTheme);
+    const storedTheme = localStorage.getItem('debtManagerTheme') || 'dark';
+    applyTheme(storedTheme);
 
     const btn = document.getElementById('themeToggleBtn');
     if (btn) {
@@ -75,6 +75,19 @@ function initThemeToggle() {
 /**
  * Форматирует число как валюту
  */
+function getCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.content || '';
+}
+
+async function jsonFetch(url, options = {}) {
+    const token = getCsrfToken();
+    const headers = options.headers || {};
+    if (token && !headers['X-CSRFToken'] && !headers['X-CSRF-Token']) {
+        headers['X-CSRFToken'] = token;
+    }
+    return fetch(url, { ...options, headers });
+}
+
 function formatMoney(n) {
     if (n == null) return '—';
     const normalized = String(n).replace(/\s+/g, '').replace(',', '.');
@@ -276,7 +289,7 @@ async function saveDebt() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Сохраняем...';
 
     try {
-        const resp = await fetch(url, {
+        const resp = await jsonFetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -347,7 +360,7 @@ async function submitPayment() {
     }
 
     try {
-        const resp = await fetch(`/api/debts/${currentDebtId}/payments`, {
+        const resp = await jsonFetch(`/api/debts/${currentDebtId}/payments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ amount, payment_date: pmDate, comment }),
@@ -395,7 +408,7 @@ archiveConfirmEl.addEventListener('hidden.bs.modal', () => {
 
 async function archiveDebt(debtId) {
     try {
-        const resp = await fetch(`/api/debts/${debtId}/archive`, { method: 'POST' });
+        const resp = await jsonFetch(`/api/debts/${debtId}/archive`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
             showToast('Карточка перемещена в архив', 'warning');

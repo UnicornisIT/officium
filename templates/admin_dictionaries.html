@@ -19,6 +19,7 @@
         <div class="card p-4">
             <h5 class="mb-3">Добавить элемент</h5>
             <form method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">
                     <label class="form-label">Тип справочника</label>
                     <select class="form-select" name="dictionary_type">
@@ -55,6 +56,7 @@
                             <td>{{ entry.value }}</td>
                             <td>
                                 <form method="post" action="{{ url_for('admin_delete_dictionary_entry', entry_id=entry.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
                                 </form>
                             </td>

@@ -12,21 +12,30 @@
         <div class="card p-4 h-100">
             <h5>Пользователи</h5>
             <p class="text-muted">Выгрузить всех зарегистрированных пользователей.</p>
-            <a href="{{ url_for('admin_export_csv', export_type='users') }}" class="btn btn-primary">Скачать CSV</a>
+            <form method="post" action="{{ url_for('admin_export_csv', export_type='users') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-primary">Скачать CSV</button>
+            </form>
         </div>
     </div>
     <div class="col-md-4">
         <div class="card p-4 h-100">
             <h5>Долги</h5>
             <p class="text-muted">Выгрузить все карточки долгов.</p>
-            <a href="{{ url_for('admin_export_csv', export_type='debts') }}" class="btn btn-primary">Скачать CSV</a>
+            <form method="post" action="{{ url_for('admin_export_csv', export_type='debts') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-primary">Скачать CSV</button>
+            </form>
         </div>
     </div>
     <div class="col-md-4">
         <div class="card p-4 h-100">
             <h5>Платежи</h5>
             <p class="text-muted">Выгрузить историю всех платежей.</p>
-            <a href="{{ url_for('admin_export_csv', export_type='payments') }}" class="btn btn-primary">Скачать CSV</a>
+            <form method="post" action="{{ url_for('admin_export_csv', export_type='payments') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-primary">Скачать CSV</button>
+            </form>
         </div>
     </div>
 </div>

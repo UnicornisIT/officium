@@ -1,357 +1,421 @@
-# 💳 ДолгТрекер — Менеджер личных долгов
+# ДолгТрекер / Debt Manager
 
-Веб-приложение для учёта кредитных карт и банковских сплитов с авторизацией через Telegram.
+## Описание
 
-**Flask · MySQL · SQLAlchemy · Flask-Login · Bootstrap**
+Debt Manager — это веб-приложение для учёта долгов, платежей, доходов и расходов. Оно предназначено для частных пользователей, которые хотят видеть:
 
----
+- активные долги и остатки по ним;
+- ближайшие платежи, просрочки и прогресс погашения;
+- доходы, расходы и свободный остаток;
+- архив закрытых долгов;
+- управление в единой веб-панели.
 
-## ✨ Функциональность
+Проект реализован на Flask с авторизацией через Telegram Login Widget и поддержкой локальной разработки.
 
-| Функция | Описание |
-|---------|----------|
-| 🔐 Авторизация | Вход через Telegram Login Widget — без паролей |
-| 👤 Мультипользователь | У каждого пользователя своя изолированная база долгов |
-| 📊 Дашборд | Сводка: общий остаток, количество активных долгов, ближайший платёж, просроченные |
-| 💳 Карточки | Кредитные карты и банковские сплиты с прогресс-баром погашения |
-| 💸 Платежи | Внесение платежей с историей и автоматическим пересчётом остатка |
-| 📁 Архив | Закрытые долги с возможностью восстановления или удаления |
-| 🔍 Фильтры | Поиск по банку, фильтр по типу долга, сортировка |
-| 🧾 Доходы и расходы | Учёт прихода и расхода с историей |
-| 📊 Итоги месяца | Доходы, расходы, платежи по долгам и свободный остаток |
-| 🎨 Тёмная тема | Цветная индикация статуса платежа |
+## Возможности
 
-### Цветовая индикация сроков
+- Авторизация через Telegram Login Widget.
+- Dev-вход для локальной разработки без Telegram.
+- Роли `user`, `admin`, `superadmin`.
+- Дашборд долгов с фильтрами, поиском и картами долгов.
+- Типы долгов: `credit_card`, `split`, `mortgage`.
+- Добавление, редактирование и архивация долгов.
+- Внесение и история платежей по долгу.
+- Учёт доходов и расходов.
+- Финансовая страница с месячной статистикой.
+- Тёмная/светлая тема.
+- Админ-панель с управлением пользователями, логами, настройками и экспортом CSV.
+- Логи активности пользователей.
 
-| Цвет | Значение |
-|------|----------|
-| 🟢 Зелёный | Платёж не скоро — более 7 дней |
-| 🟡 Жёлтый | Скоро платёж — 3–7 дней |
-| 🟠 Оранжевый | Платёж через 1–3 дня |
-| 🔴 Красный | Просрочен |
+## Технологии
 
----
+- Python 3.9+
+- Flask
+- Flask-SQLAlchemy
+- Flask-Migrate / Alembic
+- Flask-Login
+- Flask-WTF / CSRF
+- PyMySQL
+- Waitress
+- Bootstrap 5
+- JavaScript
+- python-dotenv
 
-## 📁 Структура проекта
+## Структура проекта
 
 ```
 debt_manager/
-├── app.py              # Flask-приложение: роуты, API, аутентификация
-├── models.py           # SQLAlchemy-модели (User, Debt, Payment)
-├── extensions.py       # Объект db (SQLAlchemy)
-├── config.py           # Конфигурация (из .env)
-├── run.py              # Точка входа через Waitress (production)
-├── init_db.sql         # SQL-скрипт создания БД
-├── requirements.txt    # Зависимости Python
-├── deploy.sh           # Скрипт деплоя на Linux-сервер
-├── start.bat           # Быстрый запуск на Windows
-├── .env.example        # Пример файла окружения
-│
-├── templates/
-│   ├── base.html       # Базовый шаблон (навбар, модалки)
-│   ├── login.html      # Страница входа (Telegram Widget)
-│   ├── index.html      # Главный дашборд
-│   ├── incomes.html    # Учёт доходов
-│   ├── expenses.html   # Учёт расходов
-│   └── archive.html    # Архив долгов
-│
-└── static/
-    ├── css/style.css   # Стили (тёмная тема)
-    └── js/app.js       # JavaScript (AJAX, модалки, фильтры)
+├── app/
+│   ├── __init__.py             # Создание Flask-приложения, регистрация роутов и миграций
+│   ├── models.py               # SQLAlchemy-модели и to_dict()
+│   ├── routes/                 # Маршруты приложения
+│   │   ├── auth.py             # Авторизация, Telegram, dev-login, admin-login
+│   │   ├── admin.py            # Админка: пользователи, настройки, экспорт, справочники
+│   │   ├── debts.py            # API долгов: CRUD, архив, восстановление, удаление
+│   │   ├── incomes.py          # Доходы: создание, редактирование, удаление
+│   │   ├── expenses.py         # Расходы: создание, редактирование, удаление
+│   │   ├── main.py             # Дашборд, финансы, ипотека, архив, seed-данные
+│   │   └── payments.py         # API платежей по долгам
+│   ├── services/               # Сервисная логика
+│   │   ├── debt_service.py
+│   │   ├── finance_summary_service.py
+│   │   ├── payment_service.py
+│   │   └── telegram_auth_service.py
+│   └── utils.py                # Парсинг, настройки, проверки, логирование
+├── migrations/                 # Alembic миграции
+├── static/                     # CSS и JS клиента
+│   ├── css/style.css
+│   └── js/app.js
+├── templates/                  # HTML-шаблоны
+├── config.py                   # Загрузка .env и построение SQLAlchemy URI
+├── extensions.py               # Инициализация SQLAlchemy
+├── run.py                      # Production-сервер через Waitress
+├── deploy.sh                   # Скрипт обновления на сервере
+├── start.bat                   # Быстрый запуск на Windows
+├── requirements.txt            # Python-зависимости
+├── .env.example                # Образец файла окружения
+└── README.md                   # Документация проекта
 ```
 
----
+## Переменные окружения
 
-## 🚀 Быстрый старт
+| Переменная | Обязательна | Пример | Описание |
+|------------|------------|--------|----------|
+| `SECRET_KEY` | Да | `change-me` | Секрет Flask для сессий и CSRF. |
+| `FLASK_DEBUG` | Нет | `true` | Включает debug-режим. |
+| `DATABASE_URL` | Нет | `mysql+pymysql://user:pass@localhost/debt_manager?charset=utf8mb4` | Полный URI БД. Используется первым. |
+| `DB_ENGINE` | Нет | `mysql` / `sqlite` | Выбор двигателя базы данных. |
+| `DB_HOST` | Нет | `localhost` | Хост MySQL. |
+| `DB_PORT` | Нет | `3306` | Порт MySQL. |
+| `DB_USER` | Нет | `debt_user` | Пользователь MySQL. |
+| `DB_PASSWORD` | Нет | `secret` | Пароль MySQL. |
+| `DB_NAME` | Нет | `debt_manager` | Имя базы данных. |
+| `SQLITE_PATH` | Нет | `dev.db` | Файл SQLite. |
+| `DEV_SQLITE_COPY_FROM_MYSQL` | Нет | `true` | Копирует данные из MySQL в SQLite при первом запуске. |
+| `DEV_SQLITE_COPY_SOURCE_URL` | Нет | `mysql+pymysql://...` | Явный источник MySQL для копирования. |
+| `TELEGRAM_BOT_TOKEN` | Да для Telegram | `123456:ABC-DEF...` | Токен Telegram-бота. |
+| `TELEGRAM_BOT_USERNAME` | Да для Telegram | `YourBotUsername` | Имя Telegram-бота. |
+| `ADMIN_LOGIN_ENABLED` | Нет | `true` | Разрешает аварийный вход `/admin/login`. |
+| `ADMIN_PASSWORD` | Нет | `secret` | Пароль admin-login если хеш не задан. |
+| `ADMIN_PASSWORD_HASH` | Нет | `pbkdf2:...` | Хеш пароля admin-login; приоритет выше. |
+| `ADMIN_TELEGRAM_IDS` | Нет | `12345,67890` | Список Telegram ID супер-админов. |
+| `DEV_LOGIN_ENABLED` | Нет | `true` | Включает dev-login при debug. |
+| `TEST_USER_ENABLED` | Нет | `false` | Включает точку входа `/test-login`. |
+| `TEST_USER_TELEGRAM_ID` | Нет | `-999999999999` | ID для тестового пользователя. |
+| `TEST_USER_USERNAME` | Нет | `testuser` | Имя тестового пользователя. |
+| `TEST_USER_FIRST_NAME` | Нет | `Тестовый` | Имя тестового пользователя. |
+| `TEST_USER_LAST_NAME` | Нет | `Пользователь` | Фамилия тестового пользователя. |
+| `TEST_USER_ROLE` | Нет | `user` | Роль тестового пользователя. |
 
-### Требования
+> `ADMIN_PASSWORD_HASH` проверяется через `werkzeug.security.check_password_hash`.
 
-- Python 3.9+
-- MySQL 8.0+
-- Telegram-бот (для авторизации)
-
-### 1. Клонировать репозиторий
+## Локальный запуск
 
 ```bash
 git clone https://github.com/UnicornisIT/debt_manager.git
 cd debt_manager
-```
-
-### 2. Виртуальное окружение и зависимости
-
-В этом репозитории уже есть `.venv`, но вы можете создать своё виртуальное окружение.
-
-```bash
 python -m venv .venv
-
-# Windows:
-.venv\Scripts\activate
-
-# Linux / macOS:
 source .venv/bin/activate
-
 pip install -r requirements.txt
-```
-
-Если вы используете другое имя папки, например `venv`, то активируйте соответствующий путь:
-
-```bash
-venv\Scripts\activate
-# или
-source venv/bin/activate
-```
-
-### 3. Настроить переменные окружения
-
-```bash
 cp .env.example .env
 ```
 
-Откройте `.env` и заполните:
+1. Настройте `.env`.
+2. Если используете MySQL, создайте базу.
+3. Примените миграции:
+
+```bash
+export FLASK_APP=app
+flask db upgrade
+```
+
+4. Запустите приложение:
+
+```bash
+python -m flask run
+```
+
+5. Откройте `http://127.0.0.1:5000`.
+
+Для Windows:
+
+```powershell
+.venv\Scripts\activate
+$env:FLASK_APP = 'app'
+flask db upgrade
+python -m flask run
+```
+
+## MySQL / MariaDB
+
+```bash
+sudo apt update && sudo apt install mysql-server -y
+sudo mysql
+```
+
+В MySQL:
+
+```sql
+CREATE DATABASE debt_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'debt_user'@'localhost' IDENTIFIED BY 'strong_password';
+GRANT ALL PRIVILEGES ON debt_manager.* TO 'debt_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+Настройка `.env`:
 
 ```env
-SECRET_KEY=любая-случайная-строка
-
-# Telegram-бот (обязателен для авторизации)
-TELEGRAM_BOT_TOKEN=ваш_токен_бота
-TELEGRAM_BOT_USERNAME=ваш_bot_username
-
-# База данных
+DB_ENGINE=mysql
 DB_HOST=localhost
 DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=ваш_пароль
+DB_USER=debt_user
+DB_PASSWORD=strong_password
 DB_NAME=debt_manager
 ```
 
-> Токен бота получите у [@BotFather](https://t.me/BotFather). Для корректной работы Telegram Login Widget необходимо:
-> - зарегистрировать домен вашего сайта в настройках бота через команду `/setdomain`
-> - использовать HTTPS для доступа к приложению на сервере
-> - указать в `.env` и в настройках домена тот же адрес, что будет использоваться в браузере
->
-> Пример: если приложение доступно по `https://debt.example.com`, то именно этот домен должен быть разрешён в настройках бота.
-
-### 4. Создать базу данных MySQL
+Проверка подключения:
 
 ```bash
-mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS debt_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+python -c "from sqlalchemy import create_engine; print(create_engine('mysql+pymysql://debt_user:strong_password@localhost:3306/debt_manager?charset=utf8mb4').url)"
 ```
 
-Если вы хотите воспользоваться SQL-скриптом как резервным вариантом:
+## Миграции и таблицы
+
+Проект использует Flask-Migrate. Создание схемы выполняется командой:
 
 ```bash
-mysql -u root -p < init_db.sql
-```
-
-> После создания базы данных применяйте схему через Flask-Migrate.
->
-> Если база уже содержит таблицы из прежнего SQL-скрипта, сначала выполните `flask db stamp head`.
-
-```bash
-# Linux / macOS
-export FLASK_APP=app.py
-flask db upgrade
-
-# Windows PowerShell
-$env:FLASK_APP = 'app.py'
+export FLASK_APP=app
 flask db upgrade
 ```
 
-### 4.1. Миграции базы данных
+Для существующей базы данных без `alembic_version` можно выполнить миграцию вручную с `flask db stamp head`.
 
-После изменения моделей запускайте:
+## Обновление старой базы
+
+Если в старой MySQL-базе поле `debt_type` не поддерживает `mortgage`, выполните:
+
+```sql
+ALTER TABLE debts MODIFY debt_type ENUM('credit_card','split','mortgage') NOT NULL;
+```
+
+## Telegram Login
+
+1. Создайте бота через [BotFather](https://t.me/BotFather).
+2. Получите `TELEGRAM_BOT_TOKEN`.
+3. Настройте домен через `/setdomain`.
+4. Укажите `TELEGRAM_BOT_USERNAME` и `TELEGRAM_BOT_TOKEN` в `.env`.
+
+> Telegram Login Widget требует HTTPS и разрешённый домен.
+
+## Dev-вход
+
+Для безопасной локальной разработки используйте:
+
+```env
+DEV_LOGIN_ENABLED=true
+FLASK_DEBUG=true
+```
+
+Доступные адреса:
+
+- `/dev-login/user`
+- `/dev-login/admin`
+- `/dev-login/superadmin`
+- `/dev-logout`
+
+> Не включайте `DEV_LOGIN_ENABLED` на production.
+
+## Роли пользователей
+
+- `user` — работает со своими долгами, доходами, расходами.
+- `admin` — доступ к админ-панели.
+- `superadmin` — полный доступ, управление ролями и экспорт.
+
+### Как назначить superadmin
+
+Через `ADMIN_TELEGRAM_IDS` или CLI:
 
 ```bash
-# Linux / macOS
-export FLASK_APP=app.py
-flask db migrate -m "Описание изменений"
-flask db upgrade
+export FLASK_APP=app
+flask create-superadmin <telegram_id>
+```
 
-# Windows PowerShell
-$env:FLASK_APP = 'app.py'
-flask db migrate -m "Описание изменений"
+## Админ-панель
+
+Админка доступна по `/admin`.
+Функции:
+
+- статистика и последние логи;
+- настройки приложения и справочники;
+- список пользователей с фильтрами;
+- impersonation пользователей;
+- экспорт CSV по пользователям, долгам и платежам.
+
+## Развёртывание на Linux/VPS
+
+### Подготовка
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install python3 python3-venv python3-pip git nginx mysql-server -y
+```
+
+### Развертывание
+
+```bash
+sudo mkdir -p /var/www/debt_manager
+sudo chown -R $USER:$USER /var/www/debt_manager
+cd /var/www/debt_manager
+git clone https://github.com/UnicornisIT/debt_manager.git .
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+Настройте `.env` и базу данных, затем примените миграции:
+
+```bash
+export FLASK_APP=app
 flask db upgrade
 ```
 
-Если в существующей базе данных уже есть таблицы, но ещё нет таблицы `alembic_version`, `deploy.sh` автоматически отметит текущую схему как соответствующую последней миграции.
+### Проверка
 
-### 5. Запустить приложение
-
-**Разработка:**
-```bash
-python app.py
-```
-
-**Production (через Waitress):**
 ```bash
 python run.py
 ```
 
-**Windows (всё в одном):**
-```bat
-start.bat
-```
+Откройте `http://127.0.0.1:5000`.
 
-Откройте в браузере: **http://localhost:5000**
+## systemd
 
-### 6. (Опционально) Загрузить тестовые данные
-
-После входа через Telegram:
-
-```bash
-curl -X POST http://localhost:5000/api/init-db \
-  -H "Cookie: session=<ваша_сессия>"
-```
-
-Тестовые данные добавляются только если у пользователя ещё нет ни одного долга.
-
----
-
-## 🔐 Авторизация через Telegram
-
-Приложение использует [Telegram Login Widget](https://core.telegram.org/widgets/login). При первом входе автоматически создаётся профиль пользователя. Данные сессии хранятся на стороне сервера через Flask-Login.
-
-Важно: Telegram Login Widget работает только на разрешённых доменах и по HTTPS. Для настройки домена в BotFather выполните команду `/setdomain` и укажите домен без протокола, например `debt.example.com`.
-
-В `templates/login.html` используется `data-auth-url`, который формирует ссылку на `https://<ваш-домен>/telegram-login`. Убедитесь, что этот адрес совпадает с реальным URL вашего сайта.
-
-Подпись каждого запроса проверяется HMAC-SHA256 с ключом, производным от токена бота. Авторизационный токен действителен 24 часа.
-
----
-
-## 🔌 REST API
-
-Все эндпоинты требуют авторизации (сессионный cookie). Ответы возвращаются в формате JSON.
-
-### Долги
-
-| Метод | URL | Описание |
-|-------|-----|----------|
-| `GET` | `/api/debts` | Список долгов (параметры: `status`, `bank`, `type`) |
-| `POST` | `/api/debts` | Создать долг |
-| `GET` | `/api/debts/{id}` | Получить долг |
-| `PUT` | `/api/debts/{id}` | Обновить долг |
-| `POST` | `/api/debts/{id}/archive` | Переместить в архив |
-| `POST` | `/api/debts/{id}/restore` | Восстановить из архива |
-| `DELETE` | `/api/debts/{id}/delete` | Удалить безвозвратно |
-
-### Платежи
-
-| Метод | URL | Описание |
-|-------|-----|----------|
-| `GET` | `/api/debts/{id}/payments` | История платежей |
-| `POST` | `/api/debts/{id}/payments` | Внести платёж |
-
-### Пример — создание долга
-
-```json
-POST /api/debts
-{
-  "bank_name": "Тинькофф",
-  "debt_type": "credit_card",
-  "product_name": "Тинькофф Платинум",
-  "total_amount": 85000,
-  "remaining_amount": 47500,
-  "minimum_payment": 3200,
-  "interest_rate": 28.9,
-  "next_payment_date": "2025-07-25",
-  "comment": "Основная карта"
-}
-```
-
-### Пример — внесение платежа
-
-```json
-POST /api/debts/1/payments
-{
-  "amount": 5000,
-  "payment_date": "2025-07-10",
-  "comment": "Плановый платёж"
-}
-```
-
----
-
-## 🗄️ Модели данных
-
-### User
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `telegram_id` | BigInteger | Уникальный ID пользователя в Telegram |
-| `username` | String | @username |
-| `first_name` / `last_name` | String | Имя и фамилия |
-| `photo_url` | String | Аватар из Telegram |
-
-### Debt
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `bank_name` | String | Название банка |
-| `debt_type` | Enum | `credit_card` или `split` |
-| `product_name` | String | Название продукта |
-| `total_amount` | Decimal | Исходная сумма долга |
-| `remaining_amount` | Decimal | Текущий остаток |
-| `minimum_payment` | Decimal | Минимальный ежемесячный платёж |
-| `interest_rate` | Decimal | Процентная ставка (для сплитов — null) |
-| `next_payment_date` | Date | Дата следующего платежа |
-| `status` | Enum | `active` или `archived` |
-
-### Payment
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `amount` | Decimal | Сумма платежа |
-| `payment_date` | Date | Дата платежа |
-| `remaining_after_payment` | Decimal | Остаток долга после платежа |
-| `comment` | Text | Комментарий |
-
----
-
-## 🚢 Деплой на Linux-сервер
-
-Приложение комплектуется скриптом `deploy.sh` для деплоя через systemd.
-
-```bash
-# На сервере в /var/www/debt_manager
-bash deploy.sh
-```
-
-Скрипт выполняет: `git pull` → `pip install` → `flask db upgrade` → `systemctl restart debt_manager`.
-
-Пример конфигурации systemd-сервиса (`/etc/systemd/system/debt_manager.service`):
+Пример `/etc/systemd/system/debt_manager.service`:
 
 ```ini
 [Unit]
-Description=Debt Manager Flask App
+Description=Debt Manager Flask Application
 After=network.target mysql.service
 
 [Service]
 User=www-data
+Group=www-data
 WorkingDirectory=/var/www/debt_manager
 EnvironmentFile=/var/www/debt_manager/.env
-ExecStart=/var/www/debt_manager/venv/bin/python run.py
+ExecStart=/var/www/debt_manager/venv/bin/python /var/www/debt_manager/run.py
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 ```
 
----
-
-## 🛠 Разработка
-
 ```bash
-# Режим разработки с авто-перезагрузкой
-FLASK_DEBUG=1 python app.py
+sudo systemctl daemon-reload
+sudo systemctl enable debt_manager
+sudo systemctl start debt_manager
+sudo systemctl status debt_manager
 ```
 
-Зависимости:
+> Проект использует Waitress в `run.py`. Если вы предпочитаете Gunicorn, установите его отдельно и запустите `gunicorn app:app --workers 3 --bind 127.0.0.1:8000`.
 
-| Пакет | Версия | Назначение |
-|-------|--------|------------|
-| Flask | 3.0.3 | Веб-фреймворк |
-| Flask-SQLAlchemy | 3.1.1 | ORM |
-| Flask-Migrate | 4.0.4 | Управление миграциями базы данных |
-| Flask-Login | 0.6.3 | Управление сессиями |
-| PyMySQL | 1.1.1 | Драйвер MySQL |
-| python-dotenv | 1.0.1 | Загрузка `.env` |
-| waitress | 3.0.2 | WSGI-сервер для production |
-| cryptography | 42.0.8 | Шифрование |
+## Nginx
+
+Пример `/etc/nginx/sites-available/debt_manager`:
+
+```nginx
+server {
+    listen 80;
+    server_name example.com www.example.com;
+
+    client_max_body_size 20M;
+
+    location /static/ {
+        alias /var/www/debt_manager/static/;
+        expires 30d;
+        add_header Cache-Control "public";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/debt_manager /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+## SSL / Certbot
+
+```bash
+sudo apt install certbot python3-certbot-nginx -y
+sudo certbot --nginx -d example.com -d www.example.com
+```
+
+После этого обновите домен в BotFather.
+
+## Обновление проекта
+
+```bash
+cd /var/www/debt_manager
+git pull origin master
+source venv/bin/activate
+pip install -r requirements.txt
+sudo systemctl restart debt_manager
+sudo systemctl status debt_manager
+```
+
+Если есть локальные изменения, выполните `git status` и используйте `git stash` или закоммитьте изменения.
+
+## Резервное копирование
+
+```bash
+mysqldump -u debt_user -p debt_manager > backup_debt_manager.sql
+mysql -u debt_user -p debt_manager < backup_debt_manager.sql
+```
+
+## Полезные команды
+
+```bash
+sudo systemctl status debt_manager
+sudo journalctl -u debt_manager -f
+sudo journalctl -u debt_manager -n 100
+sudo nginx -t
+sudo tail -f /var/log/nginx/error.log
+sudo systemctl restart debt_manager
+```
+
+## Частые ошибки
+
+- `pymysql.err.OperationalError: Can't connect to MySQL` — проверьте настройки MySQL и `.env`.
+- `Table 'debt_manager.users' doesn't exist` — выполните `flask db upgrade`.
+- `Data truncated for column 'debt_type'` — выполните `ALTER TABLE debts MODIFY debt_type ENUM('credit_card','split','mortgage') NOT NULL;`.
+- `Telegram Login Widget показывает Username invalid` — проверьте `TELEGRAM_BOT_USERNAME`, домен в BotFather и HTTPS.
+- `dev-login не отображается` — убедитесь, что `DEV_LOGIN_ENABLED=true` и `FLASK_DEBUG=true`.
+- `тёмная тема не применяется` — очистите localStorage и перезагрузите.
+- `nginx configuration test failed` — проверьте конфигурацию и пути.
+- `static-файлы не подгружаются` — проверьте Nginx правило `/static/`.
+- `permission denied в /var/www/debt_manager` — проверьте права и пользователя сервисов.
+
+## Безопасность
+
+- `FLASK_DEBUG=false` на production.
+- `DEV_LOGIN_ENABLED=false` на сервере.
+- `SECRET_KEY` должен быть уникальным.
+- Используйте отдельного пользователя MySQL.
+- Не коммитьте `.env`.
+- Настройте HTTPS.
+- Отключите `ADMIN_LOGIN_ENABLED`, если аварийный вход не нужен.
+- Используйте `ADMIN_TELEGRAM_IDS` для супер-админов.
+- Делайте резервные копии БД.
+''' ; Path('README.md').write_text(text, encoding='utf-8')"

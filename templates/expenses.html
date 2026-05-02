@@ -2,7 +2,7 @@
 {% block title %}Расходы — Менеджер долгов{% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-center justify-content-between gap-3 mb-4">
+<div class="page-header d-flex align-items-center justify-content-between gap-3 mb-4">
     <div>
         <h1 class="page-title mb-1"><i class="bi bi-basket3 text-danger me-2"></i>Расходы</h1>
         <p class="text-muted mb-0">Фиксируйте траты и следите за расходами по категориям.</p>
@@ -26,6 +26,7 @@
             {% set selected_category = form_data.get('category') if form_data else (edit_expense.category if edit_expense else '') %}
             {% set selected_payment_method = form_data.get('payment_method') if form_data else (edit_expense.payment_method if edit_expense else '') %}
             <form method="post" novalidate action="{{ url_for('edit_expense', expense_id=edit_expense.id) if edit_expense else url_for('expenses') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">
                     <label class="form-label"><span class="required-indicator">*</span>Категория</label>
                     <select class="form-select" name="category" required>
@@ -111,6 +112,7 @@
                                             <td class="text-end">
                                                 <a href="{{ url_for('edit_expense', expense_id=expense.id) }}" class="btn btn-sm btn-outline-primary me-1">Изм.</a>
                                                 <form method="post" action="{{ url_for('delete_expense', expense_id=expense.id) }}" class="d-inline" onsubmit="return confirm('Удалить этот расход?');">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                     <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
                                                 </form>
                                             </td>

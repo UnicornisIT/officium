@@ -2,59 +2,82 @@
 {% block title %}Вход через Telegram — ДолгТрекер{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-xl-4 col-lg-5 col-md-7">
-        <div class="card shadow-sm border-0">
-            <div class="card-body text-center py-5">
-                <h1 class="h4 mb-3">Вход через Telegram</h1>
-                <p class="text-muted mb-4">Авторизуйтесь через Telegram, чтобы продолжить работу с приложением.</p>
-                <p class="text-muted small mb-4">При входе мы используем данные, которые Telegram передаёт приложению: ваш Telegram ID, никнейм, имя, фамилию и информацию профиля (например, фото). Эти данные нужны для идентификации и создания аккаунта.</p>
+<div class="login-page">
+    <div class="login-layout">
+        <div class="login-hero-card login-hero shadow-sm">
+            <div class="login-hero__eyebrow">Финансовый контроль</div>
+            <h1 class="login-hero-title">Учет долгов, платежей и расходов в одном месте</h1>
+            <p class="login-hero-text">Безопасный вход через Telegram. Быстро стартуйте, сохраняйте историю и контролируйте остатки по картам, рассрочкам и ипотеке.</p>
+            <ul class="login-feature-list login-hero__list">
+                <li><span class="login-feature-dot"></span>Авторизация без пароля через Telegram Login Widget</li>
+                <li><span class="login-feature-dot"></span>Удобный дашборд с балансами и статусами платежей</li>
+                <li><span class="login-feature-dot"></span>Прогресс погашения по каждой карточке долга</li>
+                <li><span class="login-feature-dot"></span>История доходов, расходов и архив закрытых долгов</li>
+            </ul>
+        </div>
+        <div class="login-auth-card card login-panel shadow-sm border-0">
+            <div class="card-body text-center">
+                    <h1 class="h4 mb-3">Вход через Telegram</h1>
+                    <p class="text-muted mb-4">Авторизуйтесь через Telegram, чтобы продолжить работу с приложением.</p>
+                    <p class="text-muted small mb-4">При входе мы используем данные, которые Telegram передаёт приложению: ваш Telegram ID, никнейм, имя, фамилию и информацию профиля. Это безопасно и нужно для создания аккаунта.</p>
 
-                {% if error %}
-                <div class="alert alert-danger">{{ error }}</div>
-                {% endif %}
+                    {% if error %}
+                    <div class="alert alert-danger">{{ error }}</div>
+                    {% endif %}
 
-                {% if not telegram_allowed %}
-                <div class="alert alert-warning text-start">
-                    <strong>Вход через Telegram отключён.</strong>
-                    <div>Обратитесь к администратору для разблокировки доступа.</div>
-                </div>
-                {% elif bot_username %}
-                <script async src="https://telegram.org/js/telegram-widget.js?15"
-                        data-telegram-login="{{ bot_username }}"
-                        data-size="large"
-                        data-userpic="false"
-                        data-auth-url="{{ url_for('telegram_login', _external=True) }}"
-                        data-request-access="write">
-                </script>
-                {% else %}
-                <div class="alert alert-warning text-start">
-                    <strong>Бот Telegram не настроен.</strong>
-                    <div>Добавьте в `.env` переменные <code>TELEGRAM_BOT_TOKEN</code> и <code>TELEGRAM_BOT_USERNAME</code>.</div>
-                </div>
-                {% endif %}
-                
-                {% if test_login_enabled %}
-                <div class="mt-4 p-3 border rounded bg-light text-start">
-                    <h5 class="mb-3">Тестовый доступ</h5>
-                    <p class="text-muted small mb-3">Вход без Telegram для локального тестирования.</p>
-                    <a href="{{ url_for('test_login') }}" class="btn btn-success btn-lg w-100 d-flex align-items-center justify-content-center gap-2">
-                        <i class="bi bi-person-badge-fill"></i>
-                        Войти как тестовый пользователь
-                    </a>
-                </div>
-                {% endif %}
+                    {% if not telegram_allowed %}
+                    <div class="alert alert-warning text-start">
+                        <strong>Вход через Telegram отключён.</strong>
+                        <div>Обратитесь к администратору для разблокировки доступа.</div>
+                    </div>
+                    {% elif bot_username %}
+                    <script async src="https://telegram.org/js/telegram-widget.js?15"
+                            data-telegram-login="{{ bot_username }}"
+                            data-size="large"
+                            data-userpic="false"
+                            data-auth-url="{{ url_for('telegram_login', _external=True) }}"
+                            data-request-access="write">
+                    </script>
+                    {% else %}
+                    <div class="alert alert-warning text-start">
+                        <strong>Бот Telegram не настроен.</strong>
+                        <div>Добавьте в `.env` переменные <code>TELEGRAM_BOT_TOKEN</code> и <code>TELEGRAM_BOT_USERNAME</code>.</div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if test_login_enabled %}
+                    <div class="mt-4 p-3 surface-card text-start">
+                        <h5 class="mb-3">Тестовый доступ</h5>
+                        <p class="text-muted small mb-3">Вход без Telegram для локального тестирования.</p>
+                        <a href="{{ url_for('test_login') }}" class="btn btn-success btn-lg w-100 d-flex align-items-center justify-content-center gap-2">
+                            <i class="bi bi-person-badge-fill"></i>
+                            Войти как тестовый пользователь
+                        </a>
+                    </div>
+                    {% endif %}
 
-                {% if admin_login_enabled %}
-                <div class="mt-4">
-                    <a href="{{ url_for('admin_login') }}" class="btn btn-outline-primary btn-lg w-100 d-flex align-items-center justify-content-center gap-2">
-                        <i class="bi bi-shield-lock-fill"></i>
-                        Войти в админ-панель без Telegram
-                    </a>
-                    <p class="text-muted small mt-2 mb-0">Для доступа требуется админ-пароль</p>
+                    {% if dev_login_enabled %}
+                    <div class="mt-4 p-3 surface-card text-start dev-login-card">
+                        <h5 class="mb-3">Dev-вход</h5>
+                        <p class="text-muted small mb-3">Локальный dev-вход доступен только в режиме разработки.</p>
+                        <div class="dev-login-actions d-grid gap-2">
+                            <a href="{{ url_for('dev_login', role='user') }}" class="btn btn-outline-success btn-lg">Войти как пользователь</a>
+                            <a href="{{ url_for('dev_login', role='admin') }}" class="btn btn-outline-primary btn-lg">Войти как администратор</a>
+                            <a href="{{ url_for('dev_login', role='superadmin') }}" class="btn btn-outline-danger btn-lg">Войти как супер-админ</a>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if admin_login_enabled %}
+                    <div class="mt-4">
+                        <a href="{{ url_for('admin_login') }}" class="btn btn-outline-primary btn-lg w-100 d-flex align-items-center justify-content-center gap-2">
+                            <i class="bi bi-shield-lock-fill"></i>
+                            Войти в админ-панель без Telegram
+                        </a>
+                        <p class="text-muted small mt-2 mb-0">Для доступа требуется админ-пароль</p>
+                    </div>
+                    {% endif %}
                 </div>
-                {% endif %}
-                
             </div>
         </div>
     </div>

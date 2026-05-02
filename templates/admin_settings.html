@@ -12,6 +12,7 @@
 {% endif %}
 
 <form method="post" class="row g-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="col-md-6">
         <label class="form-label">Название приложения</label>
         <input type="text" name="app_name" class="form-control" value="{{ settings.app_name }}">

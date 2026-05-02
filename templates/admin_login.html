@@ -17,6 +17,7 @@
                 <div class="alert alert-warning">Админ-вход отключён. Включите <code>ADMIN_LOGIN_ENABLED</code> в <code>.env</code>.</div>
                 {% else %}
                 <form method="post" class="text-start">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                         <label class="form-label">Пароль администратора</label>
                         <input type="password" name="password" class="form-control" autocomplete="current-password" required>

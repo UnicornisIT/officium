@@ -8,6 +8,7 @@
         <p class="text-muted">Быстрый доступ к разделам управления и мониторинга.</p>
     </div>
     <form method="post" action="{{ url_for('admin_impersonate_test') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-primary">Войти как тестовый пользователь</button>
     </form>
 </div>

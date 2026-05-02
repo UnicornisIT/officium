@@ -219,6 +219,8 @@ class ActivityLog(db.Model):
     entity_type = db.Column(db.String(50), nullable=True)
     entity_id = db.Column(db.Integer, nullable=True)
     description = db.Column(db.Text, nullable=True)
+    ip_address = db.Column(db.String(100), nullable=True)
+    user_agent = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship('User', back_populates='activity_logs')

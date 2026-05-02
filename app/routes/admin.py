@@ -1,13 +1,22 @@
 import csv
 from io import StringIO
 from datetime import datetime
-from flask import redirect, render_template, request, url_for, Response
+from flask import redirect, render_template, request, url_for, Response, flash, session
 from flask_login import current_user, login_user, logout_user
+from sqlalchemy import cast
 from sqlalchemy.exc import SQLAlchemyError
 from app.models import ActivityLog, Debt, DictionaryEntry, Payment, User, AppSetting
 from app.routes.auth import LocalTestUser
-from app.utils import admin_required, DICTIONARY_TYPES, DEFAULT_SETTINGS, get_setting, record_activity, set_setting
+from app.utils import admin_required, superadmin_required, DICTIONARY_TYPES, DEFAULT_SETTINGS, get_setting, record_activity, set_setting
 from extensions import db
+
+
+def _count_superadmins():
+    return User.query.filter_by(role='superadmin').count()
+
+
+def _is_last_superadmin(user):
+    return user.is_superadmin and _count_superadmins() <= 1
 
 
 def init_app(app):
@@ -17,26 +26,32 @@ def init_app(app):
         error_message = None
         stats = {
             'users': '—',
+            'active_users': '—',
+            'blocked_users': '—',
             'debts': '—',
             'payments': '—',
             'logs': '—',
             'dictionary_entries': '—',
         }
+        recent_logs = []
         try:
             stats = {
                 'users': User.query.count(),
+                'active_users': User.query.filter_by(is_blocked=False).count(),
+                'blocked_users': User.query.filter_by(is_blocked=True).count(),
                 'debts': Debt.query.count(),
                 'payments': Payment.query.count(),
                 'logs': ActivityLog.query.count(),
                 'dictionary_entries': DictionaryEntry.query.count(),
             }
-        except SQLAlchemyError as e:
+            recent_logs = ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(5).all()
+        except SQLAlchemyError:
             error_message = 'Ошибка подключения к базе данных. Админ-табло недоступно.'
 
-        return render_template('admin_dashboard.html', stats=stats, error_message=error_message)
+        return render_template('admin_dashboard.html', stats=stats, error_message=error_message, recent_logs=recent_logs)
 
     @app.route('/admin/settings', methods=['GET', 'POST'])
-    @admin_required
+    @superadmin_required
     def admin_settings():
         success_message = None
 
@@ -55,7 +70,7 @@ def init_app(app):
         return render_template('admin_settings.html', settings=settings, success_message=request.args.get('success'))
 
     @app.route('/admin/dictionaries', methods=['GET', 'POST'])
-    @admin_required
+    @superadmin_required
     def admin_dictionaries():
         error_message = None
         success_message = request.args.get('success')
@@ -83,7 +98,7 @@ def init_app(app):
         return render_template('admin_dictionaries.html', entries=entries, types=DICTIONARY_TYPES, type_labels=type_labels, error_message=error_message, success_message=success_message)
 
     @app.route('/admin/dictionaries/<int:entry_id>/delete', methods=['POST'])
-    @admin_required
+    @superadmin_required
     def admin_delete_dictionary_entry(entry_id):
         entry = DictionaryEntry.query.get(entry_id)
         if entry:
@@ -96,11 +111,30 @@ def init_app(app):
     @app.route('/admin/users')
     @admin_required
     def admin_users():
-        users = User.query.order_by(User.role.desc(), User.created_at.desc()).all()
-        return render_template('admin_users.html', users=users)
+        role_filter = request.args.get('role')
+        status_filter = request.args.get('status')
+        search_query = (request.args.get('q') or '').strip()
+
+        users_query = User.query
+        if role_filter in ('user', 'admin', 'superadmin'):
+            users_query = users_query.filter_by(role=role_filter)
+        if status_filter == 'blocked':
+            users_query = users_query.filter_by(is_blocked=True)
+        elif status_filter == 'active':
+            users_query = users_query.filter_by(is_blocked=False)
+        if search_query:
+            users_query = users_query.filter(
+                (User.username.ilike(f'%{search_query}%')) |
+                (User.first_name.ilike(f'%{search_query}%')) |
+                (User.last_name.ilike(f'%{search_query}%')) |
+                (cast(User.telegram_id, db.String).ilike(f'%{search_query}%'))
+            )
+
+        users = users_query.order_by(User.role.desc(), User.created_at.desc()).all()
+        return render_template('admin_users.html', users=users, role_filter=role_filter, status_filter=status_filter, q=search_query)
 
     @app.route('/admin/impersonate/test', methods=['POST'])
-    @admin_required
+    @superadmin_required
     def admin_impersonate_test():
         try:
             test_user = User.query.filter_by(username='test').first()
@@ -122,6 +156,8 @@ def init_app(app):
                 test_user.is_blocked = False
                 db.session.commit()
 
+            session['original_admin_id'] = current_user.id
+            record_activity('Начал impersonate тестового пользователя', current_user, entity_type='user', entity_id=test_user.id, description=f'Имперсонализация в пользователя {test_user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
             logout_user()
             login_user(test_user)
         except SQLAlchemyError:
@@ -132,12 +168,15 @@ def init_app(app):
         return redirect(url_for('index'))
 
     @app.route('/admin/impersonate/<int:user_id>', methods=['POST'])
-    @admin_required
+    @superadmin_required
     def admin_impersonate_user(user_id):
         user = User.query.get_or_404(user_id)
-        if user.is_blocked:
+        if user.is_blocked or user.is_superadmin:
+            flash('Нельзя выполнять impersonate для этого пользователя.', 'warning')
             return redirect(url_for('admin_users'))
 
+        session['original_admin_id'] = current_user.id
+        record_activity('Начал impersonate пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Имперсонализация в пользователя {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
         logout_user()
         login_user(user)
         return redirect(url_for('index'))
@@ -148,33 +187,68 @@ def init_app(app):
         user = User.query.get_or_404(user_id)
         if request.method == 'POST':
             action = request.form.get('action')
+            successful = False
             if action == 'block':
-                user.is_blocked = True
-                record_activity('Заблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}')
+                if user.id == current_user.id:
+                    flash('Нельзя заблокировать себя.', 'warning')
+                elif user.is_superadmin and not current_user.is_superadmin:
+                    flash('Нельзя заблокировать супер-администратора.', 'warning')
+                elif _is_last_superadmin(user):
+                    flash('Нельзя заблокировать последнего superadmin.', 'warning')
+                else:
+                    user.is_blocked = True
+                    record_activity('Заблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+                    successful = True
             elif action == 'unblock':
-                user.is_blocked = False
-                record_activity('Разблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}')
+                if user.id == current_user.id:
+                    flash('Нельзя разблокировать себя этим действием.', 'warning')
+                elif user.is_superadmin and not current_user.is_superadmin:
+                    flash('Нельзя разблокировать супер-администратора.', 'warning')
+                else:
+                    user.is_blocked = False
+                    record_activity('Разблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+                    successful = True
             elif action in ('make_admin', 'make_superadmin', 'make_user'):
                 if not current_user.is_superadmin:
-                    return redirect(url_for('admin_user_detail', user_id=user.id))
-                if action == 'make_admin':
-                    user.role = 'admin'
-                    record_activity('Назначил администратора', current_user, entity_type='user', entity_id=user.id)
-                elif action == 'make_superadmin':
-                    user.role = 'superadmin'
-                    record_activity('Назначил супер-администратора', current_user, entity_type='user', entity_id=user.id)
+                    flash('Недостаточно прав для изменения ролей.', 'warning')
+                elif user.id == current_user.id and action != 'make_superadmin' and _is_last_superadmin(user):
+                    flash('Нельзя понизить последнего superadmin.', 'warning')
                 else:
-                    user.role = 'user'
-                    record_activity('Снял административные права', current_user, entity_type='user', entity_id=user.id)
+                    if action == 'make_admin':
+                        if user.is_superadmin and _is_last_superadmin(user):
+                            flash('Нельзя понизить последнего superadmin.', 'warning')
+                        else:
+                            user.role = 'admin'
+                            record_activity('Назначил администратора', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}')
+                            successful = True
+                    elif action == 'make_superadmin':
+                        user.role = 'superadmin'
+                        record_activity('Назначил супер-администратора', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}')
+                        successful = True
+                    else:
+                        if user.is_superadmin and _is_last_superadmin(user):
+                            flash('Нельзя понизить последнего superadmin.', 'warning')
+                        else:
+                            user.role = 'user'
+                            record_activity('Снял административные права', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}')
+                            successful = True
             elif action == 'delete':
                 if not current_user.is_superadmin:
-                    return redirect(url_for('admin_user_detail', user_id=user.id))
-                record_activity('Удалил пользователя', current_user, entity_type='user', entity_id=user.id)
-                db.session.delete(user)
+                    flash('Недостаточно прав для удаления пользователя.', 'warning')
+                elif user.id == current_user.id:
+                    flash('Нельзя удалить себя.', 'warning')
+                elif user.is_superadmin and _is_last_superadmin(user):
+                    flash('Нельзя удалить последнего superadmin.', 'warning')
+                else:
+                    record_activity('Удалил пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+                    db.session.delete(user)
+                    db.session.commit()
+                    return redirect(url_for('admin_users'))
+
+            if successful:
                 db.session.commit()
-                return redirect(url_for('admin_users'))
-            db.session.commit()
-            return redirect(url_for('admin_user_detail', user_id=user.id, success='Действие выполнено'))
+                return redirect(url_for('admin_user_detail', user_id=user.id, success='Действие выполнено'))
+            db.session.rollback()
 
         active_debts = Debt.query.filter_by(user_id=user.id, status='active').count()
         archived_debts = Debt.query.filter_by(user_id=user.id, status='archived').count()
@@ -189,14 +263,14 @@ def init_app(app):
         return render_template('admin_logs.html', logs=logs)
 
     @app.route('/admin/export')
-    @admin_required
+    @superadmin_required
     def admin_export():
         debts = Debt.query.order_by(Debt.created_at.desc()).limit(100).all()
         payments = Payment.query.order_by(Payment.payment_date.desc()).limit(100).all()
         return render_template('admin_export.html', debts=debts, payments=payments)
 
-    @app.route('/admin/export/<string:export_type>.csv')
-    @admin_required
+    @app.route('/admin/export/<string:export_type>.csv', methods=['POST'])
+    @superadmin_required
     def admin_export_csv(export_type):
         output = StringIO()
         writer = csv.writer(output)
