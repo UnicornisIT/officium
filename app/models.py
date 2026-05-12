@@ -19,6 +19,9 @@ class User(UserMixin, db.Model):
     last_login_ip = db.Column(db.String(100), nullable=True)
     last_user_agent = db.Column(db.Text, nullable=True)
     login_count = db.Column(db.Integer, default=0, nullable=False)
+    google_id = db.Column(db.String(50), unique=True, nullable=True)
+    email = db.Column(db.String(120), nullable=True, index=True)
+    avatar_url = db.Column(db.String(255), nullable=True)
 
     debts = db.relationship('Debt', back_populates='user', lazy=True, cascade='all, delete-orphan')
     incomes = db.relationship('Income', back_populates='user', lazy=True, cascade='all, delete-orphan')

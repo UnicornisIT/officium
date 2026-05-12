@@ -1,5 +1,5 @@
 /* ============================================================
-   DEBT TRACKER — Основной JavaScript
+   officium — Основной JavaScript
    Все взаимодействия: модалки, AJAX, платежи, уведомления
 ============================================================ */
 
@@ -492,7 +492,7 @@ function openGoogleCalendar(debtId, bankName, productName, nextPaymentDate, minP
 
     const title = encodeURIComponent(`Платеж по ${bankName}: ${productName}`);
     const details = encodeURIComponent(
-        `Минимальный платеж: ${formatMoney(minPayment)}\nОстаток долга: ${formatMoney(remaining)}\n\nАвтоматически создано в ДолгТрекере`
+        `Минимальный платеж: ${formatMoney(minPayment)}\nОстаток долга: ${formatMoney(remaining)}\n\nАвтоматически создано в officium`
     );
 
     const url = `https://calendar.google.com/calendar/render?action=TEMPLATE`

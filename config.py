@@ -23,6 +23,11 @@ class Config:
     TEST_USER_LAST_NAME = os.environ.get('TEST_USER_LAST_NAME', 'Пользователь')
     TEST_USER_ROLE = os.environ.get('TEST_USER_ROLE', 'user')
     
+    GOOGLE_LOGIN_ENABLED = os.environ.get('GOOGLE_LOGIN_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
+    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+    GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'http://127.0.0.1:5000/auth/google/callback')
+    
     DATABASE_URL = os.environ.get('DATABASE_URL', '')
     DB_ENGINE = os.environ.get('DB_ENGINE', 'mysql').lower()
     SQLITE_PATH = os.environ.get('SQLITE_PATH', 'dev.db')

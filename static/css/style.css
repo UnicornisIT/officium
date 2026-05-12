@@ -1,5 +1,5 @@
 /* ============================================================
-   DEBT TRACKER — Основные стили
+   officium — Основные стили
    Шрифт: Onest | Палитра: глубокий синий + акценты
 ============================================================ */
 
@@ -175,6 +175,23 @@ body {
     border-radius: 50%;
     background: var(--success);
     box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+    animation: feature-dot-pulse 1.8s ease-in-out infinite;
+}
+
+.login-feature-list li:nth-child(1) .login-feature-dot { animation-delay: 0s; }
+.login-feature-list li:nth-child(2) .login-feature-dot { animation-delay: 0.15s; }
+.login-feature-list li:nth-child(3) .login-feature-dot { animation-delay: 0.3s; }
+.login-feature-list li:nth-child(4) .login-feature-dot { animation-delay: 0.45s; }
+
+@keyframes feature-dot-pulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+    }
+    50% {
+        transform: scale(1.3);
+        box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.08);
+    }
 }
 
 .login-auth-card h1.h4 {

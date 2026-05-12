@@ -34,10 +34,12 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20260502_mortgage'], '73459c8513a1')
         self.assertEqual(revisions['20260502_log_ip_ua'], '20260502_mortgage')
         self.assertEqual(revisions['20260503_debt_type'], '20260502_log_ip_ua')
+        self.assertEqual(revisions['acd5bddc3168'], '20260503_debt_type')
+        self.assertEqual(revisions['e49a6c3dc4b8'], 'acd5bddc3168')
 
         referenced = {down for down in revisions.values() if down}
         heads = set(revisions) - referenced
-        self.assertEqual(heads, {'20260503_debt_type'})
+        self.assertEqual(heads, {'e49a6c3dc4b8'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))

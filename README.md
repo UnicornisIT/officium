@@ -1,8 +1,8 @@
-# ДолгТрекер / Debt Manager
+# officium
 
 ## Описание
 
-Debt Manager — это веб-приложение для учёта долгов, платежей, доходов и расходов. Оно предназначено для частных пользователей, которые хотят видеть:
+officium — это веб-приложение для учёта долгов, платежей, доходов и расходов. Оно предназначено для частных пользователей, которые хотят видеть:
 
 - активные долги и остатки по ним;
 - ближайшие платежи, просрочки и прогресс погашения;
@@ -110,8 +110,39 @@ debt_manager/
 | `TEST_USER_FIRST_NAME` | Нет | `Тестовый` | Имя тестового пользователя. |
 | `TEST_USER_LAST_NAME` | Нет | `Пользователь` | Фамилия тестового пользователя. |
 | `TEST_USER_ROLE` | Нет | `user` | Роль тестового пользователя. |
+| `GOOGLE_LOGIN_ENABLED` | Нет | `false` | Включает авторизацию через Google OAuth. |
+| `GOOGLE_CLIENT_ID` | Да для Google | `...apps.googleusercontent.com` | Client ID из Google Cloud Console. |
+| `GOOGLE_CLIENT_SECRET` | Да для Google | `...` | Client Secret из Google Cloud Console. |
+| `GOOGLE_REDIRECT_URI` | Нет | `http://127.0.0.1:5000/auth/google/callback` | Redirect URI для OAuth callback. |
 
 > `ADMIN_PASSWORD_HASH` проверяется через `werkzeug.security.check_password_hash`.
+
+## Google Login
+
+Приложение поддерживает авторизацию через Google OAuth 2.0 как дополнительный способ входа.
+
+### Настройка Google OAuth
+
+1. Перейдите в [Google Cloud Console](https://console.cloud.google.com/).
+2. Создайте новый проект или выберите существующий.
+3. Включите Google+ API (или Google People API).
+4. Создайте OAuth 2.0 Client ID:
+   - Тип приложения: Web application
+   - Authorized redirect URIs:
+     - Локально: `http://127.0.0.1:5000/auth/google/callback`
+     - Production: `https://your-domain.com/auth/google/callback`
+5. Скопируйте Client ID и Client Secret.
+
+### Переменные окружения для Google Login
+
+```env
+GOOGLE_LOGIN_ENABLED=true
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=http://127.0.0.1:5000/auth/google/callback
+```
+
+> **Важно:** `GOOGLE_REDIRECT_URI` должен точно совпадать с URI, указанным в Google Cloud Console.
 
 ## Локальный запуск
 
@@ -395,7 +426,7 @@ python run.py
 
 ```ini
 [Unit]
-Description=Debt Manager Flask Application
+Description=officium Flask Application
 After=network.target mysql.service
 
 [Service]

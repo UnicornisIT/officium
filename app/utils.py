@@ -50,7 +50,7 @@ PAYMENT_METHODS = [
 ]
 
 DEFAULT_SETTINGS = {
-    'app_name': 'ДолгТрекер',
+    'app_name': 'officium',
     'default_currency': 'RUB',
     'registration_enabled': 'false',
     'telegram_login_enabled': 'true',

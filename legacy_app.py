@@ -116,7 +116,7 @@ def require_login():
 
 @app.context_processor
 def inject_user():
-    app_name = get_setting('app_name', 'ДолгТрекер')
+    app_name = get_setting('app_name', 'officium')
     bank_options = get_dictionary_values('bank')
     return dict(current_user=current_user, app_name=app_name, bank_options=bank_options)
 
@@ -251,7 +251,7 @@ PAYMENT_METHODS = [
 ]
 
 DEFAULT_SETTINGS = {
-    'app_name': 'ДолгТрекер',
+    'app_name': 'officium',
     'default_currency': 'RUB',
     'registration_enabled': 'false',
     'telegram_login_enabled': 'true',

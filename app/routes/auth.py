@@ -3,6 +3,7 @@ from flask import jsonify, redirect, render_template, request, url_for, flash, s
 from flask_login import UserMixin, current_user, login_user, logout_user
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import check_password_hash
+from authlib.integrations.flask_client import OAuth
 from extensions import db
 from app import login_manager
 from app.models import User
@@ -56,6 +57,18 @@ class LocalTestUser(UserMixin):
 
 
 def init_app(app):
+    oauth = OAuth(app)
+
+    google = oauth.register(
+        name='google',
+        client_id=app.config.get('GOOGLE_CLIENT_ID'),
+        client_secret=app.config.get('GOOGLE_CLIENT_SECRET'),
+        server_metadata_url='https://accounts.google.com/.well-known/openid_configuration',
+        client_kwargs={
+            'scope': 'openid email profile'
+        }
+    )
+
     @login_manager.user_loader
     def load_user(user_id):
         if not user_id:
@@ -96,7 +109,7 @@ def init_app(app):
 
     @app.context_processor
     def inject_user():
-        app_name = get_setting('app_name', 'ДолгТрекер')
+        app_name = get_setting('app_name', 'officium')
         bank_options = get_dictionary_values('bank')
         admin_login_enabled = app.config.get('ADMIN_LOGIN_ENABLED', False)
         test_login_enabled = app.config.get('TEST_USER_ENABLED', False)
@@ -125,6 +138,7 @@ def init_app(app):
             telegram_allowed=telegram_allowed,
             admin_login_enabled=app.config.get('ADMIN_LOGIN_ENABLED', False),
             test_login_enabled=app.config.get('TEST_USER_ENABLED', False),
+            google_login_enabled=app.config.get('GOOGLE_LOGIN_ENABLED', False),
         )
 
     def _dev_mode_enabled():
@@ -309,6 +323,76 @@ def init_app(app):
 
         db.session.commit()
         record_activity('Вход через Telegram', user, description=f'Telegram ID={telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+        login_user(user)
+        return redirect(url_for('index'))
+
+    @app.route('/auth/google')
+    def google_login():
+        if not app.config.get('GOOGLE_LOGIN_ENABLED', False):
+            abort(404)
+        redirect_uri = url_for('google_callback', _external=True)
+        return google.authorize_redirect(redirect_uri)
+
+    @app.route('/auth/google/callback')
+    def google_callback():
+        if not app.config.get('GOOGLE_LOGIN_ENABLED', False):
+            abort(404)
+        try:
+            token = google.authorize_access_token()
+            userinfo = google.get('https://openidconnect.googleapis.com/v1/userinfo').json()
+        except Exception as e:
+            current_app.logger.error(f'Google OAuth error: {e}')
+            flash('Ошибка авторизации через Google.', 'danger')
+            return redirect(url_for('login'))
+
+        google_id = userinfo.get('sub')
+        email = userinfo.get('email')
+        email_verified = userinfo.get('email_verified', False)
+        name = userinfo.get('name')
+        picture = userinfo.get('picture')
+
+        if not google_id or not email:
+            flash('Недостаточно данных от Google для авторизации.', 'danger')
+            return redirect(url_for('login'))
+
+        if not email_verified:
+            flash('Email не подтверждён в Google.', 'danger')
+            return redirect(url_for('login'))
+
+        user = User.query.filter_by(google_id=google_id).first()
+        if not user:
+            user = User.query.filter_by(email=email).first()
+            if user:
+                # Привязываем Google ID к существующему пользователю
+                user.google_id = google_id
+                user.avatar_url = picture
+            else:
+                # Создаём нового пользователя
+                first_name, last_name = (name.split(' ', 1) + [''])[:2]
+                user = User(
+                    telegram_id=-int(google_id) % 1000000000000,  # Генерируем уникальный telegram_id
+                    username=email.split('@')[0],
+                    first_name=first_name,
+                    last_name=last_name,
+                    photo_url=picture,
+                    auth_date=datetime.utcnow(),
+                    role='user',
+                    google_id=google_id,
+                    email=email,
+                    avatar_url=picture,
+                )
+                db.session.add(user)
+
+        if user.is_blocked:
+            flash('Ваша учётная запись заблокирована.', 'danger')
+            return redirect(url_for('login'))
+
+        user.login_count = (user.login_count or 0) + 1
+        user.last_login_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        user.last_user_agent = request.headers.get('User-Agent')
+
+        db.session.commit()
+        record_activity('Вход через Google', user, description=f'Google ID={google_id}, email={email}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
         login_user(user)
         return redirect(url_for('index'))
 
