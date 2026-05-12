@@ -1,7 +1,7 @@
 """Add ip_address and user_agent to activity_logs
 
 Revision ID: 20260502_log_ip_ua
-Revises: 20260502_add_mortgage_debt_type
+Revises: 20260502_mortgage
 Create Date: 2026-05-02 00:00:00.000000
 """
 
@@ -11,9 +11,19 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20260502_log_ip_ua'
-down_revision = '20260502_add_mortgage_debt_type'
+down_revision = '20260502_mortgage'
 branch_labels = None
 depends_on = None
+
+
+MYSQL_DEBT_TYPE_SQL = (
+    "ALTER TABLE debts "
+    "MODIFY debt_type ENUM('credit_card', 'split', 'mortgage') NOT NULL"
+)
+
+
+def is_mysql():
+    return op.get_bind().dialect.name in ('mysql', 'mariadb')
 
 
 def table_exists(table_name):
@@ -43,18 +53,11 @@ def upgrade():
                 sa.Column('user_agent', sa.Text(), nullable=True)
             )
 
-    if table_exists('debts'):
-        op.execute(
-            "ALTER TABLE debts MODIFY debt_type ENUM('credit_card', 'split', 'mortgage') NOT NULL"
-        )
+    if is_mysql() and table_exists('debts'):
+        op.execute(MYSQL_DEBT_TYPE_SQL)
 
 
 def downgrade():
-    if table_exists('activity_logs'):
-        if column_exists('activity_logs', 'user_agent'):
-            op.drop_column('activity_logs', 'user_agent')
-        if column_exists('activity_logs', 'ip_address'):
-            op.drop_column('activity_logs', 'ip_address')
-
-    # debt_type откатить автоматически не безопасно, если в базе уже есть записи mortgage.
-    pass
+    raise RuntimeError(
+        'Dropping activity log columns is disabled to preserve existing data.'
+    )

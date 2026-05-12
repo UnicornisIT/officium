@@ -32,12 +32,6 @@ def create_app():
     csrf = CSRFProtect()
     csrf.init_app(app)
 
-    if app.debug and app.config.get('SQLALCHEMY_DATABASE_URI', '').startswith('sqlite'):
-        with app.app_context():
-            db.create_all()
-            if app.config.get('DEV_SQLITE_COPY_FROM_MYSQL', False):
-                _copy_mysql_to_sqlite(app)
-
     app.jinja_env.filters['money'] = format_currency
 
     from app.routes import auth, admin, debts, payments, incomes, expenses, main
@@ -74,6 +68,27 @@ def register_cli_commands(app):
         db.session.commit()
         click.echo(f'Пользователь {telegram_id_int} назначен superadmin.')
 
+    @app.cli.command('copy-mysql-to-sqlite')
+    def copy_mysql_to_sqlite():
+        """Copy data from MySQL into an already migrated SQLite database."""
+        if not app.config.get('DEV_SQLITE_COPY_FROM_MYSQL', False):
+            click.echo('Set DEV_SQLITE_COPY_FROM_MYSQL=true to enable this copy command.')
+            return
+
+        if not app.config.get('SQLALCHEMY_DATABASE_URI', '').startswith('sqlite'):
+            click.echo('SQLite is not the active database. Set DB_ENGINE=sqlite first.')
+            return
+
+        if not _build_mysql_url(app.config):
+            click.echo('MySQL source is not configured.')
+            return
+
+        copied = _copy_mysql_to_sqlite(app)
+        if copied:
+            click.echo('Data copied from MySQL to SQLite.')
+        else:
+            click.echo('SQLite already contains users; copy skipped.')
+
 
 app = create_app()
 register_cli_commands(app)
@@ -100,7 +115,7 @@ def _build_mysql_url(config):
 def _copy_mysql_to_sqlite(app):
     mysql_url = _build_mysql_url(app.config)
     if not mysql_url:
-        return
+        return False
 
     sqlite_session = db.session
     try:
@@ -108,7 +123,7 @@ def _copy_mysql_to_sqlite(app):
         mysql_session_factory = sessionmaker(bind=mysql_engine)
         with mysql_session_factory() as mysql_session:
             if User.query.first() is not None:
-                return
+                return False
 
             for model in (User, AppSetting, DictionaryEntry, Debt, Income, Expense, Payment, ActivityLog):
                 source_rows = mysql_session.query(model).all()
@@ -116,5 +131,7 @@ def _copy_mysql_to_sqlite(app):
                     row_data = {col.name: getattr(row, col.name) for col in model.__table__.columns}
                     sqlite_session.merge(model(**row_data))
                 sqlite_session.commit()
+            return True
     except Exception:
         sqlite_session.rollback()
+        raise

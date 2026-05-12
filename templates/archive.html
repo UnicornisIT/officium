@@ -101,32 +101,59 @@
 
 {% block extra_js %}
 <script>
-function restoreDebt(id) {
-    if (!confirm('Восстановить эту карточку в активные долги?')) return;
-    fetch(`/api/debts/${id}/restore`, { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                showToast('Карточка восстановлена', 'success');
-                setTimeout(() => location.reload(), 800);
-            } else {
-                showToast(data.error, 'danger');
-            }
-        });
+async function requestArchiveAction(url, options, fallbackError) {
+    let response;
+    try {
+        response = await jsonFetch(url, options);
+    } catch (error) {
+        showToast('Не удалось выполнить запрос. Проверьте подключение и повторите попытку.', 'danger');
+        return null;
+    }
+
+    let data;
+    try {
+        data = await response.json();
+    } catch (error) {
+        showToast('Сервер вернул некорректный ответ. Попробуйте обновить страницу.', 'danger');
+        return null;
+    }
+
+    if (!data || !response.ok || !data.success) {
+        showToast(data?.error || fallbackError, 'danger');
+        return null;
+    }
+
+    return data;
 }
 
-function deleteDebt(id) {
+async function restoreDebt(id) {
+    if (!confirm('Восстановить эту карточку в активные долги?')) return;
+
+    const data = await requestArchiveAction(
+        `/api/debts/${id}/restore`,
+        { method: 'POST' },
+        'Не удалось восстановить карточку'
+    );
+
+    if (data) {
+        showToast('Карточка восстановлена', 'success');
+        setTimeout(() => location.reload(), 800);
+    }
+}
+
+async function deleteDebt(id) {
     if (!confirm('Удалить карточку навсегда? Это действие необратимо.')) return;
-    fetch(`/api/debts/${id}/delete`, { method: 'DELETE' })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                showToast('Карточка удалена', 'success');
-                setTimeout(() => location.reload(), 800);
-            } else {
-                showToast(data.error, 'danger');
-            }
-        });
+
+    const data = await requestArchiveAction(
+        `/api/debts/${id}/delete`,
+        { method: 'DELETE' },
+        'Не удалось удалить карточку'
+    );
+
+    if (data) {
+        showToast('Карточка удалена', 'success');
+        setTimeout(() => location.reload(), 800);
+    }
 }
 </script>
 {% endblock %}

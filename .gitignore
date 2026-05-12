@@ -31,6 +31,9 @@ Thumbs.db
 # Pytest cache
 .pytest_cache/
 
+# Local temporary files
+.tmp/
+
 # MyPy
 .mypy_cache/
 

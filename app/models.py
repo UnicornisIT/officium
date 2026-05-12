@@ -39,10 +39,18 @@ class User(UserMixin, db.Model):
 
 class Debt(db.Model):
     __tablename__ = 'debts'
+    DEBT_TYPE_LABELS = {
+        'credit_card': 'Кредитная карта',
+        'mortgage': 'Ипотека',
+        'split': 'Сплит',
+    }
 
     id = db.Column(db.Integer, primary_key=True)
     bank_name = db.Column(db.String(100), nullable=False)
-    debt_type = db.Column(db.Enum('credit_card', 'split', 'mortgage'), nullable=False)
+    debt_type = db.Column(
+        db.Enum('credit_card', 'split', 'mortgage'),
+        nullable=False,
+    )
     product_name = db.Column(db.String(150), nullable=False)
     total_amount = db.Column(db.Numeric(12, 2), nullable=False)
     remaining_amount = db.Column(db.Numeric(12, 2), nullable=False)
@@ -68,11 +76,7 @@ class Debt(db.Model):
             'id': self.id,
             'bank_name': self.bank_name,
             'debt_type': self.debt_type,
-            'debt_type_label': (
-                'Кредитная карта' if self.debt_type == 'credit_card' else
-                'Ипотека' if self.debt_type == 'mortgage' else
-                'Сплит'
-            ),
+            'debt_type_label': self.DEBT_TYPE_LABELS.get(self.debt_type, self.debt_type),
             'product_name': self.product_name,
             'total_amount': float(self.total_amount),
             'remaining_amount': float(self.remaining_amount),

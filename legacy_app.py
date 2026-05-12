@@ -52,7 +52,7 @@ def create_app():
 
 
 app = create_app()
-import models  # noqa: F401
+import legacy_models  # noqa: F401
 
 
 def format_currency(value):
@@ -77,7 +77,7 @@ app.jinja_env.filters['money'] = format_currency
 
 @login_manager.user_loader
 def load_user(user_id):
-    from models import User
+    from legacy_models import User
     if not user_id:
         return None
     if str(user_id) == 'admin':
@@ -127,7 +127,7 @@ def inject_user():
 
 
 def get_setting(key, default=None):
-    from models import AppSetting
+    from legacy_models import AppSetting
     try:
         setting = AppSetting.query.filter_by(key=key).first()
         return setting.value if setting else default
@@ -136,7 +136,7 @@ def get_setting(key, default=None):
 
 
 def get_dictionary_values(dictionary_type):
-    from models import DictionaryEntry
+    from legacy_models import DictionaryEntry
     try:
         entries = DictionaryEntry.query.filter_by(dictionary_type=dictionary_type, is_active=True).order_by(DictionaryEntry.value.asc()).all()
         return [entry.value for entry in entries]
@@ -167,7 +167,7 @@ def group_entries_by_month(entries, date_attr):
 
 
 def set_setting(key, value, description=None):
-    from models import AppSetting
+    from legacy_models import AppSetting
     setting = AppSetting.query.filter_by(key=key).first()
     if not setting:
         setting = AppSetting(key=key, value=value, description=description)
@@ -181,7 +181,7 @@ def set_setting(key, value, description=None):
 
 
 def record_activity(action, user=None, entity_type=None, entity_id=None, description=None):
-    from models import ActivityLog
+    from legacy_models import ActivityLog
     user_id = getattr(user, 'id', None) if user else None
     if not isinstance(user_id, int):
         try:
@@ -304,7 +304,7 @@ def next_month_start(current_date):
 
 
 def get_finance_summary(user_id, year=None, month=None):
-    from models import Debt, Income, Expense, Payment
+    from legacy_models import Debt, Income, Expense, Payment
 
     today = date.today()
     use_selected_month = year is not None and month is not None
@@ -443,7 +443,7 @@ def telegram_login():
     if not verify_telegram_login(data):
         return render_template('login.html', error='Ошибка авторизации через Telegram. Проверьте настройки бота.', bot_username=bot_username, telegram_allowed=telegram_allowed, admin_login_enabled=app.config.get('ADMIN_LOGIN_ENABLED', False))
 
-    from models import User
+    from legacy_models import User
     telegram_id = data.get('id')
     if not telegram_id:
         return render_template('login.html', error='Неверные данные авторизации.', bot_username=bot_username, telegram_allowed=telegram_allowed, admin_login_enabled=app.config.get('ADMIN_LOGIN_ENABLED', False))
@@ -516,7 +516,7 @@ def logout():
 @app.route('/admin')
 @admin_required
 def admin_dashboard():
-    from models import User, Debt, Payment, ActivityLog, DictionaryEntry
+    from legacy_models import User, Debt, Payment, ActivityLog, DictionaryEntry
     stats = {
         'users': User.query.count(),
         'debts': Debt.query.count(),
@@ -530,7 +530,7 @@ def admin_dashboard():
 @app.route('/admin/settings', methods=['GET', 'POST'])
 @admin_required
 def admin_settings():
-    from models import AppSetting
+    from legacy_models import AppSetting
     success_message = None
 
     if request.method == 'POST':
@@ -551,7 +551,7 @@ def admin_settings():
 @app.route('/admin/dictionaries', methods=['GET', 'POST'])
 @admin_required
 def admin_dictionaries():
-    from models import DictionaryEntry
+    from legacy_models import DictionaryEntry
     error_message = None
     success_message = request.args.get('success')
 
@@ -581,7 +581,7 @@ def admin_dictionaries():
 @app.route('/admin/dictionaries/<int:entry_id>/delete', methods=['POST'])
 @admin_required
 def admin_delete_dictionary_entry(entry_id):
-    from models import DictionaryEntry
+    from legacy_models import DictionaryEntry
     entry = DictionaryEntry.query.get(entry_id)
     if entry:
         db.session.delete(entry)
@@ -594,7 +594,7 @@ def admin_delete_dictionary_entry(entry_id):
 @app.route('/admin/users')
 @admin_required
 def admin_users():
-    from models import User
+    from legacy_models import User
     users = User.query.order_by(User.role.desc(), User.created_at.desc()).all()
     return render_template('admin_users.html', users=users)
 
@@ -602,7 +602,7 @@ def admin_users():
 @app.route('/admin/impersonate/test', methods=['POST'])
 @admin_required
 def admin_impersonate_test():
-    from models import User
+    from legacy_models import User
     test_user = User.query.filter_by(username='test').first()
     if not test_user:
         test_user = User(
@@ -630,7 +630,7 @@ def admin_impersonate_test():
 @app.route('/admin/impersonate/<int:user_id>', methods=['POST'])
 @admin_required
 def admin_impersonate_user(user_id):
-    from models import User
+    from legacy_models import User
     user = User.query.get_or_404(user_id)
     if user.is_blocked:
         return redirect(url_for('admin_users'))
@@ -643,7 +643,7 @@ def admin_impersonate_user(user_id):
 @app.route('/admin/users/<int:user_id>', methods=['GET', 'POST'])
 @admin_required
 def admin_user_detail(user_id):
-    from models import User, Debt, Payment, ActivityLog
+    from legacy_models import User, Debt, Payment, ActivityLog
     user = User.query.get_or_404(user_id)
     if request.method == 'POST':
         action = request.form.get('action')
@@ -685,7 +685,7 @@ def admin_user_detail(user_id):
 @app.route('/admin/logs')
 @admin_required
 def admin_logs():
-    from models import ActivityLog
+    from legacy_models import ActivityLog
     logs = ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(100).all()
     return render_template('admin_logs.html', logs=logs)
 
@@ -693,7 +693,7 @@ def admin_logs():
 @app.route('/admin/export')
 @admin_required
 def admin_export():
-    from models import Debt, Payment
+    from legacy_models import Debt, Payment
     debts = Debt.query.order_by(Debt.created_at.desc()).limit(100).all()
     payments = Payment.query.order_by(Payment.payment_date.desc()).limit(100).all()
     return render_template('admin_export.html', debts=debts, payments=payments)
@@ -702,7 +702,7 @@ def admin_export():
 @app.route('/admin/export/<string:export_type>.csv')
 @admin_required
 def admin_export_csv(export_type):
-    from models import User, Debt, Payment
+    from legacy_models import User, Debt, Payment
     output = StringIO()
     writer = csv.writer(output)
 
@@ -767,7 +767,7 @@ def admin_export_csv(export_type):
 @app.route('/')
 def index():
     """Главный дашборд"""
-    from models import Debt, Payment, Income, Expense
+    from legacy_models import Debt, Payment, Income, Expense
     summary = get_finance_summary(current_user.id)
     total_incomes = summary['total_incomes']
     total_expenses = summary['total_expenses']
@@ -853,21 +853,21 @@ def finance():
 
 
 def get_user_debt(debt_id):
-    from models import Debt
+    from legacy_models import Debt
     return Debt.query.filter_by(id=debt_id, user_id=current_user.id).first()
 
 
 @app.route('/archive')
 def archive():
     """Страница архива"""
-    from models import Debt
+    from legacy_models import Debt
     archived_debts = Debt.query.filter_by(status='archived', user_id=current_user.id).order_by(Debt.updated_at.desc()).all()
     return render_template('archive.html', debts=archived_debts)
 
 
 @app.route('/incomes', methods=['GET', 'POST'])
 def incomes():
-    from models import Income
+    from legacy_models import Income
     error_message = None
     success_message = request.args.get('success')
 
@@ -911,7 +911,7 @@ def incomes():
 
 @app.route('/incomes/edit/<int:income_id>', methods=['GET', 'POST'])
 def edit_income(income_id):
-    from models import Income
+    from legacy_models import Income
     error_message = None
     success_message = request.args.get('success')
     income = Income.query.filter_by(id=income_id, user_id=current_user.id).first()
@@ -951,7 +951,7 @@ def edit_income(income_id):
 
 @app.route('/incomes/delete/<int:income_id>', methods=['POST'])
 def delete_income(income_id):
-    from models import Income
+    from legacy_models import Income
     income = Income.query.filter_by(id=income_id, user_id=current_user.id).first()
     if not income:
         abort(404)
@@ -962,7 +962,7 @@ def delete_income(income_id):
 
 @app.route('/expenses', methods=['GET', 'POST'])
 def expenses():
-    from models import Expense
+    from legacy_models import Expense
     error_message = None
     success_message = request.args.get('success')
 
@@ -1010,7 +1010,7 @@ def expenses():
 
 @app.route('/expenses/edit/<int:expense_id>', methods=['GET', 'POST'])
 def edit_expense(expense_id):
-    from models import Expense
+    from legacy_models import Expense
     error_message = None
     success_message = request.args.get('success')
     expense = Expense.query.filter_by(id=expense_id, user_id=current_user.id).first()
@@ -1054,7 +1054,7 @@ def edit_expense(expense_id):
 
 @app.route('/expenses/delete/<int:expense_id>', methods=['POST'])
 def delete_expense(expense_id):
-    from models import Expense
+    from legacy_models import Expense
     expense = Expense.query.filter_by(id=expense_id, user_id=current_user.id).first()
     if not expense:
         abort(404)
@@ -1070,7 +1070,7 @@ def delete_expense(expense_id):
 @app.route('/api/debts', methods=['GET'])
 def api_get_debts():
     """Получить список долгов с фильтрацией"""
-    from models import Debt
+    from legacy_models import Debt
     status = request.args.get('status', 'active')
     bank_filter = request.args.get('bank', '').strip()
     type_filter = request.args.get('type', '').strip()
@@ -1088,7 +1088,7 @@ def api_get_debts():
 @app.route('/api/debts', methods=['POST'])
 def api_create_debt():
     """Создать новый долг"""
-    from models import Debt
+    from legacy_models import Debt
     data = request.get_json()
     if not data:
         return jsonify({'success': False, 'error': 'Нет данных'}), 400
@@ -1100,8 +1100,8 @@ def api_create_debt():
             raise ValueError("Название банка обязательно")
 
         debt_type = str(data.get('debt_type', '')).strip()
-        if debt_type not in ('credit_card', 'split'):
-            raise ValueError("Тип долга: выберите 'credit_card' или 'split'")
+        if debt_type not in ('credit_card', 'split', 'mortgage'):
+            raise ValueError("Тип долга: выберите 'credit_card', 'split' или 'mortgage'")
 
         product_name = str(data.get('product_name', '')).strip()
         if not product_name:
@@ -1168,7 +1168,7 @@ def api_update_debt(debt_id):
             debt.bank_name = bank_name
 
         if 'debt_type' in data:
-            if data['debt_type'] not in ('credit_card', 'split'):
+            if data['debt_type'] not in ('credit_card', 'split', 'mortgage'):
                 raise ValueError("Некорректный тип долга")
             debt.debt_type = data['debt_type']
 
@@ -1250,7 +1250,7 @@ def api_delete_debt(debt_id):
 @app.route('/api/debts/<int:debt_id>/payments', methods=['GET'])
 def api_get_payments(debt_id):
     """История платежей по долгу"""
-    from models import Payment
+    from legacy_models import Payment
     debt = get_user_debt(debt_id)
     if not debt:
         return jsonify({'success': False, 'error': 'Долг не найден'}), 404
@@ -1266,7 +1266,7 @@ def api_get_payments(debt_id):
 @app.route('/api/debts/<int:debt_id>/payments', methods=['POST'])
 def api_add_payment(debt_id):
     """Внести платеж"""
-    from models import Payment
+    from legacy_models import Payment
     debt = get_user_debt(debt_id)
     if not debt:
         return jsonify({'success': False, 'error': 'Долг не найден'}), 404
@@ -1329,7 +1329,7 @@ def api_add_payment(debt_id):
 @app.route('/api/init-db', methods=['POST'])
 def init_db_route():
     """Инициализация БД и загрузка тестовых данных"""
-    from models import Debt, Payment, Income, Expense
+    from legacy_models import Debt, Payment, Income, Expense
     
     # Добавляем тестовые данные только если БД пустая
     if (
@@ -1344,7 +1344,7 @@ def init_db_route():
 
 def seed_data():
     """Добавление тестовых данных"""
-    from models import Debt, Payment, Income, Expense
+    from legacy_models import Debt, Payment, Income, Expense
     today = date.today()
 
     def shift_month(base_date, offset):

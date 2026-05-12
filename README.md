@@ -71,11 +71,15 @@ debt_manager/
 ├── extensions.py               # Инициализация SQLAlchemy
 ├── run.py                      # Production-сервер через Waitress
 ├── deploy.sh                   # Скрипт обновления на сервере
+├── legacy_app.py               # Старый монолитный вариант, не основная точка входа
+├── legacy_models.py            # Снимок старых моделей для legacy_app.py
 ├── start.bat                   # Быстрый запуск на Windows
 ├── requirements.txt            # Python-зависимости
 ├── .env.example                # Образец файла окружения
 └── README.md                   # Документация проекта
 ```
+
+Основная архитектура находится в пакете `app/`: `app/__init__.py` создаёт Flask-приложение, `app/models.py` содержит актуальные SQLAlchemy-модели, а `run.py` импортирует готовый объект `app`. Корневые `legacy_app.py` и `legacy_models.py` оставлены только как исторический монолитный снимок; production, Flask CLI и миграции должны использовать `FLASK_APP=run.py`.
 
 ## Переменные окружения
 
@@ -91,7 +95,7 @@ debt_manager/
 | `DB_PASSWORD` | Нет | `secret` | Пароль MySQL. |
 | `DB_NAME` | Нет | `debt_manager` | Имя базы данных. |
 | `SQLITE_PATH` | Нет | `dev.db` | Файл SQLite. |
-| `DEV_SQLITE_COPY_FROM_MYSQL` | Нет | `true` | Копирует данные из MySQL в SQLite при первом запуске. |
+| `DEV_SQLITE_COPY_FROM_MYSQL` | Нет | `true` | Используется командой `flask copy-mysql-to-sqlite` после `flask db upgrade`. |
 | `DEV_SQLITE_COPY_SOURCE_URL` | Нет | `mysql+pymysql://...` | Явный источник MySQL для копирования. |
 | `TELEGRAM_BOT_TOKEN` | Да для Telegram | `123456:ABC-DEF...` | Токен Telegram-бота. |
 | `TELEGRAM_BOT_USERNAME` | Да для Telegram | `YourBotUsername` | Имя Telegram-бота. |
@@ -221,6 +225,15 @@ flask db history
 
 - Нельзя использовать `db.drop_all()` или удалять таблицы вручную на production.
 
+Текущая цепочка миграций:
+
+- `73459c8513a1` — базовая схема.
+- `20260502_mortgage` — поддержка `Debt.debt_type = mortgage`.
+- `20260502_log_ip_ua` — поля `activity_logs.ip_address` и `activity_logs.user_agent`.
+- `20260503_debt_type` — повторная синхронизация MySQL/MariaDB enum `debts.debt_type`.
+
+Все `revision` короче 32 символов, чтобы помещаться в стандартный `alembic_version.version_num` в MySQL/MariaDB.
+
 ### Обновление существующей базы
 
 Если после обновления проекта появляется ошибка:
@@ -236,7 +249,14 @@ export FLASK_APP=run.py
 flask db upgrade
 ```
 
-Если база была создана до внедрения Alembic и не содержит таблицы `alembic_version`, то `deploy.sh` автоматически помечает существующую схему базовой миграцией `73459c8513a1` и затем применяет новые изменения.
+Если база была создана до внедрения Alembic и не содержит таблицы `alembic_version`, то `deploy.sh` автоматически помечает существующую схему базовой миграцией `73459c8513a1` и затем применяет новые изменения. Скрипт не выполняет `flask db stamp head`: для старой базы используется только `flask db stamp 73459c8513a1`, затем `flask db upgrade`.
+
+`deploy.sh` различает четыре состояния базы:
+
+- пустая база — сразу выполняется `flask db upgrade`;
+- старая база с таблицами приложения, но без `alembic_version` — выполняется `flask db stamp 73459c8513a1`, затем `flask db upgrade`;
+- `alembic_version` без `version_num` — если таблица пустая, скрипт добавляет недостающий столбец и дальше выбирает безопасный путь; если в ней уже есть строки, скрипт останавливается, потому что текущую ревизию нельзя вывести надёжно;
+- нормальная база с `alembic_version.version_num` — выполняется только `flask db upgrade`.
 
 Если появляется ошибка:
 
@@ -266,26 +286,16 @@ DESCRIBE users;
 DESCRIBE debts;
 ```
 
-Если по какой-то причине миграция не прошла и требуется ручной резервный вариант:
-
-```sql
-ALTER TABLE activity_logs ADD COLUMN ip_address VARCHAR(45) NULL AFTER description;
-ALTER TABLE activity_logs ADD COLUMN user_agent TEXT NULL AFTER ip_address;
-ALTER TABLE debts MODIFY debt_type ENUM('credit_card','split','mortgage') NOT NULL;
-```
-
-После этого выполните:
-
-```bash
-sudo systemctl restart debt_manager
-```
+Если миграция не прошла, не меняйте схему вручную через `ALTER TABLE` на production.
+Исправьте причину ошибки и повторно запустите `flask db upgrade` или `deploy.sh`.
 
 ## Обновление старой базы
 
-Если в старой MySQL-базе поле `debt_type` не поддерживает `mortgage`, выполните:
+Если в старой MySQL-базе поле `debt_type` не поддерживает `mortgage`, примените миграции:
 
-```sql
-ALTER TABLE debts MODIFY debt_type ENUM('credit_card','split','mortgage') NOT NULL;
+```bash
+export FLASK_APP=run.py
+flask db upgrade
 ```
 
 ## Telegram Login
@@ -455,11 +465,25 @@ sudo certbot --nginx -d example.com -d www.example.com
 
 ## Обновление проекта
 
+Рекомендуемый способ на VPS:
+
+```bash
+cd /var/www/debt_manager
+chmod +x deploy.sh
+./deploy.sh
+```
+
+`deploy.sh` подтягивает код, устанавливает зависимости, проверяет состояние Alembic, применяет миграции и перезапускает systemd-сервис. Скрипт не удаляет таблицы и не вызывает `db.drop_all()`.
+
+Ручной вариант:
+
 ```bash
 cd /var/www/debt_manager
 git pull origin master
 source venv/bin/activate
 pip install -r requirements.txt
+export FLASK_APP=run.py
+flask db upgrade
 sudo systemctl restart debt_manager
 sudo systemctl status debt_manager
 ```
@@ -490,7 +514,7 @@ sudo systemctl restart debt_manager
 - `Table 'debt_manager.users' doesn't exist` — выполните `flask db upgrade`.
 - `Table 'app_settings' already exists` — база создана до Alembic. Запустите `flask db stamp 73459c8513a1` перед `flask db upgrade`, или используйте обновлённый `deploy.sh`, который делает это автоматически.
 - `Unknown column 'ip_address' in 'field list'` — выполните `flask db upgrade`.
-- `Data truncated for column 'debt_type'` — выполните `ALTER TABLE debts MODIFY debt_type ENUM('credit_card','split','mortgage') NOT NULL;`.
+- `Data truncated for column 'debt_type'` — примените миграции через `flask db upgrade` или `deploy.sh`.
 - `Telegram Login Widget показывает Username invalid` — проверьте `TELEGRAM_BOT_USERNAME`, домен в BotFather и HTTPS.
 - `dev-login не отображается` — убедитесь, что `DEV_LOGIN_ENABLED=true` и `FLASK_DEBUG=true`.
 - `тёмная тема не применяется` — очистите localStorage и перезагрузите.
@@ -509,4 +533,3 @@ sudo systemctl restart debt_manager
 - Отключите `ADMIN_LOGIN_ENABLED`, если аварийный вход не нужен.
 - Используйте `ADMIN_TELEGRAM_IDS` для супер-админов.
 - Делайте резервные копии БД.
-''' ; Path('README.md').write_text(text, encoding='utf-8')"

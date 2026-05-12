@@ -39,12 +39,20 @@ class User(UserMixin, db.Model):
 
 
 class Debt(db.Model):
-    """Модель долга (кредитная карта или банковский сплит)"""
+    """Модель долга (кредитная карта, сплит или ипотека)"""
     __tablename__ = 'debts'
+    DEBT_TYPE_LABELS = {
+        'credit_card': 'Кредитная карта',
+        'mortgage': 'Ипотека',
+        'split': 'Сплит',
+    }
 
     id = db.Column(db.Integer, primary_key=True)
     bank_name = db.Column(db.String(100), nullable=False)
-    debt_type = db.Column(db.Enum('credit_card', 'split'), nullable=False)
+    debt_type = db.Column(
+        db.Enum('credit_card', 'split', 'mortgage'),
+        nullable=False,
+    )
     product_name = db.Column(db.String(150), nullable=False)
     total_amount = db.Column(db.Numeric(12, 2), nullable=False)
     remaining_amount = db.Column(db.Numeric(12, 2), nullable=False)
@@ -72,7 +80,7 @@ class Debt(db.Model):
             'id': self.id,
             'bank_name': self.bank_name,
             'debt_type': self.debt_type,
-            'debt_type_label': 'Кредитная карта' if self.debt_type == 'credit_card' else 'Сплит',
+            'debt_type_label': self.DEBT_TYPE_LABELS.get(self.debt_type, self.debt_type),
             'product_name': self.product_name,
             'total_amount': float(self.total_amount),
             'remaining_amount': float(self.remaining_amount),
@@ -220,6 +228,8 @@ class ActivityLog(db.Model):
     entity_type = db.Column(db.String(50), nullable=True)
     entity_id = db.Column(db.Integer, nullable=True)
     description = db.Column(db.Text, nullable=True)
+    ip_address = db.Column(db.String(100), nullable=True)
+    user_agent = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship('User', back_populates='activity_logs')
