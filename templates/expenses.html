@@ -61,6 +61,14 @@
                     <label class="form-label">Комментарий</label>
                     <textarea name="comment" class="form-control" rows="3" placeholder="Покупка в магазине">{{ form_data.get('comment', edit_expense.comment if edit_expense else '') }}</textarea>
                 </div>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="is_monthly" id="is_monthly" {% if form_data.get('is_monthly') or (edit_expense and edit_expense.is_monthly) %}checked{% endif %}>
+                        <label class="form-check-label" for="is_monthly">
+                            <i class="bi bi-lock-fill text-warning me-2"></i>Ежемесячный расход
+                        </label>
+                    </div>
+                </div>
                 <div class="d-flex gap-2 align-items-center">
                     <button type="submit" class="btn btn-danger">{{ 'Сохранить изменения' if edit_expense else 'Сохранить расход' }}</button>
                     {% if edit_expense %}
@@ -88,6 +96,7 @@
                                 <table class="table align-middle mb-0">
                                     <thead>
                                         <tr>
+                                            <th></th>
                                             <th>Название</th>
                                             <th>Категория</th>
                                             <th>Сумма</th>
@@ -102,6 +111,11 @@
                                     <tbody>
                                         {% for expense in group['items'] %}
                                         <tr>
+                                            <td class="text-center" style="width: 40px;">
+                                                {% if expense.is_monthly %}
+                                                <i class="bi bi-lock-fill text-warning" title="Ежемесячный расход"></i>
+                                                {% endif %}
+                                            </td>
                                             <td>{{ expense.title }}</td>
                                             <td>{{ dict(categories)[expense.category] }}</td>
                                             <td>{{ expense.amount|money }}</td>

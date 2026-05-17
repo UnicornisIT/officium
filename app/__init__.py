@@ -16,7 +16,7 @@ login_manager = LoginManager()
 login_manager.login_view = 'login'
 
 
-def create_app():
+def create_app(config_overrides=None):
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     app = Flask(
         __name__,
@@ -25,6 +25,8 @@ def create_app():
         static_url_path='/static'
     )
     app.config.from_object(Config)
+    if config_overrides:
+        app.config.update(config_overrides)
 
     db.init_app(app)
     Migrate(app, db)
@@ -67,6 +69,19 @@ def register_cli_commands(app):
         user.role = 'superadmin'
         db.session.commit()
         click.echo(f'Пользователь {telegram_id_int} назначен superadmin.')
+
+    @app.cli.command('generate-monthly-expenses')
+    @click.option('--user-id', type=int, default=None, help='Generate for specific user ID')
+    @click.option('--month', type=str, default=None, help='Target month in YYYY-MM format')
+    def generate_monthly_expenses(user_id, month):
+        """Generate monthly recurring expenses for the specified or current month."""
+        from app.services.monthly_expenses_service import generate_monthly_expenses as gen_expenses
+        
+        stats = gen_expenses(user_id=user_id, target_month=month)
+        click.echo(f"Generated: {stats['created']} expenses")
+        click.echo(f"Skipped: {stats['skipped']} (already exist)")
+        if stats['errors'] > 0:
+            click.echo(f"Errors: {stats['errors']}")
 
     @app.cli.command('copy-mysql-to-sqlite')
     def copy_mysql_to_sqlite():

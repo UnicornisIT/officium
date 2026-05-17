@@ -4,6 +4,7 @@ from app.models import Expense
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS, group_entries_by_month, parse_date, parse_decimal, is_local_test_user
 from flask_login import current_user
 from extensions import db
+import uuid
 
 
 def init_app(app):
@@ -28,6 +29,7 @@ def init_app(app):
                     expense_date = parse_date(request.form.get('expense_date'), 'Дата', required=True)
                     payment_method = str(request.form.get('payment_method', '')).strip() or None
                     comment = str(request.form.get('comment', '')).strip() or None
+                    is_monthly = request.form.get('is_monthly') == 'on'
 
                     expense = Expense(
                         user_id=current_user.id,
@@ -37,7 +39,13 @@ def init_app(app):
                         expense_date=expense_date,
                         payment_method=payment_method,
                         comment=comment,
+                        is_monthly=is_monthly,
                     )
+                    
+                    # Если это ежемесячный расход, создаём monthly_group_id
+                    if is_monthly:
+                        expense.monthly_group_id = str(uuid.uuid4())
+                    
                     db.session.add(expense)
                     db.session.commit()
                     return redirect(url_for('expenses', success='Расход сохранён'))
@@ -114,6 +122,7 @@ def init_app(app):
                 expense_date = parse_date(request.form.get('expense_date'), 'Дата', required=True)
                 payment_method = str(request.form.get('payment_method', '')).strip() or None
                 comment = str(request.form.get('comment', '')).strip() or None
+                is_monthly = request.form.get('is_monthly') == 'on'
 
                 expense.amount = amount
                 expense.category = category
@@ -121,6 +130,20 @@ def init_app(app):
                 expense.expense_date = expense_date
                 expense.payment_method = payment_method
                 expense.comment = comment
+                
+                # Логика для is_monthly
+                if is_monthly and not expense.is_monthly:
+                    # Расход становится ежемесячным
+                    expense.is_monthly = True
+                    if not expense.monthly_group_id:
+                        expense.monthly_group_id = str(uuid.uuid4())
+                elif not is_monthly and expense.is_monthly:
+                    # Расход больше не ежемесячный
+                    expense.is_monthly = False
+                else:
+                    # Просто обновляем флаг
+                    expense.is_monthly = is_monthly
+                
                 db.session.commit()
                 return redirect(url_for('expenses', success='Расход обновлён'))
             except ValueError as e:

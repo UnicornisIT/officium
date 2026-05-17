@@ -27,7 +27,7 @@ class MigrationContractTestCase(unittest.TestCase):
         for module in self.modules:
             self.assertLess(len(module.revision), 32, module.revision)
 
-    def test_migration_graph_is_single_chain(self):
+    def test_migration_graph_has_single_head(self):
         revisions = {module.revision: module.down_revision for module in self.modules}
 
         self.assertEqual(revisions['73459c8513a1'], None)
@@ -36,10 +36,20 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20260503_debt_type'], '20260502_log_ip_ua')
         self.assertEqual(revisions['acd5bddc3168'], '20260503_debt_type')
         self.assertEqual(revisions['e49a6c3dc4b8'], 'acd5bddc3168')
+        self.assertEqual(revisions['20260517_monthly_expenses'], '20260503_debt_type')
+        self.assertEqual(
+            set(revisions['20260517_merge_heads']),
+            {'e49a6c3dc4b8', '20260517_monthly_expenses'},
+        )
 
-        referenced = {down for down in revisions.values() if down}
+        referenced = set()
+        for down_revision in revisions.values():
+            if isinstance(down_revision, tuple):
+                referenced.update(down_revision)
+            elif down_revision:
+                referenced.add(down_revision)
         heads = set(revisions) - referenced
-        self.assertEqual(heads, {'e49a6c3dc4b8'})
+        self.assertEqual(heads, {'20260517_merge_heads'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))

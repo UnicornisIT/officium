@@ -166,6 +166,12 @@ class Expense(db.Model):
     payment_method = db.Column(db.String(80), nullable=True)
     comment = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Поля для ежемесячных расходов
+    is_monthly = db.Column(db.Boolean, default=False, nullable=False)
+    monthly_group_id = db.Column(db.String(36), nullable=True)
+    generated_from_id = db.Column(db.Integer, db.ForeignKey('expenses.id'), nullable=True)
+    generated_for_month = db.Column(db.String(7), nullable=True)  # YYYY-MM формат
 
     user = db.relationship('User', back_populates='expenses')
 
@@ -180,6 +186,10 @@ class Expense(db.Model):
             'payment_method': self.payment_method,
             'comment': self.comment,
             'created_at': self.created_at.strftime('%d.%m.%Y %H:%M') if self.created_at else None,
+            'is_monthly': self.is_monthly,
+            'monthly_group_id': self.monthly_group_id,
+            'generated_from_id': self.generated_from_id,
+            'generated_for_month': self.generated_for_month,
         }
 
     def __repr__(self):
