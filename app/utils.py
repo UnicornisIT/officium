@@ -141,8 +141,12 @@ def group_entries_by_month(entries, date_attr):
                 'title': entry_date.strftime('%m.%Y'),
                 'date': entry_date,
                 'items': [],
+                'total_amount': Decimal('0'),
             }
         grouped[key]['items'].append(entry)
+        amount = getattr(entry, 'amount', None)
+        if amount is not None:
+            grouped[key]['total_amount'] += Decimal(str(amount))
 
     for group in grouped.values():
         group['items'].sort(key=lambda item: getattr(item, date_attr), reverse=True)

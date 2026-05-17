@@ -87,7 +87,9 @@
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="heading-{{ group.year_month }}">
                         <button class="accordion-button {% if group.year_month != active_month %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ group.year_month }}" aria-expanded="{{ 'true' if group.year_month == active_month else 'false' }}" aria-controls="collapse-{{ group.year_month }}">
-                            {{ group.title }} <span class="badge bg-secondary ms-2">{{ group['items']|length }}</span>
+                            {{ group.title }}
+                            <span class="badge bg-secondary ms-2">{{ group['items']|length }}</span>
+                            <span class="ms-auto pe-3 fw-semibold">{{ group.total_amount|money }}</span>
                         </button>
                     </h2>
                     <div id="collapse-{{ group.year_month }}" class="accordion-collapse collapse {% if group.year_month == active_month %}show{% endif %}" aria-labelledby="heading-{{ group.year_month }}" data-bs-parent="#expenseAccordion">

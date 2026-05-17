@@ -78,7 +78,7 @@ def init_app(app):
         if str(user_id) == 'test-user':
             return LocalTestUser()
         try:
-            return User.query.get(int(user_id))
+            return db.session.get(User, int(user_id))
         except (ValueError, TypeError):
             return None
 

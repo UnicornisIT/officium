@@ -1,6 +1,10 @@
 from datetime import date
 from flask import abort, redirect, render_template, request, url_for
 from app.models import Expense
+from app.services.monthly_expenses_service import (
+    find_monthly_expense_for_month,
+    generate_monthly_expenses_from_start_date,
+)
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS, group_entries_by_month, parse_date, parse_decimal, is_local_test_user
 from flask_login import current_user
 from extensions import db
@@ -48,8 +52,11 @@ def init_app(app):
                     
                     db.session.add(expense)
                     db.session.commit()
+                    if expense.is_monthly:
+                        generate_monthly_expenses_from_start_date(expense.id)
                     return redirect(url_for('expenses', success='Расход сохранён'))
                 except ValueError as e:
+                    db.session.rollback()
                     error_message = str(e)
                 except Exception as e:
                     db.session.rollback()
@@ -124,6 +131,9 @@ def init_app(app):
                 comment = str(request.form.get('comment', '')).strip() or None
                 is_monthly = request.form.get('is_monthly') == 'on'
 
+                was_monthly = expense.is_monthly
+                monthly_group_id = expense.monthly_group_id
+
                 expense.amount = amount
                 expense.category = category
                 expense.title = title
@@ -131,22 +141,35 @@ def init_app(app):
                 expense.payment_method = payment_method
                 expense.comment = comment
                 
-                # Логика для is_monthly
-                if is_monthly and not expense.is_monthly:
-                    # Расход становится ежемесячным
+                if is_monthly:
                     expense.is_monthly = True
                     if not expense.monthly_group_id:
                         expense.monthly_group_id = str(uuid.uuid4())
-                elif not is_monthly and expense.is_monthly:
-                    # Расход больше не ежемесячный
-                    expense.is_monthly = False
+                    expense.generated_for_month = expense_date.strftime('%Y-%m')
+
+                    duplicate = find_monthly_expense_for_month(
+                        current_user.id,
+                        expense.monthly_group_id,
+                        expense.generated_for_month,
+                        exclude_expense_id=expense.id,
+                    )
+                    if duplicate:
+                        raise ValueError('Для этого ежемесячного расхода уже есть запись в выбранном месяце.')
+                elif was_monthly and monthly_group_id:
+                    for group_expense in Expense.query.filter_by(
+                        user_id=current_user.id,
+                        monthly_group_id=monthly_group_id,
+                    ).all():
+                        group_expense.is_monthly = False
                 else:
-                    # Просто обновляем флаг
-                    expense.is_monthly = is_monthly
+                    expense.is_monthly = False
                 
                 db.session.commit()
+                if expense.is_monthly:
+                    generate_monthly_expenses_from_start_date(expense.id)
                 return redirect(url_for('expenses', success='Расход обновлён'))
             except ValueError as e:
+                db.session.rollback()
                 error_message = str(e)
             except Exception as e:
                 db.session.rollback()
