@@ -45,11 +45,11 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Источник</label>
-                    <input type="text" name="source" class="form-control" placeholder="Основная работа, дивиденды..." value="{{ form_data.get('source', edit_income.source if edit_income else '') }}">
+                    <input type="text" name="source" class="form-control" placeholder="Основная работа, дивиденды..." value="{{ form_data.get('source', edit_income.source if edit_income and edit_income.source else '') }}">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Комментарий</label>
-                    <textarea name="comment" class="form-control" rows="3" placeholder="Зарплата за апрель">{{ form_data.get('comment', edit_income.comment if edit_income else '') }}</textarea>
+                    <textarea name="comment" class="form-control" rows="3" placeholder="Зарплата за апрель">{{ form_data.get('comment', edit_income.comment if edit_income and edit_income.comment else '') }}</textarea>
                 </div>
                 <div class="d-flex gap-2 align-items-center">
                     <button type="submit" class="btn btn-success">{{ 'Сохранить изменения' if edit_income else 'Сохранить доход' }}</button>
@@ -61,21 +61,35 @@
         </div>
     </div>
     <div class="col-lg-7">
-        <div class="card p-4 h-100">
-            <h5 class="mb-3">История доходов</h5>
+        <div class="card p-4 h-100 history-card history-card--incomes">
+            <h5 class="history-card-title mb-3">История доходов</h5>
             {% if groups %}
-            <div class="accordion" id="incomeAccordion">
+            <div class="accordion history-accordion" id="incomeAccordion">
                 {% for group in groups %}
-                <div class="accordion-item">
+                <div class="accordion-item history-month">
                     <h2 class="accordion-header" id="heading-{{ group.year_month }}">
-                        <button class="accordion-button {% if group.year_month != active_month %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ group.year_month }}" aria-expanded="{{ 'true' if group.year_month == active_month else 'false' }}" aria-controls="collapse-{{ group.year_month }}">
-                            {{ group.title }} <span class="badge bg-secondary ms-2">{{ group['items']|length }}</span>
+                        <button class="accordion-button history-month-header {% if group.year_month != active_month %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ group.year_month }}" aria-expanded="{{ 'true' if group.year_month == active_month else 'false' }}" aria-controls="collapse-{{ group.year_month }}">
+                            <span class="history-month-main">
+                                <span class="history-month-title">{{ group.title }}</span>
+                                <span class="history-month-count">{{ group['items']|length }}</span>
+                            </span>
+                            <span class="history-month-total">{{ group.total_amount|money }}</span>
                         </button>
                     </h2>
                     <div id="collapse-{{ group.year_month }}" class="accordion-collapse collapse {% if group.year_month == active_month %}show{% endif %}" aria-labelledby="heading-{{ group.year_month }}" data-bs-parent="#incomeAccordion">
                         <div class="accordion-body p-0">
-                            <div class="table-responsive">
-                                <table class="table align-middle mb-0">
+                            <div class="history-table-wrapper">
+                                <table class="table align-middle mb-0 history-table">
+                                    <colgroup>
+                                        <col class="history-col-category">
+                                        <col class="history-col-amount">
+                                        <col class="history-col-date">
+                                        <col class="history-col-source">
+                                        <col class="history-col-comment">
+                                        {% if not current_user.is_local_test_user %}
+                                        <col class="history-col-actions">
+                                        {% endif %}
+                                    </colgroup>
                                     <thead>
                                         <tr>
                                             <th>Категория</th>
@@ -84,25 +98,34 @@
                                             <th>Источник</th>
                                             <th>Комментарий</th>
                                             {% if not current_user.is_local_test_user %}
-                                            <th class="text-end">Действия</th>
+                                            <th class="text-center">Действия</th>
                                             {% endif %}
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {% for income in group['items'] %}
                                         <tr>
-                                            <td>{{ dict(categories)[income.category] }}</td>
-                                            <td>{{ income.amount|money }}</td>
-                                            <td>{{ income.income_date.strftime('%d.%m.%Y') }}</td>
-                                            <td>{{ income.source or '—' }}</td>
-                                            <td>{{ income.comment or '—' }}</td>
+                                            {% set income_category = dict(categories)[income.category] %}
+                                            <td class="history-category" title="{{ income_category }}">{{ income_category }}</td>
+                                            <td class="history-amount">{{ income.amount|money }}</td>
+                                            <td class="history-date">{{ income.income_date.strftime('%d.%m.%Y') }}</td>
+                                            {% set income_source = income.source|display %}
+                                            <td class="history-payment-cell"><span class="history-payment" title="{{ income_source }}">{{ income_source }}</span></td>
+                                            {% set income_comment = income.comment|display %}
+                                            <td class="history-comment-cell"><span class="history-comment" title="{{ income_comment }}">{{ income_comment }}</span></td>
                                             {% if not current_user.is_local_test_user %}
-                                            <td class="text-end">
-                                                <a href="{{ url_for('edit_income', income_id=income.id) }}" class="btn btn-sm btn-outline-primary me-1">Изм.</a>
-                                                <form method="post" action="{{ url_for('delete_income', income_id=income.id) }}" class="d-inline" onsubmit="return confirm('Удалить этот доход?');">
-                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
-                                                </form>
+                                            <td class="history-actions-cell">
+                                                <div class="history-actions">
+                                                    <a href="{{ url_for('edit_income', income_id=income.id) }}" class="history-icon-btn history-icon-btn-edit" title="Редактировать" aria-label="Редактировать">
+                                                        <i class="bi bi-pencil" aria-hidden="true"></i>
+                                                    </a>
+                                                    <form method="post" action="{{ url_for('delete_income', income_id=income.id) }}" class="history-delete-form" onsubmit="return confirm('Удалить этот доход?');">
+                                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                        <button type="submit" class="history-icon-btn history-icon-btn-delete" title="Удалить" aria-label="Удалить">
+                                                            <i class="bi bi-trash" aria-hidden="true"></i>
+                                                        </button>
+                                                    </form>
+                                                </div>
                                             </td>
                                             {% endif %}
                                         </tr>
@@ -117,7 +140,7 @@
             </div>
             {% else %}
             <div class="text-center py-5">
-                <p class="text-muted mb-0">Пока нет записей доходов. Добавьте первый поступление.</p>
+                <p class="text-muted mb-0">Пока нет записей доходов. Добавьте первое поступление.</p>
             </div>
             {% endif %}
         </div>

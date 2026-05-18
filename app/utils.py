@@ -64,7 +64,7 @@ DEFAULT_SETTINGS = {
 
 
 def format_currency(value):
-    if value is None or (isinstance(value, str) and str(value).strip() == ''):
+    if value is None or (isinstance(value, str) and str(value).strip().lower() in ('', 'none', 'null')):
         return '—'
     try:
         amount = Decimal(str(value))
@@ -73,11 +73,20 @@ def format_currency(value):
 
     if amount == amount.to_integral():
         formatted = '{:,.0f}'.format(amount)
-        return formatted.replace(',', ' ') + ' ₽'
+        return formatted.replace(',', '\xa0') + '\xa0₽'
 
     amount = amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-    formatted = '{:,.2f}'.format(amount).replace(',', ' ').replace('.', ',')
-    return formatted + ' ₽'
+    formatted = '{:,.2f}'.format(amount).replace(',', '\xa0').replace('.', ',')
+    return formatted + '\xa0₽'
+
+
+def display_value(value):
+    if value is None:
+        return '—'
+    text = str(value).strip()
+    if text.lower() in ('', 'none', 'null'):
+        return '—'
+    return text
 
 
 def parse_decimal(value, field_name, required=True):

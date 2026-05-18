@@ -59,13 +59,17 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Комментарий</label>
-                    <textarea name="comment" class="form-control" rows="3" placeholder="Покупка в магазине">{{ form_data.get('comment', edit_expense.comment if edit_expense else '') }}</textarea>
+                    <textarea name="comment" class="form-control" rows="3" placeholder="Покупка в магазине">{{ form_data.get('comment', edit_expense.comment if edit_expense and edit_expense.comment else '') }}</textarea>
                 </div>
                 <div class="mb-3">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" name="is_monthly" id="is_monthly" {% if form_data.get('is_monthly') or (edit_expense and edit_expense.is_monthly) %}checked{% endif %}>
-                        <label class="form-check-label" for="is_monthly">
-                            <i class="bi bi-lock-fill text-warning me-2"></i>Ежемесячный расход
+                    <div class="form-check form-switch monthly-switch">
+                        <input class="form-check-input monthly-switch-input" type="checkbox" name="is_monthly" id="is_monthly" {% if form_data.get('is_monthly') or (edit_expense and edit_expense.is_monthly) %}checked{% endif %}>
+                        <label class="form-check-label monthly-switch-label" for="is_monthly">
+                            <span class="monthly-switch-icon">
+                                <i class="bi bi-unlock"></i>
+                                <i class="bi bi-lock-fill"></i>
+                            </span>
+                            <span>Ежемесячный расход</span>
                         </label>
                     </div>
                 </div>
@@ -79,26 +83,38 @@
         </div>
     </div>
     <div class="col-lg-7">
-        <div class="card p-4 h-100">
-            <h5 class="mb-3">История расходов</h5>
+        <div class="card p-4 h-100 history-card history-card--expenses">
+            <h5 class="history-card-title mb-3">История расходов</h5>
             {% if groups %}
-            <div class="accordion" id="expenseAccordion">
+            <div class="accordion history-accordion" id="expenseAccordion">
                 {% for group in groups %}
-                <div class="accordion-item">
+                <div class="accordion-item history-month">
                     <h2 class="accordion-header" id="heading-{{ group.year_month }}">
-                        <button class="accordion-button {% if group.year_month != active_month %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ group.year_month }}" aria-expanded="{{ 'true' if group.year_month == active_month else 'false' }}" aria-controls="collapse-{{ group.year_month }}">
-                            {{ group.title }}
-                            <span class="badge bg-secondary ms-2">{{ group['items']|length }}</span>
-                            <span class="ms-auto pe-3 fw-semibold">{{ group.total_amount|money }}</span>
+                        <button class="accordion-button history-month-header {% if group.year_month != active_month %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ group.year_month }}" aria-expanded="{{ 'true' if group.year_month == active_month else 'false' }}" aria-controls="collapse-{{ group.year_month }}">
+                            <span class="history-month-main">
+                                <span class="history-month-title">{{ group.title }}</span>
+                                <span class="history-month-count">{{ group['items']|length }}</span>
+                            </span>
+                            <span class="history-month-total">{{ group.total_amount|money }}</span>
                         </button>
                     </h2>
                     <div id="collapse-{{ group.year_month }}" class="accordion-collapse collapse {% if group.year_month == active_month %}show{% endif %}" aria-labelledby="heading-{{ group.year_month }}" data-bs-parent="#expenseAccordion">
                         <div class="accordion-body p-0">
-                            <div class="table-responsive">
-                                <table class="table align-middle mb-0">
+                            <div class="history-table-wrapper">
+                                <table class="table align-middle mb-0 history-table">
+                                    <colgroup>
+                                        <col class="history-col-title">
+                                        <col class="history-col-category">
+                                        <col class="history-col-amount">
+                                        <col class="history-col-date">
+                                        <col class="history-col-payment">
+                                        <col class="history-col-comment">
+                                        {% if not current_user.is_local_test_user %}
+                                        <col class="history-col-actions">
+                                        {% endif %}
+                                    </colgroup>
                                     <thead>
                                         <tr>
-                                            <th></th>
                                             <th>Название</th>
                                             <th>Категория</th>
                                             <th>Сумма</th>
@@ -106,31 +122,42 @@
                                             <th>Способ</th>
                                             <th>Комментарий</th>
                                             {% if not current_user.is_local_test_user %}
-                                            <th class="text-end">Действия</th>
+                                            <th class="text-center">Действия</th>
                                             {% endif %}
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {% for expense in group['items'] %}
                                         <tr>
-                                            <td class="text-center" style="width: 40px;">
+                                            <td class="history-title-cell">
+                                                <div class="history-title-wrap history-name">
+                                                    <span class="history-title-text" title="{{ expense.title|display }}">{{ expense.title|display }}</span>
                                                 {% if expense.is_monthly %}
-                                                <i class="bi bi-lock-fill text-warning" title="Ежемесячный расход"></i>
+                                                    <span class="monthly-lock" title="Ежемесячный расход" aria-label="Ежемесячный расход"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
                                                 {% endif %}
+                                                </div>
                                             </td>
-                                            <td>{{ expense.title }}</td>
-                                            <td>{{ dict(categories)[expense.category] }}</td>
-                                            <td>{{ expense.amount|money }}</td>
-                                            <td>{{ expense.expense_date.strftime('%d.%m.%Y') }}</td>
-                                            <td>{{ dict(payment_methods).get(expense.payment_method, '—') }}</td>
-                                            <td>{{ expense.comment or '—' }}</td>
+                                            {% set expense_category = dict(categories)[expense.category] %}
+                                            <td class="history-category" title="{{ expense_category }}">{{ expense_category }}</td>
+                                            <td class="history-amount">{{ expense.amount|money }}</td>
+                                            <td class="history-date">{{ expense.expense_date.strftime('%d.%m.%Y') }}</td>
+                                            {% set expense_payment = dict(payment_methods).get(expense.payment_method, '—')|display %}
+                                            <td class="history-payment-cell" title="{{ expense_payment }}"><span class="history-payment">{{ expense_payment }}</span></td>
+                                            {% set expense_comment = expense.comment|display %}
+                                            <td class="history-comment-cell"><span class="history-comment" title="{{ expense_comment }}">{{ expense_comment }}</span></td>
                                             {% if not current_user.is_local_test_user %}
-                                            <td class="text-end">
-                                                <a href="{{ url_for('edit_expense', expense_id=expense.id) }}" class="btn btn-sm btn-outline-primary me-1">Изм.</a>
-                                                <form method="post" action="{{ url_for('delete_expense', expense_id=expense.id) }}" class="d-inline" onsubmit="return confirm('Удалить этот расход?');">
-                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
-                                                </form>
+                                            <td class="history-actions-cell">
+                                                <div class="history-actions">
+                                                    <a href="{{ url_for('edit_expense', expense_id=expense.id) }}" class="history-icon-btn history-icon-btn-edit" title="Редактировать" aria-label="Редактировать">
+                                                        <i class="bi bi-pencil" aria-hidden="true"></i>
+                                                    </a>
+                                                    <form method="post" action="{{ url_for('delete_expense', expense_id=expense.id) }}" class="history-delete-form" onsubmit="return confirm('Удалить этот расход?');">
+                                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                        <button type="submit" class="history-icon-btn history-icon-btn-delete" title="Удалить" aria-label="Удалить">
+                                                            <i class="bi bi-trash" aria-hidden="true"></i>
+                                                        </button>
+                                                    </form>
+                                                </div>
                                             </td>
                                             {% endif %}
                                         </tr>

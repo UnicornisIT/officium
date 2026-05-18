@@ -1136,24 +1136,386 @@ textarea.form-control {
 .history-table tr:hover td { background: var(--bg-card-2); }
 .history-empty { padding: 2rem; text-align: center; color: var(--text-muted); }
 
-/* ── Monthly Expenses Toggle ── */
-.form-check-label {
+/* ── Income and expense history ── */
+.history-card {
+    overflow: hidden;
+}
+
+.history-card-title {
+    font-weight: 700;
+}
+
+.history-accordion {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.history-month {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-card);
+}
+
+.history-month-header {
+    gap: 0.45rem;
+    padding: 0.55rem 0.7rem;
+    min-height: 42px;
+}
+
+.history-month-header::after {
+    flex-shrink: 0;
+    margin-left: 0.15rem;
+}
+
+.history-month-header:not(.collapsed) {
+    background: linear-gradient(90deg, rgba(37,99,235,0.1), var(--bg-card-2));
+    box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.history-month-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.history-month-title {
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.history-month-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 20px;
+    padding: 0.08rem 0.38rem;
+    border-radius: 999px;
+    background: rgba(100,116,139,0.14);
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.history-month-total {
+    margin-left: auto;
+    margin-right: 0.35rem;
+    font-weight: 800;
+    font-size: 0.92rem;
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.history-card .history-table-wrapper {
+    overflow-x: visible;
+    width: 100%;
+}
+
+.history-card .history-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    line-height: 1.25;
+}
+
+.history-card--incomes .history-table {
+    min-width: 0;
+}
+
+.history-card .history-table th {
+    white-space: nowrap;
+    word-break: normal;
+    padding: 0.5rem 0.42rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.02em;
+}
+
+.history-card .history-table td {
+    padding: 0.44rem 0.42rem;
+    vertical-align: middle;
+    word-break: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.history-card--expenses .history-col-title { width: 17%; }
+.history-card--expenses .history-col-category { width: 12%; }
+.history-card--expenses .history-col-amount { width: 13%; }
+.history-card--expenses .history-col-date { width: 12%; }
+.history-card--expenses .history-col-payment { width: 10%; }
+.history-card--expenses .history-col-comment { width: 24%; }
+.history-card--expenses .history-col-actions { width: 12%; }
+
+.history-card--incomes .history-col-category { width: 19%; }
+.history-card--incomes .history-col-amount { width: 14%; }
+.history-card--incomes .history-col-date { width: 13%; }
+.history-card--incomes .history-col-source { width: 18%; }
+.history-card--incomes .history-col-comment { width: 24%; }
+.history-card--incomes .history-col-actions { width: 12%; }
+
+.history-title-wrap,
+.history-name {
     display: flex;
     align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.history-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.monthly-lock {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    border-radius: 6px;
+    background: rgba(217,119,6,0.14);
+    border: 1px solid rgba(217,119,6,0.28);
+    color: var(--warning);
+    font-size: 0.7rem;
+    line-height: 1;
+}
+
+.history-amount,
+.history-date,
+.history-category,
+.history-payment-cell,
+.history-actions-cell {
+    white-space: nowrap;
+}
+
+.history-amount {
+    font-weight: 800;
+}
+
+.history-comment,
+.empty-value {
+    color: var(--text-dim);
+}
+
+.history-comment {
+    display: block;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-category,
+.history-payment-cell,
+.history-comment-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-payment {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-actions-cell {
+    overflow: visible;
+}
+
+.history-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    white-space: nowrap;
+}
+
+.history-delete-form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.history-icon-btn {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    flex: 0 0 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    appearance: none;
+    padding: 0;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text);
+    font-size: 0.92rem;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
+}
+
+.history-icon-btn:hover,
+.history-icon-btn:focus {
+    transform: translateY(-1px);
+}
+
+.history-icon-btn:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+.history-icon-btn-edit {
+    color: var(--primary);
+    border-color: rgba(37,99,235,0.28);
+    background: rgba(37,99,235,0.08);
+}
+
+.history-icon-btn-edit:hover,
+.history-icon-btn-edit:focus {
+    color: var(--primary);
+    background: rgba(37,99,235,0.14);
+    border-color: rgba(37,99,235,0.42);
+}
+
+.history-icon-btn-delete {
+    color: var(--danger);
+    border-color: rgba(220,38,38,0.28);
+    background: rgba(220,38,38,0.08);
+}
+
+.history-icon-btn-delete:hover,
+.history-icon-btn-delete:focus {
+    color: var(--danger);
+    background: rgba(220,38,38,0.14);
+    border-color: rgba(220,38,38,0.42);
+}
+
+.history-card--expenses .history-month-header:not(.collapsed) {
+    background: linear-gradient(90deg, rgba(220,38,38,0.1), var(--bg-card-2));
+    box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.history-card--incomes .history-month-header:not(.collapsed) {
+    background: linear-gradient(90deg, rgba(22,163,74,0.1), var(--bg-card-2));
+    box-shadow: inset 3px 0 0 var(--success);
+}
+
+/* ── Monthly Expenses Toggle ── */
+.monthly-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-card-2);
+}
+
+.monthly-switch .form-check-input {
+    margin-left: 0;
+    margin-top: 0;
+    cursor: pointer;
+}
+
+.monthly-switch-label {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
     cursor: pointer;
     user-select: none;
-    font-weight: 500;
+    font-weight: 700;
     margin-bottom: 0;
 }
 
-.form-check-input:checked {
+.monthly-switch-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    background: rgba(100,116,139,0.12);
+    color: var(--text-muted);
+}
+
+.monthly-switch-icon .bi-lock-fill {
+    display: none;
+}
+
+.monthly-switch-input:checked {
     background-color: var(--warning);
     border-color: var(--warning);
 }
 
-.form-check-input:focus {
+.monthly-switch-input:checked + .monthly-switch-label .monthly-switch-icon {
+    background: rgba(217,119,6,0.16);
+    color: var(--warning);
+}
+
+.monthly-switch-input:checked + .monthly-switch-label .bi-unlock {
+    display: none;
+}
+
+.monthly-switch-input:checked + .monthly-switch-label .bi-lock-fill {
+    display: inline-block;
+}
+
+.monthly-switch-input:focus {
     border-color: var(--warning);
     box-shadow: 0 0 0 0.25rem rgba(217, 119, 6, 0.25);
+}
+
+html[data-theme="dark"] .history-month-count {
+    background: rgba(148,163,184,0.16);
+    color: var(--text);
+}
+
+html[data-theme="dark"] .monthly-lock {
+    background: rgba(251,191,36,0.12);
+    border-color: rgba(251,191,36,0.28);
+    color: var(--warning);
+}
+
+html[data-theme="dark"] .history-icon-btn-edit {
+    background: rgba(96,165,250,0.12);
+    border-color: rgba(96,165,250,0.28);
+}
+
+html[data-theme="dark"] .history-icon-btn-edit:hover,
+html[data-theme="dark"] .history-icon-btn-edit:focus {
+    background: rgba(96,165,250,0.18);
+    border-color: rgba(96,165,250,0.45);
+}
+
+html[data-theme="dark"] .history-icon-btn-delete {
+    background: rgba(248,113,113,0.12);
+    border-color: rgba(248,113,113,0.28);
+}
+
+html[data-theme="dark"] .history-icon-btn-delete:hover,
+html[data-theme="dark"] .history-icon-btn-delete:focus {
+    background: rgba(248,113,113,0.18);
+    border-color: rgba(248,113,113,0.45);
 }
 
 /* ── Toast ── */
@@ -1174,6 +1536,18 @@ html[data-theme="dark"] .toast {
 /* ══════════════════════════════════════════════════════════
    АДАПТИВНОСТЬ
 ══════════════════════════════════════════════════════════ */
+@media (max-width: 991.98px) {
+    .history-card .history-table-wrapper {
+        overflow-x: auto;
+    }
+    .history-card--expenses .history-table {
+        min-width: 760px;
+    }
+    .history-card--incomes .history-table {
+        min-width: 640px;
+    }
+}
+
 @media (max-width: 576px) {
     .app-main {
         padding: 1.2rem 0.85rem 2.5rem;
@@ -1192,4 +1566,17 @@ html[data-theme="dark"] .toast {
     .btn-action { width: 100%; }
     .login-hero { padding: 1.5rem; }
     .login-page { min-height: auto; padding: 1.5rem 0 2rem; }
+    .history-month-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        padding-right: 1rem;
+    }
+    .history-month-main {
+        width: calc(100% - 28px);
+    }
+    .history-month-total {
+        margin-left: 0;
+        margin-right: 0;
+        width: calc(100% - 28px);
+    }
 }

@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from config import Config
 from extensions import db
 from app.models import AppSetting, ActivityLog, Debt, DictionaryEntry, Expense, Income, Payment, User
-from app.utils import format_currency
+from app.utils import display_value, format_currency
 
 login_manager = LoginManager()
 login_manager.login_view = 'login'
@@ -35,6 +35,7 @@ def create_app(config_overrides=None):
     csrf.init_app(app)
 
     app.jinja_env.filters['money'] = format_currency
+    app.jinja_env.filters['display'] = display_value
 
     from app.routes import auth, admin, debts, payments, incomes, expenses, main
 
