@@ -1246,14 +1246,14 @@ textarea.form-control {
 .history-card--expenses .history-col-title { width: 17%; }
 .history-card--expenses .history-col-category { width: 12%; }
 .history-card--expenses .history-col-amount { width: 13%; }
-.history-card--expenses .history-col-date { width: 12%; }
+.history-card--expenses .history-col-date { width: 14%; }
 .history-card--expenses .history-col-payment { width: 10%; }
 .history-card--expenses .history-col-comment { width: 24%; }
 .history-card--expenses .history-col-actions { width: 12%; }
 
 .history-card--incomes .history-col-category { width: 19%; }
 .history-card--incomes .history-col-amount { width: 14%; }
-.history-card--incomes .history-col-date { width: 13%; }
+.history-card--incomes .history-col-date { width: 14%; }
 .history-card--incomes .history-col-source { width: 18%; }
 .history-card--incomes .history-col-comment { width: 24%; }
 .history-card--incomes .history-col-actions { width: 12%; }
@@ -1300,6 +1300,21 @@ textarea.form-control {
 .history-payment-cell,
 .history-actions-cell {
     white-space: nowrap;
+}
+
+.history-date {
+    word-break: keep-all;
+    overflow-wrap: normal;
+    min-width: max-content;
+}
+
+.history-table td.history-date,
+.history-table th.history-date,
+.history-col-date {
+    white-space: nowrap;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    min-width: 96px;
 }
 
 .history-amount {
