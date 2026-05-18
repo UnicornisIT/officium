@@ -208,7 +208,9 @@
                 </div>
             </div>
             <div class="modal-footer">
+                {% if config.DEBUG %}
                 <button type="button" class="btn btn-secondary" onclick="fillDebtSampleData()">Заполнить тестовые данные</button>
+                {% endif %}
                 <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" id="debtSaveBtn" onclick="saveDebt()">
                     <i class="bi bi-check-lg me-1"></i>Сохранить
