@@ -379,6 +379,27 @@ html[data-theme="dark"] .modal-footer {
     color: var(--text) !important;
 }
 
+.site-footer {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.site-footer a {
+    color: var(--text);
+}
+
+.site-footer .btn-outline-secondary {
+    color: var(--text);
+    border-color: var(--border);
+}
+
+.site-footer .btn-outline-secondary:hover,
+.site-footer .btn-outline-secondary:focus {
+    color: var(--primary);
+    border-color: var(--primary);
+    background: rgba(96, 165, 250, 0.08);
+}
+
 html[data-theme="dark"] .table,
 html[data-theme="dark"] .table th,
 html[data-theme="dark"] .table td {
