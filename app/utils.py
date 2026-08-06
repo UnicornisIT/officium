@@ -25,6 +25,7 @@ INCOME_CATEGORIES = [
     ('debt_return', 'Возврат долга'),
     ('bonus', 'Премия'),
     ('scholarship', 'Стипендия'),
+    ('vacation_pay', 'Отпускные'),
     ('other', 'Другое'),
 ]
 
@@ -34,6 +35,7 @@ EXPENSE_CATEGORIES = [
     ('communication', 'Связь'),
     ('rent', 'Аренда'),
     ('loans', 'Кредиты'),
+    ('restaurants', 'Рестораны и кафе'),
     ('entertainment', 'Развлечения'),
     ('health', 'Здоровье'),
     ('education', 'Обучение'),

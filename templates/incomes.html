@@ -45,7 +45,12 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Источник</label>
-                    <input type="text" name="source" class="form-control" placeholder="Основная работа, дивиденды..." value="{{ form_data.get('source', edit_income.source if edit_income and edit_income.source else '') }}">
+                    <input type="text" name="source" class="form-control" list="incomeSourceSuggestions" autocomplete="off" placeholder="Основная работа, дивиденды..." value="{{ form_data.get('source', edit_income.source if edit_income and edit_income.source else '') }}">
+                    <datalist id="incomeSourceSuggestions">
+                        {% for source in source_suggestions %}
+                        <option value="{{ source }}"></option>
+                        {% endfor %}
+                    </datalist>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Комментарий</label>

@@ -88,6 +88,9 @@
                     <span class="detail-value{% if days is not none %}{% if days < 0 %} text-danger fw-semibold{% elif days <= 3 %} text-orange fw-semibold{% elif days <= 7 %} text-warning-strong{% endif %}{% endif %}">
                         {% if debt.next_payment_date %}
                             {{ debt.next_payment_date.strftime('%d.%m.%Y') }}
+                            {% if debt.is_payment_recurring %}
+                                <span class="badge bg-secondary ms-1" title="Дата обновляется после обязательного платежа">ежемес.</span>
+                            {% endif %}
                             {% if days is not none %}
                                 {% if days < 0 %}
                                     <span class="badge bg-danger ms-1">просрочен</span>
@@ -106,10 +109,30 @@
                     <span class="detail-label"><i class="bi bi-arrow-repeat"></i> Мин. платеж</span>
                     <span class="detail-value">{% if debt.minimum_payment %}{{ debt.minimum_payment|money }}{% else %}—{% endif %}</span>
                 </div>
-                {% if debt.interest_rate %}
+                {% set display_interest_rate = debt.interest_rate_for(today) %}
+                {% if display_interest_rate %}
                 <div class="debt-card__detail">
                     <span class="detail-label"><i class="bi bi-percent"></i> Ставка</span>
-                    <span class="detail-value">{{ debt.interest_rate }}% год.</span>
+                    <span class="detail-value">
+                        {{ display_interest_rate }}% год.
+                        {% if debt.interest_rate_after_change and debt.interest_rate_change_date and today < debt.interest_rate_change_date %}
+                        <span class="badge bg-secondary ms-1" title="Текущая ставка действует до этой даты">до {{ debt.interest_rate_change_date.strftime('%d.%m.%y') }}</span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% endif %}
+                {% if debt.bank_remaining_amount is not none %}
+                <div class="debt-card__detail">
+                    <span class="detail-label"><i class="bi bi-bank"></i> Сверка</span>
+                    <span class="detail-value">
+                        {{ debt.bank_remaining_amount|money }}
+                        {% set bank_delta = debt.bank_remaining_amount - debt.remaining_amount %}
+                        {% if bank_delta < -0.01 or bank_delta > 0.01 %}
+                        <span class="badge bg-warning text-dark ms-1">{{ bank_delta|money }}</span>
+                        {% else %}
+                        <span class="badge bg-success ms-1">сходится</span>
+                        {% endif %}
+                    </span>
                 </div>
                 {% endif %}
                 {% if debt.comment %}
@@ -124,7 +147,7 @@
                     <button class="btn btn-action btn-action--pay" onclick="openPaymentModal({{ debt.id }})">
                         <i class="bi bi-cash"></i> Платеж
                     </button>
-                    {% if debt.next_payment_date and debt.next_payment_date < today and debt.interest_rate %}
+                    {% if debt.next_payment_date and debt.next_payment_date < today and debt.interest_rate_for(today) %}
                     <button class="btn btn-action btn-action--info btn-action--outline" onclick="window.location.href='/debts/{{ debt.id }}/overdue'" title="О просрочке">
                         <i class="bi bi-info-circle"></i> О просрочке
                     </button>
@@ -141,6 +164,9 @@
                     </button>
                     <button class="btn btn-action btn-action--history" onclick="openHistoryModal({{ debt.id }}, '{{ debt.bank_name }} — {{ debt.product_name }}')" title="История платежей">
                         <i class="bi bi-clock-history"></i>
+                    </button>
+                    <button class="btn btn-action btn-action--schedule" onclick="openScheduleModal({{ debt.id }}, '{{ debt.bank_name }} — {{ debt.product_name }}')" title="График платежей">
+                        <i class="bi bi-table"></i>
                     </button>
                     <button class="btn btn-action btn-action--archive" onclick="archiveDebt({{ debt.id }})" title="В архив">
                         <i class="bi bi-archive"></i>

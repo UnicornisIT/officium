@@ -56,6 +56,28 @@ class LocalTestUser(UserMixin):
         return str(self.id)
 
 
+def get_or_create_test_user(app):
+    test_user_telegram_id = app.config.get('TEST_USER_TELEGRAM_ID', -999999999999)
+    test_user = User.query.filter_by(telegram_id=test_user_telegram_id).first()
+    if not test_user:
+        test_user = User(
+            telegram_id=test_user_telegram_id,
+            username=app.config.get('TEST_USER_USERNAME', 'testuser'),
+            first_name=app.config.get('TEST_USER_FIRST_NAME', 'Тестовый'),
+            last_name=app.config.get('TEST_USER_LAST_NAME', 'Пользователь'),
+            auth_date=datetime.utcnow(),
+            role=app.config.get('TEST_USER_ROLE', 'user'),
+            is_blocked=False,
+            login_count=0,
+        )
+        db.session.add(test_user)
+        db.session.commit()
+    elif test_user.is_blocked:
+        test_user.is_blocked = False
+        db.session.commit()
+    return test_user
+
+
 def init_app(app):
     oauth = OAuth(app)
 
@@ -76,6 +98,11 @@ def init_app(app):
         if str(user_id) == 'admin':
             return AdminUser()
         if str(user_id) == 'test-user':
+            if app.config.get('TEST_USER_ENABLED', False):
+                try:
+                    return get_or_create_test_user(app)
+                except SQLAlchemyError:
+                    db.session.rollback()
             return LocalTestUser()
         try:
             return db.session.get(User, int(user_id))
@@ -90,7 +117,18 @@ def init_app(app):
 
     @app.before_request
     def require_login():
-        allowed_endpoints = {'static', 'login', 'telegram_login', 'logout', 'admin_login', 'test_login', 'dev_login', 'dev_logout', 'stop_impersonate'}
+        allowed_endpoints = {
+            'static',
+            'login',
+            'telegram_login',
+            'telegram_webhook',
+            'logout',
+            'admin_login',
+            'test_login',
+            'dev_login',
+            'dev_logout',
+            'stop_impersonate',
+        }
         if request.endpoint in allowed_endpoints:
             return
 
@@ -237,31 +275,8 @@ def init_app(app):
                 test_login_enabled=False,
             )
 
-        test_user_telegram_id = app.config.get('TEST_USER_TELEGRAM_ID', -999999999999)
-        test_user = None
         try:
-            test_user = User.query.filter_by(telegram_id=test_user_telegram_id).first()
-            if not test_user:
-                test_user = User(
-                    telegram_id=test_user_telegram_id,
-                    username=app.config.get('TEST_USER_USERNAME', 'testuser'),
-                    first_name=app.config.get('TEST_USER_FIRST_NAME', 'Тестовый'),
-                    last_name=app.config.get('TEST_USER_LAST_NAME', 'Пользователь'),
-                    auth_date=datetime.utcnow(),
-                    role=app.config.get('TEST_USER_ROLE', 'user'),
-                )
-                db.session.add(test_user)
-
-            if getattr(test_user, 'is_blocked', False):
-                return render_template(
-                    'login.html',
-                    error='Тестовый пользователь заблокирован.',
-                    bot_username=app.config.get('TELEGRAM_BOT_USERNAME', ''),
-                    telegram_allowed=False,
-                    admin_login_enabled=app.config.get('ADMIN_LOGIN_ENABLED', False),
-                    test_login_enabled=True,
-                )
-
+            test_user = get_or_create_test_user(app)
             test_user.login_count = (test_user.login_count or 0) + 1
             test_user.last_login_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
             test_user.last_user_agent = request.headers.get('User-Agent')

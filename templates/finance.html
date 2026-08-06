@@ -1,139 +1,463 @@
 {% extends 'base.html' %}
-{% block title %}Информация о финансах — officium{% endblock %}
+{% block title %}Куда уходят деньги — officium{% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-center justify-content-between gap-3 mb-4">
-    <div>
-        <h1 class="page-title mb-1"><i class="bi bi-info-circle text-primary me-2"></i>Информация о финансах</h1>
-        <p class="text-muted mb-0">Ключевые метрики по доходам, расходам и долгам в одной витрине.</p>
+<div class="finance-page">
+    <div class="finance-header mb-4">
+        <div>
+            <h1 class="page-title mb-1"><i class="bi bi-pie-chart text-primary me-2"></i>Куда уходят деньги</h1>
+            <p class="text-muted mb-0">Итог месяца, главные категории и самые заметные списания.</p>
+        </div>
+        <div class="finance-actions">
+            <a href="{{ url_for('expenses') }}" class="btn btn-danger">
+                <i class="bi bi-plus-lg me-1"></i>Расход
+            </a>
+            <a href="{{ url_for('incomes') }}" class="btn btn-finance-income">
+                <i class="bi bi-plus-lg me-1"></i>Доход
+            </a>
+        </div>
     </div>
-</div>
 
-<form method="get" action="{{ url_for('finance') }}" class="row g-3 align-items-end mb-4">
-    <div class="col-auto">
-        <label class="form-label">Месяц</label>
-        <select class="form-select" name="month">
-            {% for number, name in month_options %}
-            <option value="{{ number }}" {% if number == selected_month %}selected{% endif %}>{{ name }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="col-auto">
-        <label class="form-label">Год</label>
-        <select class="form-select" name="year">
-            {% for year in year_options %}
-            <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="col-auto">
-        <button type="submit" class="btn btn-primary">Показать</button>
-    </div>
-</form>
+    <form method="get" action="{{ url_for('finance') }}" class="finance-filter mb-4">
+        <div class="finance-filter__field">
+            <label class="form-label">Месяц</label>
+            <select class="form-select" name="month">
+                {% for number, name in month_options %}
+                <option value="{{ number }}" {% if number == selected_month %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="finance-filter__field">
+            <label class="form-label">Год</label>
+            <select class="form-select" name="year">
+                {% for year in year_options %}
+                <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-arrow-clockwise me-1"></i>Обновить
+        </button>
+    </form>
 
-<div class="card mb-4">
-    <div class="card-body">
-        <div class="row g-3">
-            <div class="col-6 col-md-3">
-                <div class="summary-card h-100">
-                    <div class="summary-icon"><i class="bi bi-credit-card-2-front"></i></div>
-                    <div class="summary-value">{{ active_count }}</div>
-                    <div class="summary-label">Активных долгов</div>
+    <section class="finance-panel finance-hero mb-4">
+        <div class="finance-hero__main">
+            <div class="finance-kicker">Итог за {{ month_start.strftime('%m.%Y') }}</div>
+            <div class="finance-balance {{ 'finance-balance--good' if free_balance >= 0 else 'finance-balance--bad' }}">
+                {{ free_balance|money }}
+            </div>
+            <div class="finance-balance-note">
+                {% if free_balance >= 0 %}
+                Осталось после всех расходов и платежей по долгам.
+                {% else %}
+                Расходы и платежи превысили доходы за выбранный месяц.
+                {% endif %}
+            </div>
+        </div>
+        <div class="finance-equation" aria-label="Расчет свободного остатка">
+            <div class="finance-equation__item">
+                <span>Доходы</span>
+                <strong>{{ total_incomes|money }}</strong>
+            </div>
+            <i class="bi bi-dash-lg finance-equation__sign"></i>
+            <div class="finance-equation__item">
+                <span>Расходы</span>
+                <strong>{{ total_expenses|money }}</strong>
+            </div>
+            <i class="bi bi-dash-lg finance-equation__sign"></i>
+            <div class="finance-equation__item">
+                <span>Долги</span>
+                <strong>{{ total_payments|money }}</strong>
+            </div>
+            <i class="bi bi-equals finance-equation__sign"></i>
+            <div class="finance-equation__item finance-equation__item--result">
+                <span>Остаток</span>
+                <strong>{{ free_balance|money }}</strong>
+            </div>
+        </div>
+    </section>
+
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-xl-3">
+            <div class="finance-stat finance-stat--outflow">
+                <div class="finance-stat__icon"><i class="bi bi-arrow-down-right"></i></div>
+                <div>
+                    <div class="finance-stat__value">{{ cashflow.total_outflow|money }}</div>
+                    <div class="finance-stat__label">Всего ушло</div>
                 </div>
             </div>
-            <div class="col-6 col-md-3">
-                <div class="summary-card summary-card--danger h-100">
-                    <div class="summary-icon"><i class="bi bi-cash-stack"></i></div>
-                    <div class="summary-value">{{ total_remaining|money }}</div>
-                    <div class="summary-label">Общий остаток</div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="finance-stat">
+                <div class="finance-stat__icon"><i class="bi bi-repeat"></i></div>
+                <div>
+                    <div class="finance-stat__value">{{ cashflow.required_outflow|money }}</div>
+                    <div class="finance-stat__label">Обязательные списания</div>
                 </div>
             </div>
-            <div class="col-6 col-md-3">
-                <div class="summary-card summary-card--muted h-100">
-                    <div class="summary-icon"><i class="bi bi-bar-chart-line"></i></div>
-                    {% if total_original > 0 %}
-                    <div class="summary-value">{{ '{:.0f}'.format((1 - total_remaining / total_original) * 100) }}%</div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="finance-stat">
+                <div class="finance-stat__icon"><i class="bi bi-sliders2"></i></div>
+                <div>
+                    <div class="finance-stat__value">{{ cashflow.one_time_expenses_total|money }}</div>
+                    <div class="finance-stat__label">Разовые траты</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="finance-stat {{ 'finance-stat--good' if (cashflow.projected_balance if cashflow.is_current_month else free_balance) >= 0 else 'finance-stat--bad' }}">
+                <div class="finance-stat__icon"><i class="bi bi-speedometer2"></i></div>
+                <div>
+                    {% if cashflow.is_current_month %}
+                    <div class="finance-stat__value">{{ daily_budget|money }}</div>
+                    <div class="finance-stat__label">На день до конца месяца</div>
                     {% else %}
-                    <div class="summary-value">—</div>
-                    {% endif %}
-                    <div class="summary-label">Погашено в целом</div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="summary-card {% if nearest_debt %}summary-card--warning{% else %}summary-card--muted{% endif %} h-100">
-                    <div class="summary-icon"><i class="bi bi-calendar-event"></i></div>
-                    {% if nearest_debt %}
-                    <div class="summary-value">{{ nearest_debt.next_payment_date.strftime('%d.%m') }}</div>
-                    <div class="summary-label">Ближайший платеж</div>
-                    {% else %}
-                    <div class="summary-value">—</div>
-                    <div class="summary-label">Нет платежей</div>
+                    <div class="finance-stat__value">{{ cashflow.average_daily_expenses|money }}</div>
+                    <div class="finance-stat__label">Средний расход в день</div>
                     {% endif %}
                 </div>
             </div>
         </div>
-        <div class="row g-3 mt-3">
-            <div class="col-12 col-md-3">
-                <div class="summary-card summary-card--ok h-100">
-                    <div class="summary-icon"><i class="bi bi-wallet2"></i></div>
-                    <div class="summary-value">{{ total_incomes|money }}</div>
-                    <div class="summary-label">Доходы за месяц</div>
-                </div>
-            </div>
-            <div class="col-12 col-md-3">
-                <div class="summary-card summary-card--danger h-100">
-                    <div class="summary-icon"><i class="bi bi-wallet2"></i></div>
-                    <div class="summary-value">{{ total_expenses|money }}</div>
-                    <div class="summary-label">Расходы за месяц</div>
-                </div>
-            </div>
-            <div class="col-12 col-md-3">
-                <div class="summary-card summary-card--warning h-100">
-                    <div class="summary-icon"><i class="bi bi-bank2"></i></div>
-                    <div class="summary-value">{{ total_payments|money }}</div>
-                    <div class="summary-label">Платежи по долгам</div>
-                </div>
-            </div>
-            <div class="col-12 col-md-3">
-                <div class="summary-card summary-card--warning h-100">
-                    <div class="summary-icon"><i class="bi bi-percent"></i></div>
-                    <div class="summary-value">{{ total_mortgage_interest|money }}</div>
-                    <div class="summary-label">Начислено процентов за месяц</div>
-                </div>
-            </div>
-        </div>
     </div>
-</div>
 
-{% if mortgage_debts %}
-<div class="card mb-4">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-md-row align-items-center justify-content-start gap-3 mb-4">
+    <section class="finance-panel mb-4">
+        <div class="finance-panel__header">
             <div>
-                <h5 class="card-title mb-1">Ипотека</h5>
-                <p class="text-muted mb-0">Все ипотечные задолженности и начисленные проценты за месяц.</p>
+                <h2>Картина месяца</h2>
+                <p>{{ cashflow.outflow_income_percent }}% дохода уже распределено на расходы и платежи.</p>
             </div>
-            <div class="d-flex flex-row flex-nowrap gap-3 align-items-center mortgage-summary-row">
-                <div class="summary-card summary-card--info mortgage-summary-card mb-0">
-                    <div class="summary-icon"><i class="bi bi-bank2"></i></div>
-                    <div class="summary-value">{{ mortgage_count }}</div>
-                    <div class="summary-label">Ипотек в портфеле</div>
+        </div>
+        <div class="row g-3">
+            <div class="col-12 col-lg-4">
+                <div class="finance-load">
+                    <div class="finance-load__top">
+                        <span>Обычные расходы</span>
+                        <strong>{{ cashflow.expenses_income_percent }}%</strong>
+                    </div>
+                    <div class="finance-load__bar">
+                        <span style="width: {{ [cashflow.expenses_income_percent, 100]|min }}%"></span>
+                    </div>
+                    <div class="finance-load__meta">{{ total_expenses|money }} из {{ total_incomes|money }}</div>
                 </div>
-                <div class="summary-card summary-card--danger mortgage-summary-card mb-0">
-                    <div class="summary-icon"><i class="bi bi-house-fill"></i></div>
-                    <div class="summary-value">{{ total_mortgage_remaining|money }}</div>
-                    <div class="summary-label">Остаток по ипотеке</div>
+            </div>
+            <div class="col-12 col-lg-4">
+                <div class="finance-load">
+                    <div class="finance-load__top">
+                        <span>Обязательная нагрузка</span>
+                        <strong>{{ cashflow.required_income_percent }}%</strong>
+                    </div>
+                    <div class="finance-load__bar finance-load__bar--warning">
+                        <span style="width: {{ [cashflow.required_income_percent, 100]|min }}%"></span>
+                    </div>
+                    <div class="finance-load__meta">Долги + регулярные расходы: {{ cashflow.required_outflow|money }}</div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-4">
+                <div class="finance-load">
+                    <div class="finance-load__top">
+                        <span>Свободная часть</span>
+                        <strong>{{ cashflow.free_balance_percent }}%</strong>
+                    </div>
+                    <div class="finance-load__bar finance-load__bar--success">
+                        <span style="width: {{ [cashflow.free_balance_percent, 100]|min }}%"></span>
+                    </div>
+                    <div class="finance-load__meta">
+                        {% if cashflow.is_current_month %}
+                        Прогноз остатка: {{ cashflow.projected_balance|money }}
+                        {% else %}
+                        Финальный остаток: {{ free_balance|money }}
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="table-responsive">
-            <table class="table table-borderless align-middle mb-0">
+    </section>
+
+    {% if not (incomes_this_month or expenses_this_month or payments_this_month) %}
+    <div class="alert alert-info">За {{ month_start.strftime('%m.%Y') }} нет операций по доходам, расходам или платежам.</div>
+    {% endif %}
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-xl-7">
+            <section class="finance-panel h-100">
+                <div class="finance-panel__header">
+                    <div>
+                        <h2>Расходы по категориям</h2>
+                        <p>{{ expenses_this_month|length }} записей на сумму {{ total_expenses|money }}.</p>
+                    </div>
+                </div>
+
+                {% if expense_category_breakdown %}
+                <div class="category-breakdown">
+                    {% for category in expense_category_breakdown %}
+                    <div class="category-row">
+                        <div class="category-row__head">
+                            <div>
+                                <strong>{{ category.label }}</strong>
+                                <span>{{ category.count }} {{ 'операция' if category.count == 1 else ('операции' if category.count in [2,3,4] else 'операций') }}</span>
+                            </div>
+                            <div class="category-row__amount">
+                                <strong>{{ category.amount|money }}</strong>
+                                <span>{{ category.percent }}%</span>
+                            </div>
+                        </div>
+                        <div class="category-row__bar">
+                            <span style="width: {{ category.bar_percent }}%"></span>
+                        </div>
+                        {% if category.monthly_amount > 0 %}
+                        <div class="category-row__meta">
+                            <i class="bi bi-repeat"></i> Регулярно: {{ category.monthly_amount|money }}
+                        </div>
+                        {% endif %}
+                        {% if category.top_titles %}
+                        <div class="category-row__meta">
+                            {% for title in category.top_titles %}
+                            {{ title.label }}: {{ title.amount|money }}{% if not loop.last %} · {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="finance-empty">
+                    <i class="bi bi-basket3"></i>
+                    <strong>Расходов пока нет</strong>
+                    <span>Когда появятся записи, здесь будет видно, какие категории забирают деньги.</span>
+                </div>
+                {% endif %}
+            </section>
+        </div>
+
+        <div class="col-12 col-xl-5">
+            <section class="finance-panel h-100">
+                <div class="finance-panel__header">
+                    <div>
+                        <h2>Крупные списания</h2>
+                        <p>Операции, которые сильнее всего повлияли на месяц.</p>
+                    </div>
+                </div>
+
+                {% if largest_expenses %}
+                <div class="expense-hit-list">
+                    {% for expense in largest_expenses %}
+                    <div class="expense-hit">
+                        <div class="expense-hit__icon">
+                            <i class="bi {{ 'bi-repeat' if expense.is_monthly else 'bi-receipt' }}"></i>
+                        </div>
+                        <div class="expense-hit__main">
+                            <strong>{{ expense.title }}</strong>
+                            <span>
+                                {{ expense.category_label }}
+                                {% if expense.expense_date %} · {{ expense.expense_date.strftime('%d.%m.%Y') }}{% endif %}
+                            </span>
+                        </div>
+                        <div class="expense-hit__amount">{{ expense.amount|money }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="finance-empty">
+                    <i class="bi bi-receipt"></i>
+                    <strong>Нет крупных списаний</strong>
+                    <span>Список появится после добавления расходов.</span>
+                </div>
+                {% endif %}
+            </section>
+        </div>
+    </div>
+
+    <section class="finance-panel mb-4">
+        <div class="finance-panel__header">
+            <div>
+                <h2>Уникальные расходы</h2>
+                <p>Суммы по конкретным получателям и названиям из выписок.</p>
+            </div>
+        </div>
+
+        {% if expense_title_breakdown %}
+        <div class="category-breakdown">
+            {% for item in expense_title_breakdown %}
+            <div class="category-row">
+                <div class="category-row__head">
+                    <div>
+                        <strong>{{ item.label }}</strong>
+                        <span>
+                            {{ item.category_label }} · {{ item.count }} {{ 'операция' if item.count == 1 else ('операции' if item.count in [2,3,4] else 'операций') }}
+                            {% if item.last_date %} · последнее {{ item.last_date.strftime('%d.%m.%Y') }}{% endif %}
+                        </span>
+                    </div>
+                    <div class="category-row__amount">
+                        <strong>{{ item.amount|money }}</strong>
+                        <span>{{ item.percent }}%</span>
+                    </div>
+                </div>
+                <div class="category-row__bar">
+                    <span style="width: {{ item.bar_percent }}%"></span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="finance-empty finance-empty--small">
+            <i class="bi bi-tags"></i>
+            <strong>Названий пока нет</strong>
+            <span>После импорта выписки здесь появятся Telegram, магазины, АЗС, такси и другие получатели.</span>
+        </div>
+        {% endif %}
+    </section>
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-lg-6">
+            <section class="finance-panel h-100">
+                <div class="finance-panel__header">
+                    <div>
+                        <h2>Регулярные расходы</h2>
+                        <p>Ежемесячные траты: {{ cashflow.recurring_expenses_total|money }}.</p>
+                    </div>
+                </div>
+
+                {% if recurring_expenses_this_month %}
+                <div class="compact-money-list">
+                    {% for expense in recurring_expenses_this_month %}
+                    <div class="compact-money-row">
+                        <div>
+                            <strong>{{ expense.title }}</strong>
+                            <span>{{ expense.category_label }}</span>
+                        </div>
+                        <strong>{{ expense.amount|money }}</strong>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="finance-empty finance-empty--small">
+                    <i class="bi bi-repeat"></i>
+                    <strong>Регулярных списаний нет</strong>
+                    <span>Все расходы за выбранный месяц сейчас считаются разовыми.</span>
+                </div>
+                {% endif %}
+            </section>
+        </div>
+
+        <div class="col-12 col-lg-6">
+            <section class="finance-panel h-100">
+                <div class="finance-panel__header">
+                    <div>
+                        <h2>Где концентрируются траты</h2>
+                        <p>Способы оплаты и самые дорогие дни месяца.</p>
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <div class="mini-section-title">Способ оплаты</div>
+                        {% if payment_method_breakdown %}
+                        <div class="compact-money-list">
+                            {% for method in payment_method_breakdown %}
+                            <div class="compact-money-row">
+                                <div>
+                                    <strong>{{ method.label }}</strong>
+                                    <span>{{ method.percent }}% расходов</span>
+                                </div>
+                                <strong>{{ method.amount|money }}</strong>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="finance-muted-row">Нет данных</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <div class="mini-section-title">Пиковые дни</div>
+                        {% if top_spending_days %}
+                        <div class="compact-money-list">
+                            {% for day in top_spending_days %}
+                            <div class="compact-money-row">
+                                <div>
+                                    <strong>{{ day.date.strftime('%d.%m.%Y') }}</strong>
+                                    <span>{{ day.count }} {{ 'операция' if day.count == 1 else ('операции' if day.count in [2,3,4] else 'операций') }}</span>
+                                </div>
+                                <strong>{{ day.amount|money }}</strong>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="finance-muted-row">Нет данных</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <section class="finance-panel mb-4">
+        <div class="finance-panel__header">
+            <div>
+                <h2>Долги и ипотека</h2>
+                {% set nearest_payment_date = nearest_debt.effective_next_payment_date(today) if nearest_debt else none %}
+                <p>{{ active_count }} активных долгов, ближайший платеж: {{ nearest_payment_date.strftime('%d.%m.%Y') if nearest_payment_date else 'не запланирован' }}.</p>
+            </div>
+            <div class="finance-panel__aside">
+                <span class="finance-chip {{ 'finance-chip--bad' if overdue_count > 0 else 'finance-chip--good' }}">
+                    <i class="bi {{ 'bi-exclamation-triangle' if overdue_count > 0 else 'bi-check2-circle' }}"></i>
+                    Просрочек: {{ overdue_count }}
+                </span>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-12 col-lg-3">
+                <div class="finance-load">
+                    <div class="finance-load__top">
+                        <span>Остаток долгов</span>
+                        <strong>{{ total_remaining|money }}</strong>
+                    </div>
+                    <div class="finance-load__meta">Всего долгов: {{ total_debts }}, в архиве: {{ archived_count }}</div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-3">
+                <div class="finance-load">
+                    <div class="finance-load__top">
+                        <span>Погашено</span>
+                        {% if total_original > 0 %}
+                        <strong>{{ '{:.0f}'.format((1 - total_remaining / total_original) * 100) }}%</strong>
+                        {% else %}
+                        <strong>—</strong>
+                        {% endif %}
+                    </div>
+                    <div class="finance-load__meta">От первоначальной суммы {{ total_original|money }}</div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-3">
+                <div class="finance-load">
+                    <div class="finance-load__top">
+                        <span>Ипотека</span>
+                        <strong>{{ total_mortgage_remaining|money }}</strong>
+                    </div>
+                    <div class="finance-load__meta">{{ mortgage_count }} {{ 'ипотека' if mortgage_count == 1 else 'ипотек' }}</div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-3">
+                <div class="finance-load">
+                    <div class="finance-load__top">
+                        <span>Проценты за месяц</span>
+                        <strong>{{ total_mortgage_interest|money }}</strong>
+                    </div>
+                    <div class="finance-load__meta">Оценка по ипотечным ставкам</div>
+                </div>
+            </div>
+        </div>
+
+        {% if mortgage_debts %}
+        <div class="finance-table-wrap mt-4">
+            <table class="table table-borderless align-middle mb-0 finance-table">
                 <thead>
                     <tr>
                         <th>Банк / продукт</th>
                         <th>Остаток</th>
                         <th>Ставка</th>
-                        <th>Платёж</th>
+                        <th>Платеж</th>
                         <th>Процентов мес.</th>
                         <th>След. платеж</th>
                     </tr>
@@ -146,113 +470,23 @@
                             <div class="text-muted small">{{ debt.product_name }}</div>
                         </td>
                         <td>{{ debt.remaining_amount|money }}</td>
-                        <td>{{ debt.interest_rate if debt.interest_rate is not none else '—' }}%</td>
+                        {% set display_interest_rate = debt.interest_rate_for(month_start) %}
+                        <td>{{ display_interest_rate if display_interest_rate is not none else '—' }}%</td>
                         <td>{{ debt.minimum_payment|money }}</td>
                         <td>
-                            {% if debt.interest_rate %}
-                            {{ (debt.remaining_amount * debt.interest_rate / 12 / 100)|round(2)|money }}
+                            {% if display_interest_rate %}
+                            {{ (debt.remaining_amount * display_interest_rate / 12 / 100)|round(2)|money }}
                             {% else %}
                             —
                             {% endif %}
                         </td>
-                        <td>
-                            {% if debt.next_payment_date %}
-                            {{ debt.next_payment_date.strftime('%d.%m.%Y') }}
-                            {% else %}
-                            —
-                            {% endif %}
-                        </td>
+                        <td>{{ debt.next_payment_date.strftime('%d.%m.%Y') if debt.next_payment_date else '—' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-    </div>
-</div>
-{% endif %}
-
-<div class="row g-4 mb-4">
-    <div class="col-12 col-md-6">
-        <div class="card p-4 h-100">
-            <h5>Ключевые показатели</h5>
-            <ul class="list-group list-group-flush mt-3">
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Всего долгов
-                    <span class="badge bg-secondary rounded-pill">{{ total_debts }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Архивных долгов
-                    <span class="badge bg-secondary rounded-pill">{{ archived_count }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Свободные средства
-                    <span class="badge bg-{{ 'success' if free_balance >= 0 else 'danger' }} rounded-pill">{{ free_balance|money }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Осталось дней в месяце
-                    <span class="badge bg-secondary rounded-pill">{{ days_left }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Ежедневный бюджет
-                    <span class="badge bg-secondary rounded-pill">{{ daily_budget|money }}</span>
-                </li>
-            </ul>
-        </div>
-    </div>
-    <div class="col-12 col-md-6">
-        <div class="card p-4 h-100">
-            <h5>Детали за {{ month_start.strftime('%m.%Y') }}</h5>
-            <div class="row g-3 mt-2">
-                <div class="col-6">
-                    <div class="info-box">
-                        <div class="info-box-title">Доходов записано</div>
-                        <div class="info-box-value">{{ incomes_this_month|length }}</div>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <div class="info-box">
-                        <div class="info-box-title">Расходов записано</div>
-                        <div class="info-box-value">{{ expenses_this_month|length }}</div>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <div class="info-box">
-                        <div class="info-box-title">Платежей</div>
-                        <div class="info-box-value">{{ payments_this_month|length }}</div>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <div class="info-box">
-                        <div class="info-box-title">Просрочено</div>
-                        <div class="info-box-value">{{ overdue_count }}</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-{% if not (incomes_this_month or expenses_this_month or payments_this_month) %}
-<div class="alert alert-info">За {{ month_start.strftime('%m.%Y') }} нет операций по доходам, расходам или платежам.</div>
-{% endif %}
-
-<div class="card p-4">
-    <h5 class="mb-3">Текущие доходы и расходы</h5>
-    <div class="row g-3">
-        <div class="col-md-6">
-            <div class="card card-soft p-3">
-                <div class="fw-semibold mb-2">Доходы</div>
-                <div class="fs-4 fw-bold">{{ total_incomes|money }}</div>
-                <div class="text-muted">Количество записей: {{ incomes_this_month|length }}</div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card card-soft p-3">
-                <div class="fw-semibold mb-2">Расходы</div>
-                <div class="fs-4 fw-bold">{{ total_expenses|money }}</div>
-                <div class="text-muted">Количество записей: {{ expenses_this_month|length }}</div>
-            </div>
-        </div>
-    </div>
+        {% endif %}
+    </section>
 </div>
 {% endblock %}

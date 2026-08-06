@@ -310,14 +310,18 @@ def init_app(app):
                 ])
             filename = 'debts.csv'
         elif export_type == 'payments':
-            writer.writerow(['id', 'debt_id', 'amount', 'payment_date', 'remaining_after_payment', 'comment', 'created_at'])
+            writer.writerow(['id', 'debt_id', 'amount', 'principal_amount', 'interest_amount', 'fee_amount', 'payment_date', 'remaining_after_payment', 'bank_remaining_after_payment', 'comment', 'created_at'])
             for payment in Payment.query.order_by(Payment.id.asc()).all():
                 writer.writerow([
                     payment.id,
                     payment.debt_id,
                     float(payment.amount),
+                    float(payment.principal_amount or 0),
+                    float(payment.interest_amount or 0),
+                    float(payment.fee_amount or 0),
                     payment.payment_date.strftime('%Y-%m-%d') if payment.payment_date else '',
                     float(payment.remaining_after_payment),
+                    float(payment.bank_remaining_after_payment) if payment.bank_remaining_after_payment is not None else '',
                     payment.comment,
                     payment.created_at.strftime('%Y-%m-%d %H:%M:%S') if payment.created_at else '',
                 ])

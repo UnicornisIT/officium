@@ -58,7 +58,7 @@
                 </li>
                 <li class="nav-item">
                     <a class="nav-link {% if request.path == '/finance' %}active{% endif %}" href="/finance">
-                        <i class="bi bi-info-circle me-1"></i>Информация о финансах
+                        <i class="bi bi-pie-chart me-1"></i>Куда уходят деньги
                     </a>
                 </li>
                 <li class="nav-item">
@@ -193,6 +193,7 @@
                         <select required class="form-select" id="f_debt_type">
                             <option value="">— выберите —</option>
                             <option value="credit_card">Кредитная карта</option>
+                            <option value="consumer_credit">Потребительский кредит</option>
                             <option value="split">Сплит / Рассрочка</option>
                             <option value="mortgage">Ипотека</option>
                         </select>
@@ -202,11 +203,15 @@
                         <input type="text" required class="form-control" id="f_product_name" placeholder="Тинькофф Платинум, СберСплит...">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label"><span class="required-indicator">*</span>Общая сумма долга (₽)</label>
+                        <label class="form-label"><span class="required-indicator">*</span>Сумма / лимит (₽)</label>
                         <input type="text" required inputmode="decimal" class="form-control number-format" id="f_total_amount" placeholder="0 000,00">
                     </div>
+                    <div class="col-md-6 d-none" id="card_limit_helper">
+                        <label class="form-label" id="limit_available_label">Доступно на карте (₽)</label>
+                        <input type="text" inputmode="decimal" autocomplete="off" class="form-control number-format" id="f_card_available_amount" placeholder="0 000,00">
+                    </div>
                     <div class="col-md-6">
-                        <label class="form-label"><span class="required-indicator">*</span>Текущий остаток (₽)</label>
+                        <label class="form-label"><span class="required-indicator">*</span>Текущий долг (₽)</label>
                         <input type="text" required inputmode="decimal" class="form-control number-format" id="f_remaining_amount" placeholder="0 000,00">
                     </div>
                     <div class="col-md-6">
@@ -218,8 +223,73 @@
                         <input type="number" class="form-control" id="f_interest_rate" min="0" max="200" step="0.1" placeholder="0.0">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Дата следующего платежа</label>
+                        <label class="form-label">Новая ставка (%/год)</label>
+                        <input type="number" class="form-control" id="f_interest_rate_after_change" min="0" max="200" step="0.1" placeholder="если изменится">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Действует с</label>
+                        <input type="date" class="form-control" id="f_interest_rate_change_date">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" id="next_payment_date_label">Дата следующего платежа</label>
                         <input type="date" class="form-control" id="f_next_payment_date">
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="form-check form-switch debt-recurring-switch">
+                            <input class="form-check-input" type="checkbox" id="f_is_payment_recurring">
+                            <label class="form-check-label" id="recurring_payment_label" for="f_is_payment_recurring">Обновлять каждый месяц</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="bank-calc-settings">
+                            <div class="bank-calc-settings__title">Расчёт банка</div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Тип графика</label>
+                                    <select class="form-select" id="f_repayment_type">
+                                        <option value="annuity">Аннуитетный</option>
+                                        <option value="differentiated">Дифференцированный</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">База дней</label>
+                                    <select class="form-select" id="f_day_count_convention">
+                                        <option value="actual_year">365/366 по году</option>
+                                        <option value="fixed_365">Всегда 365</option>
+                                        <option value="fixed_366">Всегда 366</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Начало периода процентов</label>
+                                    <input type="date" class="form-control" id="f_interest_period_start_date">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Досрочное погашение</label>
+                                    <select class="form-select" id="f_early_repayment_strategy">
+                                        <option value="reduce_term">Уменьшать срок</option>
+                                        <option value="reduce_payment">Уменьшать платёж</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Срок, мес.</label>
+                                    <input type="number" class="form-control" id="f_loan_term_months" min="1" step="1" placeholder="если известен">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Комиссии в месяц</label>
+                                    <input type="text" inputmode="decimal" class="form-control number-format" id="f_monthly_fee_amount" placeholder="0,00">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Остаток по банку</label>
+                                    <input type="text" inputmode="decimal" class="form-control number-format" id="f_bank_remaining_amount" placeholder="для сверки">
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="f_include_payment_day">
+                                        <label class="form-check-label" for="f_include_payment_day">Включать день платежа в проценты</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="col-12">
                         <label class="form-label">Комментарий</label>
@@ -266,9 +336,31 @@
                         <label class="form-label">Дата платежа</label>
                         <input type="date" class="form-control" id="pm_date">
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Основной долг</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format" id="pm_principal_amount" placeholder="авто">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Проценты</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format" id="pm_interest_amount" placeholder="авто">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Комиссии</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format" id="pm_fee_amount" placeholder="0,00">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Остаток банка</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format" id="pm_bank_remaining_after_payment" placeholder="после платежа">
+                    </div>
                     <div class="col-12">
                         <label class="form-label">Комментарий</label>
                         <input type="text" class="form-control" id="pm_comment" placeholder="Необязательно">
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="pm_is_early_repayment">
+                            <label class="form-check-label" for="pm_is_early_repayment">Досрочное погашение</label>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -276,6 +368,65 @@
                 <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-success" onclick="submitPayment()">
                     <i class="bi bi-check-circle me-1"></i>Внести платеж
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     МОДАЛЬНОЕ ОКНО: Редактирование платежа
+═══════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="editPaymentModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редактировать платеж</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="editPaymentFormError" class="alert alert-danger d-none"></div>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Сумма платежа (₽) <span class="text-danger">*</span></label>
+                        <input type="text" inputmode="decimal" class="form-control form-control-lg number-format" id="ep_amount" placeholder="0,00">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Дата платежа <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="ep_date">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Основной долг</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format" id="ep_principal_amount" placeholder="авто">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Проценты</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format" id="ep_interest_amount" placeholder="авто">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Комиссии</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format" id="ep_fee_amount" placeholder="0,00">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Остаток банка</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format" id="ep_bank_remaining_after_payment" placeholder="после платежа">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Комментарий</label>
+                        <input type="text" class="form-control" id="ep_comment" placeholder="Необязательно">
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="ep_is_early_repayment">
+                            <label class="form-check-label" for="ep_is_early_repayment">Досрочное погашение</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="submitPaymentEdit()">
+                    <i class="bi bi-check-lg me-1"></i>Сохранить
                 </button>
             </div>
         </div>
@@ -294,6 +445,64 @@
             </div>
             <div class="modal-body p-0">
                 <div id="historyContent"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     МОДАЛЬНОЕ ОКНО: График платежей
+═══════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="scheduleModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">График платежей — <span id="schedule_name"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="scheduleContent"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     МОДАЛЬНОЕ ОКНО: Покупка в Сплит
+═══════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="splitPurchaseModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Покупка в сплит</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="splitPurchaseFormError" class="alert alert-danger d-none"></div>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Название</label>
+                        <input type="text" class="form-control" id="sp_title" placeholder="Необязательно">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label"><span class="required-indicator">*</span>Сумма покупки (₽)</label>
+                        <input type="text" required inputmode="decimal" class="form-control number-format" id="sp_amount" placeholder="0 000,00">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label"><span class="required-indicator">*</span>Дата покупки</label>
+                        <input type="date" required class="form-control" id="sp_purchase_date">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Количество платежей</label>
+                        <input type="number" class="form-control" id="sp_installments_count" min="1" max="24" step="1" value="4">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="submitSplitPurchase()">
+                    <i class="bi bi-plus-lg me-1"></i>Добавить
+                </button>
             </div>
         </div>
     </div>
