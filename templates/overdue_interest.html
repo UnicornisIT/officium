@@ -1,14 +1,14 @@
 {% extends 'base.html' %}
-{% block title %}Просрочка по ипотеке — officium{% endblock %}
+{% block title %}Просрочка по долгу — officium{% endblock %}
 
 {% block content %}
 <div class="d-flex align-items-center justify-content-between gap-3 mb-4">
     <div>
-        <h1 class="page-title mb-1"><i class="bi bi-clock-history text-danger me-2"></i>Просрочка по ипотеке</h1>
+        <h1 class="page-title mb-1"><i class="bi bi-clock-history text-danger me-2"></i>Просрочка по долгу</h1>
         <p class="text-muted mb-0">Расчёт санкций по процентам за каждый день просрочки.</p>
     </div>
-    <a class="btn btn-outline-secondary" href="/mortgages">
-        <i class="bi bi-arrow-left me-1"></i>Назад к ипотеке
+    <a class="btn btn-outline-secondary" href="/">
+        <i class="bi bi-arrow-left me-1"></i>Назад к долгам
     </a>
 </div>
 
@@ -70,6 +70,33 @@
     <div class="alert alert-warning mt-4">
         <strong>Важно:</strong> за каждый день просрочки применяется ежедневная часть годовой ставки. Размер санкций рассчитывается как <em>остаток × {{ daily_rate|round(4) }}% × количество дней просрочки</em>.
     </div>
+    {% if interest_periods and interest_periods|length > 1 %}
+    <div class="mt-4">
+        <h6>Смена ставки в период просрочки</h6>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Период</th>
+                        <th>Дней</th>
+                        <th>Ставка</th>
+                        <th>Начислено</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for period in interest_periods %}
+                    <tr>
+                        <td>{{ period.start.strftime('%d.%m.%Y') }} — {{ period.end.strftime('%d.%m.%Y') }}</td>
+                        <td>{{ period.days }}</td>
+                        <td>{{ period.rate }}%</td>
+                        <td>{{ period.interest|money }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <div class="card p-4">

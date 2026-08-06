@@ -89,7 +89,11 @@
                             <th>ID</th>
                             <th>Долг ID</th>
                             <th>Сумма</th>
+                            <th>Основной долг</th>
+                            <th>Проценты</th>
+                            <th>Комиссии</th>
                             <th>Дата</th>
+                            <th>Остаток банка</th>
                             <th>Комментарий</th>
                         </tr>
                     </thead>
@@ -99,7 +103,11 @@
                             <td>{{ payment.id }}</td>
                             <td>{{ payment.debt_id }}</td>
                             <td>{{ payment.amount|money }}</td>
+                            <td>{{ payment.principal_amount|money }}</td>
+                            <td>{{ payment.interest_amount|money }}</td>
+                            <td>{{ payment.fee_amount|money }}</td>
                             <td>{{ payment.payment_date.strftime('%d.%m.%Y') if payment.payment_date else '—' }}</td>
+                            <td>{{ payment.bank_remaining_after_payment|money if payment.bank_remaining_after_payment is not none else '—' }}</td>
                             <td>{{ payment.comment or '—' }}</td>
                         </tr>
                         {% endfor %}

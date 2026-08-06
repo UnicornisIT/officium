@@ -66,6 +66,7 @@ def init_app(app):
             ]
         else:
             incomes_list = Income.query.filter_by(user_id=current_user.id).order_by(Income.income_date.desc()).all()
+        source_suggestions = _income_source_suggestions(incomes_list)
         groups = group_entries_by_month(incomes_list, 'income_date')
         active_month = date.today().strftime('%Y-%m')
         if groups and active_month not in [group['year_month'] for group in groups]:
@@ -73,7 +74,8 @@ def init_app(app):
         return render_template('incomes.html', incomes=incomes_list, groups=groups,
                                active_month=active_month, categories=INCOME_CATEGORIES,
                                success_message=success_message, error_message=error_message,
-                               edit_income=None, form_data=form_data)
+                               edit_income=None, form_data=form_data,
+                               source_suggestions=source_suggestions)
 
     @app.route('/incomes/edit/<int:income_id>', methods=['GET', 'POST'])
     def edit_income(income_id):
@@ -110,11 +112,13 @@ def init_app(app):
                 error_message = 'Ошибка сервера: ' + str(e)
 
         incomes_list = Income.query.filter_by(user_id=current_user.id).order_by(Income.income_date.desc()).all()
+        source_suggestions = _income_source_suggestions(incomes_list)
         groups = group_entries_by_month(incomes_list, 'income_date')
         return render_template('incomes.html', incomes=incomes_list, groups=groups,
                                active_month=date.today().strftime('%Y-%m'), categories=INCOME_CATEGORIES,
                                success_message=success_message, error_message=error_message,
-                               edit_income=income, form_data=form_data)
+                               edit_income=income, form_data=form_data,
+                               source_suggestions=source_suggestions)
 
     @app.route('/incomes/delete/<int:income_id>', methods=['POST'])
     def delete_income(income_id):
@@ -126,3 +130,20 @@ def init_app(app):
         db.session.delete(income)
         db.session.commit()
         return redirect(url_for('incomes', success='Доход удалён'))
+
+
+def _income_source_suggestions(incomes_list, limit=12):
+    suggestions = []
+    seen = set()
+    for income in incomes_list:
+        source = str(income.source or '').strip()
+        if not source:
+            continue
+        key = source.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        suggestions.append(source)
+        if len(suggestions) >= limit:
+            break
+    return suggestions

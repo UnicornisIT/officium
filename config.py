@@ -8,6 +8,13 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
     TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
     TELEGRAM_BOT_USERNAME = os.environ.get('TELEGRAM_BOT_USERNAME', '')
+    TELEGRAM_BOT_ENABLED = os.environ.get('TELEGRAM_BOT_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
+    TELEGRAM_WEBHOOK_SECRET = os.environ.get('TELEGRAM_WEBHOOK_SECRET', '')
+    TELEGRAM_PRIVATE_CHAT_ONLY = os.environ.get('TELEGRAM_PRIVATE_CHAT_ONLY', 'true').lower() in ('1', 'true', 'yes', 'on')
+    TELEGRAM_BOT_RATE_LIMIT_PER_MINUTE = int(os.environ.get('TELEGRAM_BOT_RATE_LIMIT_PER_MINUTE', '20'))
+    TELEGRAM_REMINDER_DAYS = int(os.environ.get('TELEGRAM_REMINDER_DAYS', '7'))
+    TELEGRAM_UPDATE_RETENTION_DAYS = int(os.environ.get('TELEGRAM_UPDATE_RETENTION_DAYS', '30'))
+    TELEGRAM_CONVERSATION_TTL_MINUTES = int(os.environ.get('TELEGRAM_CONVERSATION_TTL_MINUTES', '30'))
     ADMIN_LOGIN_ENABLED = os.environ.get('ADMIN_LOGIN_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     ADMIN_TELEGRAM_IDS = [item.strip() for item in os.environ.get('ADMIN_TELEGRAM_IDS', '').split(',') if item.strip()]
     ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '')

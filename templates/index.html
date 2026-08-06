@@ -42,7 +42,8 @@
             <div class="summary-card {% if nearest_debt %}summary-card--warning{% else %}summary-card--muted{% endif %}">
                 <div class="summary-icon"><i class="bi bi-calendar-event"></i></div>
                 {% if nearest_debt %}
-                <div class="summary-value">{{ nearest_debt.next_payment_date.strftime('%d.%m') }}</div>
+                {% set nearest_payment_date = nearest_debt.effective_next_payment_date(today) %}
+                <div class="summary-value">{{ nearest_payment_date.strftime('%d.%m') if nearest_payment_date else '—' }}</div>
                 <div class="summary-label">Ближайший платеж</div>
                 {% else %}
                 <div class="summary-value">—</div>
@@ -125,6 +126,9 @@
         <button type="button" class="btn btn-filter" data-type="credit_card">
             <i class="bi bi-credit-card me-1"></i>Кредитки
         </button>
+        <button type="button" class="btn btn-filter" data-type="consumer_credit">
+            <i class="bi bi-cash-coin me-1"></i>Кредиты
+        </button>
         <button type="button" class="btn btn-filter" data-type="split">
             <i class="bi bi-scissors me-1"></i>Сплиты
         </button>
@@ -146,13 +150,14 @@
 <!-- ── Список карточек ── -->
 <div class="row g-4" id="debtsGrid">
     {% for debt in debts %}
-    {% set days = (debt.next_payment_date - today).days if debt.next_payment_date else None %}
+    {% set payment_date = debt.effective_next_payment_date(today) %}
+    {% set days = (payment_date - today).days if payment_date else None %}
     {% set paid_pct = ((1 - debt.remaining_amount / debt.total_amount) * 100) | round(1) if debt.total_amount > 0 else 100 %}
     <div class="col-12 col-md-6 col-xl-4 debt-col"
          data-bank="{{ debt.bank_name|lower }}"
          data-type="{{ debt.debt_type }}"
          data-remaining="{{ debt.remaining_amount }}"
-         data-date="{{ debt.next_payment_date.strftime('%Y-%m-%d') if debt.next_payment_date else '9999-99-99' }}"
+         data-date="{{ payment_date.strftime('%Y-%m-%d') if payment_date else '9999-99-99' }}"
     >
         <div class="debt-card
             {% if days is not none %}
@@ -172,6 +177,8 @@
                 <div class="debt-card__badge">
                     {% if debt.debt_type == 'credit_card' %}
                     <span class="badge-type badge-type--card"><i class="bi bi-credit-card"></i> Карта</span>
+                {% elif debt.debt_type == 'consumer_credit' %}
+                    <span class="badge-type badge-type--consumer"><i class="bi bi-cash-coin"></i> Кредит</span>
                 {% elif debt.debt_type == 'mortgage' %}
                     <span class="badge-type badge-type--mortgage"><i class="bi bi-bank2"></i> Ипотека</span>
                 {% else %}
@@ -210,8 +217,13 @@
                             {% elif days <= 7 %}text-warning-strong{% endif %}
                         {% endif %}
                     ">
-                        {% if debt.next_payment_date %}
-                            {{ debt.next_payment_date.strftime('%d.%m.%Y') }}
+                        {% if payment_date %}
+                            {{ payment_date.strftime('%d.%m.%Y') }}
+                            {% if debt.debt_type == 'split' %}
+                                <span class="badge bg-secondary ms-1" title="Дата считается по графику сплита">2 нед.</span>
+                            {% elif debt.is_payment_recurring %}
+                                <span class="badge bg-secondary ms-1" title="Дата обновляется после обязательного платежа">ежемес.</span>
+                            {% endif %}
                             {% if days is not none %}
                                 {% if days < 0 %}
                                     <span class="badge bg-danger ms-1">просрочен</span>
@@ -230,10 +242,30 @@
                         {% if debt.minimum_payment %}{{ debt.minimum_payment|money }}{% else %}—{% endif %}
                     </span>
                 </div>
-                {% if debt.interest_rate %}
+                {% set display_interest_rate = debt.interest_rate_for(today) %}
+                {% if display_interest_rate %}
                 <div class="debt-card__detail">
                     <span class="detail-label"><i class="bi bi-percent"></i> Ставка</span>
-                    <span class="detail-value">{{ debt.interest_rate }}% год.</span>
+                    <span class="detail-value">
+                        {{ display_interest_rate }}% год.
+                        {% if debt.interest_rate_after_change and debt.interest_rate_change_date and today < debt.interest_rate_change_date %}
+                        <span class="badge bg-secondary ms-1" title="Текущая ставка действует до этой даты">до {{ debt.interest_rate_change_date.strftime('%d.%m.%y') }}</span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% endif %}
+                {% if debt.bank_remaining_amount is not none %}
+                <div class="debt-card__detail">
+                    <span class="detail-label"><i class="bi bi-bank"></i> Сверка</span>
+                    <span class="detail-value">
+                        {{ debt.bank_remaining_amount|money }}
+                        {% set bank_delta = debt.bank_remaining_amount - debt.remaining_amount %}
+                        {% if bank_delta < -0.01 or bank_delta > 0.01 %}
+                        <span class="badge bg-warning text-dark ms-1">{{ bank_delta|money }}</span>
+                        {% else %}
+                        <span class="badge bg-success ms-1">сходится</span>
+                        {% endif %}
+                    </span>
                 </div>
                 {% endif %}
                 {% if debt.comment %}
@@ -254,7 +286,7 @@
                         <i class="bi bi-bank2"></i> Ипотека
                     </button>
                     {% endif %}
-                    {% if debt.debt_type == 'mortgage' and days is not none and days < 0 %}
+                    {% if days is not none and days < 0 and debt.interest_rate_for(today) %}
                     <button class="btn btn-action btn-action--info btn-action--outline" onclick="window.location.href='/debts/{{ debt.id }}/overdue'" title="О просрочке">
                         <i class="bi bi-info-circle"></i> О просрочке
                     </button>
@@ -265,12 +297,15 @@
                         <i class="bi bi-pencil"></i>
                     </button>
                     <button class="btn btn-action btn-action--calendar"
-                        onclick="openGoogleCalendar({{ debt.id }}, '{{ debt.bank_name }}', '{{ debt.product_name }}', '{{ debt.next_payment_date.strftime('%Y-%m-%d') if debt.next_payment_date else '' }}', {{ debt.minimum_payment or 0 }}, {{ debt.remaining_amount }})"
+                        onclick="openGoogleCalendar({{ debt.id }}, '{{ debt.bank_name }}', '{{ debt.product_name }}', '{{ payment_date.strftime('%Y-%m-%d') if payment_date else '' }}', {{ debt.minimum_payment or 0 }}, {{ debt.remaining_amount }})"
                         title="Добавить в Google Calendar">
                         <i class="bi bi-calendar-plus"></i>
                     </button>
                     <button class="btn btn-action btn-action--history" onclick="openHistoryModal({{ debt.id }}, '{{ debt.bank_name }} — {{ debt.product_name }}')" title="История платежей">
                         <i class="bi bi-clock-history"></i>
+                    </button>
+                    <button class="btn btn-action btn-action--schedule" onclick="openScheduleModal({{ debt.id }}, '{{ debt.bank_name }} — {{ debt.product_name }}')" title="График платежей">
+                        <i class="bi bi-table"></i>
                     </button>
                     <button class="btn btn-action btn-action--archive" onclick="archiveDebt({{ debt.id }})" title="В архив">
                         <i class="bi bi-archive"></i>
@@ -295,7 +330,7 @@
 </div>
 
 <!-- Сообщение "ничего не найдено" при фильтрации -->
-<div class="empty-state d-none" id="noResults">
+<div class="empty-state empty-state--no-results d-none" id="noResults">
     <div class="empty-state__icon">🔍</div>
     <h3>Ничего не найдено</h3>
     <p class="text-muted">Попробуйте изменить поисковый запрос или фильтры</p>

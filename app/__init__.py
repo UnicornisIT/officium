@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from config import Config
 from extensions import db
-from app.models import AppSetting, ActivityLog, Debt, DictionaryEntry, Expense, Income, Payment, User
+from app.models import AppSetting, ActivityLog, Debt, DictionaryEntry, Expense, Income, Payment, SplitPurchase, TelegramConversationState, TelegramProcessedUpdate, User
 from app.utils import display_value, format_currency
 
 login_manager = LoginManager()
@@ -37,7 +37,7 @@ def create_app(config_overrides=None):
     app.jinja_env.filters['money'] = format_currency
     app.jinja_env.filters['display'] = display_value
 
-    from app.routes import auth, admin, debts, payments, incomes, expenses, main
+    from app.routes import auth, admin, debts, payments, incomes, expenses, main, telegram_bot
 
     auth.init_app(app)
     admin.init_app(app)
@@ -45,6 +45,7 @@ def create_app(config_overrides=None):
     payments.init_app(app)
     incomes.init_app(app)
     expenses.init_app(app)
+    telegram_bot.init_app(app, csrf=csrf)
     main.init_app(app)
 
     return app
@@ -105,6 +106,25 @@ def register_cli_commands(app):
         else:
             click.echo('SQLite already contains users; copy skipped.')
 
+    @app.cli.command('send-telegram-reminders')
+    @click.option('--days', type=int, default=None, help='Notify about debt payments due within this many days')
+    @click.option('--dry-run', is_flag=True, help='Count reminders without sending Telegram messages')
+    def send_telegram_reminders(days, dry_run):
+        """Send Telegram reminders about overdue and upcoming debt payments."""
+        if not app.config.get('TELEGRAM_BOT_ENABLED', False):
+            click.echo('Telegram bot is disabled. Set TELEGRAM_BOT_ENABLED=true to enable reminders.')
+            return
+        if not app.config.get('TELEGRAM_BOT_TOKEN'):
+            click.echo('TELEGRAM_BOT_TOKEN is not configured.')
+            return
+
+        from app.services.telegram_bot_service import send_debt_reminders
+
+        stats = send_debt_reminders(days=days, dry_run=dry_run)
+        click.echo(f"Users checked: {stats['users_checked']}")
+        click.echo(f"Messages: {stats['messages']}")
+        click.echo(f"Errors: {stats['errors']}")
+
 
 app = create_app()
 register_cli_commands(app)
@@ -141,7 +161,7 @@ def _copy_mysql_to_sqlite(app):
             if User.query.first() is not None:
                 return False
 
-            for model in (User, AppSetting, DictionaryEntry, Debt, Income, Expense, Payment, ActivityLog):
+            for model in (User, AppSetting, DictionaryEntry, Debt, Income, Expense, Payment, SplitPurchase, TelegramProcessedUpdate, TelegramConversationState, ActivityLog):
                 source_rows = mysql_session.query(model).all()
                 for row in source_rows:
                     row_data = {col.name: getattr(row, col.name) for col in model.__table__.columns}

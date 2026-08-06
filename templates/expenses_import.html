@@ -1,0 +1,288 @@
+{% extends 'base.html' %}
+{% block title %}Импорт выписки — officium{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex align-items-center justify-content-between gap-3 mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-file-earmark-arrow-up text-primary me-2"></i>Импорт выписки</h1>
+        <p class="text-muted mb-0">Загрузите CSV, XLSX или PDF из Сбера, Т-Банка, Альфа-Банка или ВТБ.</p>
+    </div>
+    <a href="{{ url_for('expenses') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>К расходам
+    </a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-danger">{{ error_message }}</div>
+{% endif %}
+
+<section class="import-panel mb-4">
+    <form method="post" enctype="multipart/form-data" class="import-upload">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="import-upload__main">
+            <label class="form-label">Файл выписки</label>
+            <input class="form-control" type="file" name="statement_file" accept=".csv,.txt,.tsv,.xlsx,.pdf" required>
+        </div>
+        <button type="submit" class="btn btn-primary import-upload__submit">
+            <i class="bi bi-search me-1"></i>Разобрать
+        </button>
+    </form>
+</section>
+
+{% if parse_result %}
+<section class="import-panel">
+    <div class="import-summary mb-3">
+        <div>
+            <div class="import-summary__label">Банк</div>
+            <div class="import-summary__value">{{ parse_result.bank_label }}</div>
+        </div>
+        <div>
+            <div class="import-summary__label">Расходов найдено</div>
+            <div class="import-summary__value">{{ parse_result.rows|length }}</div>
+        </div>
+        <div>
+            <div class="import-summary__label">Пополнений пропущено</div>
+            <div class="import-summary__value">{{ parse_result.skipped_income }}</div>
+        </div>
+        <div>
+            <div class="import-summary__label">Ошибок строк</div>
+            <div class="import-summary__value">{{ parse_result.errors|length }}</div>
+        </div>
+    </div>
+
+    {% if parse_result.errors %}
+    <div class="alert alert-warning">
+        <div class="fw-semibold mb-1">Часть строк не удалось распознать</div>
+        {% for error in parse_result.errors[:8] %}
+        <div class="small">{{ error }}</div>
+        {% endfor %}
+        {% if parse_result.errors|length > 8 %}
+        <div class="small text-muted">И еще {{ parse_result.errors|length - 8 }} строк.</div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if parse_result.rows %}
+    <form method="post" action="{{ url_for('confirm_import_expenses') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="import_token" value="{{ import_token }}">
+        <input type="hidden" name="row_count" value="{{ parse_result.rows|length }}">
+
+        <div class="import-controls mb-3" data-import-controls>
+            <div class="import-control import-control--search">
+                <label class="form-label" for="importSearch">Поиск</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input class="form-control" type="search" id="importSearch" placeholder="Название, комментарий, строка">
+                </div>
+            </div>
+            <div class="import-control">
+                <label class="form-label" for="importCategoryFilter">Категория</label>
+                <select class="form-select" id="importCategoryFilter">
+                    <option value="">Все категории</option>
+                    {% for key, label in categories %}
+                    <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="import-control">
+                <label class="form-label" for="importPaymentFilter">Способ</label>
+                <select class="form-select" id="importPaymentFilter">
+                    <option value="">Все способы</option>
+                    {% for key, label in payment_methods %}
+                    <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="import-control">
+                <label class="form-label" for="importSortField">Сортировка</label>
+                <select class="form-select" id="importSortField">
+                    <option value="order">Порядок из выписки</option>
+                    <option value="date">Дата</option>
+                    <option value="title">Название</option>
+                    <option value="category">Категория</option>
+                    <option value="amount">Сумма</option>
+                    <option value="payment">Способ</option>
+                </select>
+            </div>
+            <div class="import-control">
+                <label class="form-label" for="importSortDirection">Направление</label>
+                <select class="form-select" id="importSortDirection">
+                    <option value="asc">По возрастанию</option>
+                    <option value="desc">По убыванию</option>
+                </select>
+            </div>
+            <div class="import-control import-control--meta">
+                <span class="import-filter-count">{{ parse_result.rows|length }} из {{ parse_result.rows|length }}</span>
+            </div>
+        </div>
+
+        <div class="import-table-wrap">
+            <table class="table align-middle import-table">
+                <thead>
+                    <tr>
+                        <th>Действие</th>
+                        <th>Дата</th>
+                        <th>Название</th>
+                        <th>Категория</th>
+                        <th>Сумма</th>
+                        <th>Способ</th>
+                        <th>Комментарий</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in parse_result.rows %}
+                    {% set index = loop.index0 %}
+                    <tr class="{{ 'import-row--duplicate' if row.duplicate and not row.monthly_match_id else '' }} {{ 'import-row--monthly' if row.monthly_match_id else '' }}" data-import-row data-order="{{ index }}" data-source="Строка {{ row.row_number }}{% if row.source_category %}, банк: {{ row.source_category }}{% endif %}" data-monthly="{{ row.monthly_match_title or '' }}">
+                        <td>
+                            <select class="form-select form-select-sm import-action" name="action_{{ index }}" title="{% if row.monthly_match_id %}Похоже на ежемесячный: {{ row.monthly_match_title }}{% elif row.duplicate %}Возможный дубликат{% else %}Что сделать со строкой{% endif %}">
+                                {% if row.monthly_match_id %}
+                                <option value="update_monthly" {% if row.default_import_action == 'update_monthly' %}selected{% endif %}>Обновить</option>
+                                <option value="create" {% if row.default_import_action == 'create' %}selected{% endif %}>Отдельно</option>
+                                <option value="skip" {% if row.default_import_action == 'skip' %}selected{% endif %}>Пропуск</option>
+                                {% else %}
+                                <option value="create" {% if row.default_import_action == 'create' %}selected{% endif %}>Добавить</option>
+                                <option value="skip" {% if row.default_import_action == 'skip' %}selected{% endif %}>Пропуск</option>
+                                {% endif %}
+                            </select>
+                        </td>
+                        <td>
+                            <input class="form-control form-control-sm import-date" type="date" name="expense_date_{{ index }}" value="{{ row.expense_date.isoformat() }}" required>
+                        </td>
+                        <td>
+                            <div class="import-title-line">
+                                <input class="form-control form-control-sm import-title" type="text" name="title_{{ index }}" value="{{ row.title }}" maxlength="150" required>
+                                {% if row.monthly_match_id %}
+                                <span class="import-row-marker import-row-marker--monthly" title="Ежемесячный: {{ row.monthly_match_title }}">
+                                    <i class="bi bi-repeat"></i>
+                                </span>
+                                {% elif row.duplicate %}
+                                <span class="import-row-marker import-row-marker--duplicate" title="Возможный дубликат">
+                                    <i class="bi bi-copy"></i>
+                                </span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <select class="form-select form-select-sm" name="category_{{ index }}">
+                                {% for key, label in categories %}
+                                <option value="{{ key }}" {% if row.category == key %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <input class="form-control form-control-sm import-amount" type="text" inputmode="decimal" name="amount_{{ index }}" value="{{ row.amount }}" required>
+                        </td>
+                        <td>
+                            <select class="form-select form-select-sm" name="payment_method_{{ index }}">
+                                {% for key, label in payment_methods %}
+                                <option value="{{ key }}" {% if row.payment_method == key %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <input class="form-control form-control-sm import-comment" type="text" name="comment_{{ index }}" value="{{ row.comment }}">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 align-items-center mt-3">
+            <button type="submit" class="btn btn-success">
+                <i class="bi bi-check2-circle me-1"></i>Сохранить выбранные расходы
+            </button>
+            <a href="{{ url_for('import_expenses') }}" class="btn btn-outline-secondary">Загрузить другой файл</a>
+        </div>
+    </form>
+    {% else %}
+    <div class="alert alert-info mb-0">В выписке не найдено расходов для сохранения.</div>
+    {% endif %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const controls = document.querySelector('[data-import-controls]');
+    const tableBody = document.querySelector('.import-table tbody');
+    if (!controls || !tableBody) return;
+
+    const searchInput = document.getElementById('importSearch');
+    const categoryFilter = document.getElementById('importCategoryFilter');
+    const paymentFilter = document.getElementById('importPaymentFilter');
+    const sortField = document.getElementById('importSortField');
+    const sortDirection = document.getElementById('importSortDirection');
+    const countEl = controls.querySelector('.import-filter-count');
+
+    const rows = Array.from(tableBody.querySelectorAll('[data-import-row]'));
+    const valueOf = (row, field) => {
+        if (field === 'order') return Number(row.dataset.order || 0);
+        if (field === 'date') return row.querySelector('.import-date')?.value || '';
+        if (field === 'title') return row.querySelector('.import-title')?.value.toLowerCase() || '';
+        if (field === 'amount') {
+            const raw = row.querySelector('.import-amount')?.value || '0';
+            return Number(raw.replace(/\s+/g, '').replace(',', '.')) || 0;
+        }
+        if (field === 'category') {
+            const select = row.querySelector('select[name^="category_"]');
+            return select?.selectedOptions[0]?.textContent.toLowerCase() || '';
+        }
+        if (field === 'payment') {
+            const select = row.querySelector('select[name^="payment_method_"]');
+            return select?.selectedOptions[0]?.textContent.toLowerCase() || '';
+        }
+        return '';
+    };
+
+    const rowMatches = (row) => {
+        const search = (searchInput.value || '').trim().toLowerCase();
+        const selectedCategory = categoryFilter.value;
+        const selectedPayment = paymentFilter.value;
+        const category = row.querySelector('select[name^="category_"]')?.value || '';
+        const payment = row.querySelector('select[name^="payment_method_"]')?.value || '';
+        const text = [
+            row.querySelector('.import-title')?.value,
+            row.querySelector('.import-comment')?.value,
+            row.dataset.source,
+            row.dataset.monthly,
+        ].join(' ').toLowerCase();
+
+        return (!search || text.includes(search))
+            && (!selectedCategory || category === selectedCategory)
+            && (!selectedPayment || payment === selectedPayment);
+    };
+
+    const refreshImportRows = () => {
+        const field = sortField.value;
+        const direction = sortDirection.value === 'desc' ? -1 : 1;
+        rows.sort((a, b) => {
+            const left = valueOf(a, field);
+            const right = valueOf(b, field);
+            if (typeof left === 'number' && typeof right === 'number') {
+                return (left - right) * direction;
+            }
+            return String(left).localeCompare(String(right), 'ru') * direction;
+        });
+
+        let visible = 0;
+        rows.forEach((row) => {
+            const matches = rowMatches(row);
+            row.hidden = !matches;
+            if (matches) visible += 1;
+            tableBody.appendChild(row);
+        });
+        countEl.textContent = `${visible} из ${rows.length}`;
+    };
+
+    [searchInput, categoryFilter, paymentFilter, sortField, sortDirection].forEach((control) => {
+        control.addEventListener('input', refreshImportRows);
+        control.addEventListener('change', refreshImportRows);
+    });
+    refreshImportRows();
+});
+</script>
+{% endblock %}

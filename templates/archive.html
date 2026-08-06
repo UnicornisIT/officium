@@ -23,6 +23,8 @@
                 <div class="debt-card__badge">
                     {% if debt.debt_type == 'credit_card' %}
                     <span class="badge-type badge-type--card"><i class="bi bi-credit-card"></i> Карта</span>
+                    {% elif debt.debt_type == 'consumer_credit' %}
+                    <span class="badge-type badge-type--consumer"><i class="bi bi-cash-coin"></i> Кредит</span>
                     {% elif debt.debt_type == 'mortgage' %}
                     <span class="badge-type badge-type--mortgage"><i class="bi bi-bank2"></i> Ипотека</span>
                     {% else %}
@@ -69,6 +71,11 @@
                     onclick="openHistoryModal({{ debt.id }}, '{{ debt.bank_name }} — {{ debt.product_name }}')"
                     title="История платежей">
                     <i class="bi bi-clock-history"></i> История
+                </button>
+                <button class="btn btn-action btn-action--schedule"
+                    onclick="openScheduleModal({{ debt.id }}, '{{ debt.bank_name }} — {{ debt.product_name }}')"
+                    title="График платежей">
+                    <i class="bi bi-table"></i>
                 </button>
                 <button class="btn btn-action btn-action--restore"
                     onclick="restoreDebt({{ debt.id }})"

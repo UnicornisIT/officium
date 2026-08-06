@@ -41,6 +41,17 @@ class MigrationContractTestCase(unittest.TestCase):
             set(revisions['20260517_merge_heads']),
             {'e49a6c3dc4b8', '20260517_monthly_expenses'},
         )
+        self.assertEqual(revisions['20260729_restaurants'], '20260517_merge_heads')
+        self.assertEqual(revisions['20260729_vacpay'], '20260729_restaurants')
+        self.assertEqual(revisions['20260729_conscred'], '20260729_vacpay')
+        self.assertEqual(revisions['20260729_debtrecur'], '20260729_conscred')
+        self.assertEqual(revisions['20260729_debtrate'], '20260729_debtrecur')
+        self.assertEqual(revisions['20260729_earlypay'], '20260729_debtrate')
+        self.assertEqual(revisions['20260729_paybreak'], '20260729_earlypay')
+        self.assertEqual(revisions['20260729_bankcalc'], '20260729_paybreak')
+        self.assertEqual(revisions['20260729_splitbuy'], '20260729_bankcalc')
+        self.assertEqual(revisions['20260729_tgupdates'], '20260729_splitbuy')
+        self.assertEqual(revisions['20260729_tgstate'], '20260729_tgupdates')
 
         referenced = set()
         for down_revision in revisions.values():
@@ -49,7 +60,7 @@ class MigrationContractTestCase(unittest.TestCase):
             elif down_revision:
                 referenced.add(down_revision)
         heads = set(revisions) - referenced
-        self.assertEqual(heads, {'20260517_merge_heads'})
+        self.assertEqual(heads, {'20260729_tgstate'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))

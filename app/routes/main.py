@@ -6,6 +6,7 @@ from flask_login import current_user
 from extensions import db
 from app.models import Debt, Income, Expense, Payment
 from app.services.finance_summary_service import get_finance_summary
+from app.services.debt_interest_service import calculate_overdue_interest
 from app.services.debt_service import get_user_debt
 
 
@@ -33,9 +34,13 @@ def init_app(app):
         month_start = summary['month_start']
         active_debts = summary['active_debts']
 
-        upcoming = [d for d in active_debts if d.next_payment_date and d.next_payment_date >= today]
+        active_debts = sorted(
+            active_debts,
+            key=lambda d: d.effective_next_payment_date(today) or date.max,
+        )
+        upcoming = [d for d in active_debts if d.effective_next_payment_date(today) and d.effective_next_payment_date(today) >= today]
         nearest_debt = upcoming[0] if upcoming else None
-        overdue_count = len([d for d in active_debts if d.next_payment_date and d.next_payment_date < today])
+        overdue_count = len([d for d in active_debts if d.effective_next_payment_date(today) and d.effective_next_payment_date(today) < today])
 
         daily_budget = free_balance / days_left if days_left > 0 else 0
         return render_template('index.html',
@@ -99,6 +104,13 @@ def init_app(app):
             incomes_this_month=summary['incomes_this_month'],
             expenses_this_month=summary['expenses_this_month'],
             payments_this_month=summary['payments_this_month'],
+            cashflow=summary['cashflow'],
+            expense_category_breakdown=summary['expense_category_breakdown'],
+            expense_title_breakdown=summary['expense_title_breakdown'],
+            payment_method_breakdown=summary['payment_method_breakdown'],
+            largest_expenses=summary['largest_expenses'],
+            recurring_expenses_this_month=summary['recurring_expenses_this_month'],
+            top_spending_days=summary['top_spending_days'],
             selected_year=summary['selected_year'],
             selected_month=summary['selected_month'],
             year_options=year_options,
@@ -145,26 +157,22 @@ def init_app(app):
         if not debt.next_payment_date or debt.next_payment_date >= today:
             return render_template('overdue_interest.html', error='Для этого долга нет просрочки.'), 400
 
-        if not debt.interest_rate:
+        interest_summary = calculate_overdue_interest(debt, today=today)
+        if not interest_summary:
             return render_template('overdue_interest.html', error='Для этого долга не указана процентная ставка.'), 400
 
         overdue_days = (today - debt.next_payment_date).days
-        annual_rate = float(debt.interest_rate)
-        daily_rate = annual_rate / 365
-        remaining_amount = float(debt.remaining_amount)
-        interest_per_day = remaining_amount * daily_rate / 100
-        total_overdue_interest = interest_per_day * overdue_days
-        total_with_overdue = remaining_amount + total_overdue_interest
 
         return render_template('overdue_interest.html',
             debt=debt,
             today=today,
             overdue_days=overdue_days,
-            annual_rate=annual_rate,
-            daily_rate=daily_rate,
-            interest_per_day=interest_per_day,
-            total_overdue_interest=total_overdue_interest,
-            total_with_overdue=total_with_overdue,
+            annual_rate=interest_summary['annual_rate'],
+            daily_rate=interest_summary['daily_rate'],
+            interest_per_day=interest_summary['interest_per_day'],
+            total_overdue_interest=interest_summary['total_overdue_interest'],
+            total_with_overdue=interest_summary['total_with_overdue'],
+            interest_periods=interest_summary['periods'],
         )
 
     @app.route('/archive')
