@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 import click
 from flask import Flask
@@ -25,6 +26,8 @@ def create_app(config_overrides=None):
         static_url_path='/static'
     )
     app.config.from_object(Config)
+    if app.config.get('SEND_FILE_MAX_AGE_DEFAULT') is None:
+        app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=7)
     if config_overrides:
         app.config.update(config_overrides)
 

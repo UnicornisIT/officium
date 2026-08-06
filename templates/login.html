@@ -31,12 +31,30 @@
                         <div>Обратитесь к администратору для разблокировки доступа.</div>
                     </div>
                     {% elif bot_username %}
-                    <script async src="https://telegram.org/js/telegram-widget.js?15"
-                            data-telegram-login="{{ bot_username }}"
-                            data-size="large"
-                            data-userpic="false"
-                            data-auth-url="{{ url_for('telegram_login', _external=True) }}"
-                            data-request-access="write">
+                    <div id="telegram-login-widget" aria-live="polite">
+                        <button id="telegram-login-loader" type="button" class="btn btn-info btn-lg rounded-pill px-4 text-white">
+                            <i class="bi bi-telegram me-2"></i>Войти через Telegram
+                        </button>
+                    </div>
+                    <script>
+                        document.getElementById('telegram-login-loader')?.addEventListener('click', function () {
+                            const host = document.getElementById('telegram-login-widget');
+                            if (!host) return;
+
+                            host.innerHTML = '<span class="text-muted small">Подключаем Telegram…</span>';
+                            const widget = document.createElement('script');
+                            widget.async = true;
+                            widget.src = 'https://telegram.org/js/telegram-widget.js?15';
+                            widget.dataset.telegramLogin = {{ bot_username|tojson }};
+                            widget.dataset.size = 'large';
+                            widget.dataset.userpic = 'false';
+                            widget.dataset.authUrl = {{ url_for('telegram_login', _external=True)|tojson }};
+                            widget.dataset.requestAccess = 'write';
+                            widget.onerror = function () {
+                                host.innerHTML = '<span class="text-danger small">Не удалось загрузить вход через Telegram. Проверьте соединение и обновите страницу.</span>';
+                            };
+                            host.appendChild(widget);
+                        }, { once: true });
                     </script>
                     {% else %}
                     <div class="alert alert-warning text-start">
