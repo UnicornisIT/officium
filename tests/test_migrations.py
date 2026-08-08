@@ -68,6 +68,14 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertNotIn('op.drop_table', migration_text)
         self.assertNotIn('db.drop_all', migration_text)
 
+    def test_telegram_state_text_column_has_no_server_default(self):
+        migration_text = (
+            MIGRATIONS_DIR / '20260729_add_telegram_conversation_states.py'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn("sa.Column('data', sa.Text(), nullable=False)", migration_text)
+        self.assertNotIn("sa.Text(), nullable=False, server_default", migration_text)
+
     def test_deploy_preflight_handles_migration_states(self):
         deploy_text = (PROJECT_ROOT / 'deploy.sh').read_text(encoding='utf-8')
 

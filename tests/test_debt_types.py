@@ -1,11 +1,18 @@
 import unittest
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from app import create_app
 from app.models import Debt, Payment, SplitPurchase, User
 from app.services.debt_interest_service import calculate_overdue_interest
 from extensions import db
+
+
+class FrozenDate(date):
+    @classmethod
+    def today(cls):
+        return cls(2026, 8, 7)
 
 
 class DebtTypesTestCase(unittest.TestCase):
@@ -337,6 +344,162 @@ class DebtTypesTestCase(unittest.TestCase):
             debt = db.session.get(Debt, debt_id)
             self.assertEqual(debt.effective_next_payment_date(), date(2026, 8, 12))
             self.assertEqual(debt.to_dict()['effective_next_payment_date'], '2026-08-12')
+
+    def test_split_schedule_treats_future_payment_records_as_planned(self):
+        self.login()
+        with self.app.app_context():
+            debt = Debt(
+                user_id=self.user_id,
+                bank_name='Yandex Pay',
+                debt_type='split',
+                product_name='Yandex Split',
+                total_amount=Decimal('101638.00'),
+                remaining_amount=Decimal('3744.00'),
+                minimum_payment=Decimal('2004.00'),
+                next_payment_date=date(2026, 7, 20),
+                status='active',
+            )
+            db.session.add(debt)
+            db.session.flush()
+            db.session.add_all([
+                Payment(
+                    debt_id=debt.id,
+                    amount=Decimal('2004.00'),
+                    principal_amount=Decimal('2004.00'),
+                    interest_amount=Decimal('0.00'),
+                    payment_date=date(2026, 7, 20),
+                    remaining_after_payment=Decimal('9756.00'),
+                ),
+                Payment(
+                    debt_id=debt.id,
+                    amount=Decimal('2004.00'),
+                    principal_amount=Decimal('2004.00'),
+                    interest_amount=Decimal('0.00'),
+                    payment_date=date(2026, 7, 27),
+                    remaining_after_payment=Decimal('7752.00'),
+                ),
+                Payment(
+                    debt_id=debt.id,
+                    amount=Decimal('2004.00'),
+                    principal_amount=Decimal('2004.00'),
+                    interest_amount=Decimal('0.00'),
+                    payment_date=date(2026, 8, 12),
+                    remaining_after_payment=Decimal('5748.00'),
+                ),
+                Payment(
+                    debt_id=debt.id,
+                    amount=Decimal('2004.00'),
+                    principal_amount=Decimal('2004.00'),
+                    interest_amount=Decimal('0.00'),
+                    payment_date=date(2026, 8, 27),
+                    remaining_after_payment=Decimal('3744.00'),
+                ),
+                SplitPurchase(
+                    debt_id=debt.id,
+                    title='Charger',
+                    amount=Decimal('1738.00'),
+                    purchase_date=date(2026, 8, 6),
+                    installments_count=4,
+                ),
+            ])
+            db.session.commit()
+            debt_id = debt.id
+
+        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+            response = self.client.get(f'/api/debts/{debt_id}/schedule')
+
+        self.assertEqual(response.status_code, 200)
+        schedule = response.get_json()['schedule']
+        rows = schedule['rows']
+        self.assertEqual(schedule['total_paid'], 4008.0)
+        self.assertEqual(schedule['total_planned'], 7752.0)
+        self.assertEqual([row['status'] for row in rows], [
+            'paid',
+            'paid',
+            'planned',
+            'planned',
+            'planned',
+            'planned',
+            'planned',
+        ])
+        self.assertEqual([row['payment_date'] for row in rows], [
+            '2026-07-20',
+            '2026-07-27',
+            '2026-08-12',
+            '2026-08-27',
+            '2026-09-12',
+            '2026-09-27',
+            '2026-10-12',
+        ])
+        self.assertEqual([row['payment'] for row in rows[2:]], [
+            2004.0,
+            2439.0,
+            2441.0,
+            435.0,
+            433.0,
+        ])
+        row_by_date = {row['payment_date']: row for row in rows}
+        self.assertEqual(
+            [component['amount'] for component in row_by_date['2026-08-27']['components']],
+            [2004.0, 435.0],
+        )
+        self.assertEqual(
+            [component['amount'] for component in row_by_date['2026-09-12']['components']],
+            [2006.0, 435.0],
+        )
+        self.assertEqual(rows[-1]['remaining'], 0.0)
+
+        with self.app.app_context(), patch('app.models.date', FrozenDate):
+            debt = db.session.get(Debt, debt_id)
+            self.assertEqual(debt.effective_next_payment_date(), date(2026, 8, 12))
+
+    def test_split_purchase_from_august_six_matches_yandex_payment_dates(self):
+        self.login()
+        with self.app.app_context():
+            debt = Debt(
+                user_id=self.user_id,
+                bank_name='Yandex Pay',
+                debt_type='split',
+                product_name='Yandex Split',
+                total_amount=Decimal('11786.00'),
+                remaining_amount=Decimal('7748.00'),
+                minimum_payment=Decimal('2004.00'),
+                next_payment_date=date(2026, 8, 12),
+                status='active',
+            )
+            db.session.add(debt)
+            db.session.flush()
+            db.session.add(
+                SplitPurchase(
+                    debt_id=debt.id,
+                    title='Charger',
+                    amount=Decimal('1738.00'),
+                    purchase_date=date(2026, 8, 6),
+                    installments_count=4,
+                )
+            )
+            db.session.commit()
+            debt_id = debt.id
+
+        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+            response = self.client.get(f'/api/debts/{debt_id}/schedule')
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()['schedule']['rows']
+        self.assertEqual([row['payment_date'] for row in rows], [
+            '2026-08-12',
+            '2026-08-27',
+            '2026-09-12',
+            '2026-09-27',
+            '2026-10-12',
+        ])
+        self.assertEqual([row['payment'] for row in rows], [
+            2004.0,
+            2439.0,
+            2437.0,
+            435.0,
+            433.0,
+        ])
 
     def test_split_new_purchase_joins_existing_common_payment_date(self):
         self.login()
