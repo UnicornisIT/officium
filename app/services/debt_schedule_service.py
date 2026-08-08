@@ -1,6 +1,6 @@
 from calendar import monthrange
-from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import date, timedelta
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 
 from dateutil.relativedelta import relativedelta
 
@@ -96,18 +96,22 @@ def build_debt_payment_schedule(debt):
 
 def _build_split_payment_schedule(debt):
     remaining = Decimal(str(debt.remaining_amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP)
-    paid_payments = _split_paid_payments(debt)
+    today = date.today()
+    paid_payments = _split_paid_payments(debt, today=today)
+    future_payments = _split_future_payments(debt, today=today)
     paid_total = sum((_payment_principal(payment) for payment in paid_payments), Decimal('0.00')).quantize(MONEY)
+    future_total = sum((_payment_principal(payment) for payment in future_payments), Decimal('0.00')).quantize(MONEY)
     purchases = _split_purchases(debt)
     purchases_total = sum((Decimal(str(purchase.amount or 0)) for purchase in purchases), Decimal('0.00')).quantize(MONEY)
 
-    if remaining <= 0 and not paid_payments and not purchases:
+    if remaining <= 0 and not paid_payments and not future_payments and not purchases:
         return _schedule_result(debt, [], Decimal('0.00'), Decimal('0.00'), kind='split')
 
     rows = []
     payment_days = _split_payment_days(debt, paid_payments)
-    legacy_remaining = max(remaining - purchases_total, Decimal('0.00')).quantize(MONEY, rounding=ROUND_HALF_UP) if purchases else remaining
-    running_remaining = (remaining + paid_total).quantize(MONEY, rounding=ROUND_HALF_UP)
+    outstanding_remaining = (remaining + future_total).quantize(MONEY, rounding=ROUND_HALF_UP)
+    legacy_remaining = max(outstanding_remaining - purchases_total, Decimal('0.00')).quantize(MONEY, rounding=ROUND_HALF_UP) if purchases else outstanding_remaining
+    running_remaining = (outstanding_remaining + paid_total).quantize(MONEY, rounding=ROUND_HALF_UP)
 
     for number, payment in enumerate(paid_payments, start=1):
         payment_amount = _payment_principal(payment)
@@ -130,10 +134,25 @@ def _build_split_payment_schedule(debt):
         })
 
     planned_by_date = {}
-    if legacy_remaining > 0:
-        installment_amount = _split_installment_amount(debt, legacy_remaining, paid_payments)
-        payment_date = _next_split_payment_date(debt, paid_payments, payment_days)
-        for payment_amount in _split_planned_installments(debt, legacy_remaining, installment_amount):
+    legacy_left = legacy_remaining
+    last_known_legacy_date = None
+    for payment in future_payments:
+        payment_amount = min(_payment_principal(payment), legacy_left).quantize(MONEY, rounding=ROUND_HALF_UP)
+        if payment_amount <= 0:
+            continue
+        _add_split_planned_amount(planned_by_date, payment.payment_date, payment_amount, 'Текущий сплит')
+        legacy_left = (legacy_left - payment_amount).quantize(MONEY, rounding=ROUND_HALF_UP)
+        last_known_legacy_date = payment.payment_date
+
+    if legacy_left > 0:
+        known_payments = paid_payments + future_payments
+        installment_amount = _split_installment_amount(debt, legacy_left, known_payments)
+        payment_date = (
+            _next_split_cycle_date(last_known_legacy_date, payment_days)
+            if last_known_legacy_date
+            else _next_split_payment_date(debt, paid_payments, payment_days)
+        )
+        for payment_amount in _split_planned_installments(debt, legacy_left, installment_amount):
             _add_split_planned_amount(planned_by_date, payment_date, payment_amount, 'Текущий сплит')
             payment_date = _next_split_cycle_date(payment_date, payment_days)
 
@@ -143,7 +162,8 @@ def _build_split_payment_schedule(debt):
             Decimal(str(purchase.amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP),
             int(purchase.installments_count or SPLIT_INSTALLMENTS),
         )
-        payment_date = _next_split_cycle_date_after(purchase_date, payment_days, include_same=True)
+        first_payment_reference = purchase_date + timedelta(days=14)
+        payment_date = _next_split_cycle_date_after(first_payment_reference, payment_days, include_same=True)
         for payment_amount in purchase_amounts:
             _add_split_planned_amount(planned_by_date, payment_date, payment_amount, purchase.title or 'Покупка')
             payment_date = _next_split_cycle_date(payment_date, payment_days)
@@ -157,7 +177,7 @@ def _build_split_payment_schedule(debt):
         planned_remaining = (planned_remaining - payment_amount).quantize(MONEY, rounding=ROUND_HALF_UP)
         planned_total += payment_amount
 
-        status = 'overdue' if payment_date < date.today() else 'planned'
+        status = 'overdue' if payment_date < today else 'planned'
         rows.append({
             'number': len(rows) + 1,
             'payment_date': payment_date.isoformat(),
@@ -191,10 +211,28 @@ def _build_split_payment_schedule(debt):
     )
 
 
-def _split_paid_payments(debt):
+def _split_paid_payments(debt, today=None):
     if not getattr(debt, 'id', None):
         return []
-    return Payment.query.filter_by(debt_id=debt.id).order_by(Payment.payment_date.asc(), Payment.id.asc()).all()
+    today = today or date.today()
+    return (
+        Payment.query
+        .filter(Payment.debt_id == debt.id, Payment.payment_date <= today)
+        .order_by(Payment.payment_date.asc(), Payment.id.asc())
+        .all()
+    )
+
+
+def _split_future_payments(debt, today=None):
+    if not getattr(debt, 'id', None):
+        return []
+    today = today or date.today()
+    return (
+        Payment.query
+        .filter(Payment.debt_id == debt.id, Payment.payment_date > today)
+        .order_by(Payment.payment_date.asc(), Payment.id.asc())
+        .all()
+    )
 
 
 def _split_purchases(debt):
@@ -305,6 +343,19 @@ def _split_planned_installments(debt, remaining, installment_amount):
 def _split_equal_installments(amount, count):
     if amount <= 0 or count <= 0:
         return []
+    if amount == amount.quantize(Decimal('1'), rounding=ROUND_HALF_UP):
+        payments = []
+        left = amount
+        regular_payment = (amount / Decimal(count)).to_integral_value(rounding=ROUND_CEILING).quantize(MONEY)
+        for _ in range(count - 1):
+            if left <= regular_payment:
+                break
+            payments.append(regular_payment)
+            left = (left - regular_payment).quantize(MONEY, rounding=ROUND_HALF_UP)
+        if left > 0:
+            payments.append(left.quantize(MONEY, rounding=ROUND_HALF_UP))
+        return [payment for payment in payments if payment > 0]
+
     payments = []
     left = amount
     for parts_left in range(count, 0, -1):

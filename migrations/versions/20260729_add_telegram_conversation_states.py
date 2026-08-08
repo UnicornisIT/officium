@@ -30,7 +30,7 @@ def upgrade():
         sa.Column('chat_id', sa.BigInteger(), nullable=False),
         sa.Column('flow', sa.String(length=30), nullable=False),
         sa.Column('step', sa.String(length=50), nullable=False),
-        sa.Column('data', sa.Text(), nullable=False, server_default='{}'),
+        sa.Column('data', sa.Text(), nullable=False),
         sa.Column('expires_at', sa.DateTime(), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),

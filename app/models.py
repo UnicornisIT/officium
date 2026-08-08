@@ -96,12 +96,17 @@ class Debt(db.Model):
         return self.interest_rate
 
     def effective_next_payment_date(self, today=None):
+        today = today or date.today()
         if self.debt_type != 'split' or not self.next_payment_date or float(self.remaining_amount or 0) <= 0:
             return self.next_payment_date
 
         paid_payments = [
             payment for payment in self.payments
-            if payment.payment_date and not getattr(payment, 'is_early_repayment', False)
+            if (
+                payment.payment_date
+                and payment.payment_date <= today
+                and not getattr(payment, 'is_early_repayment', False)
+            )
         ]
         if not paid_payments:
             return self.next_payment_date
