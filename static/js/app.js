@@ -59,10 +59,10 @@ function applyTheme(theme) {
     if (!btn) return;
 
     if (theme === 'dark') {
-        btn.innerHTML = '<i class="bi bi-sun-fill"></i> Светлая тема';
+        btn.innerHTML = '<span class="nav-expand__compact"><i class="bi bi-sun-fill me-1"></i>Светлая тема</span><span class="nav-expand__full" aria-hidden="true"><i class="bi bi-sun-fill"></i>Светлая тема</span>';
         btn.title = 'Переключиться в светлую тему';
     } else {
-        btn.innerHTML = '<i class="bi bi-moon-fill"></i> Тёмная тема';
+        btn.innerHTML = '<span class="nav-expand__compact"><i class="bi bi-moon-fill me-1"></i>Тёмная тема</span><span class="nav-expand__full" aria-hidden="true"><i class="bi bi-moon-fill"></i>Тёмная тема</span>';
         btn.title = 'Переключиться в тёмную тему';
     }
 }
@@ -108,6 +108,77 @@ function formatMoney(n) {
         minimumFractionDigits: hasFraction ? 2 : 0,
         maximumFractionDigits: 2,
     }) + ' ₽';
+}
+
+function initNavbarLayout() {
+    const navbar = document.querySelector('.navbar');
+    if (!navbar) return;
+
+    const updateLayout = () => {
+        navbar.classList.remove('navbar--compact');
+        if (window.innerWidth < 992) return;
+
+        const labels = navbar.querySelectorAll('.nav-expand__compact');
+        const hasWrappedLabel = Array.from(labels).some(label => {
+            const style = window.getComputedStyle(label);
+            const lineHeight = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.3;
+            return label.getBoundingClientRect().height > lineHeight * 1.45;
+        });
+        navbar.classList.toggle('navbar--compact', hasWrappedLabel);
+    };
+
+    let resizeTimer = null;
+    updateLayout();
+    window.addEventListener('resize', () => {
+        window.clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(updateLayout, 80);
+    });
+}
+
+function initOperationHistories() {
+    document.querySelectorAll('[data-operation-history]').forEach(history => {
+        const toggle = history.querySelector('.plan-goal__history-toggle');
+        const content = history.querySelector('.plan-goal__history-content');
+        if (!toggle || !content) return;
+
+        const finishTransition = event => {
+            if (event.propertyName !== 'height') return;
+            const isOpen = toggle.getAttribute('aria-expanded') === 'true';
+            if (isOpen) {
+                content.style.height = 'auto';
+            } else {
+                content.hidden = true;
+            }
+        };
+
+        content.addEventListener('transitionend', finishTransition);
+        toggle.addEventListener('click', () => {
+            const shouldOpen = toggle.getAttribute('aria-expanded') !== 'true';
+            toggle.setAttribute('aria-expanded', String(shouldOpen));
+            content.setAttribute('aria-hidden', String(!shouldOpen));
+
+            if (shouldOpen) {
+                content.hidden = false;
+                content.style.height = '0px';
+                history.classList.add('is-open');
+                content.getBoundingClientRect();
+                window.requestAnimationFrame(() => {
+                    content.style.height = `${content.scrollHeight}px`;
+                });
+                return;
+            }
+
+            content.style.height = `${content.getBoundingClientRect().height}px`;
+            content.getBoundingClientRect();
+            history.classList.remove('is-open');
+            window.requestAnimationFrame(() => {
+                content.style.height = '0px';
+            });
+            window.setTimeout(() => {
+                if (toggle.getAttribute('aria-expanded') !== 'true') content.hidden = true;
+            }, 320);
+        });
+    });
 }
 
 function formatDate(value) {
@@ -1011,12 +1082,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Установка темы интерфейса
     initThemeToggle();
+    initNavbarLayout();
+    initOperationHistories();
 
     // Форматирование входных сумм
     setupNumberFormatInputs();
     setupRequiredFieldIndicators();
     setupRecurringPaymentToggle();
     setupCardLimitCalculator();
+
+    const requestedDebtId = new URLSearchParams(window.location.search).get('edit_debt');
+    if (requestedDebtId && /^\d+$/.test(requestedDebtId)) {
+        openEditModal(Number(requestedDebtId));
+    }
 
     // Анимация карточек при загрузке
     const cards = document.querySelectorAll('.debt-card');

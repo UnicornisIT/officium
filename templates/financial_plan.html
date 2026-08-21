@@ -1,0 +1,630 @@
+{% extends 'base.html' %}
+
+{% block title %}Финансовый план — officium{% endblock %}
+
+{% block content %}
+<div class="plan-page">
+    <header class="plan-header">
+        <div>
+            <div class="plan-eyebrow"><i class="bi bi-stars"></i> Автоматический расчет</div>
+            <h1>Финансовый план</h1>
+            <p>План на {{ plan.period.label }} на основе доходов, долгов и регулярных расходов.</p>
+        </div>
+        <div class="plan-header__actions">
+            <form method="get" class="plan-period" aria-label="Выбор месяца финансового плана">
+                <a href="{{ url_for('financial_plan', year=plan.period.previous.year, month=plan.period.previous.month) }}" title="Предыдущий месяц" aria-label="Предыдущий месяц"><i class="bi bi-chevron-left"></i></a>
+                <select name="month" class="form-select" aria-label="Месяц">
+                    {% for value, label in month_options %}<option value="{{ value }}" {% if value == plan.period.month %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                <select name="year" class="form-select" aria-label="Год">
+                    {% for value in year_options %}<option value="{{ value }}" {% if value == plan.period.year %}selected{% endif %}>{{ value }}</option>{% endfor %}
+                </select>
+                <button type="submit" title="Показать выбранный месяц" aria-label="Показать выбранный месяц"><i class="bi bi-arrow-right"></i></button>
+                <a href="{{ url_for('financial_plan', year=plan.period.next.year, month=plan.period.next.month) }}" title="Следующий месяц" aria-label="Следующий месяц"><i class="bi bi-chevron-right"></i></a>
+            </form>
+            <a href="{{ url_for('finance', year=plan.period.year, month=plan.period.month) }}" class="btn btn-outline-secondary">
+                <i class="bi bi-bar-chart-line me-1"></i>Отчет за месяц
+            </a>
+        </div>
+    </header>
+
+    <section class="plan-answer plan-answer--{{ plan.state.tone }}">
+        <div class="plan-answer__copy">
+            <div class="plan-status">
+                <span class="plan-status__dot"></span>
+                {{ plan.analysis.title }}
+            </div>
+            <h2>Что делать с деньгами сейчас</h2>
+            <p class="plan-answer__lead">{{ plan.analysis.lead }}</p>
+            {% for detail in plan.analysis.details %}
+            <p>{{ detail }}</p>
+            {% endfor %}
+        </div>
+        <div class="plan-answer__focus">
+            <span>После обязательств</span>
+            <strong class="{{ 'text-danger' if plan.totals.living_budget < 0 else '' }}">
+                {{ plan.totals.living_budget|money }}
+            </strong>
+            <small>на жизнь, накопления и финансовые цели</small>
+        </div>
+    </section>
+
+    {% if plan.missing_data %}
+    <section class="plan-section plan-data-gaps">
+        <div class="plan-section__header">
+            <div>
+                <span class="plan-section__kicker">Точность расчета</span>
+                <h2>Каких данных не хватает</h2>
+            </div>
+            <span class="plan-count">{{ plan.missing_data|length }}</span>
+        </div>
+        <div class="plan-gap-list">
+            {% for item in plan.missing_data %}
+            <div class="plan-gap">
+                <i class="bi bi-exclamation-circle"></i>
+                <div>
+                    <strong>{{ item.title }}</strong>
+                    <span>{{ item.detail }}</span>
+                </div>
+                {% if item.kind == 'income' %}
+                <a href="{{ url_for('incomes') }}" class="btn btn-outline-primary btn-sm">Добавить доход</a>
+                {% elif item.kind == 'expenses' %}
+                <a href="{{ url_for('expenses') }}" class="btn btn-outline-primary btn-sm">Открыть расходы</a>
+                {% else %}
+                <a href="{{ url_for('index', edit_debt=item.debt_id) }}" class="btn btn-outline-primary btn-sm">Открыть долг</a>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <div class="plan-metrics" aria-label="Основные показатели финансового плана">
+        <div class="plan-metric">
+            <span>Доход</span>
+            <strong>{{ plan.totals.income|money }}</strong>
+            <small>{{ plan.income.period_label or 'данные не найдены' }}</small>
+        </div>
+        <div class="plan-metric">
+            <span>Обязательные платежи</span>
+            <strong>{{ plan.totals.mandatory|money }}</strong>
+            <small>долги и регулярные расходы</small>
+        </div>
+        <div class="plan-metric">
+            <span>Регулярная помощь</span>
+            <strong>{{ plan.totals.family_support|money }}</strong>
+            <small>{{ plan.support_items|length }} найденных записей</small>
+        </div>
+        <div class="plan-metric plan-metric--accent">
+            <span>Рекомендуемые накопления</span>
+            <strong>{{ plan.totals.recommended_savings|money }}</strong>
+            <small>с учетом минимума на жизнь</small>
+        </div>
+        <div class="plan-metric">
+            <span>Недельный лимит</span>
+            <strong>≈ {{ plan.totals.weekly_limit|money }}</strong>
+            <small>на повседневные расходы</small>
+        </div>
+        <div class="plan-metric">
+            <span>Дневной ориентир</span>
+            <strong>≈ {{ plan.totals.daily_limit|money }}</strong>
+            <small>среднее за календарный год</small>
+        </div>
+    </div>
+
+    <div class="plan-layout">
+        <section class="plan-section plan-distribution">
+            <div class="plan-section__header">
+                <div>
+                    <span class="plan-section__kicker">Доход за месяц</span>
+                    <h2>Как распределить доход за {{ plan.period.label }}</h2>
+                </div>
+                <span class="plan-source-badge"><i class="bi bi-arrow-repeat"></i> Пересчитывается автоматически</span>
+            </div>
+
+            {% if plan.allocation %}
+            <div class="plan-allocation">
+                {% for item in plan.allocation %}
+                <div class="plan-allocation__row plan-allocation__row--{{ item.kind }}">
+                    <div class="plan-allocation__icon"><i class="bi {{ item.icon }}"></i></div>
+                    <div class="plan-allocation__main">
+                        <strong>{{ item.label }}</strong>
+                        <span>{{ item.detail }}</span>
+                    </div>
+                    <div class="plan-allocation__amount">
+                        <span>{{ 'не хватает' if item.kind == 'deficit' else 'направить' }}</span>
+                        <strong>{{ item.amount|money }}</strong>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="plan-empty">
+                <i class="bi bi-wallet2"></i>
+                <strong>Пока нечего распределять</strong>
+                <span>Добавьте доход в существующий раздел, и план появится автоматически.</span>
+                <a href="{{ url_for('incomes') }}" class="btn btn-primary btn-sm">Добавить доход</a>
+            </div>
+            {% endif %}
+        </section>
+
+        <aside class="plan-section plan-settings">
+            <div class="plan-section__header">
+                <div>
+                    <span class="plan-section__kicker">Личные ограничения</span>
+                    <h2>Настройки плана</h2>
+                </div>
+                <i class="bi bi-sliders2 plan-section__header-icon"></i>
+            </div>
+            <form method="post" action="{{ url_for('financial_plan', year=plan.period.year, month=plan.period.month) }}" class="plan-settings__form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div>
+                    <label class="form-label" for="living_minimum">Минимум на жизнь</label>
+                    <div class="input-group">
+                        <input id="living_minimum" name="living_minimum" type="text" inputmode="decimal"
+                               class="form-control number-format" value="{{ '{:.0f}'.format(plan.preferences.living_minimum) }}" required>
+                        <span class="input-group-text">₽ / мес.</span>
+                    </div>
+                </div>
+
+                <fieldset>
+                    <legend class="form-label">Стратегия</legend>
+                    <div class="plan-strategies">
+                        {% for value, label, icon in [('safe', 'Безопасная', 'bi-shield-check'), ('balanced', 'Сбалансированная', 'bi-distribute-horizontal'), ('aggressive', 'Погашение долгов', 'bi-lightning-charge')] %}
+                        <label>
+                            <input type="radio" name="strategy" value="{{ value }}"
+                                   {% if plan.preferences.strategy == value %}checked{% endif %}>
+                            <span><i class="bi {{ icon }}"></i>{{ label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+
+                <button type="submit" class="btn btn-primary w-100" {% if plan.is_demo %}disabled{% endif %}>
+                    <i class="bi bi-arrow-clockwise me-1"></i>Пересчитать план
+                </button>
+                {% if plan.is_demo %}<small class="text-muted">В демо-режиме используются стандартные настройки.</small>{% endif %}
+            </form>
+        </aside>
+    </div>
+
+    <section class="plan-section">
+        <div class="plan-section__header">
+            <div>
+                <span class="plan-section__kicker">Приоритеты</span>
+                <h2>Рекомендации и причины</h2>
+            </div>
+        </div>
+        <div class="plan-recommendations">
+            {% for item in plan.recommendations %}
+            <article class="plan-recommendation plan-recommendation--{{ item.tone }}">
+                <div class="plan-recommendation__number">{{ loop.index }}</div>
+                <div class="plan-recommendation__body">
+                    <span>{{ item.stage }}</span>
+                    <h3>{{ item.title }}</h3>
+                    {% if item.amount is not none %}<strong>{{ item.amount|money }}</strong>{% endif %}
+                    <details class="plan-why">
+                        <summary>Почему?</summary>
+                        <p>{{ item.reason }}</p>
+                    </details>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+
+    <div class="plan-stack">
+        <section class="plan-section">
+            <div class="plan-section__header">
+                <div>
+                    <span class="plan-section__kicker">Будущие месяцы</span>
+                    <h2>Когда станет свободнее</h2>
+                </div>
+                <i class="bi bi-calendar3 plan-section__header-icon"></i>
+            </div>
+
+            {% if plan.forecast.events or plan.forecast.cushion_event %}
+            <div class="plan-timeline">
+                {% for event in plan.forecast.events %}
+                <div class="plan-timeline__item">
+                    <div class="plan-timeline__marker"></div>
+                    <div class="plan-timeline__when">
+                        <strong>Через {{ event.months_from_now }} мес.</strong>
+                        <span>{{ event.date.strftime('%m.%Y') }}</span>
+                    </div>
+                    <div class="plan-timeline__content">
+                        <h3>{{ event.title }}</h3>
+                        <p>Освободится {{ event.released|money }} в месяц.</p>
+                        <div class="plan-release">
+                            <span><i class="bi bi-shield-plus"></i> {{ event.savings_amount|money }} в резерв</span>
+                            <span><i class="bi bi-arrow-down-circle"></i> {{ event.debt_amount|money }} в долги</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% if plan.forecast.cushion_event %}
+                {% set event = plan.forecast.cushion_event %}
+                <div class="plan-timeline__item plan-timeline__item--goal">
+                    <div class="plan-timeline__marker"><i class="bi bi-check-lg"></i></div>
+                    <div class="plan-timeline__when">
+                        <strong>Через {{ event.months_from_now }} мес.</strong>
+                        <span>{{ event.date.strftime('%m.%Y') }}</span>
+                    </div>
+                    <div class="plan-timeline__content">
+                        <h3>{{ event.title }}</h3>
+                        <p>{{ event.description }}</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="plan-empty plan-empty--compact">
+                <i class="bi bi-calendar-x"></i>
+                <strong>Прогноз пока недоступен</strong>
+                <span>Укажите даты и платежи в существующих карточках долгов.</span>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="plan-goals" id="goals">
+            <div class="plan-section__header">
+                <div>
+                    <span class="plan-section__kicker">Накопления по приоритету</span>
+                    <h2>Цели</h2>
+                    <p>Подушка всегда идет первой, затем план распределяет деньги по вашим целям.</p>
+                </div>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#goalModal"
+                        data-goal-mode="create" {% if plan.is_demo %}disabled{% endif %}>
+                    <i class="bi bi-plus-lg me-1"></i>Новая цель
+                </button>
+            </div>
+
+            <div class="plan-goals__grid">
+                {% for goal in plan.goals %}
+                <article class="plan-goal {{ 'plan-goal--system' if goal.is_system else '' }}">
+                    <div class="plan-goal__topline">
+                        <span class="plan-goal__priority">
+                            {% if goal.is_system %}<i class="bi bi-pin-angle-fill"></i>{% endif %}
+                            Приоритет №{{ goal.priority }}
+                        </span>
+                        <div class="plan-goal__tools">
+                            {% if not goal.is_system %}
+                            <form method="post" action="{{ url_for('move_financial_goal', goal_id=goal.id, year=plan.period.year, month=plan.period.month) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="direction" value="up">
+                                <button type="submit" title="Поднять приоритет" aria-label="Поднять приоритет" {% if loop.index == 2 %}disabled{% endif %}><i class="bi bi-arrow-up"></i></button>
+                            </form>
+                            <form method="post" action="{{ url_for('move_financial_goal', goal_id=goal.id, year=plan.period.year, month=plan.period.month) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="direction" value="down">
+                                <button type="submit" title="Опустить приоритет" aria-label="Опустить приоритет" {% if loop.last %}disabled{% endif %}><i class="bi bi-arrow-down"></i></button>
+                            </form>
+                            {% endif %}
+                            <button type="button" title="Редактировать цель" aria-label="Редактировать цель"
+                                    data-bs-toggle="modal" data-bs-target="#goalModal"
+                                    data-goal-mode="{{ 'emergency' if goal.is_system else 'edit' }}"
+                                    data-goal-action="{{ url_for('edit_emergency_goal', year=plan.period.year, month=plan.period.month) if goal.is_system else url_for('edit_financial_goal', goal_id=goal.id, year=plan.period.year, month=plan.period.month) }}"
+                                    data-goal-name="{{ goal.name|e }}"
+                                    data-goal-target="{{ goal.target_amount }}"
+                                    data-goal-monthly="{{ goal.monthly_contribution }}"
+                                    data-goal-date="{{ goal.target_date.isoformat() if goal.target_date else '' }}"
+                                    data-goal-note="{{ goal.note|e if goal.note else '' }}"
+                                    data-goal-target-mode="{{ goal.target_mode }}"
+                                    {% if plan.is_demo %}disabled{% endif %}>
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            {% if not goal.is_system and not plan.is_demo %}
+                            <form method="post" action="{{ url_for('delete_financial_goal', goal_id=goal.id, year=plan.period.year, month=plan.period.month) }}" onsubmit="return confirm('Удалить эту цель и всю историю операций?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="plan-goal__delete-icon" title="Удалить цель" aria-label="Удалить цель"><i class="bi bi-trash3"></i></button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="plan-goal__heading">
+                        <div class="plan-goal__icon"><i class="bi {{ 'bi-shield-check' if goal.is_system else 'bi-bullseye' }}"></i></div>
+                        <div>
+                            <h3>{{ goal.name }}</h3>
+                            <span>{{ goal.balance|money }} из {{ goal.target_amount|money }}</span>
+                        </div>
+                        <strong>{{ goal.progress }}%</strong>
+                    </div>
+                    <div class="plan-progress" role="progressbar" aria-valuenow="{{ goal.progress }}" aria-valuemin="0" aria-valuemax="100">
+                        <span style="width: {{ goal.progress }}%"></span>
+                    </div>
+                    <div class="plan-goal__summary">
+                        <div><span>Осталось</span><strong>{{ goal.gap|money }}</strong></div>
+                        <div><span>План в месяц</span><strong>{{ goal.monthly_contribution|money }}</strong></div>
+                        <div><span>Внесено за месяц</span><strong>{{ goal.deposited_this_month|money }}</strong></div>
+                        <div><span>Срок</span><strong>{{ goal.target_date.strftime('%d.%m.%Y') if goal.target_date else 'Без срока' }}</strong></div>
+                    </div>
+                    <p class="plan-goal__month-status {{ 'plan-goal__month-status--done' if goal.monthly_remaining <= 0 else '' }}">
+                        <i class="bi {{ 'bi-check-circle' if goal.monthly_remaining <= 0 else 'bi-calendar-check' }}"></i>
+                        {% if goal.monthly_remaining <= 0 %}План месяца выполнен{% else %}В этом месяце осталось внести {{ goal.monthly_remaining|money }}{% endif %}
+                    </p>
+                    {% if goal.note and not goal.is_system %}<p class="plan-goal__note">{{ goal.note }}</p>{% endif %}
+                    <div class="plan-goal__actions">
+                        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#goalOperationModal"
+                                data-operation-type="deposit" data-operation-goal="{{ goal.name|e }}"
+                                data-operation-action="{{ url_for('add_emergency_fund_transaction', year=plan.period.year, month=plan.period.month) if goal.is_system else url_for('add_financial_goal_transaction', goal_id=goal.id, year=plan.period.year, month=plan.period.month) }}"
+                                data-operation-amount="{{ goal.recommended_contribution or goal.monthly_remaining }}" {% if plan.is_demo %}disabled{% endif %}>
+                            <i class="bi bi-plus-lg me-1"></i>Пополнить
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalOperationModal"
+                                data-operation-type="withdrawal" data-operation-goal="{{ goal.name|e }}"
+                                data-operation-action="{{ url_for('add_emergency_fund_transaction', year=plan.period.year, month=plan.period.month) if goal.is_system else url_for('add_financial_goal_transaction', goal_id=goal.id, year=plan.period.year, month=plan.period.month) }}"
+                                data-operation-amount="" {% if plan.is_demo or goal.balance <= 0 %}disabled{% endif %}>
+                            <i class="bi bi-dash-lg me-1"></i>Снять
+                        </button>
+                    </div>
+                    <div class="plan-goal__history" data-operation-history>
+                        <button type="button" class="plan-goal__history-toggle" aria-expanded="false" aria-controls="goal-history-{{ goal.key }}">
+                            <span>История операций</span>
+                            <span class="plan-goal__history-meta"><strong>{{ goal.transactions|length }}</strong><i class="bi bi-chevron-down"></i></span>
+                        </button>
+                        <div class="plan-goal__history-content" id="goal-history-{{ goal.key }}" aria-hidden="true" hidden>
+                        <div class="plan-goal__history-inner">
+                        {% for item in goal.transactions[:8] %}
+                        <div class="plan-fund-transaction plan-fund-transaction--{{ item.transaction_type }}">
+                            <div class="plan-fund-transaction__icon"><i class="bi {{ 'bi-arrow-down-left' if item.transaction_type == 'deposit' else 'bi-arrow-up-right' }}"></i></div>
+                            <div class="plan-fund-transaction__main">
+                                <strong>{{ item.type_label }}</strong>
+                                <span>{{ item.transaction_date.strftime('%d.%m.%Y') }}{% if item.comment %} · {{ item.comment }}{% endif %}</span>
+                            </div>
+                            <strong>{{ '+' if item.transaction_type == 'deposit' else '−' }} {{ item.amount|money }}</strong>
+                            {% if not plan.is_demo %}
+                            <form method="post" action="{{ url_for('delete_emergency_fund_transaction', transaction_id=item.id, year=plan.period.year, month=plan.period.month) if goal.is_system else url_for('delete_financial_goal_transaction', goal_id=goal.id, transaction_id=item.id, year=plan.period.year, month=plan.period.month) }}" onsubmit="return confirm('Удалить эту операцию?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="plan-fund-transaction__delete" title="Удалить операцию" aria-label="Удалить операцию"><i class="bi bi-trash3"></i></button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="plan-fund__empty">Операций пока нет. Остаток появится после первого пополнения.</div>
+                        {% endfor %}
+                        </div>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <section class="plan-section plan-sources">
+        <div class="plan-section__header">
+            <div>
+                <span class="plan-section__kicker">Единый источник данных</span>
+                <h2>Учтено в плане</h2>
+            </div>
+            <span class="plan-source-badge"><i class="bi bi-database-check"></i> Без копий</span>
+        </div>
+
+        <div class="plan-source-groups">
+            <details open>
+                <summary>
+                    <span><i class="bi bi-wallet2"></i>Доходы</span>
+                    <strong>{{ plan.totals.income|money }}</strong>
+                </summary>
+                <div class="plan-source-list">
+                    {% for item in plan.income['items'] %}
+                    <div class="plan-source-row">
+                        <div><strong>{{ item.source }}</strong><span>{{ item.category_label }} · {{ item.date.strftime('%d.%m.%Y') }}</span></div>
+                        <strong>{{ item.amount|money }}</strong>
+                        {% if not plan.is_demo %}<a href="{{ url_for('edit_income', income_id=item.id) }}" title="Открыть доход"><i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
+                    </div>
+                    {% else %}
+                    <div class="plan-source-empty">Доходы не найдены.</div>
+                    {% endfor %}
+                </div>
+            </details>
+
+            <details open>
+                <summary>
+                    <span><i class="bi bi-bank"></i>Долги и рассрочки</span>
+                    <strong>{{ plan.totals.debt_payments|money }} / мес.</strong>
+                </summary>
+                <div class="plan-source-list">
+                    {% for item in plan.debt_items %}
+                    <div class="plan-source-row">
+                        <div><strong>{{ item.label }}</strong><span>{{ item.debt_type_label }} · остаток {{ item.remaining|money }}</span></div>
+                        <strong>{{ item.monthly_amount|money }}</strong>
+                        {% if not plan.is_demo %}<a href="{{ url_for('index', edit_debt=item.id) }}" title="Открыть долг"><i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
+                    </div>
+                    {% else %}
+                    <div class="plan-source-empty">Активные долги не найдены.</div>
+                    {% endfor %}
+                </div>
+            </details>
+
+            <details open>
+                <summary>
+                    <span><i class="bi bi-repeat"></i>Регулярные расходы</span>
+                    <strong>{{ (plan.totals.regular_expenses + plan.totals.family_support)|money }} / мес.</strong>
+                </summary>
+                <div class="plan-source-list">
+                    {% for item in plan.support_items + plan.regular_items + plan.excluded_recurring_items %}
+                    <div class="plan-source-row">
+                        <div>
+                            <strong>{{ item.title }}</strong>
+                            <span>
+                                {% if item.excluded_as_debt_duplicate %}
+                                Уже учтено в «{{ item.duplicate_debt_label }}»
+                                {% else %}
+                                {{ 'Регулярная помощь' if item.is_family_support else item.category_label }}
+                                {% endif %}
+                            </span>
+                        </div>
+                        <strong>{{ item.amount|money }}</strong>
+                        {% if not plan.is_demo %}<a href="{{ url_for('edit_expense', expense_id=item.id) }}" title="Открыть расход"><i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
+                    </div>
+                    {% else %}
+                    <div class="plan-source-empty">Ежемесячные расходы не найдены.</div>
+                    {% endfor %}
+                </div>
+            </details>
+
+            <details open>
+                <summary>
+                    <span><i class="bi bi-bullseye"></i>Цели</span>
+                    <strong>{{ plan.goals|length }}</strong>
+                </summary>
+                <div class="plan-source-list">
+                    {% for goal in plan.goals %}
+                    <div class="plan-source-row">
+                        <div><strong>{{ goal.name }}</strong><span>Приоритет №{{ goal.priority }} · {{ goal.progress }}%</span></div>
+                        <strong>{{ goal.balance|money }}</strong>
+                    </div>
+                    {% else %}
+                    <div class="plan-source-empty">Цели не найдены.</div>
+                    {% endfor %}
+                </div>
+            </details>
+        </div>
+    </section>
+</div>
+
+<div class="modal fade" id="goalModal" tabindex="-1" aria-labelledby="goalModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('create_financial_goal', year=plan.period.year, month=plan.period.month) }}" id="goalForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="goalModalTitle">Новая цель</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+                <div class="modal-body plan-goal-form">
+                    <div>
+                        <label class="form-label" for="goalName">Название</label>
+                        <input class="form-control" id="goalName" name="name" maxlength="120" placeholder="Например, MacBook" required>
+                    </div>
+                    <fieldset class="plan-goal-form__system-only">
+                        <legend class="form-label">Размер подушки</legend>
+                        <div class="plan-segments">
+                            {% for value, label in [('fixed', 'Сумма'), ('one_month', '1 месяц'), ('three_months', '3 месяца')] %}
+                            <label><input type="radio" name="target_mode" value="{{ value }}"><span>{{ label }}</span></label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+                    <div>
+                        <label class="form-label" for="goalTarget">Целевая сумма</label>
+                        <div class="input-group">
+                            <input class="form-control number-format" id="goalTarget" name="target_amount" inputmode="decimal" required>
+                            <span class="input-group-text">₽</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label" for="goalMonthly">Планировать в месяц</label>
+                        <div class="input-group">
+                            <input class="form-control number-format" id="goalMonthly" name="monthly_contribution" inputmode="decimal" value="0" required>
+                            <span class="input-group-text">₽</span>
+                        </div>
+                    </div>
+                    <div class="plan-goal-form__custom-only">
+                        <label class="form-label" for="goalDate">Желаемый срок</label>
+                        <input class="form-control" id="goalDate" name="target_date" type="date">
+                    </div>
+                    <div class="plan-goal-form__custom-only">
+                        <label class="form-label" for="goalNote">Заметка</label>
+                        <textarea class="form-control" id="goalNote" name="note" maxlength="500" rows="3" placeholder="Для чего нужна цель или что важно учесть"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary" id="goalSubmitButton">Создать цель</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="goalOperationModal" tabindex="-1" aria-labelledby="goalOperationTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="goalOperationForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="transaction_type" id="goalOperationType" value="deposit">
+                <div class="modal-header">
+                    <div><span class="plan-section__kicker" id="goalOperationName"></span><h2 class="modal-title fs-5" id="goalOperationTitle">Пополнить цель</h2></div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+                <div class="modal-body plan-goal-form">
+                    <div>
+                        <label class="form-label" for="goalOperationAmount">Сумма</label>
+                        <div class="input-group">
+                            <input class="form-control number-format" id="goalOperationAmount" name="amount" inputmode="decimal" required>
+                            <span class="input-group-text">₽</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label" for="goalOperationDate">Дата</label>
+                        <input class="form-control" id="goalOperationDate" name="transaction_date" type="date" value="{{ plan.period.default_transaction_date.isoformat() }}" required>
+                    </div>
+                    <div>
+                        <label class="form-label" for="goalOperationComment">Комментарий</label>
+                        <input class="form-control" id="goalOperationComment" name="comment" maxlength="255" placeholder="Необязательно">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-success" id="goalOperationSubmit"><i class="bi bi-plus-lg me-1"></i><span>Записать пополнение</span></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const goalModal = document.getElementById('goalModal');
+        const goalForm = document.getElementById('goalForm');
+        const goalName = document.getElementById('goalName');
+        const goalTarget = document.getElementById('goalTarget');
+        const goalMonthly = document.getElementById('goalMonthly');
+        const goalDate = document.getElementById('goalDate');
+        const goalNote = document.getElementById('goalNote');
+        const createGoalUrl = {{ url_for('create_financial_goal', year=plan.period.year, month=plan.period.month)|tojson }};
+
+        goalModal.addEventListener('show.bs.modal', function (event) {
+            const trigger = event.relatedTarget;
+            const mode = trigger.dataset.goalMode;
+            const isCreate = mode === 'create';
+            const isEmergency = mode === 'emergency';
+            goalForm.action = isCreate ? createGoalUrl : trigger.dataset.goalAction;
+            goalForm.reset();
+            goalModal.classList.toggle('plan-goal-modal--system', isEmergency);
+            document.getElementById('goalModalTitle').textContent = isCreate ? 'Новая цель' : `Редактировать: ${trigger.dataset.goalName}`;
+            document.getElementById('goalSubmitButton').textContent = isCreate ? 'Создать цель' : 'Сохранить изменения';
+            goalName.value = isCreate ? '' : trigger.dataset.goalName;
+            goalName.readOnly = isEmergency;
+            goalTarget.value = isCreate ? '' : trigger.dataset.goalTarget;
+            goalMonthly.value = isCreate ? '0' : trigger.dataset.goalMonthly;
+            goalDate.value = isCreate ? '' : trigger.dataset.goalDate;
+            goalNote.value = isCreate ? '' : trigger.dataset.goalNote;
+            const targetMode = trigger.dataset.goalTargetMode || 'fixed';
+            const modeInput = goalForm.querySelector(`input[name="target_mode"][value="${targetMode}"]`);
+            if (modeInput) modeInput.checked = true;
+        });
+
+        const operationModal = document.getElementById('goalOperationModal');
+        operationModal.addEventListener('show.bs.modal', function (event) {
+            const trigger = event.relatedTarget;
+            const isDeposit = trigger.dataset.operationType === 'deposit';
+            const submit = document.getElementById('goalOperationSubmit');
+            document.getElementById('goalOperationForm').action = trigger.dataset.operationAction;
+            document.getElementById('goalOperationType').value = trigger.dataset.operationType;
+            document.getElementById('goalOperationName').textContent = trigger.dataset.operationGoal;
+            document.getElementById('goalOperationTitle').textContent = isDeposit ? 'Пополнить цель' : 'Снять деньги';
+            document.getElementById('goalOperationAmount').value = trigger.dataset.operationAmount || '';
+            document.getElementById('goalOperationComment').value = '';
+            submit.classList.toggle('btn-success', isDeposit);
+            submit.classList.toggle('btn-outline-danger', !isDeposit);
+            submit.querySelector('i').className = `bi ${isDeposit ? 'bi-plus-lg' : 'bi-dash-lg'} me-1`;
+            submit.querySelector('span').textContent = isDeposit ? 'Записать пополнение' : 'Записать снятие';
+        });
+    });
+</script>
+{% endblock %}

@@ -138,6 +138,9 @@
                                                 {% if expense.is_monthly %}
                                                     <span class="monthly-lock" title="Ежемесячный расход" aria-label="Ежемесячный расход"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
                                                 {% endif %}
+                                                {% if expense.is_goal_transfer %}
+                                                    <span class="monthly-lock" title="Создано из финансовой цели" aria-label="Создано из финансовой цели"><i class="bi bi-bullseye" aria-hidden="true"></i></span>
+                                                {% endif %}
                                                 </div>
                                             </td>
                                             {% set expense_category = dict(categories)[expense.category] %}
@@ -151,6 +154,11 @@
                                             {% if not current_user.is_local_test_user %}
                                             <td class="history-actions-cell">
                                                 <div class="history-actions">
+                                                    {% if expense.is_goal_transfer %}
+                                                    <a href="{{ url_for('financial_plan', year=expense.expense_date.year, month=expense.expense_date.month) }}#goals" class="history-icon-btn history-icon-btn-edit" title="Открыть цель" aria-label="Открыть цель">
+                                                        <i class="bi bi-bullseye" aria-hidden="true"></i>
+                                                    </a>
+                                                    {% else %}
                                                     <a href="{{ url_for('edit_expense', expense_id=expense.id) }}" class="history-icon-btn history-icon-btn-edit" title="Редактировать" aria-label="Редактировать">
                                                         <i class="bi bi-pencil" aria-hidden="true"></i>
                                                     </a>
@@ -160,6 +168,7 @@
                                                             <i class="bi bi-trash" aria-hidden="true"></i>
                                                         </button>
                                                     </form>
+                                                    {% endif %}
                                                 </div>
                                             </td>
                                             {% endif %}

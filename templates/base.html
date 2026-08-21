@@ -16,7 +16,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=20260821-docs-3" rel="stylesheet">
 </head>
 <body>
 
@@ -35,60 +35,74 @@
                 {% set show_user_nav = not (current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin')) %}
                 {% if show_user_nav %}
                 <li class="nav-item">
-                    <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">
-                        <i class="bi bi-grid-3x3-gap me-1"></i>Дашборд
+                    <a class="nav-link nav-expand {% if request.path == '/' %}active{% endif %}" href="/">
+                        <span class="nav-expand__compact"><i class="bi bi-grid-3x3-gap me-1"></i>Дашборд</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-grid-3x3-gap"></i>Дашборд</span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link {% if request.path == '/incomes' %}active{% endif %}" href="/incomes">
-                        <i class="bi bi-wallet2 me-1"></i>Доходы
+                    <a class="nav-link nav-expand {% if request.path == '/incomes' %}active{% endif %}" href="/incomes">
+                        <span class="nav-expand__compact"><i class="bi bi-wallet2 me-1"></i>Доходы</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-wallet2"></i>Доходы</span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link {% if request.path == '/expenses' %}active{% endif %}" href="/expenses">
-                        <i class="bi bi-basket3 me-1"></i>Расходы
+                    <a class="nav-link nav-expand {% if request.path == '/expenses' %}active{% endif %}" href="/expenses">
+                        <span class="nav-expand__compact"><i class="bi bi-basket3 me-1"></i>Расходы</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-basket3"></i>Расходы</span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link {% if request.path == '/mortgages' %}active{% endif %}" href="/mortgages">
-                        <i class="bi bi-bank2 me-1"></i>Ипотека
+                    <a class="nav-link nav-expand {% if request.path == '/mortgages' %}active{% endif %}" href="/mortgages">
+                        <span class="nav-expand__compact"><i class="bi bi-bank2 me-1"></i>Ипотека</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-bank2"></i>Ипотека</span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link {% if request.path == '/finance' %}active{% endif %}" href="/finance">
-                        <i class="bi bi-pie-chart me-1"></i>Куда уходят деньги
+                    <a class="nav-link nav-expand {% if request.path == '/finance' %}active{% endif %}" href="/finance">
+                        <span class="nav-expand__compact"><i class="bi bi-pie-chart me-1"></i>Куда уходят деньги</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-pie-chart"></i>Куда уходят деньги</span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link {% if request.path == '/archive' %}active{% endif %}" href="/archive">
-                        <i class="bi bi-archive me-1"></i>Архив
+                    <a class="nav-link nav-expand {% if request.path == '/financial-plan' %}active{% endif %}" href="{{ url_for('financial_plan') }}">
+                        <span class="nav-expand__compact"><i class="bi bi-signpost-split me-1"></i>Финансовый план</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-signpost-split"></i>Финансовый план</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link nav-expand {% if request.path == '/archive' %}active{% endif %}" href="/archive">
+                        <span class="nav-expand__compact"><i class="bi bi-archive me-1"></i>Архив</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-archive"></i>Архив</span>
                     </a>
                 </li>
                 {% endif %}
                 {% if current_user.is_authenticated and current_user.is_admin %}
                 <li class="nav-item">
-                    <a class="nav-link {% if request.path.startswith('/admin') %}active{% endif %}" href="{{ url_for('admin_dashboard') }}">
-                        <i class="bi bi-shield-lock me-1"></i>Админка
+                    <a class="nav-link nav-expand {% if request.path.startswith('/admin') %}active{% endif %}" href="{{ url_for('admin_dashboard') }}">
+                        <span class="nav-expand__compact"><i class="bi bi-shield-lock me-1"></i>Админка</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock"></i>Админка</span>
                     </a>
                 </li>
                 {% endif %}
                 {% if show_user_nav %}
                 <li class="nav-item ms-2">
-                    <button class="btn btn-primary btn-sm" onclick="openAddModal()">
-                        <i class="bi bi-plus-lg me-1"></i>Добавить долг
+                    <button class="btn btn-primary btn-sm nav-expand" onclick="openAddModal()">
+                        <span class="nav-expand__compact"><i class="bi bi-plus-lg me-1"></i>Добавить долг</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-plus-lg"></i>Добавить долг</span>
                     </button>
                 </li>
                 {% endif %}
                 {% if not current_user.is_authenticated and admin_login_enabled %}
                 <li class="nav-item ms-2">
-                    <a class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1" href="{{ url_for('admin_login') }}">
-                        <i class="bi bi-shield-lock-fill"></i>
-                        Админ-панель
+                    <a class="btn btn-outline-primary btn-sm nav-expand" href="{{ url_for('admin_login') }}">
+                        <span class="nav-expand__compact"><i class="bi bi-shield-lock-fill me-1"></i>Админ-панель</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock-fill"></i>Админ-панель</span>
                     </a>
                 </li>
                 {% endif %}
                 <li class="nav-item ms-2">
-                    <button id="themeToggleBtn" class="btn btn-outline-secondary btn-sm" type="button" aria-label="Переключить тему"></button>
+                    <button id="themeToggleBtn" class="btn btn-outline-secondary btn-sm nav-expand" type="button" aria-label="Переключить тему"></button>
                 </li>
                 <li class="nav-item ms-2">
                     {% if current_user.is_authenticated %}
@@ -97,9 +111,15 @@
                 </li>
                 <li class="nav-item ms-2">
                     {% if current_user.is_authenticated %}
-                    <a class="nav-link" href="{{ url_for('logout') }}">Выйти</a>
+                    <a class="nav-link nav-expand" href="{{ url_for('logout') }}">
+                        <span class="nav-expand__compact"><i class="bi bi-box-arrow-right me-1"></i>Выйти</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-box-arrow-right"></i>Выйти</span>
+                    </a>
                     {% else %}
-                    <a class="nav-link" href="{{ url_for('login') }}">Войти</a>
+                    <a class="nav-link nav-expand" href="{{ url_for('login') }}">
+                        <span class="nav-expand__compact"><i class="bi bi-box-arrow-in-right me-1"></i>Войти</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-box-arrow-in-right"></i>Войти</span>
+                    </a>
                     {% endif %}
                 </li>
             </ul>
@@ -141,6 +161,10 @@
             <p class="mb-0 text-muted small">Связь и пожелания: <a href="mailto:dev-eva@outlook.com" class="link-secondary">dev-eva@outlook.com</a></p>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
+            <a href="{{ url_for('documentation') }}" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 site-footer__docs-button">
+                <i class="bi bi-journal-text" aria-hidden="true"></i> Документация
+            </a>
+            <span class="site-footer__divider" aria-hidden="true"></span>
             <a href="https://github.com/UnicornisIT/officium" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1">
                 <i class="bi bi-github"></i> GitHub
             </a>
@@ -529,7 +553,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=20260821-smooth-history-2"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const params = new URLSearchParams(window.location.search);

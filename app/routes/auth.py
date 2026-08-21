@@ -125,6 +125,7 @@ def init_app(app):
             'logout',
             'admin_login',
             'test_login',
+            'documentation',
             'dev_login',
             'dev_logout',
             'stop_impersonate',

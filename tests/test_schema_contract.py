@@ -1,7 +1,7 @@
 import unittest
 from decimal import Decimal
 
-from app.models import ActivityLog, Debt, Expense, Income, Payment, SplitPurchase, TelegramConversationState, TelegramProcessedUpdate
+from app.models import ActivityLog, Debt, EmergencyFundTransaction, Expense, FinancialGoal, FinancialGoalTransaction, FinancialPlanPreference, Income, Payment, SplitPurchase, TelegramConversationState, TelegramProcessedUpdate
 
 
 class SchemaContractTestCase(unittest.TestCase):
@@ -104,7 +104,7 @@ class SchemaContractTestCase(unittest.TestCase):
             (
                 'products', 'transport', 'communication', 'rent', 'loans',
                 'restaurants', 'entertainment', 'health', 'education',
-                'clothing', 'subscriptions', 'other',
+                'clothing', 'subscriptions', 'savings', 'other',
             ),
         )
 
@@ -115,9 +115,55 @@ class SchemaContractTestCase(unittest.TestCase):
             tuple(income_category.enums),
             (
                 'salary', 'advance', 'side_job', 'debt_return', 'bonus',
-                'scholarship', 'vacation_pay', 'other',
+                'scholarship', 'vacation_pay', 'goal_withdrawal', 'other',
             ),
         )
+
+    def test_financial_plan_preferences_store_only_user_choices(self):
+        columns = FinancialPlanPreference.__table__.c
+
+        self.assertEqual(
+            set(columns.keys()),
+            {
+                'id', 'user_id', 'living_minimum', 'desired_monthly_savings',
+                'emergency_fund_target_amount',
+                'emergency_fund_target_mode', 'strategy', 'created_at', 'updated_at',
+            },
+        )
+        self.assertTrue(columns.user_id.unique)
+
+    def test_emergency_fund_uses_transactions_as_balance_source(self):
+        columns = EmergencyFundTransaction.__table__.c
+
+        self.assertEqual(
+            set(columns.keys()),
+            {
+                'id', 'user_id', 'transaction_type', 'amount',
+                'transaction_date', 'comment', 'expense_id', 'income_id', 'created_at',
+            },
+        )
+        self.assertEqual(tuple(columns.transaction_type.type.enums), ('deposit', 'withdrawal'))
+        self.assertFalse(columns.amount.nullable)
+
+    def test_custom_goals_store_plan_and_use_transaction_history(self):
+        goal_columns = FinancialGoal.__table__.c
+        transaction_columns = FinancialGoalTransaction.__table__.c
+
+        self.assertEqual(
+            set(goal_columns.keys()),
+            {
+                'id', 'user_id', 'name', 'target_amount', 'monthly_contribution',
+                'target_date', 'note', 'priority', 'created_at', 'updated_at',
+            },
+        )
+        self.assertEqual(
+            set(transaction_columns.keys()),
+            {
+                'id', 'goal_id', 'transaction_type', 'amount',
+                'transaction_date', 'comment', 'expense_id', 'income_id', 'created_at',
+            },
+        )
+        self.assertEqual(tuple(transaction_columns.transaction_type.type.enums), ('deposit', 'withdrawal'))
 
     def test_activity_log_contains_request_context_columns(self):
         columns = ActivityLog.__table__.c

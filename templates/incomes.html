@@ -111,7 +111,10 @@
                                         {% for income in group['items'] %}
                                         <tr>
                                             {% set income_category = dict(categories)[income.category] %}
-                                            <td class="history-category" title="{{ income_category }}">{{ income_category }}</td>
+                                            <td class="history-category" title="{{ income_category }}">
+                                                {{ income_category }}
+                                                {% if income.is_goal_transfer %}<i class="bi bi-bullseye ms-1" title="Создано из финансовой цели" aria-label="Создано из финансовой цели"></i>{% endif %}
+                                            </td>
                                             <td class="history-amount">{{ income.amount|money }}</td>
                                             <td class="history-date">{{ income.income_date.strftime('%d.%m.%Y') }}</td>
                                             {% set income_source = income.source|display %}
@@ -121,6 +124,11 @@
                                             {% if not current_user.is_local_test_user %}
                                             <td class="history-actions-cell">
                                                 <div class="history-actions">
+                                                    {% if income.is_goal_transfer %}
+                                                    <a href="{{ url_for('financial_plan', year=income.income_date.year, month=income.income_date.month) }}#goals" class="history-icon-btn history-icon-btn-edit" title="Открыть цель" aria-label="Открыть цель">
+                                                        <i class="bi bi-bullseye" aria-hidden="true"></i>
+                                                    </a>
+                                                    {% else %}
                                                     <a href="{{ url_for('edit_income', income_id=income.id) }}" class="history-icon-btn history-icon-btn-edit" title="Редактировать" aria-label="Редактировать">
                                                         <i class="bi bi-pencil" aria-hidden="true"></i>
                                                     </a>
@@ -130,6 +138,7 @@
                                                             <i class="bi bi-trash" aria-hidden="true"></i>
                                                         </button>
                                                     </form>
+                                                    {% endif %}
                                                 </div>
                                             </td>
                                             {% endif %}

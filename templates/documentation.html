@@ -1,0 +1,426 @@
+{% extends 'base.html' %}
+{% block title %}Документация — officium{% endblock %}
+
+{% block content %}
+<div class="docs-page">
+    <header class="docs-hero">
+        <div class="docs-hero__content">
+            <div class="docs-eyebrow"><i class="bi bi-journal-bookmark-fill"></i> Руководство пользователя</div>
+            <h1>Как работает officium</h1>
+            <p>От первой записи до понятного финансового плана: здесь собраны основные сценарии работы с доходами, расходами, долгами и целями.</p>
+            <div class="docs-hero__actions">
+                <a href="#quick-start" class="btn btn-primary"><i class="bi bi-play-fill me-1"></i>Начать знакомство</a>
+                <a href="#faq" class="btn btn-outline-secondary">Частые вопросы</a>
+            </div>
+        </div>
+        <div class="docs-hero__summary" aria-label="Содержание руководства">
+            <div class="docs-summary-card">
+                <span class="docs-summary-card__icon"><i class="bi bi-compass"></i></span>
+                <strong>9 разделов</strong>
+                <span>От входа до аналитики</span>
+            </div>
+            <div class="docs-summary-card">
+                <span class="docs-summary-card__icon"><i class="bi bi-clock-history"></i></span>
+                <strong>≈ 7 минут</strong>
+                <span>На первое знакомство</span>
+            </div>
+            <div class="docs-summary-card docs-summary-card--accent">
+                <span class="docs-summary-card__icon"><i class="bi bi-shield-check"></i></span>
+                <strong>Ваши данные</strong>
+                <span>Записи разделены по аккаунтам</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="docs-mobile-nav">
+        <label for="docsSectionSelect">Перейти к разделу</label>
+        <select class="form-select" id="docsSectionSelect">
+            <option value="#quick-start">Быстрый старт</option>
+            <option value="#dashboard">Дашборд</option>
+            <option value="#debts">Долги и платежи</option>
+            <option value="#cashflow">Доходы и расходы</option>
+            <option value="#import">Импорт выписки</option>
+            <option value="#analytics">Аналитика</option>
+            <option value="#financial-plan">Финансовый план</option>
+            <option value="#telegram">Telegram-бот</option>
+            <option value="#faq">Частые вопросы</option>
+        </select>
+    </div>
+
+    <div class="docs-layout">
+        <aside class="docs-sidebar" aria-label="Оглавление документации">
+            <div class="docs-sidebar__inner">
+                <div class="docs-search">
+                    <i class="bi bi-search"></i>
+                    <input type="search" id="docsSearch" placeholder="Найти в руководстве" autocomplete="off" aria-label="Поиск по документации">
+                    <kbd>/</kbd>
+                </div>
+                <nav class="docs-toc">
+                    <div class="docs-toc__label">Основы</div>
+                    <a href="#quick-start" class="active"><i class="bi bi-rocket-takeoff"></i>Быстрый старт</a>
+                    <a href="#dashboard"><i class="bi bi-grid-3x3-gap"></i>Дашборд</a>
+                    <div class="docs-toc__label">Учёт</div>
+                    <a href="#debts"><i class="bi bi-credit-card-2-front"></i>Долги и платежи</a>
+                    <a href="#cashflow"><i class="bi bi-arrow-left-right"></i>Доходы и расходы</a>
+                    <a href="#import"><i class="bi bi-file-earmark-arrow-up"></i>Импорт выписки</a>
+                    <div class="docs-toc__label">Планирование</div>
+                    <a href="#analytics"><i class="bi bi-pie-chart"></i>Аналитика</a>
+                    <a href="#financial-plan"><i class="bi bi-signpost-split"></i>Финансовый план</a>
+                    <a href="#telegram"><i class="bi bi-telegram"></i>Telegram-бот</a>
+                    <a href="#faq"><i class="bi bi-question-circle"></i>Частые вопросы</a>
+                </nav>
+                <div class="docs-sidebar__hint">
+                    <i class="bi bi-lightbulb"></i>
+                    <span>Начните с доходов и обязательных расходов — прогноз станет точнее.</span>
+                </div>
+            </div>
+        </aside>
+
+        <article class="docs-content" id="docsContent">
+            <section class="docs-section" id="quick-start" data-docs-section>
+                <div class="docs-section__heading">
+                    <span class="docs-section__number">01</span>
+                    <div>
+                        <div class="docs-kicker">Основы</div>
+                        <h2>Быстрый старт</h2>
+                        <p>Три шага, после которых дашборд начнёт показывать реальную картину месяца.</p>
+                    </div>
+                </div>
+
+                <div class="docs-steps">
+                    <div class="docs-step">
+                        <span>1</span>
+                        <div>
+                            <h3>Добавьте доход</h3>
+                            <p>Укажите сумму, категорию, источник и дату поступления. Доход попадёт в сводку выбранного месяца.</p>
+                            <a href="{{ url_for('incomes') if current_user.is_authenticated else url_for('login') }}">Открыть доходы <i class="bi bi-arrow-right"></i></a>
+                        </div>
+                    </div>
+                    <div class="docs-step">
+                        <span>2</span>
+                        <div>
+                            <h3>Зафиксируйте обязательства</h3>
+                            <p>Добавьте кредиты, карты, ипотеку или рассрочку вместе с остатком, ставкой и датой платежа.</p>
+                            <a href="{{ url_for('index') if current_user.is_authenticated else url_for('login') }}">Перейти к долгам <i class="bi bi-arrow-right"></i></a>
+                        </div>
+                    </div>
+                    <div class="docs-step">
+                        <span>3</span>
+                        <div>
+                            <h3>Внесите расходы</h3>
+                            <p>Добавляйте их вручную или загрузите банковскую выписку. Повторяющиеся траты можно отметить как ежемесячные.</p>
+                            <a href="{{ url_for('expenses') if current_user.is_authenticated else url_for('login') }}">Открыть расходы <i class="bi bi-arrow-right"></i></a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="docs-callout docs-callout--info">
+                    <i class="bi bi-info-circle-fill"></i>
+                    <div><strong>Как считается свободный остаток</strong><span>Доходы минус обычные расходы и платежи по долгам за выбранный месяц.</span></div>
+                </div>
+            </section>
+
+            <section class="docs-section" id="dashboard" data-docs-section>
+                <div class="docs-section__heading">
+                    <span class="docs-section__number">02</span>
+                    <div>
+                        <div class="docs-kicker">Обзор</div>
+                        <h2>Дашборд</h2>
+                        <p>Главный экран отвечает на два вопроса: сколько вы должны и сколько денег остаётся до конца месяца.</p>
+                    </div>
+                </div>
+
+                <figure class="docs-screenshot">
+                    <div class="docs-screenshot__bar"><span></span><span></span><span></span><em>Тестовый стенд · Дашборд</em></div>
+                    <img src="{{ url_for('static', filename='images/documentation/dashboard.png') }}" alt="Дашборд officium с финансовой сводкой и карточками долгов" loading="lazy">
+                    <figcaption><i class="bi bi-camera"></i> Обезличенные демонстрационные данные, созданные на отдельном тестовом стенде.</figcaption>
+                </figure>
+
+                <div class="docs-feature-grid">
+                    <div class="docs-feature"><i class="bi bi-calculator"></i><h3>Сводка месяца</h3><p>Доходы, расходы, платежи, свободные средства и ориентир на один день.</p></div>
+                    <div class="docs-feature"><i class="bi bi-calendar2-check"></i><h3>Ближайший платёж</h3><p>Карточки меняют акцент в зависимости от срока и помогают заметить просрочку.</p></div>
+                    <div class="docs-feature"><i class="bi bi-funnel"></i><h3>Поиск и фильтры</h3><p>Фильтруйте обязательства по типу и находите нужную карточку по банку или продукту.</p></div>
+                    <div class="docs-feature"><i class="bi bi-graph-up-arrow"></i><h3>Прогресс</h3><p>На каждой карточке видны первоначальная сумма, остаток и доля уже погашенного долга.</p></div>
+                </div>
+            </section>
+
+            <section class="docs-section" id="debts" data-docs-section>
+                <div class="docs-section__heading">
+                    <span class="docs-section__number">03</span>
+                    <div>
+                        <div class="docs-kicker">Обязательства</div>
+                        <h2>Долги и платежи</h2>
+                        <p>officium хранит условия долга и историю фактических платежей отдельно — так остаток и прогресс остаются прозрачными.</p>
+                    </div>
+                </div>
+
+                <h3 class="docs-subtitle">Поддерживаемые типы</h3>
+                <div class="docs-type-grid">
+                    <div><span class="docs-type-icon docs-type-icon--blue"><i class="bi bi-credit-card"></i></span><strong>Кредитная карта</strong><small>Лимит, остаток, ставка и минимальный платёж</small></div>
+                    <div><span class="docs-type-icon docs-type-icon--orange"><i class="bi bi-cash-coin"></i></span><strong>Потребительский кредит</strong><small>Срок, ставка и параметры графика</small></div>
+                    <div><span class="docs-type-icon docs-type-icon--purple"><i class="bi bi-columns-gap"></i></span><strong>Сплит / рассрочка</strong><small>Покупки и платежи частями</small></div>
+                    <div><span class="docs-type-icon docs-type-icon--green"><i class="bi bi-house"></i></span><strong>Ипотека</strong><small>Отдельный обзор и детализация процентов</small></div>
+                </div>
+
+                <h3 class="docs-subtitle">Рабочий цикл</h3>
+                <div class="docs-flow" aria-label="Этапы работы с долгом">
+                    <div><span><i class="bi bi-plus-lg"></i></span><strong>Создать</strong><small>Заполнить условия</small></div>
+                    <i class="bi bi-chevron-right"></i>
+                    <div><span><i class="bi bi-wallet2"></i></span><strong>Внести платёж</strong><small>Указать сумму и дату</small></div>
+                    <i class="bi bi-chevron-right"></i>
+                    <div><span><i class="bi bi-clock-history"></i></span><strong>Проверить</strong><small>История и график</small></div>
+                    <i class="bi bi-chevron-right"></i>
+                    <div><span><i class="bi bi-archive"></i></span><strong>Архивировать</strong><small>После погашения</small></div>
+                </div>
+
+                <div class="docs-split-copy">
+                    <div>
+                        <h3>Что меняется после платежа</h3>
+                        <ul class="docs-check-list">
+                            <li>остаток долга уменьшается на часть основного долга;</li>
+                            <li>проценты и комиссии сохраняются отдельно;</li>
+                            <li>операция появляется в истории платежей;</li>
+                            <li>дашборд и аналитика пересчитываются автоматически.</li>
+                        </ul>
+                    </div>
+                    <div class="docs-callout docs-callout--warning">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <div><strong>Сверяйте остаток с банком</strong><span>Расчёт приложения помогает планировать, но официальные суммы и даты всегда подтверждайте в банке.</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="docs-section" id="cashflow" data-docs-section>
+                <div class="docs-section__heading">
+                    <span class="docs-section__number">04</span>
+                    <div>
+                        <div class="docs-kicker">Движение денег</div>
+                        <h2>Доходы и расходы</h2>
+                        <p>Каждая операция привязана к дате и категории, поэтому она попадает именно в свой месяц.</p>
+                    </div>
+                </div>
+
+                <figure class="docs-screenshot">
+                    <div class="docs-screenshot__bar"><span></span><span></span><span></span><em>Тестовый стенд · Расходы</em></div>
+                    <img src="{{ url_for('static', filename='images/documentation/expenses.png') }}" alt="Форма добавления и история расходов в officium" loading="lazy">
+                    <figcaption><i class="bi bi-camera"></i> Форма и история расходов на тестовых данных.</figcaption>
+                </figure>
+
+                <div class="docs-compare">
+                    <div>
+                        <div class="docs-compare__icon docs-compare__icon--success"><i class="bi bi-arrow-down-left"></i></div>
+                        <h3>Доходы</h3>
+                        <p>Зарплата, аванс, подработка, премия, возврат долга и другие поступления.</p>
+                        <ul class="docs-check-list"><li>источник поступления;</li><li>категория и дата;</li><li>группировка истории по месяцам.</li></ul>
+                    </div>
+                    <div>
+                        <div class="docs-compare__icon docs-compare__icon--danger"><i class="bi bi-arrow-up-right"></i></div>
+                        <h3>Расходы</h3>
+                        <p>Покупки, транспорт, жильё, здоровье, подписки, накопления и другие категории.</p>
+                        <ul class="docs-check-list"><li>способ оплаты и комментарий;</li><li>ручной ввод или импорт;</li><li>ежемесячный расход с автоповтором.</li></ul>
+                    </div>
+                </div>
+            </section>
+
+            <section class="docs-section" id="import" data-docs-section>
+                <div class="docs-section__heading">
+                    <span class="docs-section__number">05</span>
+                    <div>
+                        <div class="docs-kicker">Быстрый ввод</div>
+                        <h2>Импорт банковской выписки</h2>
+                        <p>Загрузка выписки экономит время, но перед сохранением приложение всегда показывает предварительный просмотр.</p>
+                    </div>
+                </div>
+
+                <div class="docs-import-card">
+                    <div class="docs-import-card__formats">
+                        <span>CSV</span><span>XLSX</span><span>PDF</span>
+                    </div>
+                    <div>
+                        <h3>Сбер, Т-Банк, Альфа-Банк и ВТБ</h3>
+                        <p>Выберите файл, проверьте распознанные строки, при необходимости исправьте категорию, название или способ оплаты и только затем подтвердите импорт.</p>
+                    </div>
+                </div>
+                <ol class="docs-numbered-list">
+                    <li><span>1</span><div><strong>Загрузите файл</strong><p>Подойдут CSV, XLSX и поддерживаемые текстовые PDF-выписки.</p></div></li>
+                    <li><span>2</span><div><strong>Проверьте предварительный просмотр</strong><p>Пополнения пропускаются, возможные дубликаты и совпадения с ежемесячными расходами отмечаются.</p></div></li>
+                    <li><span>3</span><div><strong>Выберите действие для строк</strong><p>Добавить, пропустить либо обновить найденный ежемесячный расход.</p></div></li>
+                    <li><span>4</span><div><strong>Подтвердите импорт</strong><p>Только после подтверждения выбранные расходы сохраняются в истории.</p></div></li>
+                </ol>
+            </section>
+
+            <section class="docs-section" id="analytics" data-docs-section>
+                <div class="docs-section__heading">
+                    <span class="docs-section__number">06</span>
+                    <div>
+                        <div class="docs-kicker">Картина месяца</div>
+                        <h2>Аналитика «Куда уходят деньги»</h2>
+                        <p>Выберите месяц и разберите денежный поток — от общей нагрузки до конкретных получателей.</p>
+                    </div>
+                </div>
+
+                <figure class="docs-screenshot">
+                    <div class="docs-screenshot__bar"><span></span><span></span><span></span><em>Тестовый стенд · Аналитика</em></div>
+                    <img src="{{ url_for('static', filename='images/documentation/analytics.png') }}" alt="Месячная аналитика расходов и обязательных платежей в officium" loading="lazy">
+                    <figcaption><i class="bi bi-camera"></i> Аналитика построена на отдельном демонстрационном наборе операций.</figcaption>
+                </figure>
+
+                <div class="docs-metric-list">
+                    <div><span>01</span><strong>Денежный поток</strong><p>Доходы, обычные расходы, обязательные списания и прогноз остатка.</p></div>
+                    <div><span>02</span><strong>Структура трат</strong><p>Категории, конкретные получатели, способы оплаты и самые дорогие дни.</p></div>
+                    <div><span>03</span><strong>Долговая нагрузка</strong><p>Остаток долгов, ближайший платёж, ипотека и оценка процентов за месяц.</p></div>
+                </div>
+            </section>
+
+            <section class="docs-section" id="financial-plan" data-docs-section>
+                <div class="docs-section__heading">
+                    <span class="docs-section__number">07</span>
+                    <div>
+                        <div class="docs-kicker">Следующий шаг</div>
+                        <h2>Финансовый план</h2>
+                        <p>План превращает операции месяца в последовательность решений: обязательства, резерв и цели.</p>
+                    </div>
+                </div>
+
+                <figure class="docs-screenshot">
+                    <div class="docs-screenshot__bar"><span></span><span></span><span></span><em>Тестовый стенд · Финансовый план</em></div>
+                    <img src="{{ url_for('static', filename='images/documentation/financial-plan.png') }}" alt="Финансовый план с приоритетами и прогнозом в officium" loading="lazy">
+                    <figcaption><i class="bi bi-camera"></i> Пример стратегии и целей без использования основной базы данных.</figcaption>
+                </figure>
+
+                <div class="docs-plan-path">
+                    <div><span><i class="bi bi-receipt"></i></span><strong>Обязательное</strong><p>Платежи и регулярные траты</p></div>
+                    <div class="docs-plan-path__line"></div>
+                    <div><span><i class="bi bi-shield-check"></i></span><strong>Подушка</strong><p>Резерв на непредвиденное</p></div>
+                    <div class="docs-plan-path__line"></div>
+                    <div><span><i class="bi bi-bullseye"></i></span><strong>Цели</strong><p>Накопления по приоритетам</p></div>
+                </div>
+                <p>Настройте минимальную сумму на жизнь и выберите стратегию: осторожную, сбалансированную или активную. План покажет, хватает ли денег на месяц, и предложит порядок распределения свободной суммы.</p>
+            </section>
+
+            <section class="docs-section" id="telegram" data-docs-section>
+                <div class="docs-section__heading">
+                    <span class="docs-section__number">08</span>
+                    <div>
+                        <div class="docs-kicker">На ходу</div>
+                        <h2>Telegram-бот</h2>
+                        <p>Бот помогает внести операцию сразу после покупки или быстро проверить итог, не открывая браузер.</p>
+                    </div>
+                </div>
+
+                <div class="docs-telegram">
+                    <div class="docs-telegram__phone" aria-label="Пример сообщения Telegram-боту">
+                        <div class="docs-telegram__head"><i class="bi bi-telegram"></i><span><strong>officium bot</strong><small>бот</small></span></div>
+                        <div class="docs-telegram__chat">
+                            <div class="docs-message docs-message--user">расход 850 продукты пятерочка</div>
+                            <div class="docs-message">Проверим запись:<br><strong>850 ₽ · Продукты</strong><br>Пятерочка<br><span>Сохранить?</span></div>
+                            <div class="docs-telegram__buttons"><span>Подтвердить</span><span>Отмена</span></div>
+                        </div>
+                    </div>
+                    <div class="docs-telegram__copy">
+                        <h3>Два способа работы</h3>
+                        <div class="docs-mini-feature"><i class="bi bi-ui-checks-grid"></i><div><strong>Пошаговое меню</strong><p>Кнопки «Расход», «Доход», «Платёж» и «Долг» проведут по нужным полям.</p></div></div>
+                        <div class="docs-mini-feature"><i class="bi bi-lightning-charge"></i><div><strong>Быстрые команды</strong><p>Одной строкой: <code>доход 120000 зарплата работа</code> или <code>итог</code>.</p></div></div>
+                        <div class="docs-callout docs-callout--info"><i class="bi bi-check2-circle"></i><div><strong>Запись только после подтверждения</strong><span>Перед сохранением бот показывает распознанные данные.</span></div></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="docs-section" id="faq" data-docs-section>
+                <div class="docs-section__heading">
+                    <span class="docs-section__number">09</span>
+                    <div>
+                        <div class="docs-kicker">Подсказки</div>
+                        <h2>Частые вопросы</h2>
+                        <p>Короткие ответы о расчётах, архиве и безопасности данных.</p>
+                    </div>
+                </div>
+
+                <div class="accordion docs-faq" id="docsFaq">
+                    <div class="accordion-item">
+                        <h3 class="accordion-header"><button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faqBalance">Почему свободный остаток отличается от баланса карты?</button></h3>
+                        <div id="faqBalance" class="accordion-collapse collapse show" data-bs-parent="#docsFaq"><div class="accordion-body">officium считает только внесённые в приложение доходы, расходы и платежи выбранного месяца. Банковский баланс может учитывать операции, которых здесь ещё нет.</div></div>
+                    </div>
+                    <div class="accordion-item">
+                        <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqMonthly">Что делает переключатель «Ежемесячный расход»?</button></h3>
+                        <div id="faqMonthly" class="accordion-collapse collapse" data-bs-parent="#docsFaq"><div class="accordion-body">Он объединяет повторяющиеся расходы в одну цепочку. При ежемесячной генерации приложение создаёт запись для нового месяца и не дублирует уже существующую.</div></div>
+                    </div>
+                    <div class="accordion-item">
+                        <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqArchive">Куда пропадает погашенный долг?</button></h3>
+                        <div id="faqArchive" class="accordion-collapse collapse" data-bs-parent="#docsFaq"><div class="accordion-body">Его можно перенести в архив. Он исчезнет из активного дашборда, но останется доступен для просмотра и восстановления.</div></div>
+                    </div>
+                    <div class="accordion-item">
+                        <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqData">Видят ли другие пользователи мои записи?</button></h3>
+                        <div id="faqData" class="accordion-collapse collapse" data-bs-parent="#docsFaq"><div class="accordion-body">Обычные финансовые записи привязаны к аккаунту. Администратор управляет доступом и техническими настройками; доступ к серверу и резервным копиям должен быть ограничен доверенными людьми.</div></div>
+                    </div>
+                </div>
+
+                <div class="docs-help-card">
+                    <div class="docs-help-card__icon"><i class="bi bi-chat-heart"></i></div>
+                    <div><h3>Не нашли ответ?</h3><p>Опишите сценарий или предложите улучшение — обратная связь помогает сделать officium понятнее.</p></div>
+                    <a href="mailto:dev-eva@outlook.com" class="btn btn-primary">Написать разработчику</a>
+                </div>
+            </section>
+
+            <div class="docs-empty-search" id="docsEmptySearch" hidden>
+                <i class="bi bi-search"></i><h2>Ничего не найдено</h2><p>Попробуйте запрос короче: например, «импорт», «долг» или «платёж».</p>
+            </div>
+        </article>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const tocLinks = [...document.querySelectorAll('.docs-toc a')];
+        const sections = [...document.querySelectorAll('[data-docs-section]')];
+        const search = document.getElementById('docsSearch');
+        const emptyState = document.getElementById('docsEmptySearch');
+        const sectionSelect = document.getElementById('docsSectionSelect');
+
+        const setActiveLink = (id) => {
+            tocLinks.forEach(link => link.classList.toggle('active', link.getAttribute('href') === `#${id}`));
+            if (sectionSelect) sectionSelect.value = `#${id}`;
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+            if (visible) setActiveLink(visible.target.id);
+        }, { rootMargin: '-18% 0px -68% 0px', threshold: [0.05, 0.25, 0.6] });
+        sections.forEach(section => observer.observe(section));
+
+        sectionSelect?.addEventListener('change', event => {
+            document.querySelector(event.target.value)?.scrollIntoView({ behavior: 'smooth' });
+        });
+
+        const filterSections = () => {
+            const query = search.value.trim().toLocaleLowerCase('ru');
+            let visibleCount = 0;
+            sections.forEach(section => {
+                const visible = !query || section.textContent.toLocaleLowerCase('ru').includes(query);
+                section.hidden = !visible;
+                if (visible) visibleCount += 1;
+            });
+            tocLinks.forEach(link => {
+                const section = document.querySelector(link.getAttribute('href'));
+                link.hidden = Boolean(query) && section?.hidden;
+            });
+            emptyState.hidden = visibleCount !== 0;
+        };
+        search?.addEventListener('input', filterSections);
+
+        document.addEventListener('keydown', event => {
+            if (event.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+                event.preventDefault();
+                search?.focus();
+            }
+            if (event.key === 'Escape' && document.activeElement === search) {
+                search.value = '';
+                filterSections();
+                search.blur();
+            }
+        });
+    });
+</script>
+{% endblock %}
