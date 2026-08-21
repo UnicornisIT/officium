@@ -10,6 +10,7 @@ from sqlalchemy import or_
 from app.models import Expense
 from app.services.bank_statement_import_service import parse_bank_statement
 from app.services.expense_title_service import expense_group_key
+from app.services.goal_cashflow_service import is_goal_expense, mark_goal_cashflow_entries
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
     generate_monthly_expenses_from_start_date,
@@ -27,7 +28,7 @@ IMPORT_TTL_HOURS = 4
 def init_app(app):
     @app.route('/expenses', methods=['GET', 'POST'])
     def expenses():
-        error_message = None
+        error_message = request.args.get('error')
         success_message = request.args.get('success')
         form_data = request.form if request.method == 'POST' else {}
 
@@ -110,6 +111,8 @@ def init_app(app):
             ]
         else:
             expenses_list = Expense.query.filter_by(user_id=current_user.id).order_by(Expense.expense_date.desc()).all()
+        if not is_local_test_user():
+            mark_goal_cashflow_entries(expenses=expenses_list)
         groups = group_entries_by_month(expenses_list, 'expense_date')
         active_month = date.today().strftime('%Y-%m')
         if groups and active_month not in [group['year_month'] for group in groups]:
@@ -262,6 +265,11 @@ def init_app(app):
         expense = Expense.query.filter_by(id=expense_id, user_id=current_user.id).first()
         if not expense:
             abort(404)
+        if is_goal_expense(expense.id):
+            return redirect(url_for(
+                'expenses',
+                error='Этот расход связан с финансовой целью. Измените операцию в разделе «Цели».',
+            ))
 
         if request.method == 'POST':
             try:
@@ -322,6 +330,7 @@ def init_app(app):
                 error_message = 'Ошибка сервера: ' + str(e)
 
         expenses_list = Expense.query.filter_by(user_id=current_user.id).order_by(Expense.expense_date.desc()).all()
+        mark_goal_cashflow_entries(expenses=expenses_list)
         groups = group_entries_by_month(expenses_list, 'expense_date')
         return render_template('expenses.html', expenses=expenses_list, groups=groups,
                                active_month=date.today().strftime('%Y-%m'), categories=EXPENSE_CATEGORIES,
@@ -335,6 +344,11 @@ def init_app(app):
         expense = Expense.query.filter_by(id=expense_id, user_id=current_user.id).first()
         if not expense:
             abort(404)
+        if is_goal_expense(expense.id):
+            return redirect(url_for(
+                'expenses',
+                error='Этот расход связан с финансовой целью. Удалите операцию в разделе «Цели».',
+            ))
         db.session.delete(expense)
         db.session.commit()
         return redirect(url_for('expenses', success='Расход удалён'))

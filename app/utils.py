@@ -26,6 +26,7 @@ INCOME_CATEGORIES = [
     ('bonus', 'Премия'),
     ('scholarship', 'Стипендия'),
     ('vacation_pay', 'Отпускные'),
+    ('goal_withdrawal', 'Снятие с цели'),
     ('other', 'Другое'),
 ]
 
@@ -41,6 +42,7 @@ EXPENSE_CATEGORIES = [
     ('education', 'Обучение'),
     ('clothing', 'Одежда'),
     ('subscriptions', 'Подписки'),
+    ('savings', 'Накопления и цели'),
     ('other', 'Другое'),
 ]
 

@@ -29,6 +29,25 @@ class User(UserMixin, db.Model):
     debts = db.relationship('Debt', back_populates='user', lazy=True, cascade='all, delete-orphan')
     incomes = db.relationship('Income', back_populates='user', lazy=True, cascade='all, delete-orphan')
     expenses = db.relationship('Expense', back_populates='user', lazy=True, cascade='all, delete-orphan')
+    financial_plan_preference = db.relationship(
+        'FinancialPlanPreference',
+        back_populates='user',
+        uselist=False,
+        cascade='all, delete-orphan',
+    )
+    emergency_fund_transactions = db.relationship(
+        'EmergencyFundTransaction',
+        back_populates='user',
+        lazy=True,
+        cascade='all, delete-orphan',
+    )
+    financial_goals = db.relationship(
+        'FinancialGoal',
+        back_populates='user',
+        lazy=True,
+        cascade='all, delete-orphan',
+        order_by='FinancialGoal.priority',
+    )
     activity_logs = db.relationship('ActivityLog', back_populates='user', lazy=True, cascade='all, delete-orphan')
 
     @property
@@ -251,7 +270,7 @@ class Income(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
-    category = db.Column(db.Enum('salary', 'advance', 'side_job', 'debt_return', 'bonus', 'scholarship', 'vacation_pay', 'other'), nullable=False)
+    category = db.Column(db.Enum('salary', 'advance', 'side_job', 'debt_return', 'bonus', 'scholarship', 'vacation_pay', 'goal_withdrawal', 'other'), nullable=False)
     source = db.Column(db.String(150), nullable=True)
     income_date = db.Column(db.Date, nullable=False)
     comment = db.Column(db.Text, nullable=True)
@@ -281,7 +300,7 @@ class Expense(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
-    category = db.Column(db.Enum('products', 'transport', 'communication', 'rent', 'loans', 'restaurants', 'entertainment', 'health', 'education', 'clothing', 'subscriptions', 'other'), nullable=False)
+    category = db.Column(db.Enum('products', 'transport', 'communication', 'rent', 'loans', 'restaurants', 'entertainment', 'health', 'education', 'clothing', 'subscriptions', 'savings', 'other'), nullable=False)
     title = db.Column(db.String(150), nullable=False)
     expense_date = db.Column(db.Date, nullable=False)
     payment_method = db.Column(db.String(80), nullable=True)
@@ -315,6 +334,118 @@ class Expense(db.Model):
 
     def __repr__(self):
         return f'<Expense {self.amount} {self.title}>'
+
+
+class FinancialPlanPreference(db.Model):
+    __tablename__ = 'financial_plan_preferences'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    living_minimum = db.Column(db.Numeric(12, 2), nullable=False, default=20000)
+    desired_monthly_savings = db.Column(db.Numeric(12, 2), nullable=False, default=5000)
+    emergency_fund_target_amount = db.Column(db.Numeric(12, 2), nullable=False, default=30000)
+    emergency_fund_target_mode = db.Column(
+        db.Enum('fixed', 'one_month', 'three_months'),
+        nullable=False,
+        default='fixed',
+    )
+    strategy = db.Column(
+        db.Enum('safe', 'balanced', 'aggressive'),
+        nullable=False,
+        default='balanced',
+    )
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', back_populates='financial_plan_preference')
+
+    def __repr__(self):
+        return f'<FinancialPlanPreference user={self.user_id} strategy={self.strategy}>'
+
+
+class EmergencyFundTransaction(db.Model):
+    __tablename__ = 'emergency_fund_transactions'
+    __table_args__ = (
+        db.CheckConstraint('amount > 0', name='ck_emergency_fund_transaction_amount_positive'),
+        db.Index('ix_emergency_fund_transactions_user_date', 'user_id', 'transaction_date'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    transaction_type = db.Column(
+        db.Enum('deposit', 'withdrawal'),
+        nullable=False,
+    )
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    transaction_date = db.Column(db.Date, nullable=False, default=date.today)
+    comment = db.Column(db.String(255), nullable=True)
+    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', ondelete='SET NULL'), nullable=True, unique=True)
+    income_id = db.Column(db.Integer, db.ForeignKey('incomes.id', ondelete='SET NULL'), nullable=True, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', back_populates='emergency_fund_transactions')
+    expense = db.relationship('Expense', foreign_keys=[expense_id])
+    income = db.relationship('Income', foreign_keys=[income_id])
+
+    def __repr__(self):
+        return f'<EmergencyFundTransaction user={self.user_id} {self.transaction_type} {self.amount}>'
+
+
+class FinancialGoal(db.Model):
+    __tablename__ = 'financial_goals'
+    __table_args__ = (
+        db.CheckConstraint('target_amount > 0', name='ck_financial_goal_target_positive'),
+        db.CheckConstraint('monthly_contribution >= 0', name='ck_financial_goal_monthly_nonnegative'),
+        db.Index('ix_financial_goals_user_priority', 'user_id', 'priority'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    target_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    monthly_contribution = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    target_date = db.Column(db.Date, nullable=True)
+    note = db.Column(db.String(500), nullable=True)
+    priority = db.Column(db.Integer, nullable=False, default=2)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = db.relationship('User', back_populates='financial_goals')
+    transactions = db.relationship(
+        'FinancialGoalTransaction',
+        back_populates='goal',
+        lazy=True,
+        cascade='all, delete-orphan',
+        order_by='FinancialGoalTransaction.transaction_date.desc()',
+    )
+
+    def __repr__(self):
+        return f'<FinancialGoal user={self.user_id} {self.name}>'
+
+
+class FinancialGoalTransaction(db.Model):
+    __tablename__ = 'financial_goal_transactions'
+    __table_args__ = (
+        db.CheckConstraint('amount > 0', name='ck_financial_goal_transaction_amount_positive'),
+        db.Index('ix_financial_goal_transactions_goal_date', 'goal_id', 'transaction_date'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    goal_id = db.Column(db.Integer, db.ForeignKey('financial_goals.id'), nullable=False)
+    transaction_type = db.Column(db.Enum('deposit', 'withdrawal'), nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    transaction_date = db.Column(db.Date, nullable=False, default=date.today)
+    comment = db.Column(db.String(255), nullable=True)
+    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', ondelete='SET NULL'), nullable=True, unique=True)
+    income_id = db.Column(db.Integer, db.ForeignKey('incomes.id', ondelete='SET NULL'), nullable=True, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    goal = db.relationship('FinancialGoal', back_populates='transactions')
+    expense = db.relationship('Expense', foreign_keys=[expense_id])
+    income = db.relationship('Income', foreign_keys=[income_id])
+
+    def __repr__(self):
+        return f'<FinancialGoalTransaction goal={self.goal_id} {self.transaction_type} {self.amount}>'
 
 
 class AppSetting(db.Model):

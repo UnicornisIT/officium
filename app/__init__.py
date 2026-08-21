@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from config import Config
 from extensions import db
-from app.models import AppSetting, ActivityLog, Debt, DictionaryEntry, Expense, Income, Payment, SplitPurchase, TelegramConversationState, TelegramProcessedUpdate, User
+from app.models import AppSetting, ActivityLog, Debt, DictionaryEntry, EmergencyFundTransaction, Expense, FinancialGoal, FinancialGoalTransaction, FinancialPlanPreference, Income, Payment, SplitPurchase, TelegramConversationState, TelegramProcessedUpdate, User
 from app.utils import display_value, format_currency
 
 login_manager = LoginManager()
@@ -40,11 +40,12 @@ def create_app(config_overrides=None):
     app.jinja_env.filters['money'] = format_currency
     app.jinja_env.filters['display'] = display_value
 
-    from app.routes import auth, admin, debts, payments, incomes, expenses, main, telegram_bot
+    from app.routes import auth, admin, debts, documentation, payments, incomes, expenses, main, telegram_bot
 
     auth.init_app(app)
     admin.init_app(app)
     debts.init_app(app)
+    documentation.init_app(app)
     payments.init_app(app)
     incomes.init_app(app)
     expenses.init_app(app)
@@ -164,7 +165,7 @@ def _copy_mysql_to_sqlite(app):
             if User.query.first() is not None:
                 return False
 
-            for model in (User, AppSetting, DictionaryEntry, Debt, Income, Expense, Payment, SplitPurchase, TelegramProcessedUpdate, TelegramConversationState, ActivityLog):
+            for model in (User, AppSetting, DictionaryEntry, Debt, Income, Expense, FinancialPlanPreference, EmergencyFundTransaction, FinancialGoal, FinancialGoalTransaction, Payment, SplitPurchase, TelegramProcessedUpdate, TelegramConversationState, ActivityLog):
                 source_rows = mysql_session.query(model).all()
                 for row in source_rows:
                     row_data = {col.name: getattr(row, col.name) for col in model.__table__.columns}

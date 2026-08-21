@@ -1,17 +1,81 @@
 from datetime import date, datetime, timedelta
 from io import StringIO
 import csv
-from flask import abort, jsonify, redirect, render_template, request, url_for
+from flask import abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user
 from extensions import db
-from app.models import Debt, Income, Expense, Payment
+from app.models import (
+    Debt,
+    EmergencyFundTransaction,
+    Expense,
+    FinancialGoal,
+    FinancialGoalTransaction,
+    FinancialPlanPreference,
+    Income,
+    Payment,
+)
 from app.services.finance_summary_service import get_finance_summary
+from app.services.goal_cashflow_service import create_goal_cashflow_entry, delete_goal_cashflow_entries
+from app.services.financial_plan_service import (
+    build_financial_plan,
+    get_emergency_fund_balance,
+    get_financial_goal_balance,
+    get_financial_plan_preference,
+)
 from app.services.debt_interest_service import calculate_overdue_interest
 from app.services.debt_service import get_user_debt
+from app.utils import parse_date, parse_decimal
 
 
 def is_local_test_user():
     return getattr(current_user, 'is_local_test_user', False)
+
+
+def _financial_plan_redirect(anchor=None):
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    location = url_for(
+        'financial_plan',
+        **({'year': year, 'month': month} if year and 1 <= month <= 12 else {}),
+    )
+    if anchor:
+        location += f'#{anchor}'
+    return redirect(location)
+
+
+def _financial_goal_form_values(form):
+    name = str(form.get('name', '')).strip()
+    if not name:
+        raise ValueError('Укажите название цели.')
+    if len(name) > 120:
+        raise ValueError('Название цели не должно превышать 120 символов.')
+    target_amount = parse_decimal(form.get('target_amount'), 'Целевая сумма')
+    monthly_contribution = parse_decimal(form.get('monthly_contribution'), 'Сумма в месяц')
+    if target_amount <= 0:
+        raise ValueError('Целевая сумма должна быть больше нуля.')
+    if monthly_contribution < 0:
+        raise ValueError('Сумма в месяц не может быть отрицательной.')
+    note = str(form.get('note', '')).strip() or None
+    if note and len(note) > 500:
+        raise ValueError('Заметка не должна превышать 500 символов.')
+    return {
+        'name': name,
+        'target_amount': target_amount,
+        'monthly_contribution': monthly_contribution,
+        'target_date': parse_date(form.get('target_date'), 'Срок цели'),
+        'note': note,
+    }
+
+
+def _normalize_financial_goal_priorities(user_id):
+    goals = (
+        FinancialGoal.query
+        .filter_by(user_id=user_id)
+        .order_by(FinancialGoal.priority.asc(), FinancialGoal.id.asc())
+        .all()
+    )
+    for priority, goal in enumerate(goals, start=2):
+        goal.priority = priority
 
 
 def init_app(app):
@@ -116,6 +180,328 @@ def init_app(app):
             year_options=year_options,
             month_options=month_options,
         )
+
+    @app.route('/financial-plan', methods=['GET', 'POST'])
+    def financial_plan():
+        local_test_user = is_local_test_user()
+        user_id = None if local_test_user else current_user.id
+        preference = get_financial_plan_preference(user_id)
+        selected_year = request.args.get('year', type=int)
+        selected_month = request.args.get('month', type=int)
+
+        if request.method == 'POST':
+            if local_test_user:
+                flash('Настройки демо-плана не сохраняются.', 'info')
+                return _financial_plan_redirect()
+            try:
+                strategy = request.form.get('strategy', 'balanced')
+                if strategy not in ('safe', 'balanced', 'aggressive'):
+                    raise ValueError('Выберите корректную стратегию.')
+
+                if preference is None:
+                    preference = FinancialPlanPreference(user_id=user_id)
+                    db.session.add(preference)
+
+                preference.living_minimum = parse_decimal(
+                    request.form.get('living_minimum'),
+                    'Минимум на жизнь',
+                )
+                preference.strategy = strategy
+                db.session.commit()
+                flash('Финансовый план пересчитан.', 'success')
+                return _financial_plan_redirect()
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), 'danger')
+            except Exception:
+                db.session.rollback()
+                flash('Не удалось сохранить настройки финансового плана.', 'danger')
+
+        plan = build_financial_plan(
+            user_id,
+            preference=preference,
+            year=selected_year,
+            month=selected_month,
+        )
+        month_options = (
+            (1, 'Январь'), (2, 'Февраль'), (3, 'Март'), (4, 'Апрель'),
+            (5, 'Май'), (6, 'Июнь'), (7, 'Июль'), (8, 'Август'),
+            (9, 'Сентябрь'), (10, 'Октябрь'), (11, 'Ноябрь'), (12, 'Декабрь'),
+        )
+        year_options = sorted(
+            set(range(date.today().year - 4, date.today().year + 3)) | {plan['period']['year']},
+            reverse=True,
+        )
+        return render_template(
+            'financial_plan.html',
+            plan=plan,
+            month_options=month_options,
+            year_options=year_options,
+        )
+
+    @app.route('/financial-plan/emergency-fund', methods=['POST'])
+    def add_emergency_fund_transaction():
+        if is_local_test_user():
+            flash('Операции демо-подушки не сохраняются.', 'info')
+            return _financial_plan_redirect('goals')
+        try:
+            transaction_type = request.form.get('transaction_type', 'deposit')
+            if transaction_type not in ('deposit', 'withdrawal'):
+                raise ValueError('Выберите корректный тип операции.')
+
+            amount = parse_decimal(request.form.get('amount'), 'Сумма')
+            if amount <= 0:
+                raise ValueError('Сумма операции должна быть больше нуля.')
+            if transaction_type == 'withdrawal' and amount > get_emergency_fund_balance(current_user.id):
+                raise ValueError('Нельзя снять больше, чем сейчас накоплено в подушке.')
+
+            transaction_date = parse_date(
+                request.form.get('transaction_date'),
+                'Дата операции',
+                required=True,
+            )
+            comment = str(request.form.get('comment', '')).strip() or None
+            if comment and len(comment) > 255:
+                raise ValueError('Комментарий не должен превышать 255 символов.')
+
+            cashflow_ids = create_goal_cashflow_entry(
+                current_user.id,
+                'Финансовая подушка',
+                transaction_type,
+                amount,
+                transaction_date,
+                comment,
+            )
+            db.session.add(EmergencyFundTransaction(
+                user_id=current_user.id,
+                transaction_type=transaction_type,
+                amount=amount,
+                transaction_date=transaction_date,
+                comment=comment,
+                **cashflow_ids,
+            ))
+            db.session.commit()
+            action_label = 'Пополнение' if transaction_type == 'deposit' else 'Снятие'
+            flash(f'{action_label} финансовой подушки учтено.', 'success')
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), 'danger')
+        except Exception:
+            db.session.rollback()
+            flash('Не удалось сохранить операцию финансовой подушки.', 'danger')
+        return _financial_plan_redirect('goals')
+
+    @app.route('/financial-plan/emergency-fund/<int:transaction_id>/delete', methods=['POST'])
+    def delete_emergency_fund_transaction(transaction_id):
+        if is_local_test_user():
+            abort(404)
+        transaction = EmergencyFundTransaction.query.filter_by(
+            id=transaction_id,
+            user_id=current_user.id,
+        ).first()
+        if not transaction:
+            abort(404)
+        current_balance = get_emergency_fund_balance(current_user.id)
+        if transaction.transaction_type == 'deposit' and transaction.amount > current_balance:
+            flash('Сначала удалите связанные снятия: без этого остаток станет отрицательным.', 'danger')
+            return _financial_plan_redirect('goals')
+        delete_goal_cashflow_entries([transaction])
+        db.session.delete(transaction)
+        db.session.commit()
+        flash('Операция финансовой подушки удалена.', 'success')
+        return _financial_plan_redirect('goals')
+
+    @app.route('/financial-plan/goals/emergency/edit', methods=['POST'])
+    def edit_emergency_goal():
+        if is_local_test_user():
+            flash('Цели демо-плана не изменяются.', 'info')
+            return _financial_plan_redirect('goals')
+        try:
+            target_mode = request.form.get('target_mode', 'fixed')
+            if target_mode not in ('fixed', 'one_month', 'three_months'):
+                raise ValueError('Выберите корректный способ расчета подушки.')
+            preference = get_financial_plan_preference(current_user.id)
+            if preference is None:
+                preference = FinancialPlanPreference(user_id=current_user.id)
+                db.session.add(preference)
+            target_amount = parse_decimal(request.form.get('target_amount'), 'Целевая сумма')
+            monthly_contribution = parse_decimal(request.form.get('monthly_contribution'), 'Сумма в месяц')
+            if target_amount <= 0:
+                raise ValueError('Целевая сумма должна быть больше нуля.')
+            if monthly_contribution < 0:
+                raise ValueError('Сумма в месяц не может быть отрицательной.')
+            preference.emergency_fund_target_mode = target_mode
+            preference.emergency_fund_target_amount = target_amount
+            preference.desired_monthly_savings = monthly_contribution
+            db.session.commit()
+            flash('Параметры финансовой подушки обновлены.', 'success')
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), 'danger')
+        except Exception:
+            db.session.rollback()
+            flash('Не удалось обновить финансовую подушку.', 'danger')
+        return _financial_plan_redirect('goals')
+
+    @app.route('/financial-plan/goals', methods=['POST'])
+    def create_financial_goal():
+        if is_local_test_user():
+            flash('Цели демо-плана не изменяются.', 'info')
+            return _financial_plan_redirect('goals')
+        try:
+            values = _financial_goal_form_values(request.form)
+            highest_priority = (
+                db.session.query(db.func.max(FinancialGoal.priority))
+                .filter(FinancialGoal.user_id == current_user.id)
+                .scalar()
+            )
+            db.session.add(FinancialGoal(
+                user_id=current_user.id,
+                priority=max(highest_priority or 1, 1) + 1,
+                **values,
+            ))
+            db.session.commit()
+            flash(f'Цель «{values["name"]}» создана.', 'success')
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), 'danger')
+        except Exception:
+            db.session.rollback()
+            flash('Не удалось создать цель.', 'danger')
+        return _financial_plan_redirect('goals')
+
+    @app.route('/financial-plan/goals/<int:goal_id>/edit', methods=['POST'])
+    def edit_financial_goal(goal_id):
+        if is_local_test_user():
+            abort(404)
+        goal = FinancialGoal.query.filter_by(id=goal_id, user_id=current_user.id).first()
+        if goal is None:
+            abort(404)
+        try:
+            values = _financial_goal_form_values(request.form)
+            for field, value in values.items():
+                setattr(goal, field, value)
+            db.session.commit()
+            flash(f'Цель «{goal.name}» обновлена.', 'success')
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), 'danger')
+        except Exception:
+            db.session.rollback()
+            flash('Не удалось обновить цель.', 'danger')
+        return _financial_plan_redirect('goals')
+
+    @app.route('/financial-plan/goals/<int:goal_id>/delete', methods=['POST'])
+    def delete_financial_goal(goal_id):
+        if is_local_test_user():
+            abort(404)
+        goal = FinancialGoal.query.filter_by(id=goal_id, user_id=current_user.id).first()
+        if goal is None:
+            abort(404)
+        name = goal.name
+        delete_goal_cashflow_entries(goal.transactions)
+        db.session.delete(goal)
+        db.session.flush()
+        _normalize_financial_goal_priorities(current_user.id)
+        db.session.commit()
+        flash(f'Цель «{name}» удалена вместе с историей операций.', 'success')
+        return _financial_plan_redirect('goals')
+
+    @app.route('/financial-plan/goals/<int:goal_id>/move', methods=['POST'])
+    def move_financial_goal(goal_id):
+        if is_local_test_user():
+            abort(404)
+        direction = request.form.get('direction')
+        if direction not in ('up', 'down'):
+            abort(400)
+        goals = (
+            FinancialGoal.query
+            .filter_by(user_id=current_user.id)
+            .order_by(FinancialGoal.priority.asc(), FinancialGoal.id.asc())
+            .all()
+        )
+        current_index = next((index for index, goal in enumerate(goals) if goal.id == goal_id), None)
+        if current_index is None:
+            abort(404)
+        swap_index = current_index - 1 if direction == 'up' else current_index + 1
+        if 0 <= swap_index < len(goals):
+            goals[current_index].priority, goals[swap_index].priority = (
+                goals[swap_index].priority,
+                goals[current_index].priority,
+            )
+            db.session.flush()
+            _normalize_financial_goal_priorities(current_user.id)
+            db.session.commit()
+        return _financial_plan_redirect('goals')
+
+    @app.route('/financial-plan/goals/<int:goal_id>/transactions', methods=['POST'])
+    def add_financial_goal_transaction(goal_id):
+        if is_local_test_user():
+            flash('Операции демо-целей не сохраняются.', 'info')
+            return _financial_plan_redirect('goals')
+        goal = FinancialGoal.query.filter_by(id=goal_id, user_id=current_user.id).first()
+        if goal is None:
+            abort(404)
+        try:
+            transaction_type = request.form.get('transaction_type', 'deposit')
+            if transaction_type not in ('deposit', 'withdrawal'):
+                raise ValueError('Выберите корректный тип операции.')
+            amount = parse_decimal(request.form.get('amount'), 'Сумма')
+            if amount <= 0:
+                raise ValueError('Сумма операции должна быть больше нуля.')
+            balance = get_financial_goal_balance(goal.id, current_user.id)
+            if transaction_type == 'withdrawal' and amount > balance:
+                raise ValueError(f'Нельзя снять больше, чем накоплено на цель «{goal.name}».')
+            transaction_date = parse_date(request.form.get('transaction_date'), 'Дата операции', required=True)
+            comment = str(request.form.get('comment', '')).strip() or None
+            if comment and len(comment) > 255:
+                raise ValueError('Комментарий не должен превышать 255 символов.')
+            cashflow_ids = create_goal_cashflow_entry(
+                current_user.id,
+                goal.name,
+                transaction_type,
+                amount,
+                transaction_date,
+                comment,
+            )
+            db.session.add(FinancialGoalTransaction(
+                goal_id=goal.id,
+                transaction_type=transaction_type,
+                amount=amount,
+                transaction_date=transaction_date,
+                comment=comment,
+                **cashflow_ids,
+            ))
+            db.session.commit()
+            action_label = 'Пополнение' if transaction_type == 'deposit' else 'Снятие'
+            flash(f'{action_label} цели «{goal.name}» учтено.', 'success')
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), 'danger')
+        except Exception:
+            db.session.rollback()
+            flash('Не удалось сохранить операцию цели.', 'danger')
+        return _financial_plan_redirect('goals')
+
+    @app.route('/financial-plan/goals/<int:goal_id>/transactions/<int:transaction_id>/delete', methods=['POST'])
+    def delete_financial_goal_transaction(goal_id, transaction_id):
+        if is_local_test_user():
+            abort(404)
+        goal = FinancialGoal.query.filter_by(id=goal_id, user_id=current_user.id).first()
+        if goal is None:
+            abort(404)
+        transaction = FinancialGoalTransaction.query.filter_by(id=transaction_id, goal_id=goal.id).first()
+        if transaction is None:
+            abort(404)
+        balance = get_financial_goal_balance(goal.id, current_user.id)
+        if transaction.transaction_type == 'deposit' and transaction.amount > balance:
+            flash('Сначала удалите связанные снятия: без этого остаток станет отрицательным.', 'danger')
+            return _financial_plan_redirect('goals')
+        delete_goal_cashflow_entries([transaction])
+        db.session.delete(transaction)
+        db.session.commit()
+        flash(f'Операция цели «{goal.name}» удалена.', 'success')
+        return _financial_plan_redirect('goals')
 
     @app.route('/mortgages')
     def mortgages():
