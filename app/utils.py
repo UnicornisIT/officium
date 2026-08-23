@@ -53,6 +53,23 @@ PAYMENT_METHODS = [
     ('other', 'Другое'),
 ]
 
+
+def income_source_suggestions(incomes, limit=12):
+    suggestions = []
+    seen = set()
+    for income in incomes:
+        source = str(getattr(income, 'source', None) or '').strip()
+        if not source:
+            continue
+        key = source.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        suggestions.append(source)
+        if len(suggestions) >= limit:
+            break
+    return suggestions
+
 DEFAULT_SETTINGS = {
     'app_name': 'officium',
     'default_currency': 'RUB',

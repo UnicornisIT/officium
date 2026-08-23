@@ -91,6 +91,8 @@ class Debt(db.Model):
     include_payment_day = db.Column(db.Boolean, default=False, nullable=False)
     interest_period_start_date = db.Column(db.Date, nullable=True)
     early_repayment_strategy = db.Column(db.Enum('reduce_term', 'reduce_payment'), default='reduce_term', nullable=False)
+    early_repayment_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    planned_early_repayment_amount = db.Column(db.Numeric(12, 2), nullable=True)
     loan_term_months = db.Column(db.Integer, nullable=True)
     monthly_fee_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     bank_remaining_amount = db.Column(db.Numeric(12, 2), nullable=True)
@@ -179,6 +181,8 @@ class Debt(db.Model):
             'interest_period_start_date': self.interest_period_start_date.strftime('%Y-%m-%d') if self.interest_period_start_date else None,
             'interest_period_start_date_display': self.interest_period_start_date.strftime('%d.%m.%Y') if self.interest_period_start_date else None,
             'early_repayment_strategy': self.early_repayment_strategy,
+            'early_repayment_enabled': bool(self.early_repayment_enabled),
+            'planned_early_repayment_amount': float(self.planned_early_repayment_amount) if self.planned_early_repayment_amount else None,
             'loan_term_months': self.loan_term_months,
             'monthly_fee_amount': float(self.monthly_fee_amount or 0),
             'bank_remaining_amount': float(self.bank_remaining_amount) if self.bank_remaining_amount is not None else None,

@@ -72,6 +72,12 @@ def init_app(app):
             include_payment_day = bool(data.get('include_payment_day'))
             interest_period_start_date = parse_date(data.get('interest_period_start_date'), 'Начало процентного периода')
             early_repayment_strategy = _choice(data.get('early_repayment_strategy'), EARLY_REPAYMENT_STRATEGIES, 'reduce_term', 'Досрочное погашение')
+            early_repayment_enabled, planned_early_repayment_amount = _early_repayment_preferences(
+                debt_type=debt_type,
+                enabled=data.get('early_repayment_enabled'),
+                amount=data.get('planned_early_repayment_amount'),
+                remaining_amount=remaining_amount,
+            )
             loan_term_months = _parse_positive_int(data.get('loan_term_months'), 'Срок в месяцах')
             monthly_fee_amount = parse_decimal(data.get('monthly_fee_amount'), 'Ежемесячные комиссии', required=False) or 0
             bank_remaining_amount = parse_decimal(data.get('bank_remaining_amount'), 'Остаток по банку', required=False)
@@ -97,6 +103,8 @@ def init_app(app):
                 include_payment_day=include_payment_day,
                 interest_period_start_date=interest_period_start_date,
                 early_repayment_strategy=early_repayment_strategy,
+                early_repayment_enabled=early_repayment_enabled,
+                planned_early_repayment_amount=planned_early_repayment_amount,
                 loan_term_months=loan_term_months,
                 monthly_fee_amount=monthly_fee_amount,
                 bank_remaining_amount=bank_remaining_amount,
@@ -244,6 +252,20 @@ def init_app(app):
                 debt.interest_period_start_date = parse_date(data.get('interest_period_start_date'), 'Начало процентного периода')
             if 'early_repayment_strategy' in data:
                 debt.early_repayment_strategy = _choice(data.get('early_repayment_strategy'), EARLY_REPAYMENT_STRATEGIES, 'reduce_term', 'Досрочное погашение')
+            if (
+                'debt_type' in data
+                or 'early_repayment_enabled' in data
+                or 'planned_early_repayment_amount' in data
+                or 'remaining_amount' in data
+            ):
+                enabled, planned_amount = _early_repayment_preferences(
+                    debt_type=debt.debt_type,
+                    enabled=data.get('early_repayment_enabled', debt.early_repayment_enabled),
+                    amount=data.get('planned_early_repayment_amount', debt.planned_early_repayment_amount),
+                    remaining_amount=debt.remaining_amount,
+                )
+                debt.early_repayment_enabled = enabled
+                debt.planned_early_repayment_amount = planned_amount
             if 'loan_term_months' in data:
                 debt.loan_term_months = _parse_positive_int(data.get('loan_term_months'), 'Срок в месяцах')
             if 'monthly_fee_amount' in data:
@@ -313,6 +335,26 @@ def _validate_interest_rate_change(interest_rate_after_change, interest_rate_cha
         raise ValueError('Укажите новую процентную ставку или очистите дату смены ставки')
     if interest_rate_change_date is None:
         raise ValueError('Укажите дату смены ставки или очистите новую процентную ставку')
+
+
+def _early_repayment_preferences(debt_type, enabled, amount, remaining_amount):
+    if debt_type != 'consumer_credit':
+        return False, None
+
+    is_enabled = bool(enabled)
+    if not is_enabled:
+        return False, None
+
+    planned_amount = parse_decimal(
+        amount,
+        'Желаемая сумма досрочного погашения',
+        required=True,
+    )
+    if planned_amount <= 0:
+        raise ValueError('Желаемая сумма досрочного погашения должна быть больше нуля')
+    if planned_amount > remaining_amount:
+        raise ValueError('Желаемая сумма досрочного погашения не может превышать остаток долга')
+    return True, planned_amount
 
 
 def _choice(value, allowed, default, field_name):

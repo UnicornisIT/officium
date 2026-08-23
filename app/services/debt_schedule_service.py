@@ -13,12 +13,13 @@ MONEY = Decimal('0.01')
 SPLIT_INSTALLMENTS = 4
 
 
-def build_debt_payment_schedule(debt):
+def build_debt_payment_schedule(debt, today=None):
+    today = today or date.today()
     if not debt.next_payment_date:
         raise ValueError('Укажите дату следующего платежа, чтобы построить график.')
 
     if getattr(debt, 'debt_type', None) == 'split':
-        return _build_split_payment_schedule(debt)
+        return _build_split_payment_schedule(debt, today=today)
 
     monthly_payment = _schedule_monthly_payment(debt)
     if monthly_payment <= 0 and not (getattr(debt, 'repayment_type', 'annuity') == 'differentiated' and getattr(debt, 'loan_term_months', None)):
@@ -94,9 +95,9 @@ def build_debt_payment_schedule(debt):
     return _schedule_result(debt, rows, total_payments, total_interest, total_fees)
 
 
-def _build_split_payment_schedule(debt):
+def _build_split_payment_schedule(debt, today=None):
     remaining = Decimal(str(debt.remaining_amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP)
-    today = date.today()
+    today = today or date.today()
     paid_payments = _split_paid_payments(debt, today=today)
     future_payments = _split_future_payments(debt, today=today)
     paid_total = sum((_payment_principal(payment) for payment in paid_payments), Decimal('0.00')).quantize(MONEY)
