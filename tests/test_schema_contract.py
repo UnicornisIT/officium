@@ -64,6 +64,13 @@ class SchemaContractTestCase(unittest.TestCase):
         ):
             self.assertIn(column_name, columns)
 
+    def test_debt_contains_planned_early_repayment_settings(self):
+        columns = Debt.__table__.c
+
+        self.assertIn('early_repayment_enabled', columns)
+        self.assertIn('planned_early_repayment_amount', columns)
+        self.assertFalse(columns.early_repayment_enabled.nullable)
+
     def test_payment_contains_early_repayment_flag(self):
         columns = Payment.__table__.c
 

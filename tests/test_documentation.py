@@ -29,6 +29,13 @@ class DocumentationTestCase(unittest.TestCase):
         self.assertIn('Как работает officium', html)
         self.assertIn('id="quick-start"', html)
         self.assertIn('id="financial-plan"', html)
+        self.assertIn('плановая сумма досрочного погашения', html)
+        self.assertIn('Зарплата, аванс или другой доход', html)
+        self.assertIn('получит собственную рекомендацию по распределению', html)
+        self.assertIn('ближайшие расходы с отметкой «Ежемесячный»', html)
+        self.assertIn('учитываются точные даты, комиссии', html)
+        self.assertIn('итог распределения сверяется с суммой дохода', html)
+        self.assertIn('невыполненная часть плана месяца', html)
         self.assertIn('id="faq"', html)
 
     def test_footer_links_to_documentation(self):

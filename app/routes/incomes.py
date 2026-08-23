@@ -3,7 +3,14 @@ from flask import abort, redirect, render_template, request, url_for
 from flask_login import current_user
 from app.models import Income
 from app.services.goal_cashflow_service import is_goal_income, mark_goal_cashflow_entries
-from app.utils import INCOME_CATEGORIES, group_entries_by_month, parse_date, parse_decimal, is_local_test_user
+from app.utils import (
+    INCOME_CATEGORIES,
+    group_entries_by_month,
+    income_source_suggestions,
+    is_local_test_user,
+    parse_date,
+    parse_decimal,
+)
 from extensions import db
 
 
@@ -68,7 +75,7 @@ def init_app(app):
         else:
             incomes_list = Income.query.filter_by(user_id=current_user.id).order_by(Income.income_date.desc()).all()
             mark_goal_cashflow_entries(incomes=incomes_list)
-        source_suggestions = _income_source_suggestions(incomes_list)
+        source_suggestions = income_source_suggestions(incomes_list)
         groups = group_entries_by_month(incomes_list, 'income_date')
         active_month = date.today().strftime('%Y-%m')
         if groups and active_month not in [group['year_month'] for group in groups]:
@@ -120,7 +127,7 @@ def init_app(app):
 
         incomes_list = Income.query.filter_by(user_id=current_user.id).order_by(Income.income_date.desc()).all()
         mark_goal_cashflow_entries(incomes=incomes_list)
-        source_suggestions = _income_source_suggestions(incomes_list)
+        source_suggestions = income_source_suggestions(incomes_list)
         groups = group_entries_by_month(incomes_list, 'income_date')
         return render_template('incomes.html', incomes=incomes_list, groups=groups,
                                active_month=date.today().strftime('%Y-%m'), categories=INCOME_CATEGORIES,
@@ -143,20 +150,3 @@ def init_app(app):
         db.session.delete(income)
         db.session.commit()
         return redirect(url_for('incomes', success='Доход удалён'))
-
-
-def _income_source_suggestions(incomes_list, limit=12):
-    suggestions = []
-    seen = set()
-    for income in incomes_list:
-        source = str(income.source or '').strip()
-        if not source:
-            continue
-        key = source.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        suggestions.append(source)
-        if len(suggestions) >= limit:
-            break
-    return suggestions

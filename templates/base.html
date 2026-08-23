@@ -16,7 +16,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=20260821-docs-3" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=20260823-early-plan-1" rel="stylesheet">
 </head>
 <body>
 
@@ -286,11 +286,27 @@
                                     <input type="date" class="form-control" id="f_interest_period_start_date">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label">Досрочное погашение</label>
+                                    <label class="form-label">Что уменьшать при досрочном погашении</label>
                                     <select class="form-select" id="f_early_repayment_strategy">
                                         <option value="reduce_term">Уменьшать срок</option>
                                         <option value="reduce_payment">Уменьшать платёж</option>
                                     </select>
+                                </div>
+                                <div class="col-12 d-none" id="consumer_early_repayment_settings">
+                                    <div class="early-repayment-plan-settings">
+                                        <div>
+                                            <div class="form-check form-switch mb-0">
+                                                <input class="form-check-input" type="checkbox" id="f_early_repayment_enabled">
+                                                <label class="form-check-label" for="f_early_repayment_enabled">Планировать досрочное погашение</label>
+                                            </div>
+                                            <small>В форме платежа появится отдельный вариант с указанной суммой.</small>
+                                        </div>
+                                        <div class="early-repayment-plan-settings__amount d-none" id="early_repayment_amount_group">
+                                            <label class="form-label" for="f_planned_early_repayment_amount">Желаемая сумма (₽)</label>
+                                            <input type="text" inputmode="decimal" class="form-control number-format"
+                                                   id="f_planned_early_repayment_amount" placeholder="например, 20 000">
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Срок, мес.</label>
@@ -352,7 +368,22 @@
                     <div class="col-12">
                         <label class="form-label">Сумма платежа (₽) <span class="text-danger">*</span></label>
                         <input type="text" inputmode="decimal" class="form-control form-control-lg number-format" id="pm_amount" placeholder="0,00">
-                        <div class="form-text">Минимальный платеж: <span id="pm_min_payment">—</span></div>
+                        <div class="payment-preset-shortcuts">
+                            <button type="button" class="payment-preset-shortcut" id="pm_apply_minimum"
+                                    onclick="applyMinimumPayment()" disabled
+                                    title="Подставить минимальную сумму и ближайшую дату платежа">
+                                <i class="bi bi-calendar-check"></i>
+                                <span>Минимальный платёж</span>
+                                <strong id="pm_min_payment">—</strong>
+                            </button>
+                            <button type="button" class="payment-preset-shortcut payment-preset-shortcut--early d-none"
+                                    id="pm_apply_early" onclick="applyPlannedEarlyRepayment()" disabled
+                                    title="Подставить желаемую сумму досрочного погашения">
+                                <i class="bi bi-lightning-charge"></i>
+                                <span>Погасить досрочно</span>
+                                <strong id="pm_early_payment">—</strong>
+                            </button>
+                        </div>
                     </div>
                     <div class="col-12">
                         <label class="form-label">Дата платежа</label>
@@ -553,7 +584,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=20260821-smooth-history-2"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=20260823-early-plan-1"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const params = new URLSearchParams(window.location.search);

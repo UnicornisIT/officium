@@ -57,6 +57,8 @@ class DebtTypesTestCase(unittest.TestCase):
             'total_amount': '300000',
             'remaining_amount': '250000',
             'minimum_payment': '15000',
+            'early_repayment_enabled': True,
+            'planned_early_repayment_amount': '20000',
             'interest_rate': '18.5',
             'next_payment_date': '2026-08-15',
             'comment': 'Кредит наличными',
@@ -66,10 +68,57 @@ class DebtTypesTestCase(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload['debt']['debt_type'], 'consumer_credit')
         self.assertEqual(payload['debt']['debt_type_label'], 'Потребительский кредит')
+        self.assertTrue(payload['debt']['early_repayment_enabled'])
+        self.assertEqual(payload['debt']['planned_early_repayment_amount'], 20000.0)
 
         with self.app.app_context():
             debt = Debt.query.filter_by(user_id=self.user_id).one()
             self.assertEqual(debt.debt_type, 'consumer_credit')
+            self.assertTrue(debt.early_repayment_enabled)
+            self.assertEqual(debt.planned_early_repayment_amount, Decimal('20000.00'))
+
+    def test_payment_modal_has_minimum_payment_and_due_date_shortcut(self):
+        self.login()
+
+        response = self.client.get('/')
+        html = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="pm_apply_minimum"', html)
+        self.assertIn('onclick="applyMinimumPayment()"', html)
+        self.assertIn('id="pm_apply_early"', html)
+        self.assertIn('onclick="applyPlannedEarlyRepayment()"', html)
+        self.assertIn('Подставить минимальную сумму и ближайшую дату платежа', html)
+
+    def test_planned_early_repayment_requires_amount_and_only_supports_consumer_credit(self):
+        self.login()
+
+        missing_amount = self.client.post('/api/debts', json={
+            'bank_name': 'Сбербанк',
+            'debt_type': 'consumer_credit',
+            'product_name': 'Потребительский кредит',
+            'total_amount': '300000',
+            'remaining_amount': '250000',
+            'minimum_payment': '15000',
+            'early_repayment_enabled': True,
+        })
+        self.assertEqual(missing_amount.status_code, 422)
+        self.assertIn('Желаемая сумма', missing_amount.get_json()['error'])
+
+        card_response = self.client.post('/api/debts', json={
+            'bank_name': 'Банк',
+            'debt_type': 'credit_card',
+            'product_name': 'Карта',
+            'total_amount': '100000',
+            'remaining_amount': '50000',
+            'minimum_payment': '5000',
+            'early_repayment_enabled': True,
+            'planned_early_repayment_amount': '10000',
+        })
+        self.assertEqual(card_response.status_code, 201)
+        card = card_response.get_json()['debt']
+        self.assertFalse(card['early_repayment_enabled'])
+        self.assertIsNone(card['planned_early_repayment_amount'])
 
     def test_can_create_debt_with_scheduled_interest_rate_change(self):
         self.login()

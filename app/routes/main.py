@@ -24,7 +24,7 @@ from app.services.financial_plan_service import (
 )
 from app.services.debt_interest_service import calculate_overdue_interest
 from app.services.debt_service import get_user_debt
-from app.utils import parse_date, parse_decimal
+from app.utils import income_source_suggestions, parse_date, parse_decimal
 
 
 def is_local_test_user():
@@ -232,12 +232,78 @@ def init_app(app):
             set(range(date.today().year - 4, date.today().year + 3)) | {plan['period']['year']},
             reverse=True,
         )
+        if local_test_user:
+            source_suggestions = []
+        else:
+            previous_incomes = (
+                Income.query
+                .filter_by(user_id=user_id)
+                .order_by(Income.income_date.desc(), Income.id.desc())
+                .all()
+            )
+            source_suggestions = income_source_suggestions(previous_incomes)
         return render_template(
             'financial_plan.html',
             plan=plan,
             month_options=month_options,
             year_options=year_options,
+            source_suggestions=source_suggestions,
         )
+
+    @app.route('/financial-plan/salary-income', methods=['POST'])
+    def add_salary_income():
+        if is_local_test_user():
+            flash('Зарплатные поступления в демо-режиме не сохраняются.', 'info')
+            return _financial_plan_redirect('salary-income')
+
+        try:
+            amount = parse_decimal(request.form.get('amount'), 'Сумма')
+            if amount <= 0:
+                raise ValueError('Сумма поступления должна быть больше нуля.')
+
+            category = request.form.get('category', 'salary')
+            if category not in ('salary', 'advance'):
+                raise ValueError('Выберите корректный вид зарплатного поступления.')
+
+            income_date = parse_date(
+                request.form.get('income_date'),
+                'Дата поступления',
+                required=True,
+            )
+            source = str(request.form.get('source', '')).strip() or None
+            comment = str(request.form.get('comment', '')).strip() or None
+            if source and len(source) > 150:
+                raise ValueError('Источник не должен превышать 150 символов.')
+            if comment and len(comment) > 1000:
+                raise ValueError('Комментарий не должен превышать 1000 символов.')
+
+            income = Income(
+                user_id=current_user.id,
+                amount=amount,
+                category=category,
+                source=source,
+                income_date=income_date,
+                comment=comment,
+            )
+            db.session.add(income)
+            db.session.commit()
+            flash(
+                'Зарплатное поступление добавлено в доходы. Рекомендации пересчитаны.',
+                'success',
+            )
+            location = url_for(
+                'financial_plan',
+                year=income_date.year,
+                month=income_date.month,
+            )
+            return redirect(f'{location}#income-allocation-{income.id}')
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), 'danger')
+        except Exception:
+            db.session.rollback()
+            flash('Не удалось сохранить зарплатное поступление.', 'danger')
+        return _financial_plan_redirect('salary-income')
 
     @app.route('/financial-plan/emergency-fund', methods=['POST'])
     def add_emergency_fund_transaction():

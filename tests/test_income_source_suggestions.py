@@ -75,6 +75,14 @@ class IncomeSourceSuggestionsTestCase(unittest.TestCase):
         self.assertEqual(html.count('<option value="СтГАУ">'), 1)
         self.assertIn('<option value="Фриланс">', html)
 
+        plan_response = self.client.get('/financial-plan?year=2026&month=8')
+        self.assertEqual(plan_response.status_code, 200)
+        plan_html = plan_response.get_data(as_text=True)
+        self.assertIn('id="salary-income-source"', plan_html)
+        self.assertIn('list="incomeSourceSuggestions"', plan_html)
+        self.assertEqual(plan_html.count('<option value="СтГАУ">'), 1)
+        self.assertIn('<option value="Фриланс">', plan_html)
+
 
 if __name__ == '__main__':
     unittest.main()

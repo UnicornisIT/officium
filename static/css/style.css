@@ -1220,6 +1220,217 @@ body {
 .plan-empty span { max-width: 360px; font-size: 0.84rem; }
 .plan-empty--compact { min-height: 160px; }
 
+.plan-income-receipts > .plan-section__header p {
+    max-width: 720px;
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    font-size: 0.84rem;
+}
+
+.plan-income-receipts__layout {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.72fr) minmax(0, 1.28fr);
+    gap: 22px;
+    align-items: start;
+}
+
+.plan-income-form {
+    display: grid;
+    gap: 15px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card-2);
+}
+
+.plan-income-form__intro strong,
+.plan-income-form__intro span {
+    display: block;
+}
+
+.plan-income-form__intro span {
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
+
+.plan-income-form fieldset,
+.plan-income-form legend {
+    margin: 0;
+    padding: 0;
+}
+
+.plan-income-form .form-label {
+    margin-bottom: 6px;
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.plan-income-form .form-label > span {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    font-weight: 500;
+}
+
+.plan-segments--income {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.plan-segments--income span {
+    gap: 9px;
+    min-height: 58px;
+    justify-content: flex-start;
+    text-align: left;
+    line-height: 1.25;
+}
+
+.plan-segments--income span > i {
+    flex: 0 0 auto;
+    width: 1rem;
+    font-size: 0.9rem;
+    line-height: 1;
+    text-align: center;
+}
+
+.plan-income-form__fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+}
+
+.plan-income-form .input-group-text {
+    color: var(--text-muted);
+    border-color: var(--border);
+    background: var(--bg-card);
+}
+
+.plan-income-allocations {
+    display: grid;
+    gap: 12px;
+}
+
+.plan-income-allocation {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+}
+
+.plan-income-allocation:target {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.plan-income-allocation__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--primary) 5%, var(--bg-card));
+}
+
+.plan-income-allocation__header > div {
+    min-width: 0;
+}
+
+.plan-income-allocation__header span,
+.plan-income-allocation__header strong {
+    display: block;
+}
+
+.plan-income-allocation__header span {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.plan-income-allocation__header > div > strong {
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+}
+
+.plan-income-allocation__header > strong {
+    flex: 0 0 auto;
+    font-size: 1.15rem;
+}
+
+.plan-income-allocation__list {
+    padding: 0 16px;
+}
+
+.plan-income-allocation__row {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    min-height: 58px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.plan-income-allocation__row > i {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    color: var(--primary);
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.plan-income-allocation__row--support > i { color: #ec4899; background: rgba(236, 72, 153, 0.1); }
+.plan-income-allocation__row--savings > i { color: var(--success); background: rgba(34, 197, 94, 0.1); }
+.plan-income-allocation__row--extra > i { color: var(--warning); background: rgba(245, 158, 11, 0.12); }
+.plan-income-allocation__row--living > i { color: #14b8a6; background: rgba(20, 184, 166, 0.12); }
+.plan-income-allocation__row--due-overdue > div span { color: var(--warning); }
+.plan-income-allocation__row--due-today > div span { color: var(--success); }
+.plan-income-allocation__row--due-upcoming > div span { color: var(--primary); }
+
+.plan-income-allocation__row > div {
+    min-width: 0;
+}
+
+.plan-income-allocation__row > div strong,
+.plan-income-allocation__row > div span {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.plan-income-allocation__row > div strong {
+    font-size: 0.86rem;
+}
+
+.plan-income-allocation__row > div span {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+}
+
+.plan-income-allocation__row > strong {
+    font-size: 0.88rem;
+    white-space: nowrap;
+}
+
+.plan-income-allocation__link {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    padding: 10px 16px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.plan-income-allocation__link:hover {
+    color: var(--primary);
+}
+
 @media (max-width: 1180px) {
     .plan-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .plan-metric:nth-child(3) { border-right: 0; }
@@ -1241,6 +1452,7 @@ body {
     .plan-settings__form > small { grid-column: 1 / -1; }
     .plan-strategies { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .plan-strategies span { justify-content: center; text-align: center; }
+    .plan-income-receipts__layout { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 680px) {
@@ -1284,6 +1496,10 @@ body {
     .plan-goal-form { grid-template-columns: 1fr; }
     .plan-goal-form > fieldset,
     .plan-goal-form > div:last-child { grid-column: auto; }
+    .plan-segments--income,
+    .plan-income-form__fields { grid-template-columns: 1fr; }
+    .plan-income-allocation__header { align-items: flex-start; }
+    .plan-income-allocation__header > strong { font-size: 1rem; }
 }
 
 .app-main {
@@ -2491,6 +2707,89 @@ textarea.form-control {
 .modal-content .form-select option {
     color: var(--text-dim);
 }
+
+.payment-preset-shortcuts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.payment-preset-shortcut {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 100%;
+    padding: 6px 9px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    background: var(--bg-card-2);
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1.25;
+    text-align: left;
+    transition: var(--transition);
+}
+
+.payment-preset-shortcut > i {
+    flex: 0 0 auto;
+    color: var(--primary);
+}
+
+.payment-preset-shortcut > strong {
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.payment-preset-shortcut--early > i {
+    color: var(--warning);
+}
+
+.payment-preset-shortcut--ready {
+    cursor: pointer;
+}
+
+.payment-preset-shortcut--ready:hover,
+.payment-preset-shortcut--ready:focus-visible,
+.payment-preset-shortcut--selected {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(59, 130, 246, 0.12);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.payment-preset-shortcut:disabled {
+    cursor: default;
+    opacity: 0.65;
+}
+
+.early-repayment-plan-settings {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 0.7fr);
+    gap: 16px;
+    align-items: end;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: rgba(59, 130, 246, 0.06);
+}
+
+.early-repayment-plan-settings small {
+    display: block;
+    margin-top: 5px;
+    color: var(--text-muted);
+}
+
+.early-repayment-plan-settings__amount .form-label {
+    margin-bottom: 6px;
+}
+
+@media (max-width: 680px) {
+    .early-repayment-plan-settings { grid-template-columns: 1fr; }
+}
+
 .form-select option { background: var(--bg-card-2); }
 .bank-calc-settings {
     padding: 0.9rem;

@@ -112,6 +112,115 @@
         </div>
     </div>
 
+    <section class="plan-section plan-income-receipts" id="salary-income">
+        <div class="plan-section__header">
+            <div>
+                <span class="plan-section__kicker">По факту поступления</span>
+                <h2>Распределение отдельных поступлений</h2>
+                <p>Сначала план предлагает ближайшие ежемесячные расходы и рассчитанные платежи по долгам, затем закрывает невыполненный план месяца по целям с учетом их приоритета и оставляет свободный остаток.</p>
+            </div>
+            <span class="plan-source-badge"><i class="bi bi-link-45deg"></i> Связано с доходами</span>
+        </div>
+
+        <div class="plan-income-receipts__layout">
+            <form method="post"
+                  action="{{ url_for('add_salary_income', year=plan.period.year, month=plan.period.month) }}"
+                  class="plan-income-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="plan-income-form__intro">
+                    <strong>Добавить зарплатное поступление</strong>
+                    <span>Запись также появится в разделе «Доходы» и войдет в итог за месяц.</span>
+                </div>
+
+                <fieldset>
+                    <legend class="form-label">Вид поступления</legend>
+                    <div class="plan-segments plan-segments--income">
+                        <label>
+                            <input type="radio" name="category" value="salary" checked>
+                            <span><i class="bi bi-briefcase"></i>Зарплата</span>
+                        </label>
+                        <label>
+                            <input type="radio" name="category" value="advance">
+                            <span><i class="bi bi-calendar2-week"></i>Аванс</span>
+                        </label>
+                    </div>
+                </fieldset>
+
+                <div class="plan-income-form__fields">
+                    <div>
+                        <label class="form-label" for="salary-income-amount">Сумма</label>
+                        <div class="input-group">
+                            <input id="salary-income-amount" name="amount" type="text" inputmode="decimal"
+                                   class="form-control number-format" placeholder="25 000" required>
+                            <span class="input-group-text">₽</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label" for="salary-income-date">Дата поступления</label>
+                        <input id="salary-income-date" name="income_date" type="date" class="form-control"
+                               value="{{ plan.period.default_transaction_date.strftime('%Y-%m-%d') }}" required>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label" for="salary-income-source">Источник <span>необязательно</span></label>
+                    <input id="salary-income-source" name="source" type="text" class="form-control"
+                           list="incomeSourceSuggestions" autocomplete="off"
+                           maxlength="150" placeholder="Основная работа">
+                    <datalist id="incomeSourceSuggestions">
+                        {% for source in source_suggestions %}<option value="{{ source }}">{% endfor %}
+                    </datalist>
+                </div>
+                <div>
+                    <label class="form-label" for="salary-income-comment">Комментарий <span>необязательно</span></label>
+                    <input id="salary-income-comment" name="comment" type="text" class="form-control"
+                           maxlength="1000" placeholder="За первую половину месяца">
+                </div>
+
+                <button type="submit" class="btn btn-primary" {% if plan.is_demo %}disabled{% endif %}>
+                    <i class="bi bi-stars me-1"></i>Добавить и рассчитать
+                </button>
+                {% if plan.is_demo %}<small class="text-muted">В демо-режиме форма показывает сценарий без сохранения.</small>{% endif %}
+            </form>
+
+            <div class="plan-income-allocations">
+                {% for income in plan.income_allocations %}
+                <article class="plan-income-allocation" id="income-allocation-{{ income.id }}">
+                    <div class="plan-income-allocation__header">
+                        <div>
+                            <span>{{ income.category_label }} · {{ income.date.strftime('%d.%m.%Y') }}</span>
+                            <strong>{{ income.source }}</strong>
+                        </div>
+                        <strong>{{ income.amount|money }}</strong>
+                    </div>
+                    <div class="plan-income-allocation__list">
+                        {% for item in income.allocations %}
+                        <div class="plan-income-allocation__row plan-income-allocation__row--{{ item.kind }}{% if item.urgency %} plan-income-allocation__row--due-{{ item.urgency }}{% endif %}">
+                            <i class="bi {{ item.icon }}"></i>
+                            <div><strong>{{ item.label }}</strong><span>{{ item.detail }}</span></div>
+                            <strong>{{ item.amount|money }}</strong>
+                        </div>
+                        {% else %}
+                        <div class="plan-source-empty">Для этого поступления пока нет направлений.</div>
+                        {% endfor %}
+                    </div>
+                    {% if not plan.is_demo %}
+                    <a href="{{ url_for('edit_income', income_id=income.id) }}" class="plan-income-allocation__link">
+                        Открыть запись в доходах <i class="bi bi-arrow-up-right"></i>
+                    </a>
+                    {% endif %}
+                </article>
+                {% else %}
+                <div class="plan-empty plan-empty--compact">
+                    <i class="bi bi-cash-stack"></i>
+                    <strong>Поступлений за этот месяц пока нет</strong>
+                    <span>Добавьте зарплатное поступление здесь или создайте запись в разделе «Доходы».</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
     <div class="plan-layout">
         <section class="plan-section plan-distribution">
             <div class="plan-section__header">
@@ -272,7 +381,7 @@
                 <div>
                     <span class="plan-section__kicker">Накопления по приоритету</span>
                     <h2>Цели</h2>
-                    <p>Подушка всегда идет первой, затем план распределяет деньги по вашим целям.</p>
+                    <p>Подушка всегда идет первой. Для каждой цели учитываются план месяца, чистое пополнение, остаток до цели и доступная сумма.</p>
                 </div>
                 <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#goalModal"
                         data-goal-mode="create" {% if plan.is_demo %}disabled{% endif %}>
@@ -336,12 +445,22 @@
                     <div class="plan-goal__summary">
                         <div><span>Осталось</span><strong>{{ goal.gap|money }}</strong></div>
                         <div><span>План в месяц</span><strong>{{ goal.monthly_contribution|money }}</strong></div>
-                        <div><span>Внесено за месяц</span><strong>{{ goal.deposited_this_month|money }}</strong></div>
+                        <div><span>Выполнено за месяц</span><strong>{{ goal.monthly_progress|money }}</strong></div>
                         <div><span>Срок</span><strong>{{ goal.target_date.strftime('%d.%m.%Y') if goal.target_date else 'Без срока' }}</strong></div>
                     </div>
                     <p class="plan-goal__month-status {{ 'plan-goal__month-status--done' if goal.monthly_remaining <= 0 else '' }}">
                         <i class="bi {{ 'bi-check-circle' if goal.monthly_remaining <= 0 else 'bi-calendar-check' }}"></i>
-                        {% if goal.monthly_remaining <= 0 %}План месяца выполнен{% else %}В этом месяце осталось внести {{ goal.monthly_remaining|money }}{% endif %}
+                        {% if goal.gap <= 0 %}
+                            Цель достигнута
+                        {% elif goal.monthly_remaining <= 0 %}
+                            План месяца выполнен
+                        {% elif goal.recommended_contribution > 0 and goal.monthly_shortfall > 0 %}
+                            По текущему доходу можно направить {{ goal.recommended_contribution|money }} из оставшихся {{ goal.monthly_remaining|money }}
+                        {% elif goal.recommended_contribution <= 0 %}
+                            В этом месяце осталось внести {{ goal.monthly_remaining|money }}, но свободных средств пока недостаточно
+                        {% else %}
+                            В этом месяце осталось внести {{ goal.monthly_remaining|money }}
+                        {% endif %}
                     </p>
                     {% if goal.note and not goal.is_system %}<p class="plan-goal__note">{{ goal.note }}</p>{% endif %}
                     <div class="plan-goal__actions">
