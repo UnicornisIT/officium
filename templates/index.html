@@ -151,6 +151,8 @@
 <div class="row g-4" id="debtsGrid">
     {% for debt in debts %}
     {% set payment_date = debt.effective_next_payment_date(today) %}
+    {% set first_payment_pending = debt.is_first_payment_pending() %}
+    {% set next_payment_amount = debt.effective_next_payment_amount() %}
     {% set days = (payment_date - today).days if payment_date else None %}
     {% set paid_pct = ((1 - debt.remaining_amount / debt.total_amount) * 100) | round(1) if debt.total_amount > 0 else 100 %}
     <div class="col-12 col-md-6 col-xl-4 debt-col"
@@ -237,9 +239,9 @@
                     </span>
                 </div>
                 <div class="debt-card__detail">
-                    <span class="detail-label"><i class="bi bi-arrow-repeat"></i> Мин. платеж</span>
+                    <span class="detail-label"><i class="bi bi-arrow-repeat"></i> {{ 'Первый платёж' if first_payment_pending else 'Мин. платёж' }}</span>
                     <span class="detail-value">
-                        {% if debt.minimum_payment %}{{ debt.minimum_payment|money }}{% else %}—{% endif %}
+                        {% if next_payment_amount %}{{ next_payment_amount|money }}{% else %}—{% endif %}
                     </span>
                 </div>
                 {% set display_interest_rate = debt.interest_rate_for(today) %}
@@ -297,7 +299,7 @@
                         <i class="bi bi-pencil"></i>
                     </button>
                     <button class="btn btn-action btn-action--calendar"
-                        onclick="openGoogleCalendar({{ debt.id }}, '{{ debt.bank_name }}', '{{ debt.product_name }}', '{{ payment_date.strftime('%Y-%m-%d') if payment_date else '' }}', {{ debt.minimum_payment or 0 }}, {{ debt.remaining_amount }})"
+                        onclick="openGoogleCalendar({{ debt.id }}, '{{ debt.bank_name }}', '{{ debt.product_name }}', '{{ payment_date.strftime('%Y-%m-%d') if payment_date else '' }}', {{ next_payment_amount or 0 }}, {{ debt.remaining_amount }})"
                         title="Добавить в Google Calendar">
                         <i class="bi bi-calendar-plus"></i>
                     </button>

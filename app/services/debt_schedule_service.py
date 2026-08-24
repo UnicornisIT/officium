@@ -37,8 +37,20 @@ def build_debt_payment_schedule(debt, today=None):
     period_start = debt.interest_period_start_date or (payment_date - relativedelta(months=1))
     months_left = _schedule_term_months(debt, remaining)
     monthly_fee = Decimal(str(getattr(debt, 'monthly_fee_amount', 0) or 0)).quantize(MONEY, rounding=ROUND_HALF_UP)
+    first_payment = (
+        Decimal(str(debt.first_payment_amount)).quantize(MONEY, rounding=ROUND_HALF_UP)
+        if getattr(debt, 'is_first_payment_pending', lambda: False)()
+        else None
+    )
 
     for number in range(1, MAX_SCHEDULE_ROWS + 1):
+        uses_custom_first_payment = number == 1 and first_payment is not None
+        scheduled_payment_without_fee = monthly_payment
+        if uses_custom_first_payment:
+            scheduled_payment_without_fee = (first_payment - monthly_fee).quantize(MONEY, rounding=ROUND_HALF_UP)
+            if scheduled_payment_without_fee <= 0:
+                raise ValueError('Первый платеж должен быть больше ежемесячной комиссии.')
+
         annual_rate = Decimal(str(debt.interest_rate_for(payment_date) or 0))
         interest = calculate_period_interest(
             debt,
@@ -46,15 +58,19 @@ def build_debt_payment_schedule(debt, today=None):
             period_start=period_start,
             period_end=payment_date,
         ).quantize(MONEY, rounding=ROUND_HALF_UP)
-        principal = _schedule_principal(
-            debt,
-            remaining=remaining,
-            payment_without_fee=monthly_payment,
-            interest=interest,
-            months_left=months_left,
-        )
+        if uses_custom_first_payment:
+            interest = min(interest, scheduled_payment_without_fee).quantize(MONEY, rounding=ROUND_HALF_UP)
+            principal = (scheduled_payment_without_fee - interest).quantize(MONEY, rounding=ROUND_HALF_UP)
+        else:
+            principal = _schedule_principal(
+                debt,
+                remaining=remaining,
+                payment_without_fee=scheduled_payment_without_fee,
+                interest=interest,
+                months_left=months_left,
+            )
 
-        if principal <= 0:
+        if principal < 0 or (principal == 0 and not uses_custom_first_payment):
             raise ValueError('Минимальный платеж не покрывает проценты. Увеличьте платеж или проверьте ставку.')
 
         payment_without_fee = (principal + interest).quantize(MONEY, rounding=ROUND_HALF_UP)

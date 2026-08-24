@@ -180,7 +180,7 @@ class FinancialPlanTestCase(unittest.TestCase):
             income.amount = Decimal('200000.00')
             debt = Debt.query.filter_by(user_id=self.user_id, debt_type='consumer_credit').one()
             debt.early_repayment_enabled = True
-            debt.planned_early_repayment_amount = Decimal('7000.00')
+            debt.planned_early_repayment_amount = debt.minimum_payment + Decimal('7000.00')
             debt_id = debt.id
             db.session.add(EmergencyFundTransaction(
                 user_id=self.user_id,
@@ -204,7 +204,7 @@ class FinancialPlanTestCase(unittest.TestCase):
             debt = Debt.query.filter_by(user_id=self.user_id, debt_type='consumer_credit').one()
             debt.remaining_amount = Decimal('1000.00')
             debt.early_repayment_enabled = True
-            debt.planned_early_repayment_amount = Decimal('700.00')
+            debt.planned_early_repayment_amount = debt.minimum_payment + Decimal('700.00')
             db.session.add(EmergencyFundTransaction(
                 user_id=self.user_id,
                 transaction_type='deposit',

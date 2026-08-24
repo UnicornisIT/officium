@@ -38,9 +38,18 @@ def init_app(app):
             principal_amount = parse_decimal(data.get('principal_amount'), 'Основной долг', required=False)
             interest_amount = parse_decimal(data.get('interest_amount'), 'Проценты', required=False)
             fee_amount = parse_decimal(data.get('fee_amount'), 'Комиссии', required=False)
+            scheduled_payment_amount = parse_decimal(data.get('scheduled_payment_amount'), 'Обязательная часть платежа', required=False)
             bank_remaining_after_payment = parse_decimal(data.get('bank_remaining_after_payment'), 'Остаток банка после платежа', required=False)
             if amount <= 0:
                 raise ValueError("Сумма платежа должна быть больше нуля")
+            if scheduled_payment_amount is not None and scheduled_payment_amount < 0:
+                raise ValueError('Обязательная часть платежа не может быть отрицательной')
+            if scheduled_payment_amount is not None and scheduled_payment_amount > amount:
+                raise ValueError('Обязательная часть не может быть больше суммы платежа')
+
+            is_early_repayment = bool(data.get('is_early_repayment'))
+            if not is_early_repayment:
+                scheduled_payment_amount = None
 
             payment_date_str = data.get('payment_date')
             if payment_date_str:
@@ -53,7 +62,8 @@ def init_app(app):
                 amount,
                 payment_date=payment_date,
                 comment=str(data.get('comment', '')).strip() or None,
-                is_early_repayment=bool(data.get('is_early_repayment')),
+                is_early_repayment=is_early_repayment,
+                scheduled_payment_amount=scheduled_payment_amount,
                 principal_amount=principal_amount,
                 interest_amount=interest_amount,
                 fee_amount=fee_amount,
@@ -94,9 +104,22 @@ def init_app(app):
             principal_amount = parse_decimal(data.get('principal_amount'), 'Основной долг', required=False)
             interest_amount = parse_decimal(data.get('interest_amount'), 'Проценты', required=False)
             fee_amount = parse_decimal(data.get('fee_amount'), 'Комиссии', required=False)
+            scheduled_payment_amount = parse_decimal(
+                data.get('scheduled_payment_amount', payment.scheduled_payment_amount),
+                'Обязательная часть платежа',
+                required=False,
+            )
             bank_remaining_after_payment = parse_decimal(data.get('bank_remaining_after_payment'), 'Остаток банка после платежа', required=False)
             if amount <= 0:
                 raise ValueError('Сумма платежа должна быть больше нуля')
+            if scheduled_payment_amount is not None and scheduled_payment_amount < 0:
+                raise ValueError('Обязательная часть платежа не может быть отрицательной')
+            if scheduled_payment_amount is not None and scheduled_payment_amount > amount:
+                raise ValueError('Обязательная часть не может быть больше суммы платежа')
+
+            is_early_repayment = bool(data.get('is_early_repayment'))
+            if not is_early_repayment:
+                scheduled_payment_amount = None
 
             payment_date = parse_date(data.get('payment_date'), 'Дата платежа', required=True)
             payment = update_payment(
@@ -105,7 +128,8 @@ def init_app(app):
                 amount=amount,
                 payment_date=payment_date,
                 comment=str(data.get('comment', '')).strip() or None,
-                is_early_repayment=bool(data.get('is_early_repayment')),
+                is_early_repayment=is_early_repayment,
+                scheduled_payment_amount=scheduled_payment_amount,
                 principal_amount=principal_amount,
                 interest_amount=interest_amount,
                 fee_amount=fee_amount,

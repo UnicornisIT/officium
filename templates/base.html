@@ -2,11 +2,16 @@
 <html lang="ru" data-theme="dark" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    {% if is_telegram_mini_app %}
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    {% endif %}
     <script>
         (function () {
+            const webApp = window.Telegram && window.Telegram.WebApp;
             const savedTheme = localStorage.getItem('debtManagerTheme');
-            const theme = savedTheme || 'dark';
+            const theme = webApp && webApp.colorScheme ? webApp.colorScheme : (savedTheme || 'dark');
             document.documentElement.setAttribute('data-theme', theme);
             document.documentElement.setAttribute('data-bs-theme', theme);
         })();
@@ -16,11 +21,73 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=20260823-early-plan-1" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=20260824-telegram-mini-app-1" rel="stylesheet">
 </head>
-<body>
+<body{% if is_telegram_mini_app %} class="telegram-mini-app"{% endif %}>
 
 <!-- Навигация -->
+{% if is_telegram_mini_app %}
+<header class="telegram-app-bar">
+    <a class="telegram-app-bar__brand" href="{{ url_for('index') }}" aria-label="Officium — дашборд">
+        <span class="telegram-app-bar__logo">₽</span>
+        <span>
+            <strong>{{ app_name }}</strong>
+            <small>Ваш финансовый центр</small>
+        </span>
+    </a>
+    <div class="telegram-app-bar__actions">
+        <span class="telegram-app-bar__avatar" aria-hidden="true">
+            {{ (current_user.first_name or current_user.username or 'O')[:1]|upper }}
+        </span>
+        <button class="telegram-app-bar__menu" type="button" data-bs-toggle="offcanvas"
+                data-bs-target="#telegramMoreMenu" aria-controls="telegramMoreMenu" aria-label="Открыть меню">
+            <i class="bi bi-grid"></i>
+        </button>
+    </div>
+</header>
+
+<div class="offcanvas offcanvas-bottom telegram-more-menu" tabindex="-1" id="telegramMoreMenu"
+     aria-labelledby="telegramMoreMenuLabel">
+    <div class="offcanvas-header">
+        <div>
+            <span class="telegram-more-menu__eyebrow">Навигация</span>
+            <h2 class="offcanvas-title" id="telegramMoreMenuLabel">Все разделы</h2>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Закрыть"></button>
+    </div>
+    <div class="offcanvas-body">
+        <nav class="telegram-more-menu__grid" aria-label="Все разделы приложения">
+            <a href="{{ url_for('finance') }}" class="{% if request.path == '/finance' %}active{% endif %}">
+                <i class="bi bi-pie-chart"></i><span>Аналитика</span>
+            </a>
+            <a href="{{ url_for('mortgages') }}" class="{% if request.path == '/mortgages' %}active{% endif %}">
+                <i class="bi bi-bank"></i><span>Ипотека</span>
+            </a>
+            <a href="{{ url_for('archive') }}" class="{% if request.path == '/archive' %}active{% endif %}">
+                <i class="bi bi-archive"></i><span>Архив</span>
+            </a>
+            <a href="{{ url_for('documentation') }}">
+                <i class="bi bi-journal-text"></i><span>Помощь</span>
+            </a>
+            {% if current_user.is_admin %}
+            <a href="{{ url_for('admin_dashboard') }}">
+                <i class="bi bi-shield-lock"></i><span>Админка</span>
+            </a>
+            {% endif %}
+            <a href="{{ url_for('logout') }}" class="telegram-more-menu__logout">
+                <i class="bi bi-box-arrow-right"></i><span>Выйти</span>
+            </a>
+        </nav>
+        <div class="telegram-more-menu__profile">
+            <span class="telegram-more-menu__profile-avatar">{{ (current_user.first_name or current_user.username or 'O')[:1]|upper }}</span>
+            <span>
+                <strong>{{ current_user.first_name or current_user.username or 'Пользователь' }}</strong>
+                <small>Вход выполнен через Telegram</small>
+            </span>
+        </div>
+    </div>
+</div>
+{% else %}
 <nav class="navbar navbar-expand-lg">
     <div class="container-fluid px-4">
         <a class="navbar-brand" href="/">
@@ -126,6 +193,7 @@
         </div>
     </div>
 </nav>
+{% endif %}
 
 {% if is_impersonating %}
 <div class="container-fluid px-4 py-3">
@@ -154,6 +222,32 @@
     {% block content %}{% endblock %}
 </main>
 
+{% if is_telegram_mini_app %}
+<nav class="telegram-bottom-nav" aria-label="Основная навигация">
+    <a href="{{ url_for('index') }}" class="{% if request.path == '/' %}active{% endif %}">
+        <i class="bi bi-house-door{% if request.path == '/' %}-fill{% endif %}"></i>
+        <span>Главная</span>
+    </a>
+    <a href="{{ url_for('incomes') }}" class="{% if request.path == '/incomes' %}active{% endif %}">
+        <i class="bi bi-wallet2"></i>
+        <span>Доходы</span>
+    </a>
+    <button class="telegram-bottom-nav__add" type="button" onclick="openAddModal()" aria-label="Добавить долг">
+        <span><i class="bi bi-plus-lg"></i></span>
+        <small>Долг</small>
+    </button>
+    <a href="{{ url_for('expenses') }}" class="{% if request.path.startswith('/expenses') %}active{% endif %}">
+        <i class="bi bi-basket3"></i>
+        <span>Расходы</span>
+    </a>
+    <a href="{{ url_for('financial_plan') }}" class="{% if request.path == '/financial-plan' %}active{% endif %}">
+        <i class="bi bi-signpost-split"></i>
+        <span>План</span>
+    </a>
+</nav>
+{% endif %}
+
+{% if not is_telegram_mini_app %}
 <footer class="site-footer container-fluid px-4 py-4 mt-4 border-top">
     <div class="container d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
         <div>
@@ -177,6 +271,7 @@
         </div>
     </div>
 </footer>
+{% endif %}
 
 <!-- Toast уведомления -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999">
@@ -240,17 +335,15 @@
                         <label class="form-label">Минимальный платеж (₽)</label>
                         <input type="text" inputmode="decimal" class="form-control number-format" id="f_minimum_payment" placeholder="0 000,00">
                     </div>
+                    <div class="col-md-6" id="first_payment_amount_group">
+                        <label class="form-label" for="f_first_payment_amount">Первый платёж (₽)</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format"
+                               id="f_first_payment_amount" placeholder="если отличается">
+                        <small class="text-muted">Со второго платежа будет использоваться минимальная сумма.</small>
+                    </div>
                     <div class="col-md-6">
                         <label class="form-label">Процентная ставка (%/год)</label>
                         <input type="number" class="form-control" id="f_interest_rate" min="0" max="200" step="0.1" placeholder="0.0">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Новая ставка (%/год)</label>
-                        <input type="number" class="form-control" id="f_interest_rate_after_change" min="0" max="200" step="0.1" placeholder="если изменится">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Действует с</label>
-                        <input type="date" class="form-control" id="f_interest_rate_change_date">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" id="next_payment_date_label">Дата следующего платежа</label>
@@ -260,6 +353,21 @@
                         <div class="form-check form-switch debt-recurring-switch">
                             <input class="form-check-input" type="checkbox" id="f_is_payment_recurring">
                             <label class="form-check-label" id="recurring_payment_label" for="f_is_payment_recurring">Обновлять каждый месяц</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="bank-calc-settings rate-change-settings">
+                            <div class="bank-calc-settings__title">Изменение процентной ставки</div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Новая ставка (%/год)</label>
+                                    <input type="number" class="form-control" id="f_interest_rate_after_change" min="0" max="200" step="0.1" placeholder="если изменится">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Действует с</label>
+                                    <input type="date" class="form-control" id="f_interest_rate_change_date">
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="col-12">
@@ -285,29 +393,6 @@
                                     <label class="form-label">Начало периода процентов</label>
                                     <input type="date" class="form-control" id="f_interest_period_start_date">
                                 </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Что уменьшать при досрочном погашении</label>
-                                    <select class="form-select" id="f_early_repayment_strategy">
-                                        <option value="reduce_term">Уменьшать срок</option>
-                                        <option value="reduce_payment">Уменьшать платёж</option>
-                                    </select>
-                                </div>
-                                <div class="col-12 d-none" id="consumer_early_repayment_settings">
-                                    <div class="early-repayment-plan-settings">
-                                        <div>
-                                            <div class="form-check form-switch mb-0">
-                                                <input class="form-check-input" type="checkbox" id="f_early_repayment_enabled">
-                                                <label class="form-check-label" for="f_early_repayment_enabled">Планировать досрочное погашение</label>
-                                            </div>
-                                            <small>В форме платежа появится отдельный вариант с указанной суммой.</small>
-                                        </div>
-                                        <div class="early-repayment-plan-settings__amount d-none" id="early_repayment_amount_group">
-                                            <label class="form-label" for="f_planned_early_repayment_amount">Желаемая сумма (₽)</label>
-                                            <input type="text" inputmode="decimal" class="form-control number-format"
-                                                   id="f_planned_early_repayment_amount" placeholder="например, 20 000">
-                                        </div>
-                                    </div>
-                                </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Срок, мес.</label>
                                     <input type="number" class="form-control" id="f_loan_term_months" min="1" step="1" placeholder="если известен">
@@ -324,6 +409,43 @@
                                     <div class="form-check form-switch mb-0">
                                         <input class="form-check-input" type="checkbox" id="f_include_payment_day">
                                         <label class="form-check-label" for="f_include_payment_day">Включать день платежа в проценты</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="bank-calc-settings early-repayment-settings-block">
+                            <div class="bank-calc-settings__title">Досрочное погашение</div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Что уменьшать</label>
+                                    <select class="form-select" id="f_early_repayment_strategy">
+                                        <option value="reduce_term">Уменьшать срок</option>
+                                        <option value="reduce_payment">Уменьшать платёж</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 d-none" id="consumer_early_repayment_settings">
+                                    <div class="early-repayment-plan-settings">
+                                        <div>
+                                            <div class="form-check form-switch mb-0">
+                                                <input class="form-check-input" type="checkbox" id="f_early_repayment_enabled">
+                                                <label class="form-check-label" for="f_early_repayment_enabled">Планировать досрочное погашение</label>
+                                            </div>
+                                            <small>В форме платежа появится отдельный вариант с указанной суммой.</small>
+                                        </div>
+                                        <div class="early-repayment-plan-settings__amount d-none" id="early_repayment_amount_group">
+                                            <label class="form-label" for="f_planned_early_repayment_amount">Желаемый платёж всего (₽)</label>
+                                            <input type="text" inputmode="decimal" class="form-control number-format"
+                                                   id="f_planned_early_repayment_amount" placeholder="например, 25 000">
+                                            <small>Минимальный платёж уже входит в эту сумму.</small>
+                                        </div>
+                                        <div class="early-repayment-plan-settings__amount d-none" id="effective_early_repayment_amount_group">
+                                            <label class="form-label" for="f_effective_early_repayment_amount">Фактическое досрочное (₽)</label>
+                                            <input type="text" class="form-control number-format early-repayment-calculated"
+                                                   id="f_effective_early_repayment_amount" placeholder="0,00" readonly>
+                                            <small>Желаемый платёж минус минимальный.</small>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -371,16 +493,16 @@
                         <div class="payment-preset-shortcuts">
                             <button type="button" class="payment-preset-shortcut" id="pm_apply_minimum"
                                     onclick="applyMinimumPayment()" disabled
-                                    title="Подставить минимальную сумму и ближайшую дату платежа">
+                                    title="Подставить сумму и дату ближайшего платежа">
                                 <i class="bi bi-calendar-check"></i>
-                                <span>Минимальный платёж</span>
+                                <span id="pm_required_payment_label">Ближайший платёж</span>
                                 <strong id="pm_min_payment">—</strong>
                             </button>
                             <button type="button" class="payment-preset-shortcut payment-preset-shortcut--early d-none"
                                     id="pm_apply_early" onclick="applyPlannedEarlyRepayment()" disabled
-                                    title="Подставить желаемую сумму досрочного погашения">
+                                    title="Внести обязательную и досрочную части одним платежом">
                                 <i class="bi bi-lightning-charge"></i>
-                                <span>Погасить досрочно</span>
+                                <span>Единый платёж</span>
                                 <strong id="pm_early_payment">—</strong>
                             </button>
                         </div>
@@ -413,6 +535,7 @@
                         <div class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" id="pm_is_early_repayment">
                             <label class="form-check-label" for="pm_is_early_repayment">Досрочное погашение</label>
+                            <input type="hidden" id="pm_scheduled_payment_amount">
                         </div>
                     </div>
                 </div>
@@ -584,7 +707,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=20260823-early-plan-1"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=20260824-telegram-mini-app-1"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const params = new URLSearchParams(window.location.search);

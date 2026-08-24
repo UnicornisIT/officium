@@ -61,6 +61,7 @@ def init_app(app):
             total_amount = parse_decimal(data.get('total_amount'), 'Сумма долга', required=True)
             remaining_amount = parse_decimal(data.get('remaining_amount'), 'Остаток долга', required=True)
             minimum_payment = parse_decimal(data.get('minimum_payment'), 'Минимальный платеж', required=False)
+            first_payment_amount = _parse_first_payment_amount(data.get('first_payment_amount'))
             interest_rate = parse_decimal(data.get('interest_rate'), 'Процентная ставка', required=False)
             interest_rate_after_change = parse_decimal(data.get('interest_rate_after_change'), 'Новая процентная ставка', required=False)
             interest_rate_change_date = parse_date(data.get('interest_rate_change_date'), 'Дата смены ставки')
@@ -76,6 +77,7 @@ def init_app(app):
                 debt_type=debt_type,
                 enabled=data.get('early_repayment_enabled'),
                 amount=data.get('planned_early_repayment_amount'),
+                minimum_payment=minimum_payment,
                 remaining_amount=remaining_amount,
             )
             loan_term_months = _parse_positive_int(data.get('loan_term_months'), 'Срок в месяцах')
@@ -93,6 +95,7 @@ def init_app(app):
                 total_amount=total_amount,
                 remaining_amount=remaining_amount,
                 minimum_payment=minimum_payment,
+                first_payment_amount=first_payment_amount,
                 interest_rate=interest_rate,
                 interest_rate_after_change=interest_rate_after_change,
                 interest_rate_change_date=interest_rate_change_date,
@@ -230,6 +233,8 @@ def init_app(app):
                 debt.remaining_amount = parse_decimal(data['remaining_amount'], 'Остаток долга', required=True)
             if 'minimum_payment' in data:
                 debt.minimum_payment = parse_decimal(data['minimum_payment'], 'Минимальный платеж', required=False)
+            if 'first_payment_amount' in data:
+                debt.first_payment_amount = _parse_first_payment_amount(data.get('first_payment_amount'))
             if 'interest_rate' in data:
                 debt.interest_rate = parse_decimal(data['interest_rate'], 'Процентная ставка', required=False)
             if 'interest_rate_after_change' in data or 'interest_rate_change_date' in data:
@@ -256,12 +261,14 @@ def init_app(app):
                 'debt_type' in data
                 or 'early_repayment_enabled' in data
                 or 'planned_early_repayment_amount' in data
+                or 'minimum_payment' in data
                 or 'remaining_amount' in data
             ):
                 enabled, planned_amount = _early_repayment_preferences(
                     debt_type=debt.debt_type,
                     enabled=data.get('early_repayment_enabled', debt.early_repayment_enabled),
                     amount=data.get('planned_early_repayment_amount', debt.planned_early_repayment_amount),
+                    minimum_payment=debt.minimum_payment,
                     remaining_amount=debt.remaining_amount,
                 )
                 debt.early_repayment_enabled = enabled
@@ -337,7 +344,14 @@ def _validate_interest_rate_change(interest_rate_after_change, interest_rate_cha
         raise ValueError('Укажите дату смены ставки или очистите новую процентную ставку')
 
 
-def _early_repayment_preferences(debt_type, enabled, amount, remaining_amount):
+def _parse_first_payment_amount(value):
+    amount = parse_decimal(value, 'Первый платеж', required=False)
+    if amount is not None and amount <= 0:
+        raise ValueError('Первый платеж должен быть больше нуля')
+    return amount
+
+
+def _early_repayment_preferences(debt_type, enabled, amount, minimum_payment, remaining_amount):
     if debt_type != 'consumer_credit':
         return False, None
 
@@ -347,13 +361,16 @@ def _early_repayment_preferences(debt_type, enabled, amount, remaining_amount):
 
     planned_amount = parse_decimal(
         amount,
-        'Желаемая сумма досрочного погашения',
+        'Желаемый платёж всего',
         required=True,
     )
     if planned_amount <= 0:
-        raise ValueError('Желаемая сумма досрочного погашения должна быть больше нуля')
+        raise ValueError('Желаемая общая сумма платежа должна быть больше нуля')
+    required_payment = minimum_payment or 0
+    if planned_amount <= required_payment:
+        raise ValueError('Желаемая общая сумма платежа должна быть больше минимального платежа')
     if planned_amount > remaining_amount:
-        raise ValueError('Желаемая сумма досрочного погашения не может превышать остаток долга')
+        raise ValueError('Желаемая общая сумма платежа не может превышать остаток долга')
     return True, planned_amount
 
 
