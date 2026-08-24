@@ -7,7 +7,10 @@ from authlib.integrations.flask_client import OAuth
 from extensions import db
 from app import login_manager
 from app.models import User
-from app.services.telegram_auth_service import verify_telegram_login
+from app.services.telegram_auth_service import (
+    verify_telegram_login,
+    verify_telegram_web_app_init_data,
+)
 from app.utils import get_dictionary_values, get_setting, record_activity
 
 
@@ -121,6 +124,8 @@ def init_app(app):
             'static',
             'login',
             'telegram_login',
+            'telegram_mini_app',
+            'telegram_mini_app_login',
             'telegram_webhook',
             'logout',
             'admin_login',
@@ -154,6 +159,9 @@ def init_app(app):
         test_login_enabled = app.config.get('TEST_USER_ENABLED', False)
         dev_login_enabled = app.config.get('DEV_LOGIN_ENABLED', False) and app.debug
         is_impersonating = session.get('original_admin_id') is not None
+        is_telegram_mini_app = bool(session.get('telegram_mini_app'))
+        mini_app_short_name = app.config.get('TELEGRAM_MINI_APP_SHORT_NAME', '')
+        mini_app_enabled = app.config.get('TELEGRAM_MINI_APP_ENABLED', True)
         return dict(
             current_user=current_user,
             app_name=app_name,
@@ -162,7 +170,61 @@ def init_app(app):
             test_login_enabled=test_login_enabled,
             dev_login_enabled=dev_login_enabled,
             is_impersonating=is_impersonating,
+            is_telegram_mini_app=is_telegram_mini_app,
+            telegram_mini_app_enabled=mini_app_enabled,
+            telegram_mini_app_short_name=mini_app_short_name,
         )
+
+    def _telegram_profile_value(profile, key, max_length):
+        value = profile.get(key)
+        if value is None:
+            return None
+        return str(value).strip()[:max_length] or None
+
+    def _login_telegram_profile(profile, auth_timestamp, activity_name):
+        try:
+            telegram_id = int(profile.get('id'))
+            auth_date = datetime.utcfromtimestamp(int(auth_timestamp))
+        except (TypeError, ValueError, OSError, OverflowError):
+            return None, 'Неверные данные авторизации Telegram.'
+
+        if telegram_id <= 0:
+            return None, 'Неверные данные авторизации Telegram.'
+
+        admin_ids = [item.strip() for item in app.config.get('ADMIN_TELEGRAM_IDS', []) if item.strip()]
+        is_admin_user = str(telegram_id) in admin_ids
+        user = User.query.filter_by(telegram_id=telegram_id).first()
+        if not user:
+            user = User(
+                telegram_id=telegram_id,
+                auth_date=auth_date,
+                role='superadmin' if is_admin_user else 'user',
+            )
+            db.session.add(user)
+        elif user.is_blocked:
+            return None, 'Ваш аккаунт заблокирован. Обратитесь к администратору.'
+
+        if is_admin_user and not user.is_superadmin:
+            user.role = 'superadmin'
+        user.username = _telegram_profile_value(profile, 'username', 80)
+        user.first_name = _telegram_profile_value(profile, 'first_name', 100)
+        user.last_name = _telegram_profile_value(profile, 'last_name', 100)
+        user.photo_url = _telegram_profile_value(profile, 'photo_url', 255)
+        user.auth_date = auth_date
+        user.login_count = (user.login_count or 0) + 1
+        user.last_login_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        user.last_user_agent = request.headers.get('User-Agent')
+
+        db.session.commit()
+        record_activity(
+            activity_name,
+            user,
+            description=f'Telegram ID={telegram_id}',
+            ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+            user_agent=request.headers.get('User-Agent'),
+        )
+        login_user(user)
+        return user, None
 
     @app.route('/login')
     def login():
@@ -179,6 +241,52 @@ def init_app(app):
             test_login_enabled=app.config.get('TEST_USER_ENABLED', False),
             google_login_enabled=app.config.get('GOOGLE_LOGIN_ENABLED', False),
         )
+
+    @app.route('/telegram-app')
+    def telegram_mini_app():
+        if not app.config.get('TELEGRAM_MINI_APP_ENABLED', True):
+            abort(404)
+        if current_user.is_authenticated:
+            session['telegram_mini_app'] = True
+            return redirect(url_for('index'))
+        return render_template(
+            'telegram_app.html',
+            bot_username=app.config.get('TELEGRAM_BOT_USERNAME', ''),
+            mini_app_short_name=app.config.get('TELEGRAM_MINI_APP_SHORT_NAME', ''),
+        )
+
+    @app.route('/auth/telegram-mini-app', methods=['POST'])
+    def telegram_mini_app_login():
+        if not app.config.get('TELEGRAM_MINI_APP_ENABLED', True):
+            return jsonify({'success': False, 'error': 'Telegram Mini App отключён.'}), 404
+
+        telegram_allowed = get_setting('telegram_login_enabled', app.config.get('TELEGRAM_LOGIN_ENABLED', 'true'))
+        if isinstance(telegram_allowed, str):
+            telegram_allowed = telegram_allowed.lower() in ('1', 'true', 'yes', 'on')
+        if not telegram_allowed:
+            return jsonify({'success': False, 'error': 'Вход через Telegram временно отключён.'}), 403
+
+        payload = request.get_json(silent=True) or {}
+        init_data = payload.get('init_data', '')
+        parsed = verify_telegram_web_app_init_data(
+            init_data,
+            app.config.get('TELEGRAM_BOT_TOKEN', ''),
+            max_age_seconds=app.config.get('TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS', 86400),
+        )
+        if not parsed:
+            return jsonify({'success': False, 'error': 'Не удалось подтвердить запуск через Telegram.'}), 401
+
+        user, error = _login_telegram_profile(
+            parsed['user'],
+            parsed['auth_date'],
+            'Вход через Telegram Mini App',
+        )
+        if error:
+            status = 403 if user is None and 'заблокирован' in error else 400
+            return jsonify({'success': False, 'error': error}), status
+
+        session['telegram_mini_app'] = True
+        return jsonify({'success': True, 'next_url': url_for('index')})
 
     def _dev_mode_enabled():
         return app.debug and app.config.get('DEV_LOGIN_ENABLED', False)
@@ -302,44 +410,26 @@ def init_app(app):
         if not verify_telegram_login(data, app.config.get('TELEGRAM_BOT_TOKEN', '')):
             return render_template('login.html', error='Ошибка авторизации через Telegram. Проверьте настройки бота.', bot_username=bot_username, telegram_allowed=telegram_allowed, admin_login_enabled=app.config.get('ADMIN_LOGIN_ENABLED', False))
 
-        telegram_id = data.get('id')
-        if not telegram_id:
+        if not data.get('id'):
             return render_template('login.html', error='Неверные данные авторизации.', bot_username=bot_username, telegram_allowed=telegram_allowed, admin_login_enabled=app.config.get('ADMIN_LOGIN_ENABLED', False))
 
-        admin_ids = [item.strip() for item in app.config.get('ADMIN_TELEGRAM_IDS', []) if item.strip()]
-        is_admin_user = str(telegram_id) in admin_ids
-
-        user = User.query.filter_by(telegram_id=int(telegram_id)).first()
-        auth_date = datetime.utcfromtimestamp(int(data.get('auth_date', '0')))
-        if not user:
-            user = User(
-                telegram_id=int(telegram_id),
-                username=data.get('username'),
-                first_name=data.get('first_name'),
-                last_name=data.get('last_name'),
-                photo_url=data.get('photo_url'),
-                auth_date=auth_date,
-                role='superadmin' if is_admin_user else 'user',
+        profile = {
+            'id': data.get('id'),
+            'username': data.get('username'),
+            'first_name': data.get('first_name'),
+            'last_name': data.get('last_name'),
+            'photo_url': data.get('photo_url'),
+        }
+        _, error = _login_telegram_profile(profile, data.get('auth_date'), 'Вход через Telegram')
+        if error:
+            return render_template(
+                'login.html',
+                error=error,
+                bot_username=bot_username,
+                telegram_allowed='заблокирован' not in error,
+                admin_login_enabled=app.config.get('ADMIN_LOGIN_ENABLED', False),
             )
-            db.session.add(user)
-        else:
-            if user.is_blocked:
-                return render_template('login.html', error='Ваш аккаунт заблокирован. Обратитесь к администратору.', bot_username=bot_username, telegram_allowed=False, admin_login_enabled=app.config.get('ADMIN_LOGIN_ENABLED', False))
-            if is_admin_user and not user.is_superadmin:
-                user.role = 'superadmin'
-            user.username = data.get('username')
-            user.first_name = data.get('first_name')
-            user.last_name = data.get('last_name')
-            user.photo_url = data.get('photo_url')
-            user.auth_date = auth_date
-
-        user.login_count = (user.login_count or 0) + 1
-        user.last_login_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-        user.last_user_agent = request.headers.get('User-Agent')
-
-        db.session.commit()
-        record_activity('Вход через Telegram', user, description=f'Telegram ID={telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
-        login_user(user)
+        session.pop('telegram_mini_app', None)
         return redirect(url_for('index'))
 
     @app.route('/auth/google')
@@ -481,4 +571,5 @@ def init_app(app):
     @app.route('/logout')
     def logout():
         logout_user()
+        session.pop('telegram_mini_app', None)
         return redirect(url_for('login'))

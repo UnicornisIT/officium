@@ -57,6 +57,7 @@ class SchemaContractTestCase(unittest.TestCase):
             'day_count_convention',
             'include_payment_day',
             'interest_period_start_date',
+            'first_payment_amount',
             'early_repayment_strategy',
             'loan_term_months',
             'monthly_fee_amount',
@@ -75,6 +76,7 @@ class SchemaContractTestCase(unittest.TestCase):
         columns = Payment.__table__.c
 
         self.assertIn('is_early_repayment', columns)
+        self.assertIn('scheduled_payment_amount', columns)
         self.assertFalse(columns.is_early_repayment.nullable)
 
     def test_payment_contains_bank_like_breakdown_fields(self):

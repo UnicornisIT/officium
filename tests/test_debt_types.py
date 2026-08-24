@@ -57,6 +57,7 @@ class DebtTypesTestCase(unittest.TestCase):
             'total_amount': '300000',
             'remaining_amount': '250000',
             'minimum_payment': '15000',
+            'first_payment_amount': '2539.73',
             'early_repayment_enabled': True,
             'planned_early_repayment_amount': '20000',
             'interest_rate': '18.5',
@@ -68,12 +69,17 @@ class DebtTypesTestCase(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload['debt']['debt_type'], 'consumer_credit')
         self.assertEqual(payload['debt']['debt_type_label'], 'Потребительский кредит')
+        self.assertEqual(payload['debt']['first_payment_amount'], 2539.73)
+        self.assertTrue(payload['debt']['is_first_payment_pending'])
+        self.assertEqual(payload['debt']['effective_next_payment_amount'], 2539.73)
         self.assertTrue(payload['debt']['early_repayment_enabled'])
         self.assertEqual(payload['debt']['planned_early_repayment_amount'], 20000.0)
+        self.assertEqual(payload['debt']['effective_planned_early_repayment_amount'], 5000.0)
 
         with self.app.app_context():
             debt = Debt.query.filter_by(user_id=self.user_id).one()
             self.assertEqual(debt.debt_type, 'consumer_credit')
+            self.assertEqual(debt.first_payment_amount, Decimal('2539.73'))
             self.assertTrue(debt.early_repayment_enabled)
             self.assertEqual(debt.planned_early_repayment_amount, Decimal('20000.00'))
 
@@ -88,7 +94,26 @@ class DebtTypesTestCase(unittest.TestCase):
         self.assertIn('onclick="applyMinimumPayment()"', html)
         self.assertIn('id="pm_apply_early"', html)
         self.assertIn('onclick="applyPlannedEarlyRepayment()"', html)
-        self.assertIn('Подставить минимальную сумму и ближайшую дату платежа', html)
+        self.assertIn('id="f_first_payment_amount"', html)
+        self.assertLess(html.index('id="f_minimum_payment"'), html.index('id="f_first_payment_amount"'))
+        self.assertLess(html.index('id="f_first_payment_amount"'), html.index('id="f_interest_rate"'))
+        rate_change_block = html[html.index('class="bank-calc-settings rate-change-settings"'):]
+        self.assertIn('Изменение процентной ставки', rate_change_block)
+        self.assertIn('id="f_interest_rate_after_change"', rate_change_block)
+        self.assertIn('id="f_interest_rate_change_date"', rate_change_block)
+        bank_block_start = html.index('<div class="bank-calc-settings">')
+        early_block_start = html.index('class="bank-calc-settings early-repayment-settings-block"')
+        bank_block = html[bank_block_start:early_block_start]
+        early_block = html[early_block_start:html.index('id="f_comment"', early_block_start)]
+        self.assertIn('Расчёт банка', bank_block)
+        self.assertNotIn('id="f_early_repayment_strategy"', bank_block)
+        self.assertIn('Досрочное погашение', early_block)
+        self.assertIn('id="f_early_repayment_strategy"', early_block)
+        self.assertIn('id="f_early_repayment_enabled"', early_block)
+        self.assertIn('id="f_planned_early_repayment_amount"', early_block)
+        self.assertIn('id="f_effective_early_repayment_amount"', early_block)
+        self.assertIn('Желаемый платёж минус минимальный.', early_block)
+        self.assertIn('Подставить сумму и дату ближайшего платежа', html)
 
     def test_planned_early_repayment_requires_amount_and_only_supports_consumer_credit(self):
         self.login()
@@ -103,7 +128,20 @@ class DebtTypesTestCase(unittest.TestCase):
             'early_repayment_enabled': True,
         })
         self.assertEqual(missing_amount.status_code, 422)
-        self.assertIn('Желаемая сумма', missing_amount.get_json()['error'])
+        self.assertIn('Желаемый платёж', missing_amount.get_json()['error'])
+
+        not_above_minimum = self.client.post('/api/debts', json={
+            'bank_name': 'Сбербанк',
+            'debt_type': 'consumer_credit',
+            'product_name': 'Потребительский кредит',
+            'total_amount': '300000',
+            'remaining_amount': '250000',
+            'minimum_payment': '15000',
+            'early_repayment_enabled': True,
+            'planned_early_repayment_amount': '15000',
+        })
+        self.assertEqual(not_above_minimum.status_code, 422)
+        self.assertIn('больше минимального платежа', not_above_minimum.get_json()['error'])
 
         card_response = self.client.post('/api/debts', json={
             'bank_name': 'Банк',
@@ -206,6 +244,118 @@ class DebtTypesTestCase(unittest.TestCase):
         self.assertEqual(rows[0]['rate'], 12.0)
         self.assertEqual(rows[1]['payment_date'], '2026-09-15')
         self.assertEqual(rows[1]['rate'], 24.0)
+
+    def test_payment_schedule_uses_custom_first_payment_then_monthly_payment(self):
+        self.login()
+        with self.app.app_context():
+            debt = Debt(
+                user_id=self.user_id,
+                bank_name='Сбер',
+                debt_type='consumer_credit',
+                product_name='Потребительский кредит',
+                total_amount=Decimal('500000.00'),
+                remaining_amount=Decimal('500000.00'),
+                minimum_payment=Decimal('16454.19'),
+                first_payment_amount=Decimal('2539.73'),
+                interest_rate=Decimal('30.90'),
+                next_payment_date=date(2026, 8, 28),
+                interest_period_start_date=date(2026, 8, 22),
+                day_count_convention='fixed_365',
+                status='active',
+            )
+            db.session.add(debt)
+            db.session.commit()
+            debt_id = debt.id
+
+        response = self.client.get(f'/api/debts/{debt_id}/schedule')
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()['schedule']['rows']
+        self.assertEqual(rows[0]['payment'], 2539.73)
+        self.assertEqual(rows[0]['interest'], 2539.73)
+        self.assertEqual(rows[0]['principal'], 0.0)
+        self.assertEqual(rows[0]['remaining'], 500000.0)
+        self.assertEqual(rows[1]['payment'], 16454.19)
+
+    def test_recording_custom_first_payment_advances_to_regular_payment(self):
+        self.login()
+        with self.app.app_context():
+            debt = Debt(
+                user_id=self.user_id,
+                bank_name='Сбер',
+                debt_type='consumer_credit',
+                product_name='Потребительский кредит',
+                total_amount=Decimal('500000.00'),
+                remaining_amount=Decimal('500000.00'),
+                minimum_payment=Decimal('16454.19'),
+                first_payment_amount=Decimal('2539.73'),
+                interest_rate=Decimal('30.90'),
+                next_payment_date=date(2026, 8, 28),
+                is_payment_recurring=True,
+                interest_period_start_date=date(2026, 8, 22),
+                day_count_convention='fixed_365',
+                status='active',
+            )
+            db.session.add(debt)
+            db.session.commit()
+            debt_id = debt.id
+
+        response = self.client.post(f'/api/debts/{debt_id}/payments', json={
+            'amount': '2539.73',
+            'payment_date': '2026-08-28',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['next_payment_date_advanced'])
+        self.assertEqual(payload['payment']['interest_amount'], 2539.73)
+        self.assertEqual(payload['payment']['principal_amount'], 0.0)
+        self.assertEqual(payload['debt']['remaining_amount'], 500000.0)
+        self.assertEqual(payload['debt']['next_payment_date'], '2026-09-28')
+        self.assertFalse(payload['debt']['is_first_payment_pending'])
+        self.assertEqual(payload['debt']['effective_next_payment_amount'], 16454.19)
+
+    def test_combined_payment_records_required_and_early_parts_as_one_operation(self):
+        self.login()
+        with self.app.app_context():
+            debt = Debt(
+                user_id=self.user_id,
+                bank_name='Сбер',
+                debt_type='consumer_credit',
+                product_name='Потребительский кредит',
+                total_amount=Decimal('500000.00'),
+                remaining_amount=Decimal('500000.00'),
+                minimum_payment=Decimal('16454.19'),
+                first_payment_amount=Decimal('2539.73'),
+                interest_rate=Decimal('30.90'),
+                next_payment_date=date(2026, 8, 28),
+                is_payment_recurring=True,
+                interest_period_start_date=date(2026, 8, 22),
+                day_count_convention='fixed_365',
+                status='active',
+            )
+            db.session.add(debt)
+            db.session.commit()
+            debt_id = debt.id
+
+        response = self.client.post(f'/api/debts/{debt_id}/payments', json={
+            'amount': '25000.00',
+            'scheduled_payment_amount': '2539.73',
+            'payment_date': '2026-08-28',
+            'is_early_repayment': True,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['payment']['is_early_repayment'])
+        self.assertEqual(payload['payment']['scheduled_payment_amount'], 2539.73)
+        self.assertEqual(payload['payment']['early_repayment_amount'], 22460.27)
+        self.assertEqual(payload['payment']['interest_amount'], 2539.73)
+        self.assertEqual(payload['payment']['principal_amount'], 22460.27)
+        self.assertTrue(payload['next_payment_date_advanced'])
+        self.assertEqual(payload['debt']['next_payment_date'], '2026-09-28')
+        self.assertFalse(payload['debt']['is_first_payment_pending'])
+        self.assertEqual(payload['debt']['remaining_amount'], 477539.73)
 
     def test_can_save_bank_calculation_settings(self):
         self.login()

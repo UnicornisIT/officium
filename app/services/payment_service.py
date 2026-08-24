@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import func
+from sqlalchemy import case, func, or_
 
 from extensions import db
 from app.models import Payment
@@ -20,6 +20,7 @@ def add_payment(
     payment_date=None,
     comment=None,
     is_early_repayment=False,
+    scheduled_payment_amount=None,
     principal_amount=None,
     interest_amount=None,
     fee_amount=None,
@@ -35,6 +36,7 @@ def add_payment(
         amount=amount,
         payment_date=payment_date,
         is_early_repayment=is_early_repayment,
+        scheduled_payment_amount=scheduled_payment_amount,
         principal_amount=principal_amount,
         interest_amount=interest_amount,
         fee_amount=fee_amount,
@@ -50,6 +52,7 @@ def add_payment(
         payment_date=payment_date,
         comment=comment,
         is_early_repayment=is_early_repayment,
+        scheduled_payment_amount=scheduled_payment_amount,
         remaining_after_payment=max(remaining_before_payment - principal_amount, Decimal('0.00')),
         bank_remaining_after_payment=bank_remaining_after_payment,
     )
@@ -59,7 +62,7 @@ def add_payment(
     db.session.flush()
     _recalculate_payment_balances(debt, opening_balance)
     payment.next_payment_date_advanced = False
-    if not is_early_repayment:
+    if not is_early_repayment or Decimal(str(scheduled_payment_amount or 0)) > 0:
         payment.next_payment_date_advanced = _advance_recurring_payment_date_if_covered(
             debt,
             payment_date=payment_date,
@@ -77,6 +80,7 @@ def update_payment(
     payment_date,
     comment=None,
     is_early_repayment=False,
+    scheduled_payment_amount=None,
     principal_amount=None,
     interest_amount=None,
     fee_amount=None,
@@ -92,6 +96,7 @@ def update_payment(
     payment.payment_date = payment_date
     payment.comment = comment
     payment.is_early_repayment = is_early_repayment
+    payment.scheduled_payment_amount = scheduled_payment_amount
     payment.bank_remaining_after_payment = bank_remaining_after_payment
     remaining_before_payment = _balance_before_payment(debt, payment, opening_balance)
     payment.principal_amount, payment.interest_amount, payment.fee_amount = _resolve_payment_breakdown(
@@ -99,6 +104,7 @@ def update_payment(
         amount=amount,
         payment_date=payment_date,
         is_early_repayment=is_early_repayment,
+        scheduled_payment_amount=scheduled_payment_amount,
         principal_amount=principal_amount,
         interest_amount=interest_amount,
         fee_amount=fee_amount,
@@ -152,6 +158,7 @@ def _resolve_payment_breakdown(
     amount,
     payment_date,
     is_early_repayment,
+    scheduled_payment_amount=None,
     principal_amount=None,
     interest_amount=None,
     fee_amount=None,
@@ -179,15 +186,22 @@ def _resolve_payment_breakdown(
         if interest > amount_for_debt:
             raise ValueError('Проценты не могут быть больше суммы платежа')
         principal = (amount_for_debt - interest).quantize(MONEY)
-    elif is_early_repayment:
+    elif is_early_repayment and not Decimal(str(scheduled_payment_amount or 0)) > 0:
         principal = amount_for_debt
         interest = Decimal('0.00')
     else:
-        estimated_interest = _estimate_payment_interest(
-            debt,
-            payment_date=payment_date,
-            remaining_before_payment=remaining_before_payment,
-        )
+        if getattr(debt, 'is_first_payment_pending', lambda: False)():
+            estimated_interest = _estimate_first_payment_interest(
+                debt,
+                payment_date=payment_date,
+                remaining_before_payment=remaining_before_payment,
+            )
+        else:
+            estimated_interest = _estimate_payment_interest(
+                debt,
+                payment_date=payment_date,
+                remaining_before_payment=remaining_before_payment,
+            )
         interest = min(estimated_interest, amount_for_debt).quantize(MONEY)
         principal = (amount_for_debt - interest).quantize(MONEY)
 
@@ -222,6 +236,18 @@ def _estimate_payment_interest(debt, payment_date, remaining_before_payment):
     )
 
 
+def _estimate_first_payment_interest(debt, payment_date, remaining_before_payment):
+    due_date = getattr(debt, 'next_payment_date', None) or payment_date
+    period_end = max(payment_date, due_date)
+    period_start = getattr(debt, 'interest_period_start_date', None) or (due_date - relativedelta(months=1))
+    return calculate_period_interest(
+        debt,
+        principal_balance=remaining_before_payment,
+        period_start=period_start,
+        period_end=period_end,
+    )
+
+
 def _interest_period_start(debt, payment_date):
     if getattr(debt, 'interest_period_start_date', None):
         return debt.interest_period_start_date
@@ -249,6 +275,10 @@ def _sync_recurring_payment_date_after_edit(debt, edited_payment_date):
 
 
 def _required_payment_amount(debt, remaining_before_payment):
+    if getattr(debt, 'is_first_payment_pending', lambda: False)():
+        first_payment = Decimal(str(debt.first_payment_amount or 0))
+        if first_payment > 0:
+            return first_payment
     minimum_payment = Decimal(str(debt.minimum_payment or 0))
     if minimum_payment > 0:
         return min(minimum_payment, remaining_before_payment)
@@ -266,9 +296,11 @@ def _advance_recurring_payment_date_if_covered(debt, payment_date, required_paym
     if payment_date <= cycle_start:
         return False
 
-    paid_in_cycle = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+    paid_in_cycle = db.session.query(func.coalesce(func.sum(case(
+        (Payment.is_early_repayment.is_(False), Payment.amount),
+        else_=func.coalesce(Payment.scheduled_payment_amount, 0),
+    )), 0)).filter(
         Payment.debt_id == debt.id,
-        Payment.is_early_repayment.is_(False),
         Payment.payment_date > cycle_start,
         Payment.payment_date <= payment_date,
     ).scalar()
@@ -281,16 +313,18 @@ def _advance_recurring_payment_date_if_covered(debt, payment_date, required_paym
 
 
 def _cycle_is_covered(debt, due_date):
-    required_payment = Decimal(str(debt.minimum_payment or 0)).quantize(MONEY)
+    required_payment = _required_payment_for_cycle(debt, due_date)
     if required_payment <= 0 and getattr(debt, 'debt_type', None) == 'split':
         required_payment = _split_default_payment_amount(debt.remaining_amount)
     if required_payment <= 0:
         return False
 
     cycle_start = _previous_payment_due_date(debt, due_date)
-    paid_in_cycle = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+    paid_in_cycle = db.session.query(func.coalesce(func.sum(case(
+        (Payment.is_early_repayment.is_(False), Payment.amount),
+        else_=func.coalesce(Payment.scheduled_payment_amount, 0),
+    )), 0)).filter(
         Payment.debt_id == debt.id,
-        Payment.is_early_repayment.is_(False),
         Payment.payment_date > cycle_start,
         Payment.payment_date <= due_date,
     ).scalar()
@@ -298,8 +332,25 @@ def _cycle_is_covered(debt, due_date):
     return Decimal(str(paid_in_cycle or 0)).quantize(MONEY) >= required_payment
 
 
+def _required_payment_for_cycle(debt, due_date):
+    first_payment = Decimal(str(getattr(debt, 'first_payment_amount', 0) or 0)).quantize(MONEY)
+    if first_payment > 0:
+        cycle_start = _previous_payment_due_date(debt, due_date)
+        earlier_required_payment = Payment.query.filter(
+            Payment.debt_id == debt.id,
+            or_(
+                Payment.is_early_repayment.is_(False),
+                Payment.scheduled_payment_amount > 0,
+            ),
+            Payment.payment_date <= cycle_start,
+        ).first()
+        if earlier_required_payment is None:
+            return first_payment
+    return Decimal(str(debt.minimum_payment or 0)).quantize(MONEY)
+
+
 def paid_toward_payment_cycle(debt, due_date, through_date=None, payments=None):
-    """Return non-early payments already made toward one required-payment cycle."""
+    """Return amounts covering the required part of one payment cycle."""
     if not due_date:
         return Decimal('0.00')
 
@@ -310,17 +361,22 @@ def paid_toward_payment_cycle(debt, due_date, through_date=None, payments=None):
 
     paid = sum(
         (
-            Decimal(str(payment.amount or 0))
+            _scheduled_payment_component(payment)
             for payment in payments
             if (
                 payment.payment_date
                 and cycle_start < payment.payment_date <= through_date
-                and not getattr(payment, 'is_early_repayment', False)
             )
         ),
         Decimal('0.00'),
     )
     return paid.quantize(MONEY, rounding=ROUND_HALF_UP)
+
+
+def _scheduled_payment_component(payment):
+    if not getattr(payment, 'is_early_repayment', False):
+        return Decimal(str(payment.amount or 0))
+    return Decimal(str(getattr(payment, 'scheduled_payment_amount', 0) or 0))
 
 
 def principal_paid_in_payment_cycle(debt, due_date, through_date=None, payments=None):

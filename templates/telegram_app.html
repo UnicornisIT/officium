@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>officium — Telegram</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        (function () {
+            const webApp = window.Telegram && window.Telegram.WebApp;
+            const theme = webApp && webApp.colorScheme === 'light' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.setAttribute('data-bs-theme', theme);
+        })();
+    </script>
+    <link href="{{ url_for('static', filename='vendor/onest/onest.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=20260824-telegram-mini-app-1" rel="stylesheet">
+</head>
+<body class="mini-app-auth">
+    <main class="mini-app-auth__shell">
+        <section class="mini-app-auth__card" aria-live="polite">
+            <div class="mini-app-auth__glow" aria-hidden="true"></div>
+            <div class="mini-app-auth__brand">
+                <span class="mini-app-auth__logo">₽</span>
+                <span>officium</span>
+            </div>
+            <div class="mini-app-auth__visual" aria-hidden="true">
+                <span class="mini-app-auth__ring mini-app-auth__ring--one"></span>
+                <span class="mini-app-auth__ring mini-app-auth__ring--two"></span>
+                <span class="mini-app-auth__pulse"><i class="bi bi-shield-check"></i></span>
+            </div>
+            <div class="mini-app-auth__copy">
+                <span class="mini-app-auth__eyebrow">Личные финансы</span>
+                <h1 id="miniAppTitle">Готовим ваш финансовый центр</h1>
+                <p id="miniAppMessage">Безопасно подтверждаем вход через Telegram…</p>
+            </div>
+            <div class="mini-app-auth__progress" id="miniAppProgress" aria-label="Выполняется вход">
+                <span></span><span></span><span></span>
+            </div>
+            <button class="mini-app-auth__retry" id="miniAppRetry" type="button" hidden>
+                <i class="bi bi-arrow-clockwise"></i>
+                Попробовать снова
+            </button>
+            {% if bot_username %}
+            <a class="mini-app-auth__browser-link" id="miniAppOpenLink"
+               href="https://t.me/{{ bot_username }}{% if mini_app_short_name %}/{{ mini_app_short_name }}{% else %}?startapp{% endif %}"
+               hidden>
+                Открыть в Telegram
+            </a>
+            {% endif %}
+        </section>
+        <p class="mini-app-auth__privacy"><i class="bi bi-lock-fill"></i> Данные входа проверяются на сервере Officium</p>
+    </main>
+
+    <script>
+        (function () {
+            const webApp = window.Telegram && window.Telegram.WebApp;
+            const title = document.getElementById('miniAppTitle');
+            const message = document.getElementById('miniAppMessage');
+            const progress = document.getElementById('miniAppProgress');
+            const retry = document.getElementById('miniAppRetry');
+            const openLink = document.getElementById('miniAppOpenLink');
+
+            function applyTelegramTheme() {
+                if (!webApp) return;
+                const theme = webApp.colorScheme === 'light' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', theme);
+                document.documentElement.setAttribute('data-bs-theme', theme);
+                const params = webApp.themeParams || {};
+                const root = document.documentElement.style;
+                if (params.bg_color) root.setProperty('--tg-theme-bg-color', params.bg_color);
+                if (params.secondary_bg_color) root.setProperty('--tg-theme-secondary-bg-color', params.secondary_bg_color);
+                if (params.text_color) root.setProperty('--tg-theme-text-color', params.text_color);
+                if (params.hint_color) root.setProperty('--tg-theme-hint-color', params.hint_color);
+                if (params.button_color) root.setProperty('--tg-theme-button-color', params.button_color);
+                if (params.button_text_color) root.setProperty('--tg-theme-button-text-color', params.button_text_color);
+            }
+
+            function showError(text, outsideTelegram) {
+                title.textContent = outsideTelegram ? 'Откройте приложение в Telegram' : 'Не удалось войти';
+                message.textContent = text;
+                progress.hidden = true;
+                retry.hidden = outsideTelegram;
+                if (openLink) openLink.hidden = !outsideTelegram;
+            }
+
+            async function authenticate() {
+                retry.hidden = true;
+                if (openLink) openLink.hidden = true;
+                progress.hidden = false;
+                title.textContent = 'Готовим ваш финансовый центр';
+                message.textContent = 'Безопасно подтверждаем вход через Telegram…';
+
+                if (!webApp || !webApp.initData) {
+                    showError('Эта страница предназначена для запуска из меню бота.', true);
+                    return;
+                }
+
+                applyTelegramTheme();
+                webApp.ready();
+                webApp.expand();
+                const firstName = webApp.initDataUnsafe && webApp.initDataUnsafe.user
+                    ? webApp.initDataUnsafe.user.first_name
+                    : '';
+                if (firstName) title.textContent = `Добро пожаловать, ${firstName}`;
+
+                try {
+                    const response = await fetch({{ url_for('telegram_mini_app_login')|tojson }}, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        body: JSON.stringify({ init_data: webApp.initData }),
+                    });
+                    const payload = await response.json();
+                    if (!response.ok || !payload.success) {
+                        throw new Error(payload.error || 'Telegram не подтвердил вход.');
+                    }
+                    message.textContent = 'Всё готово. Открываем ваш дашборд…';
+                    if (webApp.HapticFeedback) webApp.HapticFeedback.notificationOccurred('success');
+                    window.location.replace(payload.next_url || '/');
+                } catch (error) {
+                    showError(error.message || 'Проверьте соединение и попробуйте ещё раз.', false);
+                    if (webApp && webApp.HapticFeedback) webApp.HapticFeedback.notificationOccurred('error');
+                }
+            }
+
+            if (webApp) {
+                applyTelegramTheme();
+                webApp.onEvent('themeChanged', applyTelegramTheme);
+            }
+            retry.addEventListener('click', authenticate);
+            authenticate();
+        })();
+    </script>
+</body>
+</html>

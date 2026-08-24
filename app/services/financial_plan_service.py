@@ -689,7 +689,12 @@ def _build_debt_items(debts, today, planning_horizon_end):
             'projected_remaining_after_plan': _float(projected_remaining_after_plan),
             'interest_rate': _float(effective_rate) if effective_rate is not None else None,
             'early_repayment_enabled': bool(getattr(debt, 'early_repayment_enabled', False)),
-            'planned_early_repayment_amount': _float(getattr(debt, 'planned_early_repayment_amount', 0)),
+            'planned_total_payment_amount': _float(getattr(debt, 'planned_early_repayment_amount', 0)),
+            'planned_early_repayment_amount': _float(
+                debt.effective_planned_early_repayment_amount()
+                if hasattr(debt, 'effective_planned_early_repayment_amount')
+                else getattr(debt, 'planned_early_repayment_amount', 0)
+            ),
             'next_payment_date': next_payment_date,
             'interval_label': interval_label,
             'end_date': end_date,

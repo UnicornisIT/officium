@@ -70,12 +70,114 @@ function applyTheme(theme) {
     }
 }
 
+function getTelegramWebApp() {
+    if (!document.body.classList.contains('telegram-mini-app')) return null;
+    return window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+}
+
+function applyTelegramTheme() {
+    const webApp = getTelegramWebApp();
+    if (!webApp) return;
+
+    const theme = webApp.colorScheme === 'light' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-bs-theme', theme);
+
+    const params = webApp.themeParams || {};
+    const rootStyle = document.documentElement.style;
+    const themeVariables = {
+        '--tg-theme-bg-color': params.bg_color,
+        '--tg-theme-secondary-bg-color': params.secondary_bg_color,
+        '--tg-theme-text-color': params.text_color,
+        '--tg-theme-hint-color': params.hint_color,
+        '--tg-theme-link-color': params.link_color,
+        '--tg-theme-button-color': params.button_color,
+        '--tg-theme-button-text-color': params.button_text_color,
+        '--tg-theme-header-bg-color': params.header_bg_color,
+        '--tg-theme-section-bg-color': params.section_bg_color,
+        '--tg-theme-section-header-text-color': params.section_header_text_color,
+        '--tg-theme-subtitle-text-color': params.subtitle_text_color,
+        '--tg-theme-destructive-text-color': params.destructive_text_color,
+    };
+    Object.entries(themeVariables).forEach(([name, value]) => {
+        if (value) rootStyle.setProperty(name, value);
+    });
+
+    if (webApp.viewportHeight) rootStyle.setProperty('--tg-viewport-height', `${webApp.viewportHeight}px`);
+    if (webApp.viewportStableHeight) rootStyle.setProperty('--tg-viewport-stable-height', `${webApp.viewportStableHeight}px`);
+
+    try {
+        if (params.header_bg_color) webApp.setHeaderColor(params.header_bg_color);
+        if (params.bg_color) webApp.setBackgroundColor(params.bg_color);
+        if (params.secondary_bg_color) webApp.setBottomBarColor(params.secondary_bg_color);
+    } catch (error) {
+        // Older Telegram clients may not support every color method.
+    }
+}
+
+function initTelegramMiniApp() {
+    const webApp = getTelegramWebApp();
+    if (!webApp) return;
+
+    webApp.ready();
+    webApp.expand();
+    applyTelegramTheme();
+    webApp.onEvent('themeChanged', applyTelegramTheme);
+    webApp.onEvent('viewportChanged', applyTelegramTheme);
+
+    let activeOverlay = null;
+    const hasPageBackTarget = window.location.pathname !== '/';
+    const syncBackButton = () => {
+        if (activeOverlay || hasPageBackTarget) webApp.BackButton.show();
+        else webApp.BackButton.hide();
+    };
+    webApp.BackButton.onClick(() => {
+        if (activeOverlay) {
+            const overlay = activeOverlay;
+            activeOverlay = null;
+            if (overlay.classList.contains('modal')) {
+                bootstrap.Modal.getInstance(overlay)?.hide();
+            } else {
+                bootstrap.Offcanvas.getInstance(overlay)?.hide();
+            }
+            syncBackButton();
+            return;
+        }
+        if (window.history.length > 1) window.history.back();
+        else window.location.assign('/');
+    });
+
+    document.querySelectorAll('.modal, .offcanvas').forEach(overlay => {
+        overlay.addEventListener(overlay.classList.contains('modal') ? 'shown.bs.modal' : 'shown.bs.offcanvas', () => {
+            activeOverlay = overlay;
+            syncBackButton();
+        });
+        overlay.addEventListener(overlay.classList.contains('modal') ? 'hidden.bs.modal' : 'hidden.bs.offcanvas', () => {
+            if (activeOverlay === overlay) activeOverlay = null;
+            syncBackButton();
+        });
+    });
+    syncBackButton();
+
+    document.querySelectorAll('.telegram-bottom-nav a, .telegram-bottom-nav__add, .telegram-app-bar__menu').forEach(control => {
+        control.addEventListener('click', () => {
+            if (webApp.HapticFeedback) webApp.HapticFeedback.impactOccurred('light');
+        });
+    });
+}
+
 function toggleTheme() {
     const current = document.documentElement.getAttribute('data-theme') || 'dark';
     applyTheme(current === 'dark' ? 'light' : 'dark');
 }
 
 function initThemeToggle() {
+    if (getTelegramWebApp()) {
+        applyTelegramTheme();
+        const telegramThemeButton = document.getElementById('themeToggleBtn');
+        if (telegramThemeButton) telegramThemeButton.hidden = true;
+        return;
+    }
     const storedTheme = localStorage.getItem('debtManagerTheme') || 'dark';
     applyTheme(storedTheme);
 
@@ -295,6 +397,8 @@ function syncCardLimitHelperVisibility() {
     const nextPaymentLabel = document.getElementById('next_payment_date_label');
     const recurringLabel = document.getElementById('recurring_payment_label');
     const availableInput = document.getElementById('f_card_available_amount');
+    const firstPaymentGroup = document.getElementById('first_payment_amount_group');
+    const firstPaymentInput = document.getElementById('f_first_payment_amount');
     if (!debtType || !helper) return;
 
     const supportsLimitHelper = ['credit_card', 'split'].includes(debtType.value);
@@ -316,6 +420,8 @@ function syncCardLimitHelperVisibility() {
     }
     helper.classList.toggle('d-none', !supportsLimitHelper);
     if (!supportsLimitHelper && availableInput) availableInput.value = '';
+    if (firstPaymentGroup) firstPaymentGroup.classList.toggle('d-none', !debtType.value || isSplit);
+    if (isSplit && firstPaymentInput) firstPaymentInput.value = '';
 }
 
 function setupCardLimitCalculator() {
@@ -353,27 +459,54 @@ function syncConsumerEarlyRepaymentSettings() {
     const enabledInput = document.getElementById('f_early_repayment_enabled');
     const amountGroup = document.getElementById('early_repayment_amount_group');
     const amountInput = document.getElementById('f_planned_early_repayment_amount');
-    if (!debtType || !settings || !enabledInput || !amountGroup || !amountInput) return;
+    const effectiveAmountGroup = document.getElementById('effective_early_repayment_amount_group');
+    const effectiveAmountInput = document.getElementById('f_effective_early_repayment_amount');
+    if (!debtType || !settings || !enabledInput || !amountGroup || !amountInput
+        || !effectiveAmountGroup || !effectiveAmountInput) return;
 
     const isConsumerCredit = debtType.value === 'consumer_credit';
     settings.classList.toggle('d-none', !isConsumerCredit);
     if (!isConsumerCredit) {
         enabledInput.checked = false;
         amountInput.value = '';
+        effectiveAmountInput.value = '';
     }
 
     const amountEnabled = isConsumerCredit && enabledInput.checked;
     amountGroup.classList.toggle('d-none', !amountEnabled);
+    effectiveAmountGroup.classList.toggle('d-none', !amountEnabled);
     amountInput.disabled = !amountEnabled;
     amountInput.required = amountEnabled;
+    recalculateEffectiveEarlyRepaymentAmount();
+}
+
+function recalculateEffectiveEarlyRepaymentAmount() {
+    const desiredInput = document.getElementById('f_planned_early_repayment_amount');
+    const minimumInput = document.getElementById('f_minimum_payment');
+    const effectiveInput = document.getElementById('f_effective_early_repayment_amount');
+    if (!desiredInput || !minimumInput || !effectiveInput) return;
+
+    const desiredTotal = parseNumberInputValue(desiredInput.value);
+    const minimumPayment = parseNumberInputValue(minimumInput.value);
+    if (!(desiredTotal > 0)) {
+        effectiveInput.value = '';
+        return;
+    }
+
+    const effectiveAmount = Math.max(desiredTotal - Math.max(minimumPayment, 0), 0);
+    effectiveInput.value = formatNumberInputValue(effectiveAmount.toFixed(2));
 }
 
 function setupConsumerEarlyRepaymentSettings() {
     const debtType = document.getElementById('f_debt_type');
     const enabledInput = document.getElementById('f_early_repayment_enabled');
-    if (!debtType || !enabledInput) return;
+    const desiredInput = document.getElementById('f_planned_early_repayment_amount');
+    const minimumInput = document.getElementById('f_minimum_payment');
+    if (!debtType || !enabledInput || !desiredInput || !minimumInput) return;
     debtType.addEventListener('change', syncConsumerEarlyRepaymentSettings);
     enabledInput.addEventListener('change', syncConsumerEarlyRepaymentSettings);
+    desiredInput.addEventListener('input', recalculateEffectiveEarlyRepaymentAmount);
+    minimumInput.addEventListener('input', recalculateEffectiveEarlyRepaymentAmount);
     syncConsumerEarlyRepaymentSettings();
 }
 
@@ -382,9 +515,9 @@ function setupConsumerEarlyRepaymentSettings() {
  */
 function clearDebtForm() {
     ['f_bank_name','f_product_name','f_total_amount','f_card_available_amount','f_remaining_amount',
-     'f_minimum_payment','f_interest_rate','f_interest_rate_after_change',
+     'f_minimum_payment','f_first_payment_amount','f_interest_rate','f_interest_rate_after_change',
      'f_interest_rate_change_date','f_next_payment_date','f_interest_period_start_date',
-     'f_planned_early_repayment_amount','f_loan_term_months','f_monthly_fee_amount',
+     'f_planned_early_repayment_amount','f_effective_early_repayment_amount','f_loan_term_months','f_monthly_fee_amount',
      'f_bank_remaining_amount','f_comment'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
@@ -481,6 +614,7 @@ async function openEditModal(debtId) {
         document.getElementById('f_total_amount').value      = d.total_amount || '';
         document.getElementById('f_remaining_amount').value  = d.remaining_amount || '';
         document.getElementById('f_minimum_payment').value   = d.minimum_payment || '';
+        document.getElementById('f_first_payment_amount').value = d.first_payment_amount || '';
         document.getElementById('f_interest_rate').value     = d.interest_rate || '';
         document.getElementById('f_interest_rate_after_change').value = d.interest_rate_after_change || '';
         document.getElementById('f_interest_rate_change_date').value  = d.interest_rate_change_date || '';
@@ -515,8 +649,15 @@ async function saveDebt() {
 
     const earlyRepaymentEnabled = document.getElementById('f_early_repayment_enabled').checked;
     const plannedEarlyRepaymentAmount = document.getElementById('f_planned_early_repayment_amount').value;
-    if (earlyRepaymentEnabled && !(parseNumberInputValue(plannedEarlyRepaymentAmount) > 0)) {
-        errEl.textContent = 'Укажите желаемую сумму досрочного погашения';
+    const desiredTotalPayment = parseNumberInputValue(plannedEarlyRepaymentAmount);
+    const minimumPayment = parseNumberInputValue(document.getElementById('f_minimum_payment').value);
+    if (earlyRepaymentEnabled && !(desiredTotalPayment > 0)) {
+        errEl.textContent = 'Укажите желаемый платёж всего';
+        errEl.classList.remove('d-none');
+        return;
+    }
+    if (earlyRepaymentEnabled && desiredTotalPayment <= minimumPayment) {
+        errEl.textContent = 'Желаемый платёж должен быть больше минимального платежа';
         errEl.classList.remove('d-none');
         return;
     }
@@ -528,6 +669,7 @@ async function saveDebt() {
         total_amount:      document.getElementById('f_total_amount').value,
         remaining_amount:  document.getElementById('f_remaining_amount').value,
         minimum_payment:   document.getElementById('f_minimum_payment').value || null,
+        first_payment_amount: document.getElementById('f_first_payment_amount').value || null,
         interest_rate:     document.getElementById('f_interest_rate').value || null,
         interest_rate_after_change: document.getElementById('f_interest_rate_after_change').value || null,
         interest_rate_change_date: document.getElementById('f_interest_rate_change_date').value || null,
@@ -596,6 +738,7 @@ async function openPaymentModal(debtId) {
     document.getElementById('pm_bank_remaining_after_payment').value = '';
     document.getElementById('pm_comment').value = '';
     document.getElementById('pm_is_early_repayment').checked = false;
+    document.getElementById('pm_scheduled_payment_amount').value = '';
     const minimumPaymentButton = document.getElementById('pm_apply_minimum');
     const earlyPaymentButton = document.getElementById('pm_apply_early');
     minimumPaymentButton.disabled = true;
@@ -618,20 +761,25 @@ async function openPaymentModal(debtId) {
         const d = data.debt;
         document.getElementById('pm_name').textContent = `${d.bank_name} — ${d.product_name}`;
         document.getElementById('pm_remaining').textContent = formatMoney(d.remaining_amount);
-        const minimumPayment = parseNumberInputValue(d.minimum_payment);
+        const minimumPayment = parseNumberInputValue(d.effective_next_payment_amount ?? d.minimum_payment);
         const remainingAmount = parseNumberInputValue(d.remaining_amount);
-        currentMinimumPaymentAmount = minimumPayment > 0 && remainingAmount > 0
-            ? Math.min(minimumPayment, remainingAmount)
-            : minimumPayment;
+        currentMinimumPaymentAmount = d.is_first_payment_pending
+            ? minimumPayment
+            : minimumPayment > 0 && remainingAmount > 0
+                ? Math.min(minimumPayment, remainingAmount)
+                : minimumPayment;
         currentMinimumPaymentDate = d.effective_next_payment_date || d.next_payment_date || null;
-        const plannedEarlyAmount = parseNumberInputValue(d.planned_early_repayment_amount);
+        document.getElementById('pm_required_payment_label').textContent = d.is_first_payment_pending
+            ? 'Первый платёж'
+            : 'Минимальный платёж';
+        const plannedTotalPayment = parseNumberInputValue(d.planned_early_repayment_amount);
         const earlyRepaymentAvailable = (
             d.debt_type === 'consumer_credit'
             && Boolean(d.early_repayment_enabled)
-            && plannedEarlyAmount > 0
+            && plannedTotalPayment > 0
         );
         currentPlannedEarlyRepaymentAmount = earlyRepaymentAvailable && remainingAmount > 0
-            ? Math.min(plannedEarlyAmount, remainingAmount)
+            ? Math.min(plannedTotalPayment, remainingAmount + currentMinimumPaymentAmount)
             : null;
         document.getElementById('pm_min_payment').textContent = currentMinimumPaymentAmount > 0
             ? formatMoney(currentMinimumPaymentAmount)
@@ -664,6 +812,7 @@ function applyMinimumPayment() {
         amount: currentMinimumPaymentAmount,
         paymentDate: currentMinimumPaymentDate,
         isEarlyRepayment: false,
+        scheduledPaymentAmount: null,
         selectedButtonId: 'pm_apply_minimum',
     });
 }
@@ -673,17 +822,19 @@ function applyPlannedEarlyRepayment() {
 
     applyPaymentPreset({
         amount: currentPlannedEarlyRepaymentAmount,
-        paymentDate: new Date().toISOString().split('T')[0],
+        paymentDate: currentMinimumPaymentDate,
         isEarlyRepayment: true,
+        scheduledPaymentAmount: currentMinimumPaymentAmount,
         selectedButtonId: 'pm_apply_early',
     });
 }
 
-function applyPaymentPreset({ amount, paymentDate, isEarlyRepayment, selectedButtonId }) {
+function applyPaymentPreset({ amount, paymentDate, isEarlyRepayment, scheduledPaymentAmount, selectedButtonId }) {
 
     const amountInput = document.getElementById('pm_amount');
     const dateInput = document.getElementById('pm_date');
     const earlyRepaymentInput = document.getElementById('pm_is_early_repayment');
+    const scheduledPaymentInput = document.getElementById('pm_scheduled_payment_amount');
     const automaticBreakdownInputs = [
         'pm_principal_amount',
         'pm_interest_amount',
@@ -701,6 +852,7 @@ function applyPaymentPreset({ amount, paymentDate, isEarlyRepayment, selectedBut
     }
 
     earlyRepaymentInput.checked = isEarlyRepayment;
+    scheduledPaymentInput.value = scheduledPaymentAmount > 0 ? String(scheduledPaymentAmount) : '';
     earlyRepaymentInput.dispatchEvent(new Event('change', { bubbles: true }));
     automaticBreakdownInputs.forEach(id => {
         const input = document.getElementById(id);
@@ -731,6 +883,7 @@ async function submitPayment() {
     const pmDate = document.getElementById('pm_date').value;
     const comment = document.getElementById('pm_comment').value.trim();
     const isEarlyRepayment = document.getElementById('pm_is_early_repayment').checked;
+    const scheduledPaymentAmount = document.getElementById('pm_scheduled_payment_amount').value;
     const parsedAmount = parseFloat(amount);
 
     if (!amount || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -752,6 +905,7 @@ async function submitPayment() {
                 payment_date: pmDate,
                 comment,
                 is_early_repayment: isEarlyRepayment,
+                scheduled_payment_amount: scheduledPaymentAmount || null,
             }),
         });
         const data = await resp.json();
@@ -838,7 +992,7 @@ async function openHistoryModal(debtId, title) {
 
         let rows = payments.map(p => {
             const earlyBadge = p.is_early_repayment
-                ? '<span class="payment-badge payment-badge--early">досрочно</span>'
+                ? `<span class="payment-badge payment-badge--early">${Number(p.scheduled_payment_amount || 0) > 0 ? 'единый' : 'досрочно'}</span>`
                 : '';
             const splitParts = [];
             if (Number(p.principal_amount || 0) || Number(p.interest_amount || 0) || Number(p.fee_amount || 0)) {
@@ -848,6 +1002,10 @@ async function openHistoryModal(debtId, title) {
             }
             if (p.bank_remaining_after_payment !== null && p.bank_remaining_after_payment !== undefined) {
                 splitParts.push(`банк ${formatMoney(p.bank_remaining_after_payment)}`);
+            }
+            if (Number(p.scheduled_payment_amount || 0) > 0) {
+                splitParts.push(`обяз. ${formatMoney(p.scheduled_payment_amount)}`);
+                splitParts.push(`досрочно ${formatMoney(p.early_repayment_amount)}`);
             }
             const splitInfo = splitParts.length
                 ? `<div class="payment-split">${splitParts.join(' · ')}</div>`
@@ -899,7 +1057,11 @@ function openEditPaymentModal(debtId, paymentId) {
         return;
     }
 
-    currentEditPayment = { debtId, paymentId };
+    currentEditPayment = {
+        debtId,
+        paymentId,
+        scheduledPaymentAmount: payment.scheduled_payment_amount || null,
+    };
     document.getElementById('editPaymentFormError').classList.add('d-none');
     document.getElementById('ep_amount').value = Number(payment.amount).toFixed(2);
     document.getElementById('ep_principal_amount').value = Number(payment.principal_amount || 0).toFixed(2);
@@ -957,6 +1119,7 @@ async function submitPaymentEdit() {
                 payment_date: paymentDate,
                 comment,
                 is_early_repayment: isEarlyRepayment,
+                scheduled_payment_amount: currentEditPayment.scheduledPaymentAmount,
             }),
         });
         const data = await resp.json();
@@ -1234,7 +1397,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Установка темы интерфейса
+    // Telegram WebView и тема интерфейса
+    initTelegramMiniApp();
     initThemeToggle();
     initNavbarLayout();
     initOperationHistories();

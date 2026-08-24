@@ -81,6 +81,7 @@ class Debt(db.Model):
     total_amount = db.Column(db.Numeric(12, 2), nullable=False)
     remaining_amount = db.Column(db.Numeric(12, 2), nullable=False)
     minimum_payment = db.Column(db.Numeric(12, 2), nullable=True)
+    first_payment_amount = db.Column(db.Numeric(12, 2), nullable=True)
     interest_rate = db.Column(db.Numeric(5, 2), nullable=True)
     interest_rate_after_change = db.Column(db.Numeric(5, 2), nullable=True)
     interest_rate_change_date = db.Column(db.Date, nullable=True)
@@ -148,9 +149,33 @@ class Debt(db.Model):
 
         return self.next_payment_date
 
+    def is_first_payment_pending(self):
+        if self.first_payment_amount is None or float(self.first_payment_amount or 0) <= 0:
+            return False
+        return not any(
+            (
+                not getattr(payment, 'is_early_repayment', False)
+                or float(getattr(payment, 'scheduled_payment_amount', 0) or 0) > 0
+            )
+            for payment in (self.payments or [])
+        )
+
+    def effective_next_payment_amount(self):
+        if self.is_first_payment_pending():
+            return self.first_payment_amount
+        return self.minimum_payment
+
+    def effective_planned_early_repayment_amount(self):
+        if not self.early_repayment_enabled or self.planned_early_repayment_amount is None:
+            return 0
+        desired_total = self.planned_early_repayment_amount
+        required_payment = self.minimum_payment or 0
+        return max(desired_total - required_payment, 0)
+
     def to_dict(self):
         today = date.today()
         effective_next_payment_date = self.effective_next_payment_date(today)
+        effective_next_payment_amount = self.effective_next_payment_amount()
         days_until_payment = None
         if effective_next_payment_date:
             days_until_payment = (effective_next_payment_date - today).days
@@ -165,6 +190,9 @@ class Debt(db.Model):
             'total_amount': float(self.total_amount),
             'remaining_amount': float(self.remaining_amount),
             'minimum_payment': float(self.minimum_payment) if self.minimum_payment else None,
+            'first_payment_amount': float(self.first_payment_amount) if self.first_payment_amount is not None else None,
+            'is_first_payment_pending': self.is_first_payment_pending(),
+            'effective_next_payment_amount': float(effective_next_payment_amount) if effective_next_payment_amount is not None else None,
             'interest_rate': float(self.interest_rate) if self.interest_rate else None,
             'interest_rate_after_change': float(self.interest_rate_after_change) if self.interest_rate_after_change else None,
             'interest_rate_change_date': self.interest_rate_change_date.strftime('%Y-%m-%d') if self.interest_rate_change_date else None,
@@ -183,6 +211,7 @@ class Debt(db.Model):
             'early_repayment_strategy': self.early_repayment_strategy,
             'early_repayment_enabled': bool(self.early_repayment_enabled),
             'planned_early_repayment_amount': float(self.planned_early_repayment_amount) if self.planned_early_repayment_amount else None,
+            'effective_planned_early_repayment_amount': float(self.effective_planned_early_repayment_amount()),
             'loan_term_months': self.loan_term_months,
             'monthly_fee_amount': float(self.monthly_fee_amount or 0),
             'bank_remaining_amount': float(self.bank_remaining_amount) if self.bank_remaining_amount is not None else None,
@@ -210,6 +239,7 @@ class Payment(db.Model):
     payment_date = db.Column(db.Date, nullable=False, default=date.today)
     comment = db.Column(db.Text, nullable=True)
     is_early_repayment = db.Column(db.Boolean, default=False, nullable=False)
+    scheduled_payment_amount = db.Column(db.Numeric(12, 2), nullable=True)
     remaining_after_payment = db.Column(db.Numeric(12, 2), nullable=False)
     bank_remaining_after_payment = db.Column(db.Numeric(12, 2), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -218,6 +248,12 @@ class Payment(db.Model):
         principal_amount = self.principal_amount if self.principal_amount is not None else self.amount
         interest_amount = self.interest_amount if self.interest_amount is not None else 0
         fee_amount = self.fee_amount if self.fee_amount is not None else 0
+        scheduled_payment_amount = self.scheduled_payment_amount or 0
+        early_repayment_amount = (
+            max(self.amount - scheduled_payment_amount, 0)
+            if self.is_early_repayment
+            else 0
+        )
         return {
             'id': self.id,
             'debt_id': self.debt_id,
@@ -229,6 +265,8 @@ class Payment(db.Model):
             'payment_date_iso': self.payment_date.strftime('%Y-%m-%d') if self.payment_date else None,
             'comment': self.comment,
             'is_early_repayment': self.is_early_repayment,
+            'scheduled_payment_amount': float(scheduled_payment_amount),
+            'early_repayment_amount': float(early_repayment_amount),
             'remaining_after_payment': float(self.remaining_after_payment),
             'bank_remaining_after_payment': float(self.bank_remaining_after_payment) if self.bank_remaining_after_payment is not None else None,
             'created_at': self.created_at.strftime('%d.%m.%Y %H:%M') if self.created_at else None,

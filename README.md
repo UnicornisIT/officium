@@ -11,6 +11,7 @@
 - импорт расходов из банковских выписок;
 - месячная финансовая сводка;
 - вход через Telegram Login Widget, Google OAuth, dev/test-режимы;
+- единый интерфейс для браузера и Telegram Mini App;
 - админ-панель для пользователей, настроек, справочников, логов и экспорта;
 - Telegram-бот с кнопками для расходов, доходов, долгов и платежей.
 
@@ -91,6 +92,9 @@ DB_NAME=debt_manager
 
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_BOT_USERNAME=
+TELEGRAM_MINI_APP_ENABLED=true
+TELEGRAM_MINI_APP_SHORT_NAME=
+TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS=86400
 TELEGRAM_BOT_ENABLED=false
 TELEGRAM_WEBHOOK_SECRET=long-random-secret
 TELEGRAM_PRIVATE_CHAT_ONLY=true
@@ -197,6 +201,26 @@ $env:FLASK_APP = 'run.py'
 .\.venv\Scripts\python.exe -m flask send-telegram-reminders --dry-run
 .\.venv\Scripts\python.exe -m flask send-telegram-reminders
 ```
+
+## Telegram Mini App
+
+Mini App использует тот же Flask-интерфейс, маршруты и базу данных, что и обычный сайт.
+Точка входа: `https://your-domain.com/telegram-app`.
+
+Настройка:
+
+1. Убедиться, что домен доступен по HTTPS с действующим сертификатом.
+2. В BotFather создать Main Mini App или Mini App с коротким именем.
+3. Указать URL `https://your-domain.com/telegram-app`.
+4. Заполнить `TELEGRAM_MINI_APP_SHORT_NAME`, если создано приложение с коротким именем.
+5. Перезапустить сервис приложения.
+
+Авторизация выполняется через подписанный `Telegram.WebApp.initData`. Подпись и срок действия
+проверяются локально на сервере с помощью `TELEGRAM_BOT_TOKEN`; доверять данным
+`initDataUnsafe` для входа нельзя.
+
+Исходящий доступ VPS к `api.telegram.org` для входа и работы интерфейса Mini App не требуется.
+Он нужен отдельно для сообщений бота и напоминаний.
 
 ## Безопасность и ПД
 

@@ -536,7 +536,7 @@ def build_debt_reminder_message(user, today=None, days=7):
             timing = 'сегодня'
         else:
             timing = f'через {diff} дн.'
-        amount = debt.minimum_payment or debt.remaining_amount
+        amount = debt.effective_next_payment_amount() or debt.remaining_amount
         lines.append(
             f'{debt.bank_name} {debt.product_name}: {timing}, платеж {_format_money(amount)}, остаток {_format_money(debt.remaining_amount)}'
         )

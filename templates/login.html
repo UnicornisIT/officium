@@ -56,6 +56,18 @@
                             host.appendChild(widget);
                         }, { once: true });
                     </script>
+                    {% if telegram_mini_app_enabled %}
+                    <a class="login-mini-app-link"
+                       href="https://t.me/{{ bot_username }}{% if telegram_mini_app_short_name %}/{{ telegram_mini_app_short_name }}{% else %}?startapp{% endif %}"
+                       target="_blank" rel="noopener noreferrer">
+                        <span class="login-mini-app-link__icon"><i class="bi bi-phone"></i></span>
+                        <span>
+                            <strong>Открыть внутри Telegram</strong>
+                            <small>Быстрый вход без дополнительных окон</small>
+                        </span>
+                        <i class="bi bi-arrow-up-right"></i>
+                    </a>
+                    {% endif %}
                     {% else %}
                     <div class="alert alert-warning text-start">
                         <strong>Бот Telegram не настроен.</strong>
