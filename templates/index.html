@@ -2,108 +2,93 @@
 {% block title %}Дашборд — officium{% endblock %}
 
 {% block content %}
+{% set raw_paid_total_pct = ((1 - total_remaining / total_original) * 100) | round(0) if total_original > 0 else 0 %}
+{% set paid_total_pct = 0 if raw_paid_total_pct < 0 else (100 if raw_paid_total_pct > 100 else raw_paid_total_pct) %}
+{% set nearest_payment_date = nearest_debt.effective_next_payment_date(today) if nearest_debt else none %}
 
-<div class="dashboard-header mb-4">
-    <div>
-        <h1 class="page-title">Дашборд долгов</h1>
-        <p class="text-muted mb-0">Отслеживайте остатки, сроки платежей и финансовые итоги в одном современном интерфейсе.</p>
-    </div>
-</div>
+<div class="dashboard-v2">
+    <header class="dashboard-v2__header">
+        <div>
+            <span class="dashboard-v2__eyebrow">Финансы · {{ month_start.strftime('%m.%Y') }}</span>
+            <h1>Деньги под контролем</h1>
+            <p>Главное за месяц — без лишних цифр и сложных отчётов.</p>
+        </div>
+        <a class="dashboard-v2__period" href="{{ url_for('finance') }}" aria-label="Открыть аналитику за текущий месяц">
+            <i class="bi bi-bar-chart-line"></i>
+            <span>Аналитика</span>
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </header>
 
-<!-- ── Сводная панель ── -->
-<div class="summary-bar mb-4">
-    <div class="row g-3">
-        <div class="col-6 col-md-3">
-            <div class="summary-card">
-                <div class="summary-icon"><i class="bi bi-credit-card-2-front"></i></div>
-                <div class="summary-value">{{ active_count }}</div>
-                <div class="summary-label">Активных долгов</div>
+    <section class="balance-hero {% if free_balance < 0 %}balance-hero--negative{% endif %}" aria-label="Свободные средства">
+        <div class="balance-hero__orb balance-hero__orb--one" aria-hidden="true"></div>
+        <div class="balance-hero__orb balance-hero__orb--two" aria-hidden="true"></div>
+        <div class="balance-hero__top">
+            <span><i class="bi bi-stars"></i> Свободно до конца месяца</span>
+            <span class="balance-hero__status">{{ 'Дефицит' if free_balance < 0 else 'Доступно' }}</span>
+        </div>
+        <strong class="balance-hero__amount">{{ free_balance|money }}</strong>
+        <p>{{ 'Расходы превышают доходы — стоит пересмотреть план.' if free_balance < 0 else 'После расходов и обязательных платежей.' }}</p>
+        <div class="balance-hero__footer">
+            <div>
+                <span>На каждый день</span>
+                <strong>{{ daily_budget|money }}</strong>
+            </div>
+            <div>
+                <span>Осталось</span>
+                <strong>{{ days_left }} {{ 'день' if days_left == 1 else ('дня' if days_left in [2,3,4] else 'дней') }}</strong>
             </div>
         </div>
-        <div class="col-6 col-md-3">
-            <div class="summary-card summary-card--danger">
-                <div class="summary-icon"><i class="bi bi-cash-stack"></i></div>
-                <div class="summary-value">{{ total_remaining|money }}</div>
-                <div class="summary-label">Общий остаток</div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="summary-card summary-card--muted">
-                <div class="summary-icon"><i class="bi bi-bar-chart-line"></i></div>
-                {% if total_original > 0 %}
-                <div class="summary-value">{{ '{:.0f}'.format((1 - total_remaining / total_original) * 100) }}%</div>
-                {% else %}
-                <div class="summary-value">—</div>
-                {% endif %}
-                <div class="summary-label">Погашено в целом</div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="summary-card {% if nearest_debt %}summary-card--warning{% else %}summary-card--muted{% endif %}">
-                <div class="summary-icon"><i class="bi bi-calendar-event"></i></div>
-                {% if nearest_debt %}
-                {% set nearest_payment_date = nearest_debt.effective_next_payment_date(today) %}
-                <div class="summary-value">{{ nearest_payment_date.strftime('%d.%m') if nearest_payment_date else '—' }}</div>
-                <div class="summary-label">Ближайший платеж</div>
-                {% else %}
-                <div class="summary-value">—</div>
-                <div class="summary-label">Нет платежей</div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
+    </section>
 
-<!-- ── Итоги месяца ── -->
-<div class="summary-bar mb-4">
-    <div class="row g-3 align-items-stretch">
-        <div class="col-12 col-lg-3">
-            <div class="summary-card">
-                <div class="summary-icon"><i class="bi bi-cash-stack"></i></div>
-                <div class="summary-value">{{ total_incomes|money }}</div>
-                <div class="summary-label">Доходы за месяц</div>
+    <nav class="money-flow" aria-label="Движение денег за месяц">
+        <a class="money-flow__item money-flow__item--income" href="{{ url_for('incomes') }}">
+            <span class="money-flow__icon"><i class="bi bi-arrow-down-left"></i></span>
+            <span class="money-flow__copy"><small>Доходы</small><strong>{{ total_incomes|money }}</strong></span>
+            <i class="bi bi-chevron-right money-flow__chevron"></i>
+        </a>
+        <a class="money-flow__item money-flow__item--expense" href="{{ url_for('expenses') }}">
+            <span class="money-flow__icon"><i class="bi bi-arrow-up-right"></i></span>
+            <span class="money-flow__copy"><small>Расходы</small><strong>{{ total_expenses|money }}</strong></span>
+            <i class="bi bi-chevron-right money-flow__chevron"></i>
+        </a>
+        <a class="money-flow__item money-flow__item--payment" href="#debtsSection">
+            <span class="money-flow__icon"><i class="bi bi-credit-card"></i></span>
+            <span class="money-flow__copy"><small>Платежи по долгам</small><strong>{{ total_payments|money }}</strong></span>
+            <i class="bi bi-chevron-down money-flow__chevron"></i>
+        </a>
+    </nav>
+
+    <div class="dashboard-v2__status-grid">
+        <section class="debt-overview" aria-label="Состояние долгов">
+            <div class="debt-overview__ring" style="--progress: {{ paid_total_pct }}%;">
+                <span>{{ '{:.0f}'.format(paid_total_pct) }}%</span>
             </div>
-        </div>
-        <div class="col-12 col-lg-3">
-            <div class="summary-card summary-card--danger">
-                <div class="summary-icon"><i class="bi bi-wallet2"></i></div>
-                <div class="summary-value">{{ total_expenses|money }}</div>
-                <div class="summary-label">Расходы за месяц</div>
+            <div class="debt-overview__copy">
+                <span>Остаток по долгам</span>
+                <strong>{{ total_remaining|money }}</strong>
+                <small>{{ active_count }} {{ 'активный долг' if active_count == 1 else ('активных долга' if active_count in [2,3,4] else 'активных долгов') }}</small>
             </div>
-        </div>
-        <div class="col-12 col-lg-3">
-            <div class="summary-card summary-card--warning">
-                <div class="summary-icon"><i class="bi bi-bank2"></i></div>
-                <div class="summary-value">{{ total_payments|money }}</div>
-                <div class="summary-label">Платежи по долгам</div>
+            <a href="#debtsSection" aria-label="Перейти к долгам"><i class="bi bi-arrow-down"></i></a>
+        </section>
+
+        <section class="next-payment {% if overdue_count > 0 %}next-payment--overdue{% endif %}" aria-label="Ближайший платёж">
+            <div class="next-payment__head">
+                <span class="next-payment__icon"><i class="bi bi-calendar3"></i></span>
+                <span>{{ 'Есть просрочка' if overdue_count > 0 else 'Ближайший платёж' }}</span>
             </div>
-        </div>
-        <div class="col-12 col-lg-3">
-            <div class="summary-card {% if free_balance >= 0 %}summary-card--ok{% else %}summary-card--danger{% endif %}">
-                <div class="summary-icon"><i class="bi bi-calculator"></i></div>
-                <div class="summary-value">{{ free_balance|money }}</div>
-                <div class="summary-label">Свободные средства</div>
-            </div>
-        </div>
+            {% if nearest_debt %}
+            <strong>{{ nearest_payment_date.strftime('%d.%m') if nearest_payment_date else '—' }}</strong>
+            <p>{{ nearest_debt.bank_name }} · {{ nearest_debt.product_name }}</p>
+            {% elif overdue_count > 0 %}
+            <strong>{{ overdue_count }} {{ 'просроченный платёж' if overdue_count == 1 else ('просроченных платежа' if overdue_count in [2,3,4] else 'просроченных платежей') }}</strong>
+            <p>Откройте список долгов и проверьте даты.</p>
+            {% else %}
+            <strong>Всё спокойно</strong>
+            <p>Запланированных платежей пока нет.</p>
+            {% endif %}
+        </section>
     </div>
-</div>
-<div class="row g-3 mb-4">
-    <div class="col-12 col-md-6">
-        <div class="card p-3">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-                <div class="text-muted">До конца месяца</div>
-                <div class="fw-semibold">{{ days_left }} {{ 'день' if days_left == 1 else ('дня' if days_left in [2,3,4] else 'дней') }}</div>
-            </div>
-            <div class="fw-semibold fs-4">{{ daily_budget|money }} в день</div>
-        </div>
-    </div>
-    <div class="col-12 col-md-6">
-        <div class="card p-3">
-            <div class="text-muted mb-2">Месяц</div>
-            <div class="fw-semibold fs-4">{{ month_start.strftime('%m.%Y') }}</div>
-        </div>
-    </div>
-</div>
 
 <!-- ── Уведомление о просрочке ── -->
 {% if overdue_count > 0 %}
@@ -114,6 +99,17 @@
     </div>
 </div>
 {% endif %}
+
+<section class="dashboard-v2__debts" id="debtsSection">
+<div class="dashboard-v2__section-head">
+    <div>
+        <span class="dashboard-v2__eyebrow">Обязательства</span>
+        <h2>Долги и платежи</h2>
+    </div>
+    <button class="dashboard-v2__add" type="button" onclick="openAddModal()">
+        <i class="bi bi-plus-lg"></i><span>Добавить долг</span>
+    </button>
+</div>
 
 <!-- ── Панель фильтров ── -->
 <div class="filters-bar mb-4 d-flex flex-wrap gap-2 align-items-center">
@@ -320,7 +316,7 @@
     <!-- Пустое состояние -->
     <div class="col-12" id="emptyState">
         <div class="empty-state">
-            <div class="empty-state__icon">💳</div>
+            <div class="empty-state__icon"><i class="bi bi-wallet2"></i></div>
             <h3>Нет активных долгов</h3>
             <p class="text-muted">Добавьте свою первую карточку долга, чтобы начать отслеживание</p>
             <button class="btn btn-primary" onclick="openAddModal()">
@@ -336,6 +332,8 @@
     <div class="empty-state__icon">🔍</div>
     <h3>Ничего не найдено</h3>
     <p class="text-muted">Попробуйте изменить поисковый запрос или фильтры</p>
+</div>
+</section>
 </div>
 
 {% endblock %}
