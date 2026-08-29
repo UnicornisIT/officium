@@ -21,9 +21,9 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=20260824-telegram-mini-app-1" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=20260829-dashboard-animation-2" rel="stylesheet">
 </head>
-<body{% if is_telegram_mini_app %} class="telegram-mini-app"{% endif %}>
+<body{% if is_telegram_mini_app %} class="telegram-mini-app"{% elif current_user.is_authenticated and not request.path.startswith('/admin') %} class="has-mobile-app-nav"{% endif %}>
 
 <!-- Навигация -->
 {% if is_telegram_mini_app %}
@@ -222,8 +222,8 @@
     {% block content %}{% endblock %}
 </main>
 
-{% if is_telegram_mini_app %}
-<nav class="telegram-bottom-nav" aria-label="Основная навигация">
+{% if is_telegram_mini_app or (current_user.is_authenticated and not request.path.startswith('/admin')) %}
+<nav class="{% if is_telegram_mini_app %}telegram-bottom-nav{% else %}telegram-bottom-nav browser-bottom-nav{% endif %}" aria-label="Основная навигация">
     <a href="{{ url_for('index') }}" class="{% if request.path == '/' %}active{% endif %}">
         <i class="bi bi-house-door{% if request.path == '/' %}-fill{% endif %}"></i>
         <span>Главная</span>

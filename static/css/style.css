@@ -2974,6 +2974,842 @@ textarea.form-control {
 }
 
 /* ============================================================
+   Dashboard concept — focused, mobile-first financial overview
+============================================================ */
+.dashboard-v2 {
+    display: grid;
+    gap: 24px;
+    width: 100%;
+}
+
+.dashboard-v2__header,
+.dashboard-v2__section-head,
+.balance-hero__top,
+.balance-hero__footer,
+.debt-overview,
+.next-payment__head {
+    display: flex;
+    align-items: center;
+}
+
+.dashboard-v2__header,
+.dashboard-v2__section-head,
+.balance-hero__top,
+.balance-hero__footer {
+    justify-content: space-between;
+}
+
+.dashboard-v2__header {
+    gap: 24px;
+}
+
+.dashboard-v2__eyebrow {
+    display: block;
+    margin-bottom: 7px;
+    color: var(--primary);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.dashboard-v2__header h1,
+.dashboard-v2__section-head h2 {
+    margin: 0;
+    color: var(--text);
+    font-weight: 800;
+    letter-spacing: -0.045em;
+}
+
+.dashboard-v2__header h1 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 1.04;
+}
+
+.dashboard-v2__header p {
+    margin: 10px 0 0;
+    color: var(--text-muted);
+    font-size: 0.94rem;
+}
+
+.dashboard-v2__period,
+.dashboard-v2__add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-height: 44px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    color: var(--text);
+    background: var(--bg-card);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.dashboard-v2__period {
+    gap: 9px;
+    padding: 0 14px;
+}
+
+.dashboard-v2__period > i:first-child { color: var(--primary); }
+.dashboard-v2__period > i:last-child { color: var(--text-muted); font-size: 0.7rem; }
+
+.balance-hero {
+    position: relative;
+    isolation: isolate;
+    min-height: 300px;
+    padding: 30px 32px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 30px;
+    color: #f8fbff;
+    background:
+        linear-gradient(135deg, rgba(79, 70, 229, 0.22), transparent 55%),
+        linear-gradient(145deg, #13213d 0%, #0d172b 58%, #17233f 100%);
+    box-shadow: 0 24px 60px rgba(9, 18, 38, 0.2);
+    animation: balance-card-reveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.balance-hero--negative {
+    background:
+        linear-gradient(135deg, rgba(248, 113, 113, 0.26), transparent 58%),
+        linear-gradient(145deg, #321a2d 0%, #1d1628 58%, #291b32 100%);
+}
+
+.balance-hero__orb {
+    position: absolute;
+    z-index: -1;
+    border-radius: 50%;
+    filter: blur(2px);
+}
+
+.balance-hero__orb--one {
+    top: -120px;
+    right: -60px;
+    width: 290px;
+    height: 290px;
+    background: rgba(96, 165, 250, 0.18);
+    animation: balance-orb-one 9s ease-in-out infinite alternate;
+}
+
+.balance-hero__orb--two {
+    right: 25%;
+    bottom: -150px;
+    width: 260px;
+    height: 260px;
+    background: rgba(167, 139, 250, 0.14);
+    animation: balance-orb-two 11s ease-in-out infinite alternate;
+}
+
+.balance-hero__top {
+    position: relative;
+    gap: 16px;
+    color: rgba(255, 255, 255, 0.76);
+    font-size: 0.82rem;
+    font-weight: 650;
+    animation: balance-content-reveal 0.55s 0.08s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.balance-hero__top > span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.balance-hero__top > span:first-child i {
+    transform-origin: center;
+    animation: balance-sparkle 2.8s ease-in-out infinite;
+}
+
+.balance-hero__status {
+    padding: 6px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    color: #c8f8d7;
+    background: rgba(52, 211, 153, 0.13);
+    font-size: 0.67rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    animation: balance-status-breathe 3.2s ease-in-out infinite;
+}
+
+.balance-hero--negative .balance-hero__status {
+    color: #ffd3d7;
+    background: rgba(248, 113, 113, 0.14);
+}
+
+.balance-hero__amount {
+    display: block;
+    margin-top: 42px;
+    font-size: clamp(2.75rem, 7vw, 5rem);
+    font-weight: 800;
+    line-height: 0.98;
+    letter-spacing: -0.065em;
+    animation: balance-content-reveal 0.65s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.balance-hero > p {
+    margin: 12px 0 32px;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 0.88rem;
+    animation: balance-content-reveal 0.6s 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.balance-hero__footer {
+    position: absolute;
+    right: 32px;
+    bottom: 24px;
+    left: 32px;
+    justify-content: flex-start;
+    gap: 0;
+    padding-top: 0;
+    border-top: 0;
+    animation: balance-content-reveal 0.6s 0.29s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.balance-hero__footer > div {
+    display: grid;
+    min-width: 180px;
+    padding-right: 26px;
+}
+
+.balance-hero__footer > div + div {
+    padding-left: 26px;
+    border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.balance-hero__footer span {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.7rem;
+}
+
+.balance-hero__footer strong {
+    margin-top: 3px;
+    color: #fff;
+    font-size: 0.98rem;
+}
+
+@keyframes balance-card-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes balance-content-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes balance-orb-one {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(-28px, 18px, 0) scale(1.08); }
+}
+
+@keyframes balance-orb-two {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(34px, -20px, 0) scale(0.92); }
+}
+
+@keyframes balance-sparkle {
+    0%, 100% { opacity: 0.72; transform: rotate(0deg) scale(1); }
+    50% { opacity: 1; transform: rotate(14deg) scale(1.18); }
+}
+
+@keyframes balance-status-breathe {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+    50% { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.06); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .balance-hero,
+    .balance-hero__orb,
+    .balance-hero__top,
+    .balance-hero__top > span:first-child i,
+    .balance-hero__status,
+    .balance-hero__amount,
+    .balance-hero > p,
+    .balance-hero__footer {
+        animation: none !important;
+    }
+}
+
+.money-flow {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.money-flow__item {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 15px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    color: var(--text);
+    background: var(--bg-card);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+    text-decoration: none;
+    transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+    animation: dashboard-tile-reveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.money-flow__item:nth-child(1) { animation-delay: 0.28s; }
+.money-flow__item:nth-child(2) { animation-delay: 0.38s; }
+.money-flow__item:nth-child(3) { animation-delay: 0.48s; }
+
+.money-flow__item:hover {
+    border-color: var(--border-hov);
+    color: var(--text);
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+    transform: translateY(-2px);
+}
+
+.money-flow__icon,
+.next-payment__icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    border-radius: 15px;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 11%, var(--bg-card));
+    font-size: 1.05rem;
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), background var(--transition), box-shadow var(--transition);
+}
+
+.money-flow__item:hover .money-flow__icon {
+    transform: translateY(-2px) scale(1.06);
+}
+
+.money-flow__item--income .money-flow__icon {
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 12%, var(--bg-card));
+}
+
+.money-flow__item--expense .money-flow__icon {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 11%, var(--bg-card));
+}
+
+.money-flow__item--payment .money-flow__icon {
+    color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 12%, var(--bg-card));
+}
+
+.money-flow__copy {
+    display: grid;
+    min-width: 0;
+}
+
+.money-flow__copy small {
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.money-flow__copy strong {
+    margin-top: 3px;
+    overflow: hidden;
+    font-size: 0.98rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.money-flow__chevron {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    transition: color var(--transition), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.money-flow__item:hover .money-flow__chevron {
+    color: var(--primary);
+    transform: translateX(3px);
+}
+
+.money-flow__item--payment:hover .money-flow__chevron {
+    transform: translateY(3px);
+}
+
+.dashboard-v2__status-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+    gap: 12px;
+}
+
+.debt-overview,
+.next-payment {
+    min-width: 0;
+    min-height: 142px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    background: var(--bg-card);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
+    animation: dashboard-tile-reveal 0.62s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.debt-overview {
+    gap: 18px;
+    animation-delay: 0.58s;
+}
+
+@property --ring-fill {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 0%;
+}
+
+.debt-overview__ring {
+    --ring-fill: var(--progress);
+    display: grid;
+    place-items: center;
+    flex: 0 0 86px;
+    width: 86px;
+    height: 86px;
+    border-radius: 50%;
+    background: conic-gradient(var(--primary) var(--ring-fill), var(--bg-card-2) 0);
+    animation:
+        debt-ring-pop 0.55s 0.64s cubic-bezier(0.22, 1, 0.36, 1) backwards,
+        debt-ring-fill 1.05s 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.debt-overview__ring::before {
+    content: '';
+    grid-area: 1 / 1;
+    width: 66px;
+    height: 66px;
+    border-radius: 50%;
+    background: var(--bg-card);
+}
+
+.debt-overview__ring span {
+    z-index: 1;
+    grid-area: 1 / 1;
+    font-size: 0.8rem;
+    font-weight: 800;
+    animation: dashboard-value-reveal 0.45s 1s ease-out backwards;
+}
+
+.debt-overview__copy {
+    display: grid;
+    min-width: 0;
+}
+
+.debt-overview__copy > span,
+.debt-overview__copy > small {
+    color: var(--text-muted);
+    font-size: 0.74rem;
+}
+
+.debt-overview__copy > strong {
+    margin: 5px 0 2px;
+    overflow: hidden;
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    line-height: 1.1;
+    letter-spacing: -0.045em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    animation: dashboard-value-reveal 0.5s 0.78s ease-out backwards;
+}
+
+.debt-overview > a {
+    display: grid;
+    place-items: center;
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    margin-left: auto;
+    border-radius: 13px;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 9%, var(--bg-card));
+    text-decoration: none;
+    animation: dashboard-arrow-float 2.8s 1.4s ease-in-out infinite;
+    transition: color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+.debt-overview > a:hover {
+    color: #fff;
+    background: var(--primary);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
+.next-payment {
+    display: grid;
+    align-content: space-between;
+    animation-delay: 0.68s;
+}
+
+.next-payment__head {
+    gap: 10px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.next-payment__icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    animation: dashboard-icon-breathe 3.4s 1.35s ease-in-out infinite;
+}
+
+.next-payment > strong {
+    display: block;
+    margin-top: 18px;
+    font-size: 1.3rem;
+    line-height: 1.1;
+    letter-spacing: -0.035em;
+    animation: dashboard-value-reveal 0.5s 0.88s ease-out backwards;
+}
+
+.next-payment > p {
+    margin: 5px 0 0;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.next-payment--overdue {
+    border-color: color-mix(in srgb, var(--danger) 32%, var(--border));
+    background: color-mix(in srgb, var(--danger) 4%, var(--bg-card));
+    animation:
+        dashboard-tile-reveal 0.62s 0.68s cubic-bezier(0.22, 1, 0.36, 1) backwards,
+        overdue-card-breathe 4s 1.4s ease-in-out infinite;
+}
+
+.next-payment--overdue .next-payment__icon {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 10%, var(--bg-card));
+}
+
+@keyframes dashboard-tile-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes dashboard-value-reveal {
+    from { opacity: 0; transform: translateY(7px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes debt-ring-pop {
+    from { opacity: 0; transform: scale(0.72) rotate(-24deg); }
+    to { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+@keyframes debt-ring-fill {
+    from { --ring-fill: 0%; }
+    to { --ring-fill: var(--progress); }
+}
+
+@keyframes dashboard-arrow-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(3px); }
+}
+
+@keyframes dashboard-icon-breathe {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 0%, transparent); }
+    50% { transform: scale(1.05); box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 5%, transparent); }
+}
+
+@keyframes overdue-card-breathe {
+    0%, 100% { box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05); }
+    50% { box-shadow: 0 14px 38px color-mix(in srgb, var(--danger) 10%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .money-flow__item,
+    .debt-overview,
+    .next-payment,
+    .debt-overview__ring,
+    .debt-overview__ring span,
+    .debt-overview__copy > strong,
+    .debt-overview > a,
+    .next-payment__icon,
+    .next-payment > strong {
+        animation: none !important;
+    }
+
+    .debt-overview__ring { --ring-fill: var(--progress); }
+}
+
+.dashboard-v2__debts {
+    scroll-margin-top: 90px;
+    padding-top: 10px;
+}
+
+.dashboard-v2__section-head {
+    gap: 20px;
+    margin-bottom: 16px;
+}
+
+.dashboard-v2__section-head h2 {
+    font-size: clamp(1.45rem, 3vw, 2rem);
+}
+
+.dashboard-v2__add {
+    gap: 8px;
+    padding: 0 15px;
+    border-color: transparent;
+    color: #fff;
+    background: var(--primary);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
+.dashboard-v2__add:hover {
+    color: #fff;
+    background: var(--primary-dk);
+}
+
+.dashboard-v2 .filters-bar {
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--bg-card);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+}
+
+.dashboard-v2 .empty-state {
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    background: var(--bg-card);
+}
+
+/* The browser version uses the same five-point mobile information architecture
+   as the Telegram Mini App, while keeping the desktop navigation unchanged. */
+.browser-bottom-nav { display: none; }
+
+@media (max-width: 991.98px) {
+    .browser-bottom-nav { display: grid; }
+
+    body.has-mobile-app-nav:not(.telegram-mini-app) {
+        padding-bottom: calc(76px + max(10px, env(safe-area-inset-bottom)));
+    }
+
+    body.has-mobile-app-nav:not(.telegram-mini-app) .site-footer {
+        display: none;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .dashboard-v2 { gap: 16px; }
+
+    .dashboard-v2__header {
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .dashboard-v2__header h1 {
+        font-size: clamp(1.72rem, 8vw, 2.15rem);
+    }
+
+    .dashboard-v2__header p {
+        max-width: 270px;
+        margin-top: 7px;
+        font-size: 0.8rem;
+        line-height: 1.45;
+    }
+
+    .dashboard-v2__period {
+        width: 44px;
+        padding: 0;
+    }
+
+    .dashboard-v2__period span,
+    .dashboard-v2__period > i:last-child {
+        display: none;
+    }
+
+    .balance-hero {
+        min-height: 270px;
+        padding: 22px;
+        border-radius: 26px;
+    }
+
+    .balance-hero__top {
+        align-items: flex-start;
+        font-size: 0.72rem;
+    }
+
+    .balance-hero__amount {
+        margin-top: 38px;
+        font-size: clamp(2.55rem, 14vw, 4rem);
+    }
+
+    .balance-hero > p {
+        max-width: 250px;
+        margin-top: 10px;
+        font-size: 0.76rem;
+    }
+
+    .balance-hero__footer {
+        right: 22px;
+        bottom: 20px;
+        left: 22px;
+    }
+
+    .balance-hero__footer > div {
+        min-width: 0;
+        width: 50%;
+        padding-right: 16px;
+    }
+
+    .balance-hero__footer > div + div {
+        padding-left: 16px;
+    }
+
+    .balance-hero__footer strong { font-size: 0.86rem; }
+
+    .money-flow {
+        grid-template-columns: 1fr;
+        gap: 0;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        background: var(--bg-card);
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+    }
+
+    .money-flow__item {
+        padding: 13px 14px;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .money-flow__item + .money-flow__item {
+        border-top: 1px solid var(--border);
+    }
+
+    .money-flow__item:hover {
+        box-shadow: none;
+        transform: none;
+    }
+
+    .money-flow__icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+    }
+
+    .dashboard-v2__status-grid { grid-template-columns: 1fr; }
+
+    .debt-overview,
+    .next-payment {
+        min-height: 128px;
+        padding: 18px;
+        border-radius: 20px;
+    }
+
+    .debt-overview__ring {
+        flex-basis: 76px;
+        width: 76px;
+        height: 76px;
+    }
+
+    .debt-overview__ring::before {
+        width: 58px;
+        height: 58px;
+    }
+
+    .debt-overview__copy > strong { font-size: 1.35rem; }
+
+    .dashboard-v2__debts { padding-top: 4px; }
+
+    .dashboard-v2__section-head {
+        align-items: flex-end;
+    }
+
+    .dashboard-v2__add {
+        width: 44px;
+        padding: 0;
+        border-radius: 14px;
+    }
+
+    .dashboard-v2__add span { display: none; }
+
+    .dashboard-v2 .filters-bar {
+        gap: 10px !important;
+        padding: 10px;
+    }
+
+    .dashboard-v2 .filter-type-btns {
+        display: flex;
+        width: 100%;
+        padding-bottom: 2px;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .dashboard-v2 .filter-type-btns::-webkit-scrollbar { display: none; }
+    .dashboard-v2 .btn-filter { flex: 0 0 auto; }
+    .dashboard-v2 #sortSelect { width: 100% !important; }
+
+    .dashboard-v2 .debt-card__actions {
+        flex-direction: row;
+        align-items: stretch;
+    }
+
+    .dashboard-v2 .debt-card__actions-left,
+    .dashboard-v2 .debt-card__actions-right {
+        width: 100%;
+    }
+
+    .dashboard-v2 .debt-card__actions-left .btn-action { width: 100%; }
+
+    .dashboard-v2 .debt-card__actions-right {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .dashboard-v2 .debt-card__actions-right .btn-action {
+        width: auto;
+        min-width: 0;
+        padding-right: 6px;
+        padding-left: 6px;
+    }
+}
+
+@media (max-width: 380px) {
+    .balance-hero__status { display: none; }
+    .debt-overview { gap: 12px; }
+    .debt-overview > a { display: none; }
+}
+
+/* ============================================================
    Telegram Mini App
 ============================================================ */
 .login-mini-app-link {
@@ -5692,4 +6528,11 @@ html[data-theme="dark"] .toast {
         margin-right: 0;
         width: calc(100% - 28px);
     }
+}
+
+/* Keep the browser bottom bar responsive after all generic navigation rules. */
+.telegram-bottom-nav.browser-bottom-nav { display: none; }
+
+@media (max-width: 991.98px) {
+    .telegram-bottom-nav.browser-bottom-nav { display: grid; }
 }
