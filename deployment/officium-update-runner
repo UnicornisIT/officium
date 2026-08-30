@@ -1,0 +1,477 @@
+#!/usr/bin/python3
+"""Root-owned systemd runner for a release update requested by officium."""
+
+import fcntl
+import hashlib
+import json
+import os
+import pwd
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import unquote, urlsplit
+from urllib.request import Request, urlopen
+
+
+CONFIG_PATH = Path('/etc/officium/updater.env')
+LOCK_PATH = Path('/run/lock/officium-update.lock')
+TAG_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$')
+REPOSITORY_RE = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
+USER_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
+NAME_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,127}$')
+ALLOWED_CONFIG_KEYS = {
+    'APP_DIR',
+    'APP_USER',
+    'BACKUP_DIR',
+    'GITHUB_TOKEN_FILE',
+    'GIT_REMOTE',
+    'REPOSITORY',
+    'SERVICE_NAME',
+    'STATUS_FILE',
+}
+
+
+class UpdateFailure(RuntimeError):
+    pass
+
+
+def utc_now():
+    return datetime.now(timezone.utc).replace(microsecond=0)
+
+
+def iso_now():
+    return utc_now().isoformat().replace('+00:00', 'Z')
+
+
+def validate_tag(value):
+    if (
+        not TAG_RE.fullmatch(value or '')
+        or '..' in value
+        or '@{' in value
+        or value.endswith('.lock')
+    ):
+        raise UpdateFailure('Release tag is unsafe or unsupported.')
+    return value
+
+
+def parse_key_value_file(path, allowed_keys=None):
+    values = {}
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except OSError as exc:
+        raise UpdateFailure(f'Cannot read configuration file: {path}') from exc
+    for line_number, raw_line in enumerate(lines, start=1):
+        line = raw_line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('export '):
+            line = line[7:].lstrip()
+        if '=' not in line:
+            raise UpdateFailure(f'Invalid configuration line {line_number} in {path}.')
+        key, value = line.split('=', 1)
+        key = key.strip()
+        if allowed_keys is not None and key not in allowed_keys:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def load_runner_config():
+    configured = parse_key_value_file(CONFIG_PATH, ALLOWED_CONFIG_KEYS)
+    values = {
+        'APP_DIR': configured.get('APP_DIR', '/var/www/debt_manager'),
+        'APP_USER': configured.get('APP_USER', 'officium'),
+        'BACKUP_DIR': configured.get('BACKUP_DIR', '/var/backups/officium'),
+        'GITHUB_TOKEN_FILE': configured.get('GITHUB_TOKEN_FILE', ''),
+        'GIT_REMOTE': configured.get('GIT_REMOTE', 'origin'),
+        'REPOSITORY': configured.get('REPOSITORY', 'UnicornisIT/officium'),
+        'SERVICE_NAME': configured.get('SERVICE_NAME', 'debt_manager'),
+        'STATUS_FILE': configured.get('STATUS_FILE', '/var/lib/officium/server-update-status.json'),
+    }
+    for key in ('APP_DIR', 'BACKUP_DIR', 'STATUS_FILE'):
+        if not Path(values[key]).is_absolute():
+            raise UpdateFailure(f'{key} must be an absolute path.')
+    if not USER_RE.fullmatch(values['APP_USER']):
+        raise UpdateFailure('APP_USER is invalid.')
+    if not NAME_RE.fullmatch(values['SERVICE_NAME']):
+        raise UpdateFailure('SERVICE_NAME is invalid.')
+    if not NAME_RE.fullmatch(values['GIT_REMOTE']):
+        raise UpdateFailure('GIT_REMOTE is invalid.')
+    if not REPOSITORY_RE.fullmatch(values['REPOSITORY']):
+        raise UpdateFailure('REPOSITORY is invalid.')
+    try:
+        pwd.getpwnam(values['APP_USER'])
+    except KeyError as exc:
+        raise UpdateFailure('APP_USER does not exist.') from exc
+    return values
+
+
+def read_status(status_path):
+    try:
+        if status_path.stat().st_size > 64 * 1024:
+            return {}
+        payload = json.loads(status_path.read_text(encoding='utf-8'))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_status(config, state, tag, message):
+    status_path = Path(config['STATUS_FILE'])
+    status_path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+    payload = read_status(status_path)
+    payload.update({
+        'state': state,
+        'tag': tag,
+        'message': message,
+        'updated_at': iso_now(),
+    })
+    temporary = status_path.with_name(f'.{status_path.name}.{os.getpid()}.tmp')
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, separators=(',', ':')),
+            encoding='utf-8',
+        )
+        temporary.chmod(0o644)
+        os.replace(temporary, status_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def latest_release_tag(config):
+    repository = config['REPOSITORY']
+    headers = {
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'officium-server-updater',
+    }
+    token_file = config.get('GITHUB_TOKEN_FILE')
+    if token_file:
+        token_path = Path(token_file)
+        if not token_path.is_absolute():
+            raise UpdateFailure('GITHUB_TOKEN_FILE must be an absolute path.')
+        try:
+            token = token_path.read_text(encoding='utf-8').strip()
+        except OSError as exc:
+            raise UpdateFailure('Cannot read GITHUB_TOKEN_FILE.') from exc
+        if token:
+            headers['Authorization'] = f'Bearer {token}'
+    request = Request(
+        f'https://api.github.com/repos/{repository}/releases/latest',
+        headers=headers,
+        method='GET',
+    )
+    try:
+        with urlopen(request, timeout=12) as response:
+            if response.status != 200:
+                raise UpdateFailure(f'GitHub returned HTTP {response.status}.')
+            raw_payload = response.read(1024 * 1024 + 1)
+            if len(raw_payload) > 1024 * 1024:
+                raise UpdateFailure('GitHub release response is too large.')
+            payload = json.loads(raw_payload.decode('utf-8'))
+    except (HTTPError, URLError, OSError, ValueError) as exc:
+        raise UpdateFailure('Cannot verify the latest GitHub release.') from exc
+    if not isinstance(payload, dict):
+        raise UpdateFailure('GitHub returned an invalid release response.')
+    return validate_tag(str(payload.get('tag_name') or ''))
+
+
+def normalize_github_remote(remote):
+    value = remote.strip()
+    prefixes = (
+        'https://github.com/',
+        'http://github.com/',
+        'ssh://git@github.com/',
+        'git@github.com:',
+    )
+    for prefix in prefixes:
+        if value.startswith(prefix):
+            value = value[len(prefix):]
+            break
+    else:
+        return ''
+    return value[:-4] if value.endswith('.git') else value
+
+
+def verify_git_remote(config):
+    app_dir = Path(config['APP_DIR'])
+    if not (app_dir / '.git').exists():
+        raise UpdateFailure('APP_DIR is not a Git checkout.')
+    result = subprocess.run(
+        ['git', '-C', str(app_dir), 'remote', 'get-url', config['GIT_REMOTE']],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise UpdateFailure('Cannot read the configured Git remote.')
+    if normalize_github_remote(result.stdout) != config['REPOSITORY']:
+        raise UpdateFailure('Git remote does not match the configured GitHub repository.')
+
+
+def database_settings(app_dir):
+    env_path = app_dir / '.env'
+    values = parse_key_value_file(env_path)
+    database_url = values.get('DATABASE_URL', '').strip()
+    if database_url:
+        if database_url.startswith('sqlite:///'):
+            raw_path = unquote(database_url[len('sqlite:///'):].split('?', 1)[0])
+            database_path = Path(raw_path)
+            if not database_path.is_absolute():
+                database_path = app_dir / database_path
+            return {'engine': 'sqlite', 'path': database_path.resolve()}
+        parsed = urlsplit(database_url.replace('mysql+pymysql://', 'mysql://', 1))
+        if parsed.scheme == 'mysql':
+            return {
+                'engine': 'mysql',
+                'host': parsed.hostname or '127.0.0.1',
+                'port': parsed.port or 3306,
+                'user': unquote(parsed.username or ''),
+                'password': unquote(parsed.password or ''),
+                'database': unquote(parsed.path.lstrip('/')),
+            }
+        raise UpdateFailure('DATABASE_URL uses an unsupported database engine.')
+
+    engine = values.get('DB_ENGINE', 'mysql').strip().lower()
+    if engine == 'sqlite':
+        database_path = Path(values.get('SQLITE_PATH', 'dev.db'))
+        if not database_path.is_absolute():
+            database_path = app_dir / database_path
+        return {'engine': 'sqlite', 'path': database_path.resolve()}
+    if engine != 'mysql':
+        raise UpdateFailure('DB_ENGINE uses an unsupported database engine.')
+    try:
+        port = int(values.get('DB_PORT', '3306'))
+    except ValueError as exc:
+        raise UpdateFailure('DB_PORT is invalid.') from exc
+    if not 1 <= port <= 65535:
+        raise UpdateFailure('DB_PORT is outside the valid range.')
+    return {
+        'engine': 'mysql',
+        'host': values.get('DB_HOST', '127.0.0.1'),
+        'port': port,
+        'user': values.get('DB_USER', ''),
+        'password': values.get('DB_PASSWORD', ''),
+        'database': values.get('DB_NAME', ''),
+    }
+
+
+def backup_database(config, tag):
+    app_dir = Path(config['APP_DIR'])
+    backup_dir = Path(config['BACKUP_DIR'])
+    backup_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
+    settings = database_settings(app_dir)
+    timestamp = utc_now().strftime('%Y%m%dT%H%M%SZ')
+    safe_tag = re.sub(r'[^A-Za-z0-9._+-]', '_', tag)
+
+    if settings['engine'] == 'sqlite':
+        source = settings['path']
+        if not source.is_file():
+            raise UpdateFailure('SQLite database file does not exist.')
+        destination = backup_dir / f'officium-{safe_tag}-{timestamp}.sqlite3'
+        temporary = destination.with_suffix('.partial')
+        try:
+            with sqlite3.connect(source) as source_db, sqlite3.connect(temporary) as backup_db:
+                source_db.backup(backup_db)
+            temporary.chmod(0o600)
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return destination
+
+    database_name = settings['database']
+    if not re.fullmatch(r'[A-Za-z0-9_$][A-Za-z0-9_$-]{0,63}', database_name or ''):
+        raise UpdateFailure('MySQL database name is invalid.')
+    mysqldump = shutil.which('mysqldump')
+    runuser = shutil.which('runuser')
+    if not mysqldump or not runuser:
+        raise UpdateFailure('mysqldump or runuser is not installed.')
+    destination = backup_dir / f'officium-{safe_tag}-{timestamp}.sql'
+    temporary = destination.with_suffix('.partial')
+    env = os.environ.copy()
+    env['MYSQL_PWD'] = settings['password']
+    command = [
+        runuser,
+        '-u',
+        config['APP_USER'],
+        '--',
+        mysqldump,
+        '--single-transaction',
+        '--routines',
+        '--triggers',
+        '--hex-blob',
+        '--default-character-set=utf8mb4',
+        f'--host={settings["host"]}',
+        f'--port={settings["port"]}',
+        f'--user={settings["user"]}',
+        database_name,
+    ]
+    try:
+        with temporary.open('wb') as output:
+            temporary.chmod(0o600)
+            result = subprocess.run(command, stdout=output, env=env, timeout=180, check=False)
+        if result.returncode != 0 or temporary.stat().st_size == 0:
+            raise UpdateFailure('MySQL backup failed or produced an empty file.')
+        os.replace(temporary, destination)
+    finally:
+        env.pop('MYSQL_PWD', None)
+        temporary.unlink(missing_ok=True)
+    return destination
+
+
+def run_deployment(config, tag):
+    app_dir = Path(config['APP_DIR'])
+    deploy_source = app_dir / 'deploy.sh'
+    if not deploy_source.is_file():
+        raise UpdateFailure('deploy.sh is missing from APP_DIR.')
+    runuser = shutil.which('runuser')
+    if not runuser:
+        raise UpdateFailure('runuser is not installed.')
+
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='wb', prefix='officium-deploy-', suffix='.sh', delete=False
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            with deploy_source.open('rb') as source:
+                shutil.copyfileobj(source, temporary)
+        temporary_path.chmod(0o755)
+        command = [
+            runuser,
+            '-u',
+            config['APP_USER'],
+            '--',
+            '/usr/bin/env',
+            f'APP_DIR={app_dir}',
+            f'DEPLOY_REMOTE={config["GIT_REMOTE"]}',
+            'OFFICIUM_BACKUP_CONFIRMED=true',
+            '/bin/bash',
+            str(temporary_path),
+            '--release',
+            tag,
+            '--skip-restart',
+        ]
+        result = subprocess.run(command, timeout=900, check=False)
+        if result.returncode != 0:
+            raise UpdateFailure('Release deployment failed. See the system journal for details.')
+    finally:
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
+
+
+def perform_update(tag):
+    config = load_runner_config()
+    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with LOCK_PATH.open('w', encoding='utf-8') as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise UpdateFailure('Another server update is already running.') from exc
+
+        try:
+            write_status(config, 'running', tag, 'Проверка релиза и конфигурации сервера.')
+            if latest_release_tag(config) != tag:
+                raise UpdateFailure('Requested tag is not the latest published GitHub release.')
+            verify_git_remote(config)
+
+            write_status(config, 'backing_up', tag, 'Создание резервной копии базы данных.')
+            backup_path = backup_database(config, tag)
+
+            write_status(
+                config,
+                'installing',
+                tag,
+                'Установка кода, зависимостей и миграций.',
+            )
+            run_deployment(config, tag)
+
+            write_status(config, 'restarting', tag, 'Перезапуск службы приложения.')
+            systemctl = shutil.which('systemctl')
+            if not systemctl:
+                raise UpdateFailure('systemctl is not installed.')
+            result = subprocess.run(
+                [systemctl, 'restart', config['SERVICE_NAME']],
+                timeout=60,
+                check=False,
+            )
+            if result.returncode != 0:
+                raise UpdateFailure('Application service restart failed.')
+
+            write_status(
+                config,
+                'success',
+                tag,
+                f'Обновление завершено. Резервная копия: {backup_path.name}',
+            )
+        except Exception:
+            write_status(
+                config,
+                'failed',
+                tag,
+                'Обновление остановлено. Подробности доступны в системном журнале.',
+            )
+            raise
+
+
+def request_background_update(tag):
+    config = load_runner_config()
+    # Fail before scheduling if the release or repository cannot be verified.
+    if latest_release_tag(config) != tag:
+        raise UpdateFailure('Requested tag is not the latest published GitHub release.')
+    verify_git_remote(config)
+
+    systemd_run = shutil.which('systemd-run')
+    if not systemd_run:
+        raise UpdateFailure('systemd-run is not installed.')
+    unit_suffix = hashlib.sha256(f'{tag}:{os.getpid()}:{iso_now()}'.encode()).hexdigest()[:16]
+    unit_name = f'officium-update-{unit_suffix}'
+    result = subprocess.run(
+        [
+            systemd_run,
+            '--quiet',
+            '--collect',
+            f'--unit={unit_name}',
+            '--property=Type=exec',
+            str(Path(__file__).resolve()),
+            '--perform',
+            tag,
+        ],
+        timeout=15,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise UpdateFailure('systemd could not schedule the update task.')
+
+
+def main(argv):
+    if os.geteuid() != 0:
+        raise UpdateFailure('This updater must run as root through the configured sudo rule.')
+    if len(argv) == 2:
+        request_background_update(validate_tag(argv[1]))
+        return 0
+    if len(argv) == 3 and argv[1] == '--perform':
+        perform_update(validate_tag(argv[2]))
+        return 0
+    raise UpdateFailure('Usage: officium-update-runner RELEASE_TAG')
+
+
+if __name__ == '__main__':
+    try:
+        raise SystemExit(main(sys.argv))
+    except UpdateFailure as exc:
+        print(f'officium updater: {exc}', file=sys.stderr)
+        raise SystemExit(1)
+    except Exception:
+        print('officium updater: unexpected failure; inspect the system journal.', file=sys.stderr)
+        raise SystemExit(1)

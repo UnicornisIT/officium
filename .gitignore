@@ -26,7 +26,9 @@ Thumbs.db
 
 # Logs and database files
 *.log
+*.db
 *.sqlite3
+test_results.txt
 
 # Pytest cache
 .pytest_cache/

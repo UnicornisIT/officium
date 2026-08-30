@@ -13,11 +13,12 @@
 - вход через Telegram Login Widget, Google OAuth, dev/test-режимы;
 - единый интерфейс для браузера и Telegram Mini App;
 - админ-панель для пользователей, настроек, справочников, логов и экспорта;
+- безопасное обновление сервера до последнего GitHub Release из-под superadmin;
 - Telegram-бот с кнопками для расходов, доходов, долгов и платежей.
 
 ## Технологии
 
-- Python 3.9+
+- Python 3.10+
 - Flask
 - Flask-SQLAlchemy
 - Flask-Migrate / Alembic
@@ -55,8 +56,10 @@ Copy-Item .env.example .env
 Для локального SQLite в `.env`:
 
 ```env
-SECRET_KEY=dev-secret-change-me
+OFFICIUM_ENV=development
+SECRET_KEY=local-only-random-secret-at-least-32-characters
 FLASK_DEBUG=true
+SESSION_COOKIE_SECURE=false
 DB_ENGINE=sqlite
 SQLITE_PATH=dev.db
 DEV_LOGIN_ENABLED=true
@@ -80,19 +83,23 @@ $env:FLASK_APP = 'run.py'
 Главные переменные окружения:
 
 ```env
-SECRET_KEY=change-me
+OFFICIUM_ENV=production
+SECRET_KEY=<случайная строка длиной не менее 32 символов>
 FLASK_DEBUG=false
+SESSION_COOKIE_SECURE=true
+MAX_CONTENT_LENGTH=10485760
 
 DB_ENGINE=mysql
 DB_HOST=localhost
 DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password
+DB_USER=officium
+DB_PASSWORD=<пароль отдельного пользователя БД>
 DB_NAME=debt_manager
 
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_BOT_USERNAME=
-TELEGRAM_MINI_APP_ENABLED=true
+TELEGRAM_LOGIN_ENABLED=false
+TELEGRAM_MINI_APP_ENABLED=false
 TELEGRAM_MINI_APP_SHORT_NAME=
 TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS=86400
 TELEGRAM_BOT_ENABLED=false
@@ -118,6 +125,12 @@ ADMIN_PASSWORD_HASH=
 
 `.env` нельзя коммитить в git.
 
+В режиме `OFFICIUM_ENV=production` приложение откажется запускаться со слабым
+`SECRET_KEY`, с debug/dev/test-входом, небезопасной cookie сессии, без токена
+включённых Telegram-функций, без секрета включённого Telegram webhook, без
+реквизитов включённого Google OAuth или без хеша пароля включённого аварийного
+админ-входа. Обычный `ADMIN_PASSWORD` в production не принимается.
+
 ## Миграции
 
 Обновить базу:
@@ -139,9 +152,12 @@ $env:FLASK_APP = 'run.py'
 ```powershell
 .\.venv\Scripts\python.exe -m flask db current
 .\.venv\Scripts\python.exe -m flask db heads
+.\.venv\Scripts\python.exe -m flask db check
 ```
 
 Не используйте `db.create_all()` для обновления существующей базы.
+`init_db.sql` создаёт только пустую MySQL-базу; таблицы всегда создаются и
+обновляются командой `flask db upgrade`.
 
 ## Telegram-бот
 
@@ -163,7 +179,8 @@ $env:FLASK_APP = 'run.py'
 
 Кнопки `Расход`, `Доход`, `Платеж`, `Долг` запускают пошаговый ввод. Кнопки `Долги` и `Итог` сразу показывают список долгов и месячную сводку.
 
-Быстрые команды тоже работают:
+Быстрые команды тоже работают. Они распознают строку и показывают экран проверки;
+запись появляется только после кнопки «Сохранить»:
 
 ```text
 расход 850 продукты пятерочка
@@ -242,13 +259,18 @@ Mini App использует тот же Flask-интерфейс, маршру
 Production-чеклист:
 
 - HTTPS включен;
+- `OFFICIUM_ENV=production`;
 - `FLASK_DEBUG=false`;
+- `SESSION_COOKIE_SECURE=true`;
 - `DEV_LOGIN_ENABLED=false`;
 - `TEST_USER_ENABLED=false`, если тестовый вход не нужен публично;
+- неиспользуемые `TELEGRAM_LOGIN_ENABLED`, `TELEGRAM_MINI_APP_ENABLED` и `TELEGRAM_BOT_ENABLED` отключены;
 - `SECRET_KEY`, `TELEGRAM_WEBHOOK_SECRET`, пароли БД уникальные и длинные;
 - `.env` не хранится в репозитории;
 - доступ к БД и серверу есть только у доверенных людей;
 - резервные копии защищены так же, как основная база.
+- новые регистрации включаются администратором настройкой `registration_enabled`;
+- перед обновлением создаётся проверенная резервная копия БД.
 
 ## Ежемесячные расходы
 
@@ -293,7 +315,7 @@ $env:FLASK_APP = 'run.py'
 Минимальный порядок:
 
 1. Настроить `.env`.
-2. Настроить MySQL/MariaDB.
+2. Создать резервную копию и настроить MySQL/MariaDB.
 3. Установить зависимости.
 4. Выполнить `flask db upgrade`.
 5. Запустить приложение через Waitress/systemd.
@@ -302,6 +324,9 @@ $env:FLASK_APP = 'run.py'
 8. Настроить Telegram webhook и Google OAuth только после HTTPS.
 9. Запустить тесты перед обновлением.
 
+Полная пошаговая инструкция, проверка после выкладки и откат описаны в
+[`DEPLOYMENT.md`](DEPLOYMENT.md).
+
 Проверка перед релизом:
 
 ```bash
@@ -309,6 +334,8 @@ git status
 python -m unittest discover -v
 flask db upgrade
 flask db current
+flask db heads
+flask db check
 ```
 
 Резервная копия MySQL:
@@ -322,3 +349,8 @@ mysqldump -u officium -p debt_manager > backup.sql
 ```powershell
 Copy-Item dev.db dev.backup.db
 ```
+
+Суперадминистратор может проверить и установить последний опубликованный GitHub
+Release через раздел «Обновление сервера». Функция выключена по умолчанию и
+требует один раз установить root-owned серверный помощник; полный порядок и
+автоматическое резервное копирование описаны в [DEPLOYMENT.md](DEPLOYMENT.md#6-обновление-сервера-из-админки).

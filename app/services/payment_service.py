@@ -11,6 +11,7 @@ from app.services.debt_math_service import calculate_period_interest
 
 
 MONEY = Decimal('0.01')
+MAX_MONEY = Decimal('9999999999.99')
 SPLIT_INSTALLMENTS = 4
 
 
@@ -28,6 +29,7 @@ def add_payment(
 ):
     if not payment_date:
         payment_date = date.today()
+    amount = _money(amount, 'Сумма платежа')
 
     opening_balance = _opening_balance_for_recalculation(debt)
     remaining_before_payment = Decimal(str(debt.remaining_amount or 0)).quantize(MONEY)
@@ -88,6 +90,7 @@ def update_payment(
 ):
     if payment.debt_id != debt.id:
         raise ValueError('Платеж не найден')
+    amount = _money(amount, 'Сумма платежа')
 
     original_payment_date = payment.payment_date
     opening_balance = _opening_balance_for_recalculation(debt)
@@ -109,6 +112,7 @@ def update_payment(
         interest_amount=interest_amount,
         fee_amount=fee_amount,
         remaining_before_payment=remaining_before_payment,
+        exclude_payment_id=payment.id,
     )
 
     _recalculate_payment_balances(debt, opening_balance)
@@ -163,20 +167,37 @@ def _resolve_payment_breakdown(
     interest_amount=None,
     fee_amount=None,
     remaining_before_payment=None,
+    exclude_payment_id=None,
 ):
     total = Decimal(str(amount or 0)).quantize(MONEY)
     if total <= 0:
         raise ValueError('Сумма платежа должна быть больше нуля')
 
+    principal_was_supplied = principal_amount is not None and str(principal_amount).strip() != ''
+    interest_was_supplied = interest_amount is not None and str(interest_amount).strip() != ''
     principal = _optional_money(principal_amount)
     interest = _optional_money(interest_amount)
     fee = _optional_money(fee_amount) or Decimal('0.00')
+    for value, label in (
+        (principal, 'Основной долг'),
+        (interest, 'Проценты'),
+        (fee, 'Комиссии'),
+    ):
+        if value is not None and value < 0:
+            raise ValueError(f'{label} не могут быть отрицательными')
+
+    scheduled = _optional_money(scheduled_payment_amount)
+    if scheduled is not None and (scheduled < 0 or scheduled > total):
+        raise ValueError('Обязательная часть должна быть от нуля до суммы платежа')
     if fee > total:
         raise ValueError('Комиссии не могут быть больше суммы платежа')
     amount_for_debt = (total - fee).quantize(MONEY)
+    remaining = Decimal(str(remaining_before_payment or 0)).quantize(MONEY)
+    if remaining <= 0:
+        raise ValueError('Долг уже полностью погашен')
 
     if principal is not None and interest is not None:
-        if (principal + interest + fee - total).copy_abs() > MONEY:
+        if (principal + interest + fee - total).copy_abs() != Decimal('0.00'):
             raise ValueError('Основной долг, проценты и комиссии должны совпадать с суммой платежа')
     elif principal is not None:
         if principal > amount_for_debt:
@@ -187,6 +208,8 @@ def _resolve_payment_breakdown(
             raise ValueError('Проценты не могут быть больше суммы платежа')
         principal = (amount_for_debt - interest).quantize(MONEY)
     elif is_early_repayment and not Decimal(str(scheduled_payment_amount or 0)) > 0:
+        if amount_for_debt > remaining:
+            raise ValueError('Сумма досрочного платежа превышает остаток долга')
         principal = amount_for_debt
         interest = Decimal('0.00')
     else:
@@ -201,11 +224,15 @@ def _resolve_payment_breakdown(
                 debt,
                 payment_date=payment_date,
                 remaining_before_payment=remaining_before_payment,
+                exclude_payment_id=exclude_payment_id,
             )
+        if amount_for_debt > remaining + estimated_interest:
+            raise ValueError('Сумма платежа превышает остаток долга и начисленные проценты')
         interest = min(estimated_interest, amount_for_debt).quantize(MONEY)
         principal = (amount_for_debt - interest).quantize(MONEY)
 
-    remaining = Decimal(str(remaining_before_payment or 0)).quantize(MONEY)
+    if principal > remaining and (principal_was_supplied or interest_was_supplied):
+        raise ValueError('Основной долг в платеже превышает текущий остаток долга')
     if principal > remaining:
         principal = remaining
         interest = (amount_for_debt - principal).quantize(MONEY)
@@ -216,10 +243,27 @@ def _resolve_payment_breakdown(
 def _optional_money(value):
     if value is None or str(value).strip() == '':
         return None
-    return Decimal(str(value)).quantize(MONEY)
+    return _money(value, 'Сумма')
 
 
-def _estimate_payment_interest(debt, payment_date, remaining_before_payment):
+def _money(value, label):
+    try:
+        result = Decimal(str(value)).quantize(MONEY, rounding=ROUND_HALF_UP)
+    except Exception as exc:
+        raise ValueError(f'{label} содержит некорректное число') from exc
+    if not result.is_finite():
+        raise ValueError(f'{label} содержит некорректное число')
+    if result.copy_abs() > MAX_MONEY:
+        raise ValueError(f'{label} превышает максимально допустимое значение')
+    return result
+
+
+def _estimate_payment_interest(
+    debt,
+    payment_date,
+    remaining_before_payment,
+    exclude_payment_id=None,
+):
     if not payment_date:
         return Decimal('0.00')
     if getattr(debt, 'debt_type', None) == 'split':
@@ -228,12 +272,46 @@ def _estimate_payment_interest(debt, payment_date, remaining_before_payment):
     if not due_date or payment_date <= due_date:
         return Decimal('0.00')
 
-    return calculate_period_interest(
-        debt,
-        principal_balance=remaining_before_payment,
-        period_start=due_date,
-        period_end=payment_date,
+    payments = Payment.query.filter(
+        Payment.debt_id == debt.id,
+        Payment.payment_date >= due_date,
+        Payment.payment_date <= payment_date,
     )
+    if exclude_payment_id is not None:
+        payments = payments.filter(Payment.id != exclude_payment_id)
+    payments = payments.order_by(Payment.payment_date.asc(), Payment.id.asc()).all()
+
+    opening_balance = Decimal(str(remaining_before_payment or 0)).quantize(MONEY)
+    opening_balance += sum((_payment_principal(item) for item in payments), Decimal('0.00'))
+    balance = opening_balance
+    cursor = due_date
+    accrued = Decimal('0.00')
+    interest_paid = Decimal('0.00')
+
+    for prior_payment in payments:
+        segment_end = prior_payment.payment_date
+        if segment_end > cursor:
+            accrued += calculate_period_interest(
+                debt,
+                principal_balance=balance,
+                period_start=cursor,
+                period_end=segment_end,
+            )
+        balance = max(balance - _payment_principal(prior_payment), Decimal('0.00'))
+        if prior_payment.payment_date > due_date:
+            interest_paid += Decimal(str(prior_payment.interest_amount or 0)).quantize(MONEY)
+        cursor = segment_end
+        if getattr(debt, 'include_payment_day', False):
+            cursor += relativedelta(days=1)
+
+    if payment_date > cursor:
+        accrued += calculate_period_interest(
+            debt,
+            principal_balance=balance,
+            period_start=cursor,
+            period_end=payment_date,
+        )
+    return max(accrued - interest_paid, Decimal('0.00')).quantize(MONEY, rounding=ROUND_HALF_UP)
 
 
 def _estimate_first_payment_interest(debt, payment_date, remaining_before_payment):

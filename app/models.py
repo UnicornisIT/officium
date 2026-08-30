@@ -64,6 +64,9 @@ class User(UserMixin, db.Model):
 
 class Debt(db.Model):
     __tablename__ = 'debts'
+    __table_args__ = (
+        db.Index('ix_debts_user_status_due', 'user_id', 'status', 'next_payment_date'),
+    )
     DEBT_TYPE_LABELS = {
         'credit_card': 'Кредитная карта',
         'consumer_credit': 'Потребительский кредит',
@@ -229,6 +232,9 @@ class Debt(db.Model):
 
 class Payment(db.Model):
     __tablename__ = 'payments'
+    __table_args__ = (
+        db.Index('ix_payments_debt_date', 'debt_id', 'payment_date'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     debt_id = db.Column(db.Integer, db.ForeignKey('debts.id'), nullable=False)
@@ -308,6 +314,9 @@ class SplitPurchase(db.Model):
 
 class Income(db.Model):
     __tablename__ = 'incomes'
+    __table_args__ = (
+        db.Index('ix_incomes_user_date', 'user_id', 'income_date'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -338,6 +347,16 @@ class Income(db.Model):
 
 class Expense(db.Model):
     __tablename__ = 'expenses'
+    __table_args__ = (
+        db.Index('ix_expenses_user_date', 'user_id', 'expense_date'),
+        db.Index(
+            'uq_expenses_monthly_occurrence',
+            'user_id',
+            'monthly_group_id',
+            'generated_for_month',
+            unique=True,
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -352,7 +371,11 @@ class Expense(db.Model):
     # Поля для ежемесячных расходов
     is_monthly = db.Column(db.Boolean, default=False, nullable=False)
     monthly_group_id = db.Column(db.String(36), nullable=True)
-    generated_from_id = db.Column(db.Integer, db.ForeignKey('expenses.id'), nullable=True)
+    generated_from_id = db.Column(
+        db.Integer,
+        db.ForeignKey('expenses.id', ondelete='SET NULL'),
+        nullable=True,
+    )
     generated_for_month = db.Column(db.String(7), nullable=True)  # YYYY-MM формат
 
     user = db.relationship('User', back_populates='expenses')
@@ -382,7 +405,12 @@ class FinancialPlanPreference(db.Model):
     __tablename__ = 'financial_plan_preferences'
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        unique=True,
+    )
     living_minimum = db.Column(db.Numeric(12, 2), nullable=False, default=20000)
     desired_monthly_savings = db.Column(db.Numeric(12, 2), nullable=False, default=5000)
     emergency_fund_target_amount = db.Column(db.Numeric(12, 2), nullable=False, default=30000)
@@ -413,7 +441,7 @@ class EmergencyFundTransaction(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     transaction_type = db.Column(
         db.Enum('deposit', 'withdrawal'),
         nullable=False,
@@ -442,7 +470,7 @@ class FinancialGoal(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     name = db.Column(db.String(120), nullable=False)
     target_amount = db.Column(db.Numeric(12, 2), nullable=False)
     monthly_contribution = db.Column(db.Numeric(12, 2), nullable=False, default=0)
@@ -473,7 +501,7 @@ class FinancialGoalTransaction(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    goal_id = db.Column(db.Integer, db.ForeignKey('financial_goals.id'), nullable=False)
+    goal_id = db.Column(db.Integer, db.ForeignKey('financial_goals.id', ondelete='CASCADE'), nullable=False)
     transaction_type = db.Column(db.Enum('deposit', 'withdrawal'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     transaction_date = db.Column(db.Date, nullable=False, default=date.today)
@@ -552,9 +580,14 @@ class TelegramProcessedUpdate(db.Model):
 
 class TelegramConversationState(db.Model):
     __tablename__ = 'telegram_conversation_states'
+    __table_args__ = (
+        db.UniqueConstraint('telegram_id', name='uq_telegram_conversation_states_telegram_id'),
+        db.Index('ix_telegram_conversation_states_telegram_id', 'telegram_id'),
+        db.Index('ix_telegram_conversation_states_expires_at', 'expires_at'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    telegram_id = db.Column(db.BigInteger, nullable=False, unique=True, index=True)
+    telegram_id = db.Column(db.BigInteger, nullable=False)
     chat_id = db.Column(db.BigInteger, nullable=False)
     flow = db.Column(db.String(30), nullable=False)
     step = db.Column(db.String(50), nullable=False)

@@ -79,6 +79,9 @@
                 <li class="list-group-item"><a href="{{ url_for('admin_dictionaries') }}">Справочники</a></li>
                 <li class="list-group-item"><a href="{{ url_for('admin_users') }}">Пользователи</a></li>
                 <li class="list-group-item"><a href="{{ url_for('admin_export') }}">Экспорт данных</a></li>
+                {% if current_user.is_superadmin %}
+                <li class="list-group-item"><a href="{{ url_for('admin_server_update') }}">Обновление сервера</a></li>
+                {% endif %}
             </ul>
         </div>
     </div>

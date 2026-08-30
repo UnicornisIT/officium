@@ -1,5 +1,5 @@
 from datetime import date
-from flask import abort, redirect, render_template, request, url_for
+from flask import abort, current_app, redirect, render_template, request, url_for
 from flask_login import current_user
 from app.models import Income
 from app.services.goal_cashflow_service import is_goal_income, mark_goal_cashflow_entries
@@ -27,12 +27,18 @@ def init_app(app):
             else:
                 try:
                     amount = parse_decimal(request.form.get('amount'), 'Сумма', required=True)
+                    if amount <= 0:
+                        raise ValueError('Сумма дохода должна быть больше нуля')
                     category = request.form.get('category')
                     if category not in [item[0] for item in INCOME_CATEGORIES]:
                         raise ValueError('Выберите корректную категорию дохода')
                     income_date = parse_date(request.form.get('income_date'), 'Дата', required=True)
                     source = str(request.form.get('source', '')).strip() or None
                     comment = str(request.form.get('comment', '')).strip() or None
+                    if source and len(source) > 150:
+                        raise ValueError('Источник не должен превышать 150 символов')
+                    if comment and len(comment) > 2000:
+                        raise ValueError('Комментарий не должен превышать 2000 символов')
 
                     income = Income(
                         user_id=current_user.id,
@@ -47,9 +53,10 @@ def init_app(app):
                     return redirect(url_for('incomes', success='Доход сохранён'))
                 except ValueError as e:
                     error_message = str(e)
-                except Exception as e:
+                except Exception:
                     db.session.rollback()
-                    error_message = 'Ошибка сервера: ' + str(e)
+                    current_app.logger.exception('Failed to create income')
+                    error_message = 'Не удалось сохранить доход'
 
         if is_local_test_user():
             incomes_list = [
@@ -105,12 +112,18 @@ def init_app(app):
         if request.method == 'POST':
             try:
                 amount = parse_decimal(request.form.get('amount'), 'Сумма', required=True)
+                if amount <= 0:
+                    raise ValueError('Сумма дохода должна быть больше нуля')
                 category = request.form.get('category')
                 if category not in [item[0] for item in INCOME_CATEGORIES]:
                     raise ValueError('Выберите корректную категорию дохода')
                 income_date = parse_date(request.form.get('income_date'), 'Дата', required=True)
                 source = str(request.form.get('source', '')).strip() or None
                 comment = str(request.form.get('comment', '')).strip() or None
+                if source and len(source) > 150:
+                    raise ValueError('Источник не должен превышать 150 символов')
+                if comment and len(comment) > 2000:
+                    raise ValueError('Комментарий не должен превышать 2000 символов')
 
                 income.amount = amount
                 income.category = category
@@ -121,9 +134,10 @@ def init_app(app):
                 return redirect(url_for('incomes', success='Доход обновлён'))
             except ValueError as e:
                 error_message = str(e)
-            except Exception as e:
+            except Exception:
                 db.session.rollback()
-                error_message = 'Ошибка сервера: ' + str(e)
+                current_app.logger.exception('Failed to update income')
+                error_message = 'Не удалось обновить доход'
 
         incomes_list = Income.query.filter_by(user_id=current_user.id).order_by(Income.income_date.desc()).all()
         mark_goal_cashflow_entries(incomes=incomes_list)

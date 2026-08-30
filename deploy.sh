@@ -4,13 +4,85 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/debt_manager}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-master}"
+DEPLOY_REMOTE="${DEPLOY_REMOTE:-origin}"
 SERVICE_NAME="${SERVICE_NAME:-debt_manager}"
 BASELINE_REVISION="73459c8513a1"
+RELEASE_TAG=""
+SKIP_RESTART="false"
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --release)
+            [ "$#" -ge 2 ] || { echo "--release requires a tag" >&2; exit 2; }
+            RELEASE_TAG="$2"
+            shift 2
+            ;;
+        --skip-restart)
+            SKIP_RESTART="true"
+            shift
+            ;;
+        *)
+            echo "Unknown deploy option: $1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [ -n "$RELEASE_TAG" ]; then
+    if ! [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ ]] \
+        || [[ "$RELEASE_TAG" == *".."* ]] \
+        || [[ "$RELEASE_TAG" == *"@{"* ]] \
+        || [[ "$RELEASE_TAG" == *.lock ]]; then
+        echo "Unsafe or unsupported release tag." >&2
+        exit 2
+    fi
+    if [ "${OFFICIUM_BACKUP_CONFIRMED:-false}" != "true" ]; then
+        echo "Release deployment requires a confirmed database backup." >&2
+        exit 1
+    fi
+
+    # A release checkout may replace deploy.sh itself. Execute a complete temporary
+    # copy so Bash never reads a partially replaced script.
+    if [ "${OFFICIUM_DEPLOY_TEMP_COPY:-false}" != "true" ]; then
+        deploy_copy=$(mktemp "${TMPDIR:-/tmp}/officium-deploy.XXXXXX")
+        cp "$0" "$deploy_copy"
+        chmod 700 "$deploy_copy"
+        set +e
+        if [ "$SKIP_RESTART" = "true" ]; then
+            OFFICIUM_DEPLOY_TEMP_COPY=true /bin/bash "$deploy_copy" \
+                --release "$RELEASE_TAG" --skip-restart
+        else
+            OFFICIUM_DEPLOY_TEMP_COPY=true /bin/bash "$deploy_copy" --release "$RELEASE_TAG"
+        fi
+        deploy_status=$?
+        set -e
+        rm -f "$deploy_copy"
+        exit "$deploy_status"
+    fi
+fi
 
 cd "$APP_DIR"
 
-echo "Updating code from Git..."
-git pull origin "$DEPLOY_BRANCH"
+if [ -n "$RELEASE_TAG" ]; then
+    echo "Checking the Git working tree..."
+    if ! git diff --quiet --ignore-submodules -- || ! git diff --cached --quiet --ignore-submodules --; then
+        echo "Tracked local changes found. Release update refused." >&2
+        exit 1
+    fi
+
+    echo "Fetching exact release $RELEASE_TAG from Git..."
+    git fetch --force "$DEPLOY_REMOTE" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+    release_commit=$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")
+    git checkout --detach "$release_commit"
+    checked_out_commit=$(git rev-parse --verify HEAD)
+    if [ "$checked_out_commit" != "$release_commit" ]; then
+        echo "Checked out commit does not match the requested release." >&2
+        exit 1
+    fi
+else
+    echo "Updating code from Git..."
+    git pull "$DEPLOY_REMOTE" "$DEPLOY_BRANCH"
+fi
 
 echo "Activating virtual environment..."
 if [ -d "venv" ]; then
@@ -167,9 +239,13 @@ esac
 echo "Applying migrations..."
 flask db upgrade
 
-echo "Restarting service..."
-sudo systemctl reset-failed "$SERVICE_NAME" || true
-sudo systemctl restart "$SERVICE_NAME"
+if [ "$SKIP_RESTART" = "true" ]; then
+    echo "Service restart delegated to the external updater."
+else
+    echo "Restarting service..."
+    sudo systemctl reset-failed "$SERVICE_NAME" || true
+    sudo systemctl restart "$SERVICE_NAME"
 
-echo "Service status:"
-sudo systemctl status "$SERVICE_NAME" --no-pager
+    echo "Service status:"
+    sudo systemctl status "$SERVICE_NAME" --no-pager
+fi

@@ -7,7 +7,7 @@ import unittest
 from urllib.parse import urlencode
 
 from app import create_app
-from app.models import User
+from app.models import AppSetting, User
 from app.services.telegram_auth_service import verify_telegram_web_app_init_data
 from extensions import db
 
@@ -87,6 +87,8 @@ class TelegramMiniAppRouteTestCase(unittest.TestCase):
         self.client = self.app.test_client()
         with self.app.app_context():
             db.create_all()
+            db.session.add(AppSetting(key='registration_enabled', value='true'))
+            db.session.commit()
 
     def tearDown(self):
         with self.app.app_context():
@@ -151,6 +153,22 @@ class TelegramMiniAppRouteTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
         self.assertFalse(response.get_json()['success'])
+
+    def test_new_user_is_rejected_when_registration_is_disabled(self):
+        with self.app.app_context():
+            setting = AppSetting.query.filter_by(key='registration_enabled').one()
+            setting.value = 'false'
+            db.session.commit()
+
+        response = self.client.post(
+            '/auth/telegram-mini-app',
+            json={'init_data': build_init_data()},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('Регистрация', response.get_json()['error'])
+        with self.app.app_context():
+            self.assertEqual(User.query.count(), 0)
 
     def test_blocked_user_cannot_enter(self):
         with self.app.app_context():

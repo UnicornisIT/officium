@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}{{ status_code }} — officium{% endblock %}
+
+{% block content %}
+<section class="empty-state" role="alert">
+    <div class="empty-state__icon" aria-hidden="true"><i class="bi bi-exclamation-circle"></i></div>
+    <span class="text-muted">Ошибка {{ status_code }}</span>
+    <h1 class="h3 mt-2">{{ error_title }}</h1>
+    <p>{{ error_message }}</p>
+    <a class="btn btn-primary" href="{{ url_for('index') }}">На главную</a>
+</section>
+{% endblock %}

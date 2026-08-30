@@ -21,7 +21,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=20260829-dashboard-animation-2" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=20260829-release-audit" rel="stylesheet">
 </head>
 <body{% if is_telegram_mini_app %} class="telegram-mini-app"{% elif current_user.is_authenticated and not request.path.startswith('/admin') %} class="has-mobile-app-nav"{% endif %}>
 
@@ -199,7 +199,10 @@
 <div class="container-fluid px-4 py-3">
     <div class="alert alert-warning mb-4">
         <strong>Вы просматриваете сайт как пользователь.</strong>
-        <a href="{{ url_for('stop_impersonate') }}" class="alert-link">Вернуться в админку</a>
+        <form method="post" action="{{ url_for('stop_impersonate') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-link alert-link p-0 align-baseline">Вернуться в админку</button>
+        </form>
     </div>
 </div>
 {% endif %}

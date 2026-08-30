@@ -53,6 +53,9 @@ PAYMENT_METHODS = [
     ('other', 'Другое'),
 ]
 
+MONEY = Decimal('0.01')
+MAX_MONEY = Decimal('9999999999.99')
+
 
 def income_source_suggestions(incomes, limit=12):
     suggestions = []
@@ -118,9 +121,13 @@ def parse_decimal(value, field_name, required=True):
     try:
         normalized = re.sub(r'\s+', '', str(value)).replace(',', '.')
         result = Decimal(normalized)
+        if not result.is_finite():
+            raise ValueError(f"Поле '{field_name}' содержит некорректное число")
         if result < 0:
             raise ValueError(f"Поле '{field_name}' не может быть отрицательным")
-        return result
+        if result > MAX_MONEY:
+            raise ValueError(f"Поле '{field_name}' превышает максимально допустимое значение")
+        return result.quantize(MONEY, rounding=ROUND_HALF_UP)
     except InvalidOperation:
         raise ValueError(f"Поле '{field_name}' содержит некорректное число")
 
@@ -184,7 +191,7 @@ def group_entries_by_month(entries, date_attr):
     return sorted(grouped.values(), key=lambda group: group['date'], reverse=True)
 
 
-def set_setting(key, value, description=None):
+def set_setting(key, value, description=None, commit=True):
     setting = AppSetting.query.filter_by(key=key).first()
     if not setting:
         setting = AppSetting(key=key, value=value, description=description)
@@ -193,7 +200,8 @@ def set_setting(key, value, description=None):
         setting.value = value
         if description is not None:
             setting.description = description
-    db.session.commit()
+    if commit:
+        db.session.commit()
     return setting
 
 

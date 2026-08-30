@@ -1,5 +1,6 @@
 from datetime import date
-from flask import jsonify, request
+from decimal import Decimal
+from flask import current_app, jsonify, request
 from app.models import Payment
 from app.services.debt_service import get_user_debt
 from app.services.payment_service import add_payment, update_payment
@@ -29,7 +30,7 @@ def init_app(app):
         if debt.status != 'active':
             return jsonify({'success': False, 'error': 'Нельзя вносить платеж в архивный долг'}), 422
 
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({'success': False, 'error': 'Нет данных'}), 400
 
@@ -69,7 +70,7 @@ def init_app(app):
                 fee_amount=fee_amount,
                 bank_remaining_after_payment=bank_remaining_after_payment,
             )
-            debt_cleared = float(debt.remaining_amount) <= 0.01
+            debt_cleared = Decimal(str(debt.remaining_amount or 0)) <= Decimal('0.00')
 
             return jsonify({
                 'success': True,
@@ -81,9 +82,10 @@ def init_app(app):
 
         except ValueError as e:
             return jsonify({'success': False, 'error': str(e)}), 422
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            return jsonify({'success': False, 'error': f'Ошибка сервера: {str(e)}'}), 500
+            current_app.logger.exception('Failed to add a debt payment')
+            return jsonify({'success': False, 'error': 'Не удалось сохранить платеж'}), 500
 
     @app.route('/api/debts/<int:debt_id>/payments/<int:payment_id>', methods=['PUT'])
     def api_update_payment(debt_id, payment_id):
@@ -95,7 +97,7 @@ def init_app(app):
         if not payment:
             return jsonify({'success': False, 'error': 'Платеж не найден'}), 404
 
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({'success': False, 'error': 'Нет данных'}), 400
 
@@ -145,6 +147,7 @@ def init_app(app):
         except ValueError as e:
             db.session.rollback()
             return jsonify({'success': False, 'error': str(e)}), 422
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            return jsonify({'success': False, 'error': f'Ошибка сервера: {str(e)}'}), 500
+            current_app.logger.exception('Failed to update a debt payment')
+            return jsonify({'success': False, 'error': 'Не удалось обновить платеж'}), 500

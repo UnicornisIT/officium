@@ -4,7 +4,7 @@ import re
 import zipfile
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from xml.etree import ElementTree
 
 from app.services.expense_title_service import clean_expense_title
@@ -15,6 +15,11 @@ EXPENSE_CATEGORY_KEYS = {key for key, _ in EXPENSE_CATEGORIES}
 PAYMENT_METHOD_KEYS = {key for key, _ in PAYMENT_METHODS}
 
 SUPPORTED_EXTENSIONS = {'.csv', '.txt', '.tsv', '.xlsx', '.pdf'}
+MAX_STATEMENT_BYTES = 10 * 1024 * 1024
+MAX_XLSX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+MAX_XLSX_MEMBERS = 500
+MAX_PDF_PAGES = 200
+MONEY = Decimal('0.01')
 
 HEADER_ALIASES = {
     'date': (
@@ -175,6 +180,11 @@ class BankStatementParseResult:
 
 
 def parse_bank_statement(file_bytes, filename):
+    if not isinstance(file_bytes, (bytes, bytearray)) or not file_bytes:
+        raise ValueError('Файл пустой.')
+    if len(file_bytes) > MAX_STATEMENT_BYTES:
+        raise ValueError('Файл слишком большой. Максимальный размер — 10 МБ.')
+
     extension = _file_extension(filename)
     if extension not in SUPPORTED_EXTENSIONS:
         raise ValueError('Поддерживаются файлы CSV, TXT, TSV, XLSX и PDF.')
@@ -256,7 +266,11 @@ def _extract_pdf_text(file_bytes):
 
     try:
         reader = PdfReader(io.BytesIO(file_bytes))
+        if len(reader.pages) > MAX_PDF_PAGES:
+            raise ValueError('PDF содержит слишком много страниц. Максимум — 200.')
         text = '\n'.join(page.extract_text() or '' for page in reader.pages)
+    except ValueError:
+        raise
     except Exception:
         raise ValueError('Не удалось прочитать PDF-файл. Проверьте, что файл не поврежден и не защищен паролем.')
 
@@ -662,21 +676,43 @@ def _read_xlsx_rows(file_bytes):
     except zipfile.BadZipFile:
         raise ValueError('XLSX-файл поврежден или имеет неподдерживаемый формат.')
 
-    shared_strings = _xlsx_shared_strings(archive)
-    worksheet_name = _first_worksheet_name(archive)
-    namespace = {'x': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
-    root = ElementTree.fromstring(archive.read(worksheet_name))
-    rows = []
-    for row_el in root.findall('.//x:sheetData/x:row', namespace):
-        values = []
-        for cell_el in row_el.findall('x:c', namespace):
-            cell_ref = cell_el.attrib.get('r', '')
-            col_index = _xlsx_column_index(cell_ref)
-            while len(values) < col_index:
-                values.append('')
-            values.append(_xlsx_cell_value(cell_el, shared_strings, namespace))
-        rows.append(values)
-    return rows
+    members = archive.infolist()
+    if len(members) > MAX_XLSX_MEMBERS:
+        archive.close()
+        raise ValueError('XLSX-файл содержит слишком много внутренних файлов.')
+    uncompressed_size = sum(member.file_size for member in members)
+    if uncompressed_size > MAX_XLSX_UNCOMPRESSED_BYTES:
+        archive.close()
+        raise ValueError('XLSX-файл слишком велик после распаковки.')
+    if any(
+        member.file_size > 1024 * 1024
+        and member.compress_size > 0
+        and member.file_size / member.compress_size > 200
+        for member in members
+    ):
+        archive.close()
+        raise ValueError('XLSX-файл имеет небезопасную степень сжатия.')
+
+    try:
+        shared_strings = _xlsx_shared_strings(archive)
+        worksheet_name = _first_worksheet_name(archive)
+        namespace = {'x': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+        root = ElementTree.fromstring(archive.read(worksheet_name))
+        rows = []
+        for row_el in root.findall('.//x:sheetData/x:row', namespace):
+            values = []
+            for cell_el in row_el.findall('x:c', namespace):
+                cell_ref = cell_el.attrib.get('r', '')
+                col_index = _xlsx_column_index(cell_ref)
+                while len(values) < col_index:
+                    values.append('')
+                values.append(_xlsx_cell_value(cell_el, shared_strings, namespace))
+            rows.append(values)
+        return rows
+    except (ElementTree.ParseError, KeyError):
+        raise ValueError('XLSX-файл поврежден или имеет неподдерживаемую структуру.')
+    finally:
+        archive.close()
 
 
 def _xlsx_shared_strings(archive):
@@ -922,6 +958,9 @@ def _parse_amount_value(value):
 
     try:
         amount = Decimal(text)
+        if not amount.is_finite():
+            return None
+        amount = amount.quantize(MONEY, rounding=ROUND_HALF_UP)
     except InvalidOperation:
         return None
     return -amount if negative else amount
