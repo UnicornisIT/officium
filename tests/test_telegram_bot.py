@@ -7,6 +7,7 @@ from app import create_app
 from app.models import Debt, Expense, Income, Payment, TelegramConversationState, User
 from app.services.telegram_bot_service import (
     build_debt_reminder_message,
+    process_telegram_callback_result,
     process_telegram_text,
 )
 from extensions import db
@@ -116,14 +117,19 @@ class TelegramBotTestCase(unittest.TestCase):
     def test_webhook_processes_same_update_only_once(self):
         update = self._private_update('расход 850 продукты пятерочка')
         headers = {'X-Telegram-Bot-Api-Secret-Token': 'test-secret'}
+        confirmation = self._callback_update('tg:confirm', update_id=2)
 
         with patch('app.routes.telegram_bot.send_telegram_message') as send_message:
             first_response = self.client.post('/telegram/webhook', json=update, headers=headers)
             second_response = self.client.post('/telegram/webhook', json=update, headers=headers)
+            first_confirmation = self.client.post('/telegram/webhook', json=confirmation, headers=headers)
+            second_confirmation = self.client.post('/telegram/webhook', json=confirmation, headers=headers)
 
         self.assertEqual(first_response.status_code, 200)
         self.assertEqual(second_response.status_code, 200)
-        send_message.assert_called_once()
+        self.assertEqual(first_confirmation.status_code, 200)
+        self.assertEqual(second_confirmation.status_code, 200)
+        self.assertEqual(send_message.call_count, 2)
         with self.app.app_context():
             self.assertEqual(Expense.query.count(), 1)
 
@@ -166,10 +172,12 @@ class TelegramBotTestCase(unittest.TestCase):
         with self.app.app_context():
             user = db.session.get(User, self.user_id)
             reply = process_telegram_text(user, 'расход 850 продукты пятерочка')
-
+            self.assertEqual(Expense.query.count(), 0)
+            saved_reply = process_telegram_callback_result(user, user.telegram_id, 'tg:confirm').reply_text
             expense = Expense.query.filter_by(user_id=self.user_id).one()
 
-        self.assertIn('Записал расход', reply)
+        self.assertIn('Проверьте расход', reply)
+        self.assertIn('Записал расход', saved_reply)
         self.assertEqual(expense.amount, Decimal('850.00'))
         self.assertEqual(expense.category, 'products')
         self.assertEqual(expense.title, 'пятерочка')
@@ -179,10 +187,12 @@ class TelegramBotTestCase(unittest.TestCase):
         with self.app.app_context():
             user = db.session.get(User, self.user_id)
             reply = process_telegram_text(user, 'доход 120000 зарплата работа')
-
+            self.assertEqual(Income.query.count(), 0)
+            saved_reply = process_telegram_callback_result(user, user.telegram_id, 'tg:confirm').reply_text
             income = Income.query.filter_by(user_id=self.user_id).one()
 
-        self.assertIn('Записал доход', reply)
+        self.assertIn('Проверьте доход', reply)
+        self.assertIn('Записал доход', saved_reply)
         self.assertEqual(income.amount, Decimal('120000.00'))
         self.assertEqual(income.category, 'salary')
         self.assertEqual(income.source, 'работа')
@@ -191,10 +201,12 @@ class TelegramBotTestCase(unittest.TestCase):
         with self.app.app_context():
             user = db.session.get(User, self.user_id)
             reply = process_telegram_text(user, 'долг 300000 сбер кредит мин=15000 ставка=18.5')
-
+            self.assertEqual(Debt.query.count(), 0)
+            saved_reply = process_telegram_callback_result(user, user.telegram_id, 'tg:confirm').reply_text
             debt = Debt.query.filter_by(user_id=self.user_id).one()
 
-        self.assertIn('Добавил долг', reply)
+        self.assertIn('Проверьте долг', reply)
+        self.assertIn('Добавил долг', saved_reply)
         self.assertEqual(debt.remaining_amount, Decimal('300000.00'))
         self.assertEqual(debt.minimum_payment, Decimal('15000.00'))
         self.assertEqual(debt.interest_rate, Decimal('18.50'))
@@ -220,9 +232,12 @@ class TelegramBotTestCase(unittest.TestCase):
             user = db.session.get(User, self.user_id)
 
             reply = process_telegram_text(user, 'платеж 5000 sber дата=2026-08-15')
+            self.assertEqual(Payment.query.count(), 0)
+            saved_reply = process_telegram_callback_result(user, user.telegram_id, 'tg:confirm').reply_text
             payment = Payment.query.filter_by(debt_id=debt.id).one()
 
-        self.assertIn('Записал платеж', reply)
+        self.assertIn('Проверьте платеж', reply)
+        self.assertIn('Записал платеж', saved_reply)
         self.assertEqual(payment.amount, Decimal('5000.00'))
         self.assertEqual(payment.payment_date, date(2026, 8, 15))
         self.assertEqual(payment.remaining_after_payment, Decimal('95000.00'))

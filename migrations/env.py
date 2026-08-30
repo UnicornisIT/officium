@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from flask import current_app
 
 from alembic import context
+import sqlalchemy as sa
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -51,6 +52,14 @@ def get_metadata():
     return target_db.metadata
 
 
+def compare_type(context, inspected_column, metadata_column, inspected_type, metadata_type):
+    """SQLite stores enums as VARCHAR; that is not a real schema drift."""
+    if context.dialect.name == 'sqlite' and isinstance(metadata_type, sa.Enum):
+        if isinstance(inspected_type, sa.String):
+            return False
+    return None
+
+
 def run_migrations_offline():
     """Run migrations in 'offline' mode.
 
@@ -65,7 +74,10 @@ def run_migrations_offline():
     """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url, target_metadata=get_metadata(), literal_binds=True
+        url=url,
+        target_metadata=get_metadata(),
+        literal_binds=True,
+        compare_type=compare_type,
     )
 
     with context.begin_transaction():
@@ -93,11 +105,13 @@ def run_migrations_online():
     connectable = get_engine()
 
     with connectable.connect() as connection:
+        configure_args = dict(current_app.extensions['migrate'].configure_args)
+        configure_args['compare_type'] = compare_type
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),
             process_revision_directives=process_revision_directives,
-            **current_app.extensions['migrate'].configure_args
+            **configure_args
         )
 
         with context.begin_transaction():

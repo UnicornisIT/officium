@@ -1,5 +1,13 @@
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
+
+from app.services.debt_math_service import (
+    calculate_interest_segments,
+    calculate_period_interest,
+)
+
+
+MONEY = Decimal('0.01')
 
 
 def interest_rate_for_date(debt, value_date=None):
@@ -17,10 +25,28 @@ def calculate_overdue_interest(debt, today=None):
     if not periods:
         return None
 
-    total_interest = sum(period['interest'] for period in periods)
+    total_interest = calculate_period_interest(
+        debt,
+        principal_balance=remaining_amount,
+        period_start=debt.next_payment_date,
+        period_end=today,
+    )
     effective_rate = Decimal(str(periods[-1]['rate']))
-    daily_rate = effective_rate / Decimal('365')
-    interest_per_day = remaining_amount * daily_rate / Decimal('100')
+    year_days = Decimal(periods[-1]['days_in_year'])
+    daily_rate = effective_rate / year_days
+    interest_per_day = (
+        remaining_amount * daily_rate / Decimal('100')
+    ).quantize(MONEY, rounding=ROUND_HALF_UP)
+
+    rounded_periods = []
+    rounded_so_far = Decimal('0.00')
+    for index, period in enumerate(periods):
+        if index == len(periods) - 1:
+            interest = total_interest - rounded_so_far
+        else:
+            interest = period['interest'].quantize(MONEY, rounding=ROUND_HALF_UP)
+            rounded_so_far += interest
+        rounded_periods.append({**period, 'interest': interest})
 
     return {
         'annual_rate': float(effective_rate),
@@ -35,35 +61,22 @@ def calculate_overdue_interest(debt, today=None):
                 'days': period['days'],
                 'rate': float(period['rate']),
                 'interest': float(period['interest']),
+                'days_in_year': period['days_in_year'],
             }
-            for period in periods
+            for period in rounded_periods
         ],
     }
 
 
 def _overdue_interest_periods(debt, start_date, end_date):
     remaining_amount = Decimal(str(debt.remaining_amount or 0))
-    change_date = debt.interest_rate_change_date
-    boundaries = [start_date]
-    if change_date and start_date < change_date < end_date:
-        boundaries.append(change_date)
-    boundaries.append(end_date)
-
-    periods = []
-    for start, end in zip(boundaries, boundaries[1:]):
-        days = (end - start).days
-        if days <= 0:
-            continue
-        rate = interest_rate_for_date(debt, start)
-        if rate is None:
-            continue
-        rate = Decimal(str(rate))
-        interest = remaining_amount * (rate / Decimal('365')) / Decimal('100') * Decimal(days)
-        periods.append({
-            'start': start,
-            'end': end,
-            'days': days,
-            'rate': rate,
-            'interest': interest,
-        })
-    return periods
+    return [
+        {**segment, 'end': min(segment['end'], end_date)}
+        for segment in calculate_interest_segments(
+            debt,
+            remaining_amount,
+            start_date,
+            end_date,
+        )
+        if segment['rate'] > 0 and segment['days'] > 0
+    ]

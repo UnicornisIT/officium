@@ -1,0 +1,3 @@
+# Замените officium на пользователя, от которого запущено веб-приложение.
+# Помощник root-owned, проверяет аргументы и умеет выполнять только обновление релиза.
+officium ALL=(root) NOPASSWD: /usr/local/sbin/officium-update-runner *

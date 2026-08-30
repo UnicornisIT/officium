@@ -196,8 +196,15 @@ class SchemaContractTestCase(unittest.TestCase):
         self.assertIn('data', columns)
         self.assertIn('expires_at', columns)
         self.assertFalse(columns.expires_at.nullable)
-        self.assertTrue(columns.telegram_id.unique)
-        self.assertTrue(columns.telegram_id.index)
+        unique_columns = {
+            tuple(column.name for column in constraint.columns)
+            for constraint in TelegramConversationState.__table__.constraints
+            if constraint.__class__.__name__ == 'UniqueConstraint'
+        }
+        index_names = {index.name for index in TelegramConversationState.__table__.indexes}
+        self.assertIn(('telegram_id',), unique_columns)
+        self.assertIn('ix_telegram_conversation_states_telegram_id', index_names)
+        self.assertIn('ix_telegram_conversation_states_expires_at', index_names)
 
 
 if __name__ == '__main__':

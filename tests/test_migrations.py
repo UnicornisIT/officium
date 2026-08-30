@@ -59,6 +59,7 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20260823_earlyplan'], '20260821_goalflow')
         self.assertEqual(revisions['20260823_firstpay'], '20260823_earlyplan')
         self.assertEqual(revisions['20260824_combpay'], '20260823_firstpay')
+        self.assertEqual(revisions['20260829_integrity'], '20260824_combpay')
 
         referenced = set()
         for down_revision in revisions.values():
@@ -67,7 +68,7 @@ class MigrationContractTestCase(unittest.TestCase):
             elif down_revision:
                 referenced.add(down_revision)
         heads = set(revisions) - referenced
-        self.assertEqual(heads, {'20260824_combpay'})
+        self.assertEqual(heads, {'20260829_integrity'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))
@@ -89,3 +90,11 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertIn('stamp_baseline', deploy_text)
         self.assertIn('ADD COLUMN version_num', deploy_text)
         self.assertNotIn('stamp head', deploy_text)
+
+    def test_release_deploy_requires_backup_and_exact_tag(self):
+        deploy_text = (PROJECT_ROOT / 'deploy.sh').read_text(encoding='utf-8')
+
+        self.assertIn('OFFICIUM_BACKUP_CONFIRMED', deploy_text)
+        self.assertIn('refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG', deploy_text)
+        self.assertIn('git checkout --detach', deploy_text)
+        self.assertIn('Tracked local changes found', deploy_text)

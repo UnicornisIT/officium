@@ -4,7 +4,7 @@ import shlex
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional, Union
 
 import requests
@@ -14,10 +14,13 @@ from sqlalchemy.exc import IntegrityError
 from app.models import Debt, Expense, Income, TelegramConversationState, TelegramProcessedUpdate, User
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import add_payment
+from app.utils import get_setting
 from extensions import db
 
 
 MONEY = Decimal('0.01')
+MAX_MONEY = Decimal('9999999999.99')
+MAX_INTEREST_RATE = Decimal('999.99')
 
 EXPENSE_LABELS = {
     'products': 'продукты',
@@ -549,13 +552,13 @@ def _process_stateless_command(user, chat_id, command, tokens):
     if command == 'privacy':
         return _result(chat_id, PRIVACY_TEXT, MAIN_MENU_KEYBOARD)
     if command == 'expense':
-        return _result(chat_id, _create_expense(user, tokens), MAIN_MENU_KEYBOARD)
+        return _prepare_quick_expense(user, chat_id, tokens)
     if command == 'income':
-        return _result(chat_id, _create_income(user, tokens), MAIN_MENU_KEYBOARD)
+        return _prepare_quick_income(user, chat_id, tokens)
     if command == 'debt':
-        return _result(chat_id, _create_debt(user, tokens), MAIN_MENU_KEYBOARD)
+        return _prepare_quick_debt(user, chat_id, tokens)
     if command == 'payment':
-        return _result(chat_id, _create_payment(user, tokens), MAIN_MENU_KEYBOARD)
+        return _prepare_quick_payment(user, chat_id, tokens)
     if command == 'debts':
         return _result(chat_id, _list_debts(user), MAIN_MENU_KEYBOARD)
     if command == 'summary':
@@ -861,7 +864,7 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
             category=data['category'],
             title=(data.get('title') or EXPENSE_LABELS.get(data['category'], 'Расход'))[:150],
             expense_date=_parse_date_value(data['expense_date']),
-            payment_method='card',
+            payment_method=data.get('payment_method') if data.get('payment_method') in PAYMENT_METHOD_LABELS else 'card',
             comment='Telegram',
         )
         db.session.add(expense)
@@ -885,15 +888,28 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
 
     if state.flow == 'debt':
         next_payment_date = _parse_optional_date(data.get('next_payment_date'))
+        amount = _parse_money(data['amount'])
+        minimum_payment = _parse_optional_money(data.get('minimum_payment'), 'Минимальный платеж')
+        interest_rate = _parse_optional_money(data.get('interest_rate'), 'Ставка')
+        if minimum_payment is not None and minimum_payment > amount:
+            raise ValueError('Минимальный платеж не может превышать сумму долга.')
+        if interest_rate is not None and interest_rate > MAX_INTEREST_RATE:
+            raise ValueError('Ставка не может превышать 999,99%.')
+        try:
+            debt_limit = max(int(get_setting('debt_limit_per_user', '50')), 1)
+        except (TypeError, ValueError):
+            debt_limit = 50
+        if Debt.query.filter_by(user_id=user.id).count() >= debt_limit:
+            raise ValueError(f'Достигнут лимит долгов: {debt_limit}.')
         debt = Debt(
             user_id=user.id,
             bank_name=data['bank_name'][:100],
             debt_type=data['debt_type'],
             product_name=(data.get('product_name') or DEBT_TYPE_LABELS.get(data['debt_type'], 'Долг'))[:150],
-            total_amount=_parse_money(data['amount']),
-            remaining_amount=_parse_money(data['amount']),
-            minimum_payment=_parse_optional_money(data.get('minimum_payment'), 'Минимальный платеж'),
-            interest_rate=_parse_optional_money(data.get('interest_rate'), 'Ставка'),
+            total_amount=amount,
+            remaining_amount=amount,
+            minimum_payment=minimum_payment,
+            interest_rate=interest_rate,
             next_payment_date=next_payment_date,
             is_payment_recurring=bool(next_payment_date),
             status='active',
@@ -913,6 +929,7 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
             _parse_money(data['amount']),
             payment_date=_parse_date_value(data['payment_date']),
             comment='Telegram',
+            is_early_repayment=bool(data.get('is_early_repayment')),
         )
         _clear_state(user)
         db.session.commit()
@@ -980,7 +997,7 @@ def _payment_confirm_result(user, chat_id, data):
     )
 
 
-def _create_expense(user, raw_tokens):
+def _prepare_quick_expense(user, chat_id, raw_tokens):
     tokens, options = _extract_options(raw_tokens)
     amount, tokens = _pull_amount(tokens, 'Укажите сумму расхода.')
     if amount <= 0:
@@ -993,25 +1010,18 @@ def _create_expense(user, raw_tokens):
     payment_method = payment_method or 'card'
     title = _join_tokens(tokens) or matched or EXPENSE_LABELS.get(category) or 'Расход из Telegram'
 
-    expense = Expense(
-        user_id=user.id,
-        amount=amount,
-        category=category,
-        title=title[:150],
-        expense_date=expense_date,
-        payment_method=payment_method,
-        comment='Telegram',
-    )
-    db.session.add(expense)
-    db.session.commit()
-
-    return (
-        f'Записал расход: {_format_money(expense.amount)} — {expense.title}.\n'
-        f'Категория: {EXPENSE_LABELS.get(expense.category, expense.category)}, дата: {_format_date(expense.expense_date)}.'
-    )
+    data = {
+        'amount': str(amount),
+        'category': category,
+        'title': title[:150],
+        'expense_date': expense_date.isoformat(),
+        'payment_method': payment_method,
+    }
+    _save_state(user, chat_id, flow='expense', step='confirm', data=data)
+    return _expense_confirm_result(chat_id, data)
 
 
-def _create_income(user, raw_tokens):
+def _prepare_quick_income(user, chat_id, raw_tokens):
     tokens, options = _extract_options(raw_tokens)
     amount, tokens = _pull_amount(tokens, 'Укажите сумму дохода.')
     if amount <= 0:
@@ -1022,24 +1032,17 @@ def _create_income(user, raw_tokens):
     category = category or 'other'
     source = _join_tokens(tokens) or matched or INCOME_LABELS.get(category) or 'Telegram'
 
-    income = Income(
-        user_id=user.id,
-        amount=amount,
-        category=category,
-        source=source[:150],
-        income_date=income_date,
-        comment='Telegram',
-    )
-    db.session.add(income)
-    db.session.commit()
-
-    return (
-        f'Записал доход: {_format_money(income.amount)} — {income.source}.\n'
-        f'Категория: {INCOME_LABELS.get(income.category, income.category)}, дата: {_format_date(income.income_date)}.'
-    )
+    data = {
+        'amount': str(amount),
+        'category': category,
+        'source': source[:150],
+        'income_date': income_date.isoformat(),
+    }
+    _save_state(user, chat_id, flow='income', step='confirm', data=data)
+    return _income_confirm_result(chat_id, data)
 
 
-def _create_debt(user, raw_tokens):
+def _prepare_quick_debt(user, chat_id, raw_tokens):
     tokens, options = _extract_options(raw_tokens)
     amount, tokens = _pull_amount(tokens, 'Укажите сумму долга.')
     if amount <= 0:
@@ -1060,31 +1063,20 @@ def _create_debt(user, raw_tokens):
     if not product_name:
         product_name = _join_tokens(tokens) or matched_type or DEBT_TYPE_LABELS.get(debt_type, 'Долг')
 
-    debt = Debt(
-        user_id=user.id,
-        bank_name=bank_name[:100],
-        debt_type=debt_type,
-        product_name=product_name[:150],
-        total_amount=amount,
-        remaining_amount=amount,
-        minimum_payment=minimum_payment,
-        interest_rate=interest_rate,
-        next_payment_date=next_payment_date,
-        is_payment_recurring=bool(next_payment_date),
-        status='active',
-        comment='Telegram',
-    )
-    db.session.add(debt)
-    db.session.commit()
-
-    date_part = f'\nСледующий платеж: {_format_date(debt.next_payment_date)}.' if debt.next_payment_date else ''
-    return (
-        f'Добавил долг #{debt.id}: {debt.bank_name} {debt.product_name} на {_format_money(debt.remaining_amount)}.'
-        f'{date_part}'
-    )
+    data = {
+        'amount': str(amount),
+        'bank_name': bank_name[:100],
+        'debt_type': debt_type,
+        'product_name': product_name[:150],
+        'minimum_payment': str(minimum_payment) if minimum_payment is not None else None,
+        'interest_rate': str(interest_rate) if interest_rate is not None else None,
+        'next_payment_date': next_payment_date.isoformat() if next_payment_date else None,
+    }
+    _save_state(user, chat_id, flow='debt', step='confirm', data=data)
+    return _debt_confirm_result(chat_id, data)
 
 
-def _create_payment(user, raw_tokens):
+def _prepare_quick_payment(user, chat_id, raw_tokens):
     tokens, options = _extract_options(raw_tokens)
     amount, tokens = _pull_amount(tokens, 'Укажите сумму платежа.')
     if amount <= 0:
@@ -1097,26 +1089,14 @@ def _create_payment(user, raw_tokens):
     if debt.status != 'active':
         raise ValueError('Нельзя внести платеж в архивный долг.')
 
-    comment = 'Telegram'
-    query_text = _join_tokens(tokens)
-    if query_text:
-        comment = f'Telegram: {query_text}'
-
-    payment = add_payment(
-        debt,
-        amount,
-        payment_date=payment_date,
-        comment=comment,
-        is_early_repayment=is_early_repayment,
-    )
-    advanced = bool(getattr(payment, 'next_payment_date_advanced', False))
-    advanced_text = '\nДата следующего платежа обновлена.' if advanced else ''
-
-    return (
-        f'Записал платеж: {_format_money(payment.amount)} по долгу #{debt.id} '
-        f'{debt.bank_name} {debt.product_name}.\n'
-        f'Остаток: {_format_money(debt.remaining_amount)}.{advanced_text}'
-    )
+    data = {
+        'debt_id': debt.id,
+        'amount': str(amount),
+        'payment_date': payment_date.isoformat(),
+        'is_early_repayment': is_early_repayment,
+    }
+    _save_state(user, chat_id, flow='payment', step='confirm', data=data)
+    return _payment_confirm_result(user, chat_id, data)
 
 
 def _list_debts(user):
@@ -1518,8 +1498,11 @@ def _looks_like_amount(value):
 
 def _parse_money(value):
     try:
-        return Decimal(str(value).strip().replace(',', '.')).quantize(MONEY)
-    except Exception:
+        amount = Decimal(str(value).strip().replace(',', '.'))
+        if not amount.is_finite() or amount.copy_abs() > MAX_MONEY:
+            raise ValueError
+        return amount.quantize(MONEY, rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
         raise ValueError(f'Некорректная сумма: {value}.')
 
 

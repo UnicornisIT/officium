@@ -6,28 +6,57 @@ MONEY = Decimal('0.01')
 
 
 def calculate_period_interest(debt, principal_balance, period_start, period_end):
+    total = sum(
+        (segment['interest'] for segment in calculate_interest_segments(
+            debt,
+            principal_balance,
+            period_start,
+            period_end,
+        )),
+        Decimal('0.00'),
+    )
+    return total.quantize(MONEY, rounding=ROUND_HALF_UP)
+
+
+def calculate_interest_segments(debt, principal_balance, period_start, period_end):
+    """Return unrounded interest segments split by rate and calendar year."""
     if not period_start or not period_end or period_end <= period_start:
-        return Decimal('0.00')
+        return []
 
     effective_end = _effective_period_end(debt, period_start, period_end)
     if effective_end <= period_start:
-        return Decimal('0.00')
+        return []
 
     balance = Decimal(str(principal_balance or 0))
-    if balance <= 0:
-        return Decimal('0.00')
+    if not balance.is_finite() or balance <= 0:
+        return []
 
-    total = Decimal('0.00')
+    segments = []
     cursor = period_start
     while cursor < effective_end:
         segment_end = _next_interest_segment_end(debt, cursor, effective_end)
-        days = Decimal((segment_end - cursor).days)
+        day_count = (segment_end - cursor).days
         rate = Decimal(str(debt.interest_rate_for(cursor) or 0))
-        if rate > 0 and days > 0:
-            total += balance * rate / Decimal('100') * days / Decimal(_days_in_year(debt, cursor.year))
+        year_days = days_in_year(debt, cursor.year)
+        interest = Decimal('0.00')
+        if rate.is_finite() and rate > 0 and day_count > 0:
+            interest = (
+                balance
+                * rate
+                / Decimal('100')
+                * Decimal(day_count)
+                / Decimal(year_days)
+            )
+        segments.append({
+            'start': cursor,
+            'end': segment_end,
+            'days': day_count,
+            'rate': rate,
+            'days_in_year': year_days,
+            'interest': interest,
+        })
         cursor = segment_end
-
-    return total.quantize(MONEY, rounding=ROUND_HALF_UP)
+    return segments
 
 
 def interest_days(period_start, period_end, debt=None):
@@ -51,7 +80,7 @@ def _effective_period_end(debt, period_start, period_end):
     return period_end
 
 
-def _days_in_year(debt, year):
+def days_in_year(debt, year):
     convention = getattr(debt, 'day_count_convention', 'actual_year') if debt is not None else 'actual_year'
     if convention == 'fixed_365':
         return 365

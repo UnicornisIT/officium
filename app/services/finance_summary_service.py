@@ -1,22 +1,29 @@
 from datetime import date, timedelta
+from decimal import Decimal, ROUND_HALF_UP
+
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from extensions import db
 from app.models import Debt, Income, Expense, Payment
 from app.services.expense_title_service import clean_expense_title, expense_group_key
+from app.services.debt_math_service import calculate_period_interest
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS
 
 
 EXPENSE_CATEGORY_LABELS = dict(EXPENSE_CATEGORIES)
 PAYMENT_METHOD_LABELS = dict(PAYMENT_METHODS)
+MONEY = Decimal('0.01')
+ZERO = Decimal('0.00')
 
 
 def _money_value(value):
-    return float(value or 0)
+    return Decimal(str(value or 0)).quantize(MONEY, rounding=ROUND_HALF_UP)
 
 
 def _percent(part, total):
-    return round((part / total) * 100, 1) if total else 0
+    if not total:
+        return 0.0
+    return float(((part / total) * Decimal('100')).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP))
 
 
 def _month_day_count(month_start, month_end):
@@ -63,9 +70,9 @@ def _build_category_breakdown(expenses, total_expenses):
             categories[key] = {
                 'key': key,
                 'label': EXPENSE_CATEGORY_LABELS.get(key, 'Другое'),
-                'amount': 0.0,
+                'amount': ZERO,
                 'count': 0,
-                'monthly_amount': 0.0,
+                'monthly_amount': ZERO,
                 'titles': {},
             }
         amount = _money_value(getattr(expense, 'amount', 0))
@@ -74,7 +81,7 @@ def _build_category_breakdown(expenses, total_expenses):
         categories[key]['amount'] += amount
         categories[key]['count'] += 1
         if title_key not in categories[key]['titles']:
-            categories[key]['titles'][title_key] = {'label': title, 'amount': 0.0}
+            categories[key]['titles'][title_key] = {'label': title, 'amount': ZERO}
         categories[key]['titles'][title_key]['amount'] += amount
         if getattr(expense, 'is_monthly', False):
             categories[key]['monthly_amount'] += amount
@@ -99,7 +106,7 @@ def _build_payment_method_breakdown(expenses, total_expenses):
             methods[key] = {
                 'key': key,
                 'label': PAYMENT_METHOD_LABELS.get(key, 'Не указан'),
-                'amount': 0.0,
+                'amount': ZERO,
                 'count': 0,
             }
         methods[key]['amount'] += _money_value(getattr(expense, 'amount', 0))
@@ -119,7 +126,7 @@ def _build_spending_days(expenses, total_expenses):
             continue
         key = expense_date.isoformat()
         if key not in days:
-            days[key] = {'date': expense_date, 'amount': 0.0, 'count': 0}
+            days[key] = {'date': expense_date, 'amount': ZERO, 'count': 0}
         days[key]['amount'] += _money_value(getattr(expense, 'amount', 0))
         days[key]['count'] += 1
 
@@ -138,7 +145,7 @@ def _build_expense_title_breakdown(expense_items, total_expenses):
             titles[key] = {
                 'key': key,
                 'label': title,
-                'amount': 0.0,
+                'amount': ZERO,
                 'count': 0,
                 'category_totals': {},
                 'last_date': None,
@@ -148,7 +155,7 @@ def _build_expense_title_breakdown(expense_items, total_expenses):
         category_key = expense['category'] or 'other'
         titles[key]['amount'] += amount
         titles[key]['count'] += 1
-        titles[key]['category_totals'][category_key] = titles[key]['category_totals'].get(category_key, 0.0) + amount
+        titles[key]['category_totals'][category_key] = titles[key]['category_totals'].get(category_key, ZERO) + amount
         expense_date = expense['expense_date']
         if expense_date and (titles[key]['last_date'] is None or expense_date > titles[key]['last_date']):
             titles[key]['last_date'] = expense_date
@@ -176,15 +183,15 @@ def _with_finance_insights(summary):
 
     expense_items = [_expense_view(expense) for expense in expenses]
     recurring_expenses = [item for item in expense_items if item['is_monthly']]
-    recurring_expenses_total = sum(item['amount'] for item in recurring_expenses)
-    one_time_expenses_total = max(total_expenses - recurring_expenses_total, 0)
+    recurring_expenses_total = sum((item['amount'] for item in recurring_expenses), ZERO)
+    one_time_expenses_total = max(total_expenses - recurring_expenses_total, ZERO)
     total_outflow = total_expenses + total_payments
     required_outflow = recurring_expenses_total + total_payments
 
     month_days = _month_day_count(month_start, month_end) if month_start and month_end else 0
     elapsed_days = _elapsed_days(month_start, month_end, today) if month_start and month_end else 0
     is_current_month = bool(month_start and month_start.year == today.year and month_start.month == today.month)
-    average_daily_expenses = total_expenses / elapsed_days if elapsed_days else 0
+    average_daily_expenses = total_expenses / elapsed_days if elapsed_days else ZERO
     projected_expenses = average_daily_expenses * month_days if is_current_month and elapsed_days else total_expenses
     projected_balance = total_incomes - projected_expenses - total_payments if is_current_month else free_balance
 
@@ -198,7 +205,7 @@ def _with_finance_insights(summary):
             'outflow_income_percent': _percent(total_outflow, total_incomes),
             'expenses_income_percent': _percent(total_expenses, total_incomes),
             'required_income_percent': _percent(required_outflow, total_incomes),
-            'free_balance_percent': _percent(max(free_balance, 0), total_incomes),
+            'free_balance_percent': _percent(max(free_balance, ZERO), total_incomes),
             'average_daily_expenses': average_daily_expenses,
             'projected_expenses': projected_expenses,
             'projected_balance': projected_balance,
@@ -381,21 +388,22 @@ def get_finance_summary(user_id, year=None, month=None):
             ),
         ]
 
-        total_incomes = sum(float(item.amount) for item in incomes_this_month)
-        total_expenses = sum(float(item.amount) for item in expenses_this_month)
-        total_payments = sum(float(item.amount) for item in payments_this_month)
+        total_incomes = sum((_money_value(item.amount) for item in incomes_this_month), ZERO)
+        total_expenses = sum((_money_value(item.amount) for item in expenses_this_month), ZERO)
+        total_payments = sum((_money_value(item.amount) for item in payments_this_month), ZERO)
         free_balance = total_incomes - total_expenses - total_payments
         debts = sorted(debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
         overdue_count = len([d for d in debts if _effective_debt_payment_date(d, today) and _effective_debt_payment_date(d, today) < today])
         nearest_debt = next((d for d in debts if _effective_debt_payment_date(d, today) and _effective_debt_payment_date(d, today) >= today), None)
 
         mortgage_debts = [d for d in debts if d.debt_type == 'mortgage']
-        total_mortgage_remaining = sum(float(d.remaining_amount) for d in mortgage_debts)
-        total_mortgage_original = sum(float(d.total_amount) for d in mortgage_debts)
+        total_mortgage_remaining = sum((_money_value(d.remaining_amount) for d in mortgage_debts), ZERO)
+        total_mortgage_original = sum((_money_value(d.total_amount) for d in mortgage_debts), ZERO)
         total_mortgage_interest = sum(
-            float(d.remaining_amount) * float(d.interest_rate_for(month_start)) / 12 / 100
+            (calculate_period_interest(d, d.remaining_amount, month_start, month_end)
             for d in mortgage_debts
-            if d.interest_rate_for(month_start) is not None
+            if d.interest_rate_for(month_start) is not None),
+            ZERO,
         )
 
         return _with_finance_insights({
@@ -408,8 +416,8 @@ def get_finance_summary(user_id, year=None, month=None):
             'total_mortgage_remaining': total_mortgage_remaining,
             'total_mortgage_original': total_mortgage_original,
             'total_mortgage_interest': total_mortgage_interest,
-            'total_remaining': sum(float(d.remaining_amount) for d in debts),
-            'total_original': sum(float(d.total_amount) for d in debts),
+            'total_remaining': sum((_money_value(d.remaining_amount) for d in debts), ZERO),
+            'total_original': sum((_money_value(d.total_amount) for d in debts), ZERO),
             'incomes_this_month': incomes_this_month,
             'expenses_this_month': expenses_this_month,
             'payments_this_month': payments_this_month,
@@ -429,8 +437,8 @@ def get_finance_summary(user_id, year=None, month=None):
     try:
         active_debts = Debt.query.filter_by(status='active', user_id=user_id).order_by(db.case((Debt.next_payment_date.is_(None), 1), else_=0), Debt.next_payment_date.asc()).all()
         active_debts = sorted(active_debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
-        total_remaining = sum(float(d.remaining_amount) for d in active_debts)
-        total_original = sum(float(d.total_amount) for d in active_debts)
+        total_remaining = sum((_money_value(d.remaining_amount) for d in active_debts), ZERO)
+        total_original = sum((_money_value(d.total_amount) for d in active_debts), ZERO)
 
         incomes_this_month = Income.query.filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).all()
         expenses_this_month = Expense.query.filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).all()
@@ -448,9 +456,9 @@ def get_finance_summary(user_id, year=None, month=None):
                 expenses_this_month = Expense.query.filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).all()
                 payments_this_month = Payment.query.join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).all()
 
-        total_incomes = float(Income.query.with_entities(func.coalesce(func.sum(Income.amount), 0)).filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).scalar() or 0)
-        total_expenses = float(Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0)).filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).scalar() or 0)
-        total_payments = float(Payment.query.with_entities(func.coalesce(func.sum(Payment.amount), 0)).join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).scalar() or 0)
+        total_incomes = _money_value(Income.query.with_entities(func.coalesce(func.sum(Income.amount), 0)).filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).scalar())
+        total_expenses = _money_value(Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0)).filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).scalar())
+        total_payments = _money_value(Payment.query.with_entities(func.coalesce(func.sum(Payment.amount), 0)).join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).scalar())
         archived_count = Debt.query.filter_by(status='archived', user_id=user_id).count()
         total_debts = Debt.query.filter_by(user_id=user_id).count()
     except SQLAlchemyError:
@@ -461,18 +469,18 @@ def get_finance_summary(user_id, year=None, month=None):
             'active_debts': [],
             'mortgage_debts': [],
             'mortgage_count': 0,
-            'total_mortgage_remaining': 0.0,
-            'total_mortgage_original': 0.0,
-            'total_mortgage_interest': 0.0,
-            'total_remaining': 0.0,
-            'total_original': 0.0,
+            'total_mortgage_remaining': ZERO,
+            'total_mortgage_original': ZERO,
+            'total_mortgage_interest': ZERO,
+            'total_remaining': ZERO,
+            'total_original': ZERO,
             'incomes_this_month': [],
             'expenses_this_month': [],
             'payments_this_month': [],
-            'total_incomes': 0.0,
-            'total_expenses': 0.0,
-            'total_payments': 0.0,
-            'free_balance': 0.0,
+            'total_incomes': ZERO,
+            'total_expenses': ZERO,
+            'total_payments': ZERO,
+            'free_balance': ZERO,
             'days_left': 0,
             'nearest_debt': None,
             'overdue_count': 0,
@@ -498,9 +506,9 @@ def get_finance_summary(user_id, year=None, month=None):
             expenses_this_month = Expense.query.filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).all()
             payments_this_month = Payment.query.join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).all()
 
-    total_incomes = float(Income.query.with_entities(func.coalesce(func.sum(Income.amount), 0)).filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).scalar() or 0)
-    total_expenses = float(Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0)).filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).scalar() or 0)
-    total_payments = float(Payment.query.with_entities(func.coalesce(func.sum(Payment.amount), 0)).join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).scalar() or 0)
+    total_incomes = _money_value(Income.query.with_entities(func.coalesce(func.sum(Income.amount), 0)).filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).scalar())
+    total_expenses = _money_value(Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0)).filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).scalar())
+    total_payments = _money_value(Payment.query.with_entities(func.coalesce(func.sum(Payment.amount), 0)).join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).scalar())
     free_balance = total_incomes - total_expenses - total_payments
     active_debts = sorted(active_debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
     overdue_count = len([d for d in active_debts if _effective_debt_payment_date(d, today) and _effective_debt_payment_date(d, today) < today])
@@ -515,12 +523,13 @@ def get_finance_summary(user_id, year=None, month=None):
     nearest_debt = next((d for d in active_debts if _effective_debt_payment_date(d, today) and _effective_debt_payment_date(d, today) >= today), None)
 
     mortgage_debts = [d for d in active_debts if d.debt_type == 'mortgage']
-    total_mortgage_remaining = sum(float(d.remaining_amount) for d in mortgage_debts)
-    total_mortgage_original = sum(float(d.total_amount) for d in mortgage_debts)
+    total_mortgage_remaining = sum((_money_value(d.remaining_amount) for d in mortgage_debts), ZERO)
+    total_mortgage_original = sum((_money_value(d.total_amount) for d in mortgage_debts), ZERO)
     total_mortgage_interest = sum(
-        float(d.remaining_amount) * float(d.interest_rate_for(month_start)) / 12 / 100
+        (calculate_period_interest(d, d.remaining_amount, month_start, month_end)
         for d in mortgage_debts
-        if d.interest_rate_for(month_start) is not None
+        if d.interest_rate_for(month_start) is not None),
+        ZERO,
     )
 
     return _with_finance_insights({

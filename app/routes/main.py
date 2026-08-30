@@ -1,7 +1,8 @@
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from io import StringIO
 import csv
-from flask import abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import abort, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user
 from extensions import db
 from app.models import (
@@ -24,7 +25,7 @@ from app.services.financial_plan_service import (
 )
 from app.services.debt_interest_service import calculate_overdue_interest
 from app.services.debt_service import get_user_debt
-from app.utils import income_source_suggestions, parse_date, parse_decimal
+from app.utils import get_setting, income_source_suggestions, parse_date, parse_decimal
 
 
 def is_local_test_user():
@@ -215,6 +216,7 @@ def init_app(app):
                 flash(str(exc), 'danger')
             except Exception:
                 db.session.rollback()
+                current_app.logger.exception('Failed to save financial plan preferences')
                 flash('Не удалось сохранить настройки финансового плана.', 'danger')
 
         plan = build_financial_plan(
@@ -302,6 +304,7 @@ def init_app(app):
             flash(str(exc), 'danger')
         except Exception:
             db.session.rollback()
+            current_app.logger.exception('Failed to save salary income allocation')
             flash('Не удалось сохранить зарплатное поступление.', 'danger')
         return _financial_plan_redirect('salary-income')
 
@@ -354,6 +357,7 @@ def init_app(app):
             flash(str(exc), 'danger')
         except Exception:
             db.session.rollback()
+            current_app.logger.exception('Failed to save emergency fund transaction')
             flash('Не удалось сохранить операцию финансовой подушки.', 'danger')
         return _financial_plan_redirect('goals')
 
@@ -406,6 +410,7 @@ def init_app(app):
             flash(str(exc), 'danger')
         except Exception:
             db.session.rollback()
+            current_app.logger.exception('Failed to update emergency fund preferences')
             flash('Не удалось обновить финансовую подушку.', 'danger')
         return _financial_plan_redirect('goals')
 
@@ -433,6 +438,7 @@ def init_app(app):
             flash(str(exc), 'danger')
         except Exception:
             db.session.rollback()
+            current_app.logger.exception('Failed to create financial goal')
             flash('Не удалось создать цель.', 'danger')
         return _financial_plan_redirect('goals')
 
@@ -454,6 +460,7 @@ def init_app(app):
             flash(str(exc), 'danger')
         except Exception:
             db.session.rollback()
+            current_app.logger.exception('Failed to update financial goal')
             flash('Не удалось обновить цель.', 'danger')
         return _financial_plan_redirect('goals')
 
@@ -546,6 +553,7 @@ def init_app(app):
             flash(str(exc), 'danger')
         except Exception:
             db.session.rollback()
+            current_app.logger.exception('Failed to save financial goal transaction')
             flash('Не удалось сохранить операцию цели.', 'danger')
         return _financial_plan_redirect('goals')
 
@@ -579,8 +587,8 @@ def init_app(app):
             active_debts = active_debts.order_by(db.case((Debt.next_payment_date.is_(None), 1), else_=0), Debt.next_payment_date.asc()).all()
 
         today = date.today()
-        total_remaining = sum(float(d.remaining_amount) for d in active_debts)
-        total_original = sum(float(d.total_amount) for d in active_debts)
+        total_remaining = sum((Decimal(str(d.remaining_amount or 0)) for d in active_debts), Decimal('0.00'))
+        total_original = sum((Decimal(str(d.total_amount or 0)) for d in active_debts), Decimal('0.00'))
         overdue_count = len([d for d in active_debts if d.next_payment_date and d.next_payment_date < today])
         nearest_debt = next((d for d in active_debts if d.next_payment_date and d.next_payment_date >= today), None)
 
@@ -629,6 +637,8 @@ def init_app(app):
 
     @app.route('/archive')
     def archive():
+        if str(get_setting('archive_enabled', 'true')).lower() not in ('1', 'true', 'yes', 'on'):
+            abort(404)
         if is_local_test_user():
             archived_debts = []
         else:
@@ -637,6 +647,8 @@ def init_app(app):
 
     @app.route('/api/init-db', methods=['POST'])
     def init_db_route():
+        if not (app.debug and app.config.get('DEV_LOGIN_ENABLED', False)):
+            abort(404)
         if is_local_test_user():
             return jsonify({'success': True, 'message': 'Локальный тестовый пользователь не использует базу данных.'})
 

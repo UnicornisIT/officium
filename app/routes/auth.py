@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import datetime, timedelta
 from flask import jsonify, redirect, render_template, request, url_for, flash, session, abort, current_app
 from flask_login import UserMixin, current_user, login_user, logout_user
@@ -101,12 +103,13 @@ def init_app(app):
         if str(user_id) == 'admin':
             return AdminUser()
         if str(user_id) == 'test-user':
-            if app.config.get('TEST_USER_ENABLED', False):
-                try:
-                    return get_or_create_test_user(app)
-                except SQLAlchemyError:
-                    db.session.rollback()
-            return LocalTestUser()
+            if not app.config.get('TEST_USER_ENABLED', False):
+                return None
+            try:
+                return get_or_create_test_user(app)
+            except SQLAlchemyError:
+                db.session.rollback()
+                return LocalTestUser()
         try:
             return db.session.get(User, int(user_id))
         except (ValueError, TypeError):
@@ -181,6 +184,19 @@ def init_app(app):
             return None
         return str(value).strip()[:max_length] or None
 
+    def _setting_enabled(key, default=False):
+        value = get_setting(key, 'true' if default else 'false')
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+    def _google_telegram_id(google_id):
+        digest = hashlib.sha256(str(google_id).encode('utf-8')).digest()
+        candidate = -(int.from_bytes(digest[:8], 'big') % 9_000_000_000_000_000_000 or 1)
+        while User.query.filter_by(telegram_id=candidate).first() is not None:
+            candidate -= 1
+        return candidate
+
     def _login_telegram_profile(profile, auth_timestamp, activity_name):
         try:
             telegram_id = int(profile.get('id'))
@@ -195,6 +211,8 @@ def init_app(app):
         is_admin_user = str(telegram_id) in admin_ids
         user = User.query.filter_by(telegram_id=telegram_id).first()
         if not user:
+            if not is_admin_user and not _setting_enabled('registration_enabled', False):
+                return None, 'Регистрация новых пользователей временно отключена.'
             user = User(
                 telegram_id=telegram_id,
                 auth_date=auth_date,
@@ -282,7 +300,9 @@ def init_app(app):
             'Вход через Telegram Mini App',
         )
         if error:
-            status = 403 if user is None and 'заблокирован' in error else 400
+            status = 403 if user is None and (
+                'заблокирован' in error or 'Регистрация' in error
+            ) else 400
             return jsonify({'success': False, 'error': error}), status
 
         session['telegram_mini_app'] = True
@@ -436,7 +456,7 @@ def init_app(app):
     def google_login():
         if not app.config.get('GOOGLE_LOGIN_ENABLED', False):
             abort(404)
-        redirect_uri = url_for('google_callback', _external=True)
+        redirect_uri = app.config.get('GOOGLE_REDIRECT_URI') or url_for('google_callback', _external=True)
         return google.authorize_redirect(redirect_uri)
 
     @app.route('/auth/google/callback')
@@ -446,15 +466,15 @@ def init_app(app):
         try:
             token = google.authorize_access_token()
             userinfo = google.get('https://openidconnect.googleapis.com/v1/userinfo').json()
-        except Exception as e:
-            current_app.logger.error(f'Google OAuth error: {e}')
+        except Exception:
+            current_app.logger.exception('Google OAuth callback failed')
             flash('Ошибка авторизации через Google.', 'danger')
             return redirect(url_for('login'))
 
-        google_id = userinfo.get('sub')
-        email = userinfo.get('email')
+        google_id = str(userinfo.get('sub') or '').strip()[:50]
+        email = str(userinfo.get('email') or '').strip().lower()[:120]
         email_verified = userinfo.get('email_verified', False)
-        name = userinfo.get('name')
+        name = str(userinfo.get('name') or email.split('@')[0])
         picture = userinfo.get('picture')
 
         if not google_id or not email:
@@ -471,21 +491,24 @@ def init_app(app):
             if user:
                 # Привязываем Google ID к существующему пользователю
                 user.google_id = google_id
-                user.avatar_url = picture
+                user.avatar_url = str(picture or '')[:255] or None
             else:
+                if not _setting_enabled('registration_enabled', False):
+                    flash('Регистрация новых пользователей временно отключена.', 'warning')
+                    return redirect(url_for('login'))
                 # Создаём нового пользователя
                 first_name, last_name = (name.split(' ', 1) + [''])[:2]
                 user = User(
-                    telegram_id=-int(google_id) % 1000000000000,  # Генерируем уникальный telegram_id
-                    username=email.split('@')[0],
-                    first_name=first_name,
-                    last_name=last_name,
-                    photo_url=picture,
+                    telegram_id=_google_telegram_id(google_id),
+                    username=email.split('@')[0][:80],
+                    first_name=first_name[:100],
+                    last_name=last_name[:100],
+                    photo_url=str(picture or '')[:255] or None,
                     auth_date=datetime.utcnow(),
                     role='user',
                     google_id=google_id,
                     email=email,
-                    avatar_url=picture,
+                    avatar_url=str(picture or '')[:255] or None,
                 )
                 db.session.add(user)
 
@@ -532,7 +555,7 @@ def init_app(app):
                 if admin_password_hash:
                     valid_password = check_password_hash(admin_password_hash, password)
                 elif admin_password:
-                    valid_password = (password == admin_password)
+                    valid_password = secrets.compare_digest(str(password), str(admin_password))
 
                 if valid_password:
                     session.pop('failed_admin_login_attempts', None)
@@ -554,18 +577,25 @@ def init_app(app):
 
         return render_template('admin_login.html', admin_login_enabled=admin_login_enabled, error_message=error_message)
 
-    @app.route('/admin/stop-impersonate')
+    @app.route('/admin/stop-impersonate', methods=['POST'])
     def stop_impersonate():
         original_admin_id = session.pop('original_admin_id', None)
         if not original_admin_id:
             return redirect(url_for('login'))
 
-        original_admin = User.query.get(original_admin_id)
-        if not original_admin or not original_admin.is_superadmin:
-            return redirect(url_for('login'))
+        if str(original_admin_id) == 'admin':
+            if not app.config.get('ADMIN_LOGIN_ENABLED', False):
+                return redirect(url_for('login'))
+            original_admin = AdminUser()
+            admin_description = 'Restored emergency admin session'
+        else:
+            original_admin = db.session.get(User, original_admin_id)
+            if not original_admin or not original_admin.is_superadmin or original_admin.is_blocked:
+                return redirect(url_for('login'))
+            admin_description = f'Restored session from original admin {original_admin.telegram_id}'
 
         login_user(original_admin)
-        record_activity('Завершил impersonate', original_admin, description=f'Restored session from original admin {original_admin.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+        record_activity('Завершил impersonate', original_admin, description=admin_description, ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
         return redirect(url_for('admin_dashboard'))
 
     @app.route('/logout')

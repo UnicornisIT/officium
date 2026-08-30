@@ -6,6 +6,7 @@ import uuid
 from dateutil.relativedelta import relativedelta
 from flask import current_app
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from app.models import Expense
 from extensions import db
@@ -153,10 +154,26 @@ def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, en
 
     try:
         db.session.commit()
-    except Exception as e:
+    except IntegrityError:
         db.session.rollback()
+        stats['created'] = 0
         stats['errors'] += 1
-        print(f"Error committing generated monthly expenses: {str(e)}")
+        try:
+            current_app.logger.warning(
+                'Monthly expense generation hit a concurrent duplicate for user %s group %s',
+                user_id,
+                monthly_group_id,
+            )
+        except RuntimeError:
+            pass
+    except Exception:
+        db.session.rollback()
+        stats['created'] = 0
+        stats['errors'] += 1
+        try:
+            current_app.logger.exception('Failed to generate monthly expenses')
+        except RuntimeError:
+            pass
 
     return stats
 

@@ -1,10 +1,12 @@
 from datetime import datetime
-from flask import jsonify, request
+from decimal import Decimal
+
+from flask import current_app, jsonify, request
 from flask_login import current_user
 from app.models import Debt, SplitPurchase
-from app.services.debt_service import get_user_debt
+from app.services.debt_service import get_demo_debts, get_user_debt
 from app.services.debt_schedule_service import build_debt_payment_schedule
-from app.utils import is_local_test_user, parse_date, parse_decimal
+from app.utils import get_setting, is_local_test_user, parse_date, parse_decimal
 from extensions import db
 
 
@@ -41,7 +43,7 @@ def init_app(app):
 
     @app.route('/api/debts', methods=['POST'])
     def api_create_debt():
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({'success': False, 'error': 'Нет данных'}), 400
 
@@ -49,6 +51,8 @@ def init_app(app):
             bank_name = str(data.get('bank_name', '')).strip()
             if not bank_name:
                 raise ValueError("Название банка обязательно")
+            if len(bank_name) > 100:
+                raise ValueError('Название банка не должно превышать 100 символов')
 
             debt_type = str(data.get('debt_type', '')).strip()
             if debt_type not in DEBT_TYPES:
@@ -57,6 +61,8 @@ def init_app(app):
             product_name = str(data.get('product_name', '')).strip()
             if not product_name:
                 raise ValueError("Название продукта/карты обязательно")
+            if len(product_name) > 150:
+                raise ValueError('Название продукта не должно превышать 150 символов')
 
             total_amount = parse_decimal(data.get('total_amount'), 'Сумма долга', required=True)
             remaining_amount = parse_decimal(data.get('remaining_amount'), 'Остаток долга', required=True)
@@ -64,6 +70,8 @@ def init_app(app):
             first_payment_amount = _parse_first_payment_amount(data.get('first_payment_amount'))
             interest_rate = parse_decimal(data.get('interest_rate'), 'Процентная ставка', required=False)
             interest_rate_after_change = parse_decimal(data.get('interest_rate_after_change'), 'Новая процентная ставка', required=False)
+            _validate_interest_rate(interest_rate, 'Процентная ставка')
+            _validate_interest_rate(interest_rate_after_change, 'Новая процентная ставка')
             interest_rate_change_date = parse_date(data.get('interest_rate_change_date'), 'Дата смены ставки')
             _validate_interest_rate_change(interest_rate_after_change, interest_rate_change_date)
             next_payment_date = parse_date(data.get('next_payment_date'), 'Дата следующего платежа')
@@ -72,6 +80,8 @@ def init_app(app):
             day_count_convention = _choice(data.get('day_count_convention'), DAY_COUNT_CONVENTIONS, 'actual_year', 'База дней')
             include_payment_day = bool(data.get('include_payment_day'))
             interest_period_start_date = parse_date(data.get('interest_period_start_date'), 'Начало процентного периода')
+            if next_payment_date and interest_period_start_date and interest_period_start_date >= next_payment_date:
+                raise ValueError('Начало процентного периода должно быть раньше даты платежа')
             early_repayment_strategy = _choice(data.get('early_repayment_strategy'), EARLY_REPAYMENT_STRATEGIES, 'reduce_term', 'Досрочное погашение')
             early_repayment_enabled, planned_early_repayment_amount = _early_repayment_preferences(
                 debt_type=debt_type,
@@ -84,8 +94,14 @@ def init_app(app):
             monthly_fee_amount = parse_decimal(data.get('monthly_fee_amount'), 'Ежемесячные комиссии', required=False) or 0
             bank_remaining_amount = parse_decimal(data.get('bank_remaining_amount'), 'Остаток по банку', required=False)
 
-            if remaining_amount > total_amount:
-                raise ValueError("Остаток долга не может превышать общую сумму")
+            _validate_debt_amounts(total_amount, remaining_amount)
+            if not is_local_test_user():
+                try:
+                    debt_limit = max(int(get_setting('debt_limit_per_user', '50')), 1)
+                except (TypeError, ValueError):
+                    debt_limit = 50
+                if Debt.query.filter_by(user_id=current_user.id).count() >= debt_limit:
+                    raise ValueError(f'Достигнут лимит долгов: {debt_limit}')
 
             debt = Debt(
                 user_id=current_user.id,
@@ -111,8 +127,8 @@ def init_app(app):
                 loan_term_months=loan_term_months,
                 monthly_fee_amount=monthly_fee_amount,
                 bank_remaining_amount=bank_remaining_amount,
-                comment=str(data.get('comment', '')).strip() or None,
-                status='active',
+                comment=_optional_text(data.get('comment'), 2000, 'Комментарий'),
+                status='archived' if remaining_amount == Decimal('0.00') else 'active',
             )
             db.session.add(debt)
             db.session.commit()
@@ -120,9 +136,10 @@ def init_app(app):
 
         except ValueError as e:
             return jsonify({'success': False, 'error': str(e)}), 422
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            return jsonify({'success': False, 'error': f'Ошибка сервера: {str(e)}'}), 500
+            current_app.logger.exception('Failed to create debt')
+            return jsonify({'success': False, 'error': 'Не удалось сохранить долг'}), 500
 
     @app.route('/api/debts/<int:debt_id>', methods=['GET'])
     def api_get_debt(debt_id):
@@ -152,7 +169,7 @@ def init_app(app):
         if debt.debt_type != 'split':
             return jsonify({'success': False, 'error': 'Покупки можно добавлять только в Сплит / Рассрочку'}), 422
 
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({'success': False, 'error': 'Нет данных'}), 400
 
@@ -195,9 +212,10 @@ def init_app(app):
         except ValueError as e:
             db.session.rollback()
             return jsonify({'success': False, 'error': str(e)}), 422
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            return jsonify({'success': False, 'error': f'Ошибка сервера: {str(e)}'}), 500
+            current_app.logger.exception('Failed to add split purchase')
+            return jsonify({'success': False, 'error': 'Не удалось добавить покупку'}), 500
 
     @app.route('/api/debts/<int:debt_id>', methods=['PUT'])
     def api_update_debt(debt_id):
@@ -205,7 +223,7 @@ def init_app(app):
         if not debt:
             return jsonify({'success': False, 'error': 'Долг не найден'}), 404
 
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({'success': False, 'error': 'Нет данных'}), 400
 
@@ -214,6 +232,8 @@ def init_app(app):
                 bank_name = str(data['bank_name']).strip()
                 if not bank_name:
                     raise ValueError("Название банка обязательно")
+                if len(bank_name) > 100:
+                    raise ValueError('Название банка не должно превышать 100 символов')
                 debt.bank_name = bank_name
 
             if 'debt_type' in data:
@@ -225,6 +245,8 @@ def init_app(app):
                 product_name = str(data['product_name']).strip()
                 if not product_name:
                     raise ValueError("Название продукта обязательно")
+                if len(product_name) > 150:
+                    raise ValueError('Название продукта не должно превышать 150 символов')
                 debt.product_name = product_name
 
             if 'total_amount' in data:
@@ -237,10 +259,12 @@ def init_app(app):
                 debt.first_payment_amount = _parse_first_payment_amount(data.get('first_payment_amount'))
             if 'interest_rate' in data:
                 debt.interest_rate = parse_decimal(data['interest_rate'], 'Процентная ставка', required=False)
+                _validate_interest_rate(debt.interest_rate, 'Процентная ставка')
             if 'interest_rate_after_change' in data or 'interest_rate_change_date' in data:
                 interest_rate_after_change = parse_decimal(data.get('interest_rate_after_change'), 'Новая процентная ставка', required=False)
                 interest_rate_change_date = parse_date(data.get('interest_rate_change_date'), 'Дата смены ставки')
                 _validate_interest_rate_change(interest_rate_after_change, interest_rate_change_date)
+                _validate_interest_rate(interest_rate_after_change, 'Новая процентная ставка')
                 debt.interest_rate_after_change = interest_rate_after_change
                 debt.interest_rate_change_date = interest_rate_change_date
             if 'next_payment_date' in data:
@@ -280,10 +304,11 @@ def init_app(app):
             if 'bank_remaining_amount' in data:
                 debt.bank_remaining_amount = parse_decimal(data.get('bank_remaining_amount'), 'Остаток по банку', required=False)
             if 'comment' in data:
-                debt.comment = str(data['comment']).strip() or None
+                debt.comment = _optional_text(data['comment'], 2000, 'Комментарий')
 
-            if float(debt.remaining_amount) > float(debt.total_amount):
-                raise ValueError("Остаток долга не может превышать общую сумму")
+            _validate_debt_amounts(debt.total_amount, debt.remaining_amount)
+            if debt.next_payment_date and debt.interest_period_start_date and debt.interest_period_start_date >= debt.next_payment_date:
+                raise ValueError('Начало процентного периода должно быть раньше даты платежа')
 
             debt.updated_at = datetime.utcnow()
             if not is_local_test_user():
@@ -291,13 +316,17 @@ def init_app(app):
             return jsonify({'success': True, 'debt': debt.to_dict()})
 
         except ValueError as e:
-            return jsonify({'success': False, 'error': str(e)}), 422
-        except Exception as e:
             db.session.rollback()
-            return jsonify({'success': False, 'error': f'Ошибка сервера: {str(e)}'}), 500
+            return jsonify({'success': False, 'error': str(e)}), 422
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception('Failed to update debt')
+            return jsonify({'success': False, 'error': 'Не удалось обновить долг'}), 500
 
     @app.route('/api/debts/<int:debt_id>/archive', methods=['POST'])
     def api_archive_debt(debt_id):
+        if str(get_setting('archive_enabled', 'true')).lower() not in ('1', 'true', 'yes', 'on'):
+            return jsonify({'success': False, 'error': 'Архив отключён'}), 403
         debt = get_user_debt(debt_id)
         if not debt:
             return jsonify({'success': False, 'error': 'Долг не найден'}), 404
@@ -310,6 +339,8 @@ def init_app(app):
 
     @app.route('/api/debts/<int:debt_id>/restore', methods=['POST'])
     def api_restore_debt(debt_id):
+        if str(get_setting('archive_enabled', 'true')).lower() not in ('1', 'true', 'yes', 'on'):
+            return jsonify({'success': False, 'error': 'Архив отключён'}), 403
         debt = get_user_debt(debt_id)
         if not debt:
             return jsonify({'success': False, 'error': 'Долг не найден'}), 404
@@ -342,6 +373,25 @@ def _validate_interest_rate_change(interest_rate_after_change, interest_rate_cha
         raise ValueError('Укажите новую процентную ставку или очистите дату смены ставки')
     if interest_rate_change_date is None:
         raise ValueError('Укажите дату смены ставки или очистите новую процентную ставку')
+
+
+def _validate_interest_rate(value, field_name):
+    if value is not None and value > Decimal('999.99'):
+        raise ValueError(f'{field_name} не может превышать 999,99%')
+
+
+def _validate_debt_amounts(total_amount, remaining_amount):
+    if Decimal(str(total_amount or 0)) <= 0:
+        raise ValueError('Сумма долга должна быть больше нуля')
+    if remaining_amount > total_amount:
+        raise ValueError('Остаток долга не может превышать общую сумму')
+
+
+def _optional_text(value, max_length, field_name):
+    text = str(value or '').strip()
+    if len(text) > max_length:
+        raise ValueError(f'{field_name} не должен превышать {max_length} символов')
+    return text or None
 
 
 def _parse_first_payment_amount(value):

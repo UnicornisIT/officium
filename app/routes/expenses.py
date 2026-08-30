@@ -38,15 +38,23 @@ def init_app(app):
             else:
                 try:
                     amount = parse_decimal(request.form.get('amount'), 'Сумма', required=True)
+                    if amount <= 0:
+                        raise ValueError('Сумма расхода должна быть больше нуля')
                     category = request.form.get('category')
                     if category not in [item[0] for item in EXPENSE_CATEGORIES]:
                         raise ValueError('Выберите корректную категорию расхода')
                     title = str(request.form.get('title', '')).strip()
                     if not title:
                         raise ValueError('Название расхода обязательно')
+                    if len(title) > 150:
+                        raise ValueError('Название расхода не должно превышать 150 символов')
                     expense_date = parse_date(request.form.get('expense_date'), 'Дата', required=True)
                     payment_method = str(request.form.get('payment_method', '')).strip() or None
                     comment = str(request.form.get('comment', '')).strip() or None
+                    if payment_method and payment_method not in [item[0] for item in PAYMENT_METHODS]:
+                        raise ValueError('Выберите корректный способ оплаты')
+                    if comment and len(comment) > 2000:
+                        raise ValueError('Комментарий не должен превышать 2000 символов')
                     is_monthly = request.form.get('is_monthly') == 'on'
 
                     expense = Expense(
@@ -72,9 +80,10 @@ def init_app(app):
                 except ValueError as e:
                     db.session.rollback()
                     error_message = str(e)
-                except Exception as e:
+                except Exception:
                     db.session.rollback()
-                    error_message = 'Ошибка сервера: ' + str(e)
+                    current_app.logger.exception('Failed to create expense')
+                    error_message = 'Не удалось сохранить расход'
 
         if is_local_test_user():
             expenses_list = [
@@ -185,6 +194,8 @@ def init_app(app):
                     continue
 
                 amount = parse_decimal(request.form.get(f'amount_{index}'), 'Сумма', required=True)
+                if amount <= 0:
+                    raise ValueError('Сумма импортируемого расхода должна быть больше нуля.')
                 expense_date = parse_date(request.form.get(f'expense_date_{index}'), 'Дата', required=True)
                 category = request.form.get(f'category_{index}')
                 if category not in [item[0] for item in EXPENSE_CATEGORIES]:
@@ -195,7 +206,11 @@ def init_app(app):
                 title = str(request.form.get(f'title_{index}', '')).strip()
                 if not title:
                     raise ValueError('В одной из строк не заполнено название.')
+                if len(title) > 150:
+                    raise ValueError('Название импортируемого расхода не должно превышать 150 символов.')
                 comment = str(request.form.get(f'comment_{index}', '')).strip() or None
+                if comment and len(comment) > 2000:
+                    raise ValueError('Комментарий импортируемого расхода не должен превышать 2000 символов.')
 
                 if action == 'update_monthly':
                     monthly_expense = _get_import_monthly_match(row)
@@ -244,11 +259,12 @@ def init_app(app):
                 categories=EXPENSE_CATEGORIES,
                 payment_methods=PAYMENT_METHODS,
             )
-        except Exception as exc:
+        except Exception:
             db.session.rollback()
+            current_app.logger.exception('Failed to confirm bank statement import')
             return render_template(
                 'expenses_import.html',
-                error_message='Ошибка импорта: ' + str(exc),
+                error_message='Не удалось завершить импорт. Данные не были сохранены.',
                 parse_result=None,
                 import_token=None,
                 categories=EXPENSE_CATEGORIES,
@@ -274,15 +290,23 @@ def init_app(app):
         if request.method == 'POST':
             try:
                 amount = parse_decimal(request.form.get('amount'), 'Сумма', required=True)
+                if amount <= 0:
+                    raise ValueError('Сумма расхода должна быть больше нуля')
                 category = request.form.get('category')
                 if category not in [item[0] for item in EXPENSE_CATEGORIES]:
                     raise ValueError('Выберите корректную категорию расхода')
                 title = str(request.form.get('title', '')).strip()
                 if not title:
                     raise ValueError('Название расхода обязательно')
+                if len(title) > 150:
+                    raise ValueError('Название расхода не должно превышать 150 символов')
                 expense_date = parse_date(request.form.get('expense_date'), 'Дата', required=True)
                 payment_method = str(request.form.get('payment_method', '')).strip() or None
                 comment = str(request.form.get('comment', '')).strip() or None
+                if payment_method and payment_method not in [item[0] for item in PAYMENT_METHODS]:
+                    raise ValueError('Выберите корректный способ оплаты')
+                if comment and len(comment) > 2000:
+                    raise ValueError('Комментарий не должен превышать 2000 символов')
                 is_monthly = request.form.get('is_monthly') == 'on'
 
                 was_monthly = expense.is_monthly
@@ -325,9 +349,10 @@ def init_app(app):
             except ValueError as e:
                 db.session.rollback()
                 error_message = str(e)
-            except Exception as e:
+            except Exception:
                 db.session.rollback()
-                error_message = 'Ошибка сервера: ' + str(e)
+                current_app.logger.exception('Failed to update expense')
+                error_message = 'Не удалось обновить расход'
 
         expenses_list = Expense.query.filter_by(user_id=current_user.id).order_by(Expense.expense_date.desc()).all()
         mark_goal_cashflow_entries(expenses=expenses_list)
@@ -349,6 +374,10 @@ def init_app(app):
                 'expenses',
                 error='Этот расход связан с финансовой целью. Удалите операцию в разделе «Цели».',
             ))
+        Expense.query.filter_by(generated_from_id=expense.id).update(
+            {Expense.generated_from_id: None},
+            synchronize_session=False,
+        )
         db.session.delete(expense)
         db.session.commit()
         return redirect(url_for('expenses', success='Расход удалён'))
@@ -566,7 +595,8 @@ def _save_import_payload(parse_result):
         'rows': [row.to_dict() for row in parse_result.rows],
     }
     path = os.path.join(_import_dir(), f'{token}.json')
-    with open(path, 'w', encoding='utf-8') as handle:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
         json.dump(payload, handle, ensure_ascii=False)
     return token
 

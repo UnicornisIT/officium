@@ -1,12 +1,21 @@
 import csv
 from io import StringIO
 from datetime import datetime
-from flask import redirect, render_template, request, url_for, Response, flash, session
+from flask import abort, current_app, jsonify, redirect, render_template, request, url_for, Response, flash, session
 from flask_login import current_user, login_user, logout_user
 from sqlalchemy import cast
 from sqlalchemy.exc import SQLAlchemyError
 from app.models import ActivityLog, Debt, DictionaryEntry, Payment, User, AppSetting
 from app.routes.auth import LocalTestUser
+from app.services.server_update_service import (
+    ServerUpdateError,
+    current_release_has_tag,
+    fetch_latest_release,
+    get_current_release,
+    read_update_status,
+    request_server_update,
+    update_is_active,
+)
 from app.utils import admin_required, superadmin_required, DICTIONARY_TYPES, DEFAULT_SETTINGS, get_setting, record_activity, set_setting
 from extensions import db
 
@@ -17,6 +26,67 @@ def _count_superadmins():
 
 def _is_last_superadmin(user):
     return user.is_superadmin and _count_superadmins() <= 1
+
+
+def _setting_enabled(key, default=True):
+    value = get_setting(key, 'true' if default else 'false')
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _csv_safe(value):
+    if value is None:
+        return ''
+    if not isinstance(value, str):
+        return value
+    if value.lstrip().startswith(('=', '+', '-', '@', '\t', '\r')):
+        return "'" + value
+    return value
+
+
+def _write_csv_row(writer, values):
+    writer.writerow([_csv_safe(value) for value in values])
+
+
+def _validated_settings(form):
+    app_name = str(form.get('app_name', '')).strip()
+    if not app_name or len(app_name) > 80:
+        raise ValueError('Название приложения должно содержать от 1 до 80 символов.')
+
+    currency = str(form.get('default_currency', '')).strip().upper()
+    if len(currency) != 3 or not currency.isalpha() or not currency.isascii():
+        raise ValueError('Валюта должна быть трёхбуквенным кодом, например RUB.')
+
+    number_limits = {
+        'debt_limit_per_user': (1, 1000, 'Лимит долгов'),
+        'payment_warning_days': (0, 365, 'Срок предупреждения'),
+        'urgent_payment_days': (0, 365, 'Срок срочного платежа'),
+    }
+    values = {'app_name': app_name, 'default_currency': currency}
+    for key, (minimum, maximum, label) in number_limits.items():
+        try:
+            number = int(str(form.get(key, '')).strip())
+        except (TypeError, ValueError):
+            raise ValueError(f'{label} должен быть целым числом.')
+        if not minimum <= number <= maximum:
+            raise ValueError(f'{label} должен быть от {minimum} до {maximum}.')
+        values[key] = str(number)
+
+    if int(values['urgent_payment_days']) > int(values['payment_warning_days']):
+        raise ValueError('Срок срочного платежа не может превышать срок предупреждения.')
+
+    for key in (
+        'registration_enabled',
+        'telegram_login_enabled',
+        'archive_enabled',
+        'export_enabled',
+        'overdue_after_date',
+    ):
+        raw_value = str(form.get(key, '')).strip().lower()
+        values[key] = 'true' if raw_value in ('on', '1', 'true', 'yes') else 'false'
+
+    return values
 
 
 def init_app(app):
@@ -50,24 +120,128 @@ def init_app(app):
 
         return render_template('admin_dashboard.html', stats=stats, error_message=error_message, recent_logs=recent_logs)
 
+    @app.route('/admin/server-update')
+    @superadmin_required
+    def admin_server_update():
+        enabled = bool(current_app.config.get('SERVER_UPDATE_ENABLED'))
+        latest_release = None
+        release_error = None
+        if enabled:
+            try:
+                latest_release = fetch_latest_release(current_app.config)
+            except ServerUpdateError as exc:
+                release_error = str(exc)
+
+        current_release = get_current_release(current_app.config)
+        update_status = read_update_status(current_app.config)
+        is_active = update_is_active(current_app.config, update_status)
+        is_current = bool(
+            latest_release
+            and current_release_has_tag(current_release, latest_release.get('tag'))
+        )
+        return render_template(
+            'admin_server_update.html',
+            enabled=enabled,
+            repository=current_app.config.get('SERVER_UPDATE_REPOSITORY'),
+            current_release=current_release,
+            latest_release=latest_release,
+            release_error=release_error,
+            update_status=update_status,
+            is_active=is_active,
+            is_current=is_current,
+        )
+
+    @app.route('/admin/server-update/status')
+    @superadmin_required
+    def admin_server_update_status():
+        status = read_update_status(current_app.config) or {
+            'state': 'idle',
+            'message': 'Обновление ещё не запускалось.',
+        }
+        response = jsonify({
+            'state': str(status.get('state') or 'unknown'),
+            'tag': str(status.get('tag') or ''),
+            'message': str(status.get('message') or ''),
+            'updated_at': str(status.get('updated_at') or ''),
+        })
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @app.route('/admin/server-update/apply', methods=['POST'])
+    @superadmin_required
+    def admin_server_update_apply():
+        requested_tag = request.form.get('tag', '')
+        try:
+            release = request_server_update(
+                current_app.config,
+                requested_tag,
+                requested_by=current_user.id,
+            )
+        except ServerUpdateError as exc:
+            flash(str(exc), 'danger')
+            return redirect(url_for('admin_server_update'))
+        except OSError:
+            current_app.logger.exception('Failed to create the server update request')
+            flash('Не удалось подготовить запрос обновления на сервере.', 'danger')
+            return redirect(url_for('admin_server_update'))
+
+        try:
+            record_activity(
+                'Запустил обновление сервера',
+                current_user,
+                entity_type='server_update',
+                description=f'Запрошена установка релиза {release["tag"]}',
+                ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+                user_agent=request.headers.get('User-Agent'),
+            )
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception('Failed to record the server update request')
+
+        flash(
+            f'Обновление до {release["tag"]} передано серверу. '
+            'Страница будет показывать ход выполнения.',
+            'success',
+        )
+        return redirect(url_for('admin_server_update'))
+
     @app.route('/admin/settings', methods=['GET', 'POST'])
     @superadmin_required
     def admin_settings():
         success_message = None
+        error_message = None
 
         if request.method == 'POST':
-            for key in DEFAULT_SETTINGS.keys():
-                value = request.form.get(key, '').strip()
-                if key in ('registration_enabled', 'telegram_login_enabled', 'archive_enabled', 'export_enabled', 'overdue_after_date'):
-                    value = 'true' if value == 'on' or value.lower() in ('1', 'true', 'yes', 'on') else 'false'
-                if not value:
-                    value = DEFAULT_SETTINGS.get(key, '')
-                set_setting(key, value)
-            record_activity('Изменил настройки приложения', current_user, description='Обновлены системные настройки')
-            return redirect(url_for('admin_settings', success='Настройки сохранены'))
+            try:
+                values = _validated_settings(request.form)
+                for key, value in values.items():
+                    set_setting(key, value, commit=False)
+                db.session.commit()
+                record_activity('Изменил настройки приложения', current_user, description='Обновлены системные настройки')
+                return redirect(url_for('admin_settings', success='Настройки сохранены'))
+            except ValueError as exc:
+                db.session.rollback()
+                error_message = str(exc)
+            except SQLAlchemyError:
+                db.session.rollback()
+                current_app.logger.exception('Failed to save application settings')
+                error_message = 'Не удалось сохранить настройки.'
 
-        settings = {key: get_setting(key, DEFAULT_SETTINGS[key]) for key in DEFAULT_SETTINGS}
-        return render_template('admin_settings.html', settings=settings, success_message=request.args.get('success'))
+        if request.method == 'POST' and error_message:
+            settings = {
+                key: ('true' if request.form.get(key) else 'false')
+                if key in ('registration_enabled', 'telegram_login_enabled', 'archive_enabled', 'export_enabled', 'overdue_after_date')
+                else request.form.get(key, DEFAULT_SETTINGS[key])
+                for key in DEFAULT_SETTINGS
+            }
+        else:
+            settings = {key: get_setting(key, DEFAULT_SETTINGS[key]) for key in DEFAULT_SETTINGS}
+        return render_template(
+            'admin_settings.html',
+            settings=settings,
+            success_message=request.args.get('success'),
+            error_message=error_message,
+        )
 
     @app.route('/admin/dictionaries', methods=['GET', 'POST'])
     @superadmin_required
@@ -82,6 +256,8 @@ def init_app(app):
                 error_message = 'Выберите тип справочника'
             elif not value:
                 error_message = 'Значение не может быть пустым'
+            elif len(value) > 150:
+                error_message = 'Значение не должно превышать 150 символов'
             else:
                 try:
                     entry = DictionaryEntry(dictionary_type=dictionary_type, value=value)
@@ -89,9 +265,10 @@ def init_app(app):
                     db.session.commit()
                     record_activity('Добавил элемент справочника', current_user, entity_type=dictionary_type, description=value)
                     return redirect(url_for('admin_dictionaries', success='Элемент добавлен'))
-                except Exception as e:
+                except Exception:
                     db.session.rollback()
-                    error_message = f'Не удалось сохранить элемент: {str(e)}'
+                    current_app.logger.exception('Failed to save dictionary entry')
+                    error_message = 'Не удалось сохранить элемент справочника.'
 
         entries = DictionaryEntry.query.order_by(DictionaryEntry.dictionary_type.asc(), DictionaryEntry.value.asc()).all()
         type_labels = {key: label for key, label in DICTIONARY_TYPES}
@@ -265,6 +442,8 @@ def init_app(app):
     @app.route('/admin/export')
     @superadmin_required
     def admin_export():
+        if not _setting_enabled('export_enabled', True):
+            abort(403)
         debts = Debt.query.order_by(Debt.created_at.desc()).limit(100).all()
         payments = Payment.query.order_by(Payment.payment_date.desc()).limit(100).all()
         return render_template('admin_export.html', debts=debts, payments=payments)
@@ -272,13 +451,15 @@ def init_app(app):
     @app.route('/admin/export/<string:export_type>.csv', methods=['POST'])
     @superadmin_required
     def admin_export_csv(export_type):
+        if not _setting_enabled('export_enabled', True):
+            abort(403)
         output = StringIO()
         writer = csv.writer(output)
 
         if export_type == 'users':
             writer.writerow(['id', 'telegram_id', 'username', 'first_name', 'last_name', 'role', 'is_blocked', 'login_count', 'last_login_ip', 'last_user_agent', 'created_at'])
             for user in User.query.order_by(User.id.asc()).all():
-                writer.writerow([
+                _write_csv_row(writer, [
                     user.id,
                     user.telegram_id,
                     user.username,
@@ -295,14 +476,14 @@ def init_app(app):
         elif export_type == 'debts':
             writer.writerow(['id', 'user_id', 'bank_name', 'debt_type', 'product_name', 'total_amount', 'remaining_amount', 'status', 'next_payment_date', 'created_at', 'updated_at'])
             for debt in Debt.query.order_by(Debt.id.asc()).all():
-                writer.writerow([
+                _write_csv_row(writer, [
                     debt.id,
                     debt.user_id,
                     debt.bank_name,
                     debt.debt_type,
                     debt.product_name,
-                    float(debt.total_amount),
-                    float(debt.remaining_amount),
+                    str(debt.total_amount),
+                    str(debt.remaining_amount),
                     debt.status,
                     debt.next_payment_date.strftime('%Y-%m-%d') if debt.next_payment_date else '',
                     debt.created_at.strftime('%Y-%m-%d %H:%M:%S') if debt.created_at else '',
@@ -312,16 +493,16 @@ def init_app(app):
         elif export_type == 'payments':
             writer.writerow(['id', 'debt_id', 'amount', 'principal_amount', 'interest_amount', 'fee_amount', 'payment_date', 'remaining_after_payment', 'bank_remaining_after_payment', 'comment', 'created_at'])
             for payment in Payment.query.order_by(Payment.id.asc()).all():
-                writer.writerow([
+                _write_csv_row(writer, [
                     payment.id,
                     payment.debt_id,
-                    float(payment.amount),
-                    float(payment.principal_amount or 0),
-                    float(payment.interest_amount or 0),
-                    float(payment.fee_amount or 0),
+                    str(payment.amount),
+                    str(payment.principal_amount or 0),
+                    str(payment.interest_amount or 0),
+                    str(payment.fee_amount or 0),
                     payment.payment_date.strftime('%Y-%m-%d') if payment.payment_date else '',
-                    float(payment.remaining_after_payment),
-                    float(payment.bank_remaining_after_payment) if payment.bank_remaining_after_payment is not None else '',
+                    str(payment.remaining_after_payment),
+                    str(payment.bank_remaining_after_payment) if payment.bank_remaining_after_payment is not None else '',
                     payment.comment,
                     payment.created_at.strftime('%Y-%m-%d %H:%M:%S') if payment.created_at else '',
                 ])

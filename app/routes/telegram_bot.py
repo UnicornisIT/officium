@@ -1,3 +1,5 @@
+import secrets
+
 from flask import abort, current_app, jsonify, request
 
 from app.services.telegram_bot_service import (
@@ -15,7 +17,11 @@ def init_app(app, csrf=None):
 
         expected_secret = current_app.config.get('TELEGRAM_WEBHOOK_SECRET', '')
         provided_secret = request.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
-        if not expected_secret or not provided_secret or provided_secret != expected_secret:
+        if (
+            not expected_secret
+            or not provided_secret
+            or not secrets.compare_digest(str(provided_secret), str(expected_secret))
+        ):
             abort(403)
 
         update = request.get_json(silent=True)

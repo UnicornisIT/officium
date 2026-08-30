@@ -831,7 +831,7 @@ class DebtTypesTestCase(unittest.TestCase):
         self.assertEqual(summary['periods'][0]['rate'], 10.0)
         self.assertEqual(summary['periods'][1]['days'], 5)
         self.assertEqual(summary['periods'][1]['rate'], 20.0)
-        self.assertAlmostEqual(summary['total_overdue_interest'], 410.9589, places=3)
+        self.assertEqual(summary['total_overdue_interest'], 410.96)
 
     def test_recurring_payment_date_advances_after_required_payment(self):
         self.login()

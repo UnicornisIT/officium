@@ -10,16 +10,19 @@
 {% if success_message %}
 <div class="alert alert-success">{{ success_message }}</div>
 {% endif %}
+{% if error_message %}
+<div class="alert alert-danger" role="alert">{{ error_message }}</div>
+{% endif %}
 
 <form method="post" class="row g-3">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="col-md-6">
         <label class="form-label">Название приложения</label>
-        <input type="text" name="app_name" class="form-control" value="{{ settings.app_name }}">
+        <input type="text" name="app_name" class="form-control" maxlength="80" required value="{{ settings.app_name }}">
     </div>
     <div class="col-md-6">
         <label class="form-label">Валюта по умолчанию</label>
-        <input type="text" name="default_currency" class="form-control" value="{{ settings.default_currency }}">
+        <input type="text" name="default_currency" class="form-control" maxlength="3" pattern="[A-Za-z]{3}" required value="{{ settings.default_currency }}">
     </div>
     <div class="col-md-6">
         <div class="form-check form-switch mt-3">
@@ -35,7 +38,7 @@
     </div>
     <div class="col-md-6">
         <label class="form-label">Лимит долгов на пользователя</label>
-        <input type="number" name="debt_limit_per_user" class="form-control" value="{{ settings.debt_limit_per_user }}">
+        <input type="number" name="debt_limit_per_user" class="form-control" min="1" max="1000" required value="{{ settings.debt_limit_per_user }}">
     </div>
     <div class="col-md-6">
         <div class="form-check form-switch mt-3">
@@ -51,11 +54,11 @@
     </div>
     <div class="col-md-6">
         <label class="form-label">Предупреждать о платеже за (дней)</label>
-        <input type="number" name="payment_warning_days" class="form-control" value="{{ settings.payment_warning_days }}">
+        <input type="number" name="payment_warning_days" class="form-control" min="0" max="365" required value="{{ settings.payment_warning_days }}">
     </div>
     <div class="col-md-6">
         <label class="form-label">Считать платёж срочным за (дней)</label>
-        <input type="number" name="urgent_payment_days" class="form-control" value="{{ settings.urgent_payment_days }}">
+        <input type="number" name="urgent_payment_days" class="form-control" min="0" max="365" required value="{{ settings.urgent_payment_days }}">
     </div>
     <div class="col-md-6">
         <div class="form-check form-switch mt-3">
