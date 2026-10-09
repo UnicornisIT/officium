@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.13"
+    env:
+      FLASK_APP: run.py
+      OFFICIUM_ENV: development
+      DB_ENGINE: sqlite
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Compile Python sources
+        run: python -m compileall -q app tests config.py run.py
+
+      - name: Run unit tests
+        run: python -m unittest discover -v
+
+      - name: Verify migrations on temporary SQLite
+        shell: bash
+        run: |
+          export DATABASE_URL="sqlite:///${RUNNER_TEMP}/officium-ci-${{ matrix.python-version }}.sqlite"
+          python -m flask db upgrade
+          python -m flask db heads
+          python -m flask db check
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install application and audit dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements.txt
+          python -m pip install --disable-pip-version-check pip-audit
+
+      - name: Audit dependencies
+        run: python -m pip_audit
