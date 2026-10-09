@@ -404,9 +404,9 @@ def create_backups(config, tag):
 
 def run_deployment(config, tag):
     app_dir = Path(config['APP_DIR'])
-    deploy_source = app_dir / 'deploy.sh'
+    deploy_source = app_dir / 'scripts' / 'deploy.sh'
     if not deploy_source.is_file():
-        raise UpdateFailure('deploy.sh is missing from APP_DIR.')
+        raise UpdateFailure('scripts/deploy.sh is missing from APP_DIR.')
     runuser = shutil.which('runuser')
     if not runuser:
         raise UpdateFailure('runuser is not installed.')

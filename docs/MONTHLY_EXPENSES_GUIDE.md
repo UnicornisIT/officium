@@ -51,7 +51,7 @@
 ### CLI и утилиты
 - **[app/__init__.py](app/__init__.py)** — Добавлена CLI команда `generate-monthly-expenses`
 
-- **[deployment/officium-monthly-expenses.timer](deployment/officium-monthly-expenses.timer)** — production-расписание systemd с `Persistent=true` и ежедневным восстановительным запуском
+- **[deployment/officium-monthly-expenses.timer](../deployment/officium-monthly-expenses.timer)** — production-расписание systemd с `Persistent=true` и ежедневным восстановительным запуском
 
 - **[requirements.txt](requirements.txt)** — Добавлена зависимость `python-dateutil`
 

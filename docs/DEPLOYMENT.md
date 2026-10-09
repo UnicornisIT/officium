@@ -78,7 +78,7 @@ $env:FLASK_APP = 'run.py'
 ```
 
 Ожидается одна голова миграций, `current` на этой голове и сообщение
-`No new upgrade operations detected`. `init_db.sql` можно использовать только
+`No new upgrade operations detected`. `scripts/init_db.sql` можно использовать только
 для создания пустой MySQL-базы; схему создаёт исключительно Alembic.
 
 ## 4. Запуск
@@ -152,7 +152,7 @@ sudo visudo -cf /etc/sudoers.d/officium-updater
 
 Помощник принимает только безопасный тег, сам повторно проверяет его через GitHub
 API и умеет запустить только фиксированный сценарий обновления. Не заменяйте это
-правило разрешением на произвольные `systemctl`, shell или `deploy.sh` от root.
+правило разрешением на произвольные `systemctl`, shell или `scripts/deploy.sh` от root.
 
 2. Добавьте в `.env` приложения:
 
