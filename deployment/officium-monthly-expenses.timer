@@ -1,0 +1,14 @@
+[Unit]
+Description=Run Officium monthly-expense recovery every day
+Documentation=file:/var/www/debt_manager/MONTHLY_EXPENSES_GUIDE.md
+
+[Timer]
+# Daily execution makes the first run happen just after a new month starts and
+# provides automatic retries if the application or database was unavailable.
+OnCalendar=*-*-* 00:05:00 Europe/Moscow
+Persistent=true
+AccuracySec=1min
+Unit=officium-monthly-expenses.service
+
+[Install]
+WantedBy=timers.target

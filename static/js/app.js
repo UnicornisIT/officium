@@ -166,6 +166,149 @@ function initTelegramMiniApp() {
     });
 }
 
+function initMobileViewport() {
+    const root = document.documentElement;
+    const body = document.body;
+    const visualViewport = window.visualViewport;
+    const editableSelector = 'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable="true"]';
+    let activeField = null;
+    let animationFrame = null;
+    let stableHeight = Math.max(window.innerHeight, visualViewport ? visualViewport.height : 0);
+    const delayedChecks = new Set();
+
+    const readTelegramStableHeight = () => parseFloat(
+        getComputedStyle(root).getPropertyValue('--tg-viewport-stable-height')
+    );
+    const telegramStableHeight = readTelegramStableHeight();
+    if (Number.isFinite(telegramStableHeight)) stableHeight = Math.max(stableHeight, telegramStableHeight);
+
+    const viewportMetrics = () => ({
+        height: visualViewport ? visualViewport.height : window.innerHeight,
+        offsetTop: visualViewport ? visualViewport.offsetTop : 0,
+    });
+
+    const isEditable = element => element instanceof Element && element.matches(editableSelector);
+
+    const updateViewportState = () => {
+        const metrics = viewportMetrics();
+        if (!activeField) {
+            const currentTelegramStableHeight = readTelegramStableHeight();
+            stableHeight = Math.max(
+                window.innerHeight,
+                metrics.height + metrics.offsetTop,
+                Number.isFinite(currentTelegramStableHeight) ? currentTelegramStableHeight : 0,
+            );
+        }
+
+        const keyboardInset = activeField
+            ? Math.max(0, stableHeight - metrics.height - metrics.offsetTop)
+            : 0;
+        const keyboardOpen = Boolean(activeField && keyboardInset > 80);
+
+        root.style.setProperty('--app-visual-viewport-height', `${Math.round(metrics.height)}px`);
+        root.style.setProperty('--app-viewport-offset-top', `${Math.round(metrics.offsetTop)}px`);
+        root.style.setProperty('--app-stable-viewport-height', `${Math.round(stableHeight)}px`);
+        root.style.setProperty('--app-keyboard-inset', `${Math.round(keyboardInset)}px`);
+        body.classList.toggle('keyboard-open', keyboardOpen);
+        return { ...metrics, keyboardOpen };
+    };
+
+    const fieldGroup = field => field.closest('.mb-3, .form-floating, .input-group, .form-check') || field;
+
+    const revealActiveField = smooth => {
+        animationFrame = null;
+        if (!activeField || !document.contains(activeField)) return;
+
+        const metrics = updateViewportState();
+        const target = fieldGroup(activeField);
+        let rect = target.getBoundingClientRect();
+        const fieldRect = activeField.getBoundingClientRect();
+        const visibleTop = metrics.offsetTop + 12;
+        const visibleBottom = metrics.offsetTop + metrics.height - 18;
+
+        // Very tall groups (for example a textarea with help text) should still
+        // prioritize the label and the focused control rather than their footer.
+        if (rect.height > metrics.height - 30) {
+            rect = {
+                top: Math.min(rect.top, fieldRect.top - 34),
+                bottom: fieldRect.bottom,
+            };
+        }
+
+        let delta = 0;
+        if (rect.bottom > visibleBottom) delta = rect.bottom - visibleBottom;
+        if (rect.top - delta < visibleTop) delta = rect.top - visibleTop;
+        if (Math.abs(delta) < 2) return;
+
+        const modalScroller = activeField.closest('.modal-body');
+        const behavior = smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            ? 'smooth'
+            : 'auto';
+        if (modalScroller && modalScroller.scrollHeight > modalScroller.clientHeight) {
+            modalScroller.scrollBy({ top: delta, behavior });
+        } else {
+            window.scrollBy({ top: delta, behavior });
+        }
+    };
+
+    const queueReveal = (smooth = false) => {
+        if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+        animationFrame = requestAnimationFrame(() => revealActiveField(smooth));
+    };
+
+    const scheduleDelayedReveal = delay => {
+        const timer = window.setTimeout(() => {
+            delayedChecks.delete(timer);
+            if (activeField) queueReveal(false);
+        }, delay);
+        delayedChecks.add(timer);
+    };
+
+    document.addEventListener('focusin', event => {
+        if (!isEditable(event.target)) return;
+        activeField = event.target;
+        updateViewportState();
+        queueReveal(true);
+        scheduleDelayedReveal(90);
+        scheduleDelayedReveal(280);
+    });
+
+    document.addEventListener('focusout', () => {
+        window.setTimeout(() => {
+            activeField = isEditable(document.activeElement) ? document.activeElement : null;
+            if (!activeField) {
+                delayedChecks.forEach(timer => clearTimeout(timer));
+                delayedChecks.clear();
+            }
+            updateViewportState();
+            if (activeField) queueReveal(false);
+        }, 120);
+    });
+
+    const handleViewportChange = () => {
+        updateViewportState();
+        if (activeField) queueReveal(false);
+    };
+    if (visualViewport) {
+        visualViewport.addEventListener('resize', handleViewportChange);
+        visualViewport.addEventListener('scroll', handleViewportChange);
+    }
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('orientationchange', () => {
+        window.setTimeout(() => {
+            const metrics = viewportMetrics();
+            const currentTelegramStableHeight = readTelegramStableHeight();
+            stableHeight = Math.max(
+                window.innerHeight,
+                metrics.height + metrics.offsetTop,
+                Number.isFinite(currentTelegramStableHeight) ? currentTelegramStableHeight : 0,
+            );
+            handleViewportChange();
+        }, 280);
+    });
+    updateViewportState();
+}
+
 function toggleTheme() {
     const current = document.documentElement.getAttribute('data-theme') || 'dark';
     applyTheme(current === 'dark' ? 'light' : 'dark');
@@ -1399,6 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Telegram WebView и тема интерфейса
     initTelegramMiniApp();
+    initMobileViewport();
     initThemeToggle();
     initNavbarLayout();
     initOperationHistories();

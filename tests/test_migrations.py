@@ -60,6 +60,7 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20260823_firstpay'], '20260823_earlyplan')
         self.assertEqual(revisions['20260824_combpay'], '20260823_firstpay')
         self.assertEqual(revisions['20260829_integrity'], '20260824_combpay')
+        self.assertEqual(revisions['20261009_monthly_settings'], '20260829_integrity')
 
         referenced = set()
         for down_revision in revisions.values():
@@ -68,7 +69,7 @@ class MigrationContractTestCase(unittest.TestCase):
             elif down_revision:
                 referenced.add(down_revision)
         heads = set(revisions) - referenced
-        self.assertEqual(heads, {'20260829_integrity'})
+        self.assertEqual(heads, {'20261009_monthly_settings'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))
@@ -98,3 +99,16 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertIn('refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG', deploy_text)
         self.assertIn('git checkout --detach', deploy_text)
         self.assertIn('Tracked local changes found', deploy_text)
+
+    def test_monthly_expense_timer_is_persistent_and_has_daily_recovery(self):
+        timer_text = (
+            PROJECT_ROOT / 'deployment' / 'officium-monthly-expenses.timer'
+        ).read_text(encoding='utf-8')
+        service_text = (
+            PROJECT_ROOT / 'deployment' / 'officium-monthly-expenses.service'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('OnCalendar=*-*-* 00:05:00 Europe/Moscow', timer_text)
+        self.assertIn('Persistent=true', timer_text)
+        self.assertIn('generate-monthly-expenses', service_text)
+        self.assertNotIn('gunicorn', service_text.lower())

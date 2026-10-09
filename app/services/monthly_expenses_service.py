@@ -1,7 +1,8 @@
 """Service for managing monthly (recurring) expenses."""
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 import uuid
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil.relativedelta import relativedelta
 from flask import current_app
@@ -33,7 +34,23 @@ def _today():
         return configured
     if isinstance(configured, str) and configured:
         return date.fromisoformat(configured)
-    return date.today()
+
+    try:
+        timezone_name = current_app.config.get('APP_TIMEZONE', 'Europe/Moscow')
+    except RuntimeError:
+        timezone_name = 'Europe/Moscow'
+    # Europe/Moscow has stayed at UTC+03:00 since 2014. Keeping this explicit
+    # fallback also makes the default work on Windows hosts without IANA tzdata.
+    if timezone_name == 'Europe/Moscow':
+        return datetime.now(timezone(timedelta(hours=3))).date()
+    try:
+        return datetime.now(ZoneInfo(timezone_name)).date()
+    except ZoneInfoNotFoundError:
+        try:
+            current_app.logger.error('Unknown APP_TIMEZONE %s; using the server date', timezone_name)
+        except RuntimeError:
+            pass
+        return date.today()
 
 
 def _month_key(value):
@@ -70,11 +87,13 @@ def _month_bounds(month):
     return start, _next_month(start)
 
 
-def _ensure_monthly_identity(expense):
+def _ensure_monthly_identity(expense, anchor_day=None):
     if not expense.monthly_group_id:
         expense.monthly_group_id = str(uuid.uuid4())
     if not expense.generated_for_month:
         expense.generated_for_month = _month_key(expense.expense_date)
+    if not expense.monthly_anchor_day:
+        expense.monthly_anchor_day = anchor_day or expense.expense_date.day
 
 
 def find_monthly_expense_for_month(user_id, monthly_group_id, month, exclude_expense_id=None):
@@ -93,79 +112,113 @@ def find_monthly_expense_for_month(user_id, monthly_group_id, month, exclude_exp
     return query.first()
 
 
-def _create_monthly_copy(source_expense, target_month):
+def _create_monthly_copy(settings_expense, origin_expense, target_month, anchor_day):
     return Expense(
-        user_id=source_expense.user_id,
-        amount=source_expense.amount,
-        category=source_expense.category,
-        title=source_expense.title,
-        expense_date=_date_in_month(source_expense.expense_date.day, target_month),
-        payment_method=source_expense.payment_method,
-        comment=source_expense.comment,
+        user_id=settings_expense.user_id,
+        amount=settings_expense.amount,
+        category=settings_expense.category,
+        title=settings_expense.title,
+        expense_date=_date_in_month(anchor_day, target_month),
+        payment_method=settings_expense.payment_method,
+        comment=settings_expense.comment,
         is_monthly=True,
-        monthly_group_id=source_expense.monthly_group_id,
-        generated_from_id=source_expense.id,
+        monthly_group_id=settings_expense.monthly_group_id,
+        generated_from_id=origin_expense.id,
         generated_for_month=_month_key(target_month),
+        monthly_anchor_day=anchor_day,
+        monthly_settings_updated_at=settings_expense.monthly_settings_updated_at,
     )
 
 
-def _pick_source_expense(expenses):
+def _pick_origin_expense(expenses):
     roots = [expense for expense in expenses if expense.generated_from_id is None]
     candidates = roots or list(expenses)
     return sorted(candidates, key=lambda expense: (expense.expense_date, expense.id or 0))[0]
+
+
+def _pick_settings_expense(expenses):
+    """Pick the explicitly edited snapshot used only for future occurrences."""
+    configured = [expense for expense in expenses if expense.monthly_settings_updated_at]
+    if not configured:
+        # Legacy rows predate the explicit settings revision. The most recent
+        # active occurrence best represents the user's current settings, while
+        # the separate origin still supplies the original recurrence day.
+        return max(expenses, key=lambda expense: (expense.expense_date, expense.id or 0))
+    return max(
+        configured,
+        key=lambda expense: (
+            expense.monthly_settings_updated_at,
+            expense.expense_date,
+            expense.id or 0,
+        ),
+    )
+
+
+def _group_expenses(user_id, monthly_group_id):
+    return Expense.query.filter_by(
+        user_id=user_id,
+        monthly_group_id=monthly_group_id,
+    ).order_by(Expense.expense_date.asc(), Expense.id.asc()).all()
 
 
 def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, end_month, source_expense=None):
     """Create missing monthly copies for one group in an inclusive month range."""
     stats = _stats(user_id=user_id, target_month=_month_key(end_month))
 
-    if source_expense is None:
-        group_expenses = Expense.query.filter_by(
-            user_id=user_id,
-            monthly_group_id=monthly_group_id,
-        ).all()
-        if not group_expenses:
-            return stats
-        source_expense = _pick_source_expense(group_expenses)
+    group_expenses = _group_expenses(user_id, monthly_group_id)
+    active_expenses = [expense for expense in group_expenses if expense.is_monthly]
+    if not active_expenses:
+        return stats
 
-    _ensure_monthly_identity(source_expense)
-    source_month = _month_key(source_expense.expense_date)
+    origin_expense = _pick_origin_expense(group_expenses)
+    if source_expense is None or not source_expense.is_monthly:
+        source_expense = _pick_settings_expense(active_expenses)
+
+    anchor_day = source_expense.monthly_anchor_day or origin_expense.monthly_anchor_day or origin_expense.expense_date.day
+    _ensure_monthly_identity(origin_expense, anchor_day=anchor_day)
+    _ensure_monthly_identity(source_expense, anchor_day=anchor_day)
+    source_month = _month_key(origin_expense.expense_date)
 
     if _month_start(end_month) < _month_start(start_month):
         return stats
 
-    for month in _iter_months(start_month, end_month):
-        existing = find_monthly_expense_for_month(
-            user_id,
-            monthly_group_id,
-            month,
-            exclude_expense_id=source_expense.id if month != source_month else None,
-        )
-        if existing:
-            stats['skipped'] += 1
-            continue
-
-        if month == source_month:
-            stats['skipped'] += 1
-            continue
-
-        db.session.add(_create_monthly_copy(source_expense, month))
-        stats['created'] += 1
-
     try:
+        for month in _iter_months(start_month, end_month):
+            if find_monthly_expense_for_month(user_id, monthly_group_id, month):
+                stats['skipped'] += 1
+                continue
+
+            if month == source_month:
+                stats['skipped'] += 1
+                continue
+
+            try:
+                # The savepoint lets a competing worker win one month without
+                # rolling back other missing months in this series. The unique
+                # index remains the final authority across processes.
+                with db.session.begin_nested():
+                    db.session.add(_create_monthly_copy(
+                        source_expense,
+                        origin_expense,
+                        month,
+                        anchor_day,
+                    ))
+                    db.session.flush()
+                stats['created'] += 1
+            except IntegrityError:
+                stats['skipped'] += 1
+                try:
+                    current_app.logger.info(
+                        'Monthly expense occurrence was already created concurrently '
+                        'for user %s group %s month %s',
+                        user_id,
+                        monthly_group_id,
+                        month,
+                    )
+                except RuntimeError:
+                    pass
+
         db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        stats['created'] = 0
-        stats['errors'] += 1
-        try:
-            current_app.logger.warning(
-                'Monthly expense generation hit a concurrent duplicate for user %s group %s',
-                user_id,
-                monthly_group_id,
-            )
-        except RuntimeError:
-            pass
     except Exception:
         db.session.rollback()
         stats['created'] = 0
@@ -192,7 +245,9 @@ def generate_monthly_expenses_from_start_date(expense_id, end_month=None):
     _ensure_monthly_identity(source_expense)
     db.session.flush()
 
-    start_month = _month_key(source_expense.expense_date)
+    group_expenses = _group_expenses(source_expense.user_id, source_expense.monthly_group_id)
+    origin_expense = _pick_origin_expense(group_expenses)
+    start_month = _month_key(origin_expense.expense_date)
     end_month = _month_key(end_month or _today())
     return generate_monthly_expenses_between(
         source_expense.user_id,
@@ -224,9 +279,11 @@ def generate_monthly_expenses(user_id=None, target_month=None):
     for expense in query.order_by(Expense.user_id.asc(), Expense.expense_date.asc(), Expense.id.asc()).all():
         grouped.setdefault((expense.user_id, expense.monthly_group_id), []).append(expense)
 
-    for (group_user_id, monthly_group_id), group_expenses in grouped.items():
-        source_expense = _pick_source_expense(group_expenses)
-        start_month = _month_key(source_expense.expense_date)
+    for (group_user_id, monthly_group_id), active_expenses in grouped.items():
+        group_expenses = _group_expenses(group_user_id, monthly_group_id)
+        origin_expense = _pick_origin_expense(group_expenses)
+        source_expense = _pick_settings_expense(active_expenses)
+        start_month = _month_key(origin_expense.expense_date)
         if _month_start(start_month) > _month_start(target_month):
             stats['skipped'] += 1
             continue

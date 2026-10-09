@@ -4,6 +4,7 @@ import json
 import re
 import time
 import unittest
+from pathlib import Path
 from urllib.parse import urlencode
 
 from app import create_app
@@ -13,6 +14,7 @@ from extensions import db
 
 
 BOT_TOKEN = '123456:test-token'
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def build_init_data(user=None, auth_date=None, **extra):
@@ -187,6 +189,22 @@ class TelegramMiniAppRouteTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(response.get_json()['success'])
+
+    def test_mobile_keyboard_uses_visual_viewport_and_hides_fixed_navigation(self):
+        script = (PROJECT_ROOT / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+        styles = (PROJECT_ROOT / 'static' / 'css' / 'style.css').read_text(encoding='utf-8')
+        income_template = (PROJECT_ROOT / 'templates' / 'incomes.html').read_text(encoding='utf-8')
+        expense_template = (PROJECT_ROOT / 'templates' / 'expenses.html').read_text(encoding='utf-8')
+
+        self.assertIn('window.visualViewport', script)
+        self.assertIn("document.addEventListener('focusin'", script)
+        self.assertIn("document.addEventListener('focusout'", script)
+        self.assertIn("visualViewport.addEventListener('resize'", script)
+        self.assertIn("body.classList.toggle('keyboard-open'", script)
+        self.assertIn('body.keyboard-open .telegram-bottom-nav', styles)
+        self.assertIn('--app-visual-viewport-height', styles)
+        self.assertIn('inputmode="decimal"', income_template)
+        self.assertIn('inputmode="decimal"', expense_template)
 
 
 if __name__ == '__main__':

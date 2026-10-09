@@ -356,6 +356,7 @@ class Expense(db.Model):
             'generated_for_month',
             unique=True,
         ),
+        db.Index('ix_expenses_monthly_active', 'is_monthly', 'user_id', 'monthly_group_id'),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -377,6 +378,12 @@ class Expense(db.Model):
         nullable=True,
     )
     generated_for_month = db.Column(db.String(7), nullable=True)  # YYYY-MM формат
+    # The requested day is stored separately because a 29th/30th/31st occurrence
+    # can be clamped in February without changing the day used in later months.
+    monthly_anchor_day = db.Column(db.SmallInteger, nullable=True)
+    # The most recently edited occurrence is the settings snapshot for future
+    # months. Historical occurrences keep their own amount/category/title.
+    monthly_settings_updated_at = db.Column(db.DateTime, nullable=True)
 
     user = db.relationship('User', back_populates='expenses')
 
@@ -395,6 +402,11 @@ class Expense(db.Model):
             'monthly_group_id': self.monthly_group_id,
             'generated_from_id': self.generated_from_id,
             'generated_for_month': self.generated_for_month,
+            'monthly_anchor_day': self.monthly_anchor_day,
+            'monthly_settings_updated_at': (
+                self.monthly_settings_updated_at.isoformat()
+                if self.monthly_settings_updated_at else None
+            ),
         }
 
     def __repr__(self):

@@ -20,6 +20,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ```env
 OFFICIUM_ENV=production
+APP_TIMEZONE=Europe/Moscow
 SECRET_KEY=<уникальный секрет не короче 32 символов>
 FLASK_DEBUG=false
 SESSION_COOKIE_SECURE=true
@@ -196,7 +197,44 @@ GitHub Release. Поддерживаются теги до 128 символов 
 root-owned помощник не обновляется из Git checkout намеренно: если его версия
 изменилась в новом релизе, повторите команду `install` после проверки файла.
 
-## 7. Откат
+## 7. Автоматические ежемесячные расходы
+
+Генератор запускается отдельным systemd timer, а не внутри Flask/Waitress worker.
+Штатное расписание — ежедневно в 00:05 по `Europe/Moscow`: первого числа записи
+появляются в первые минуты месяца, а ежедневный повтор автоматически восстанавливает
+пропуски после недоступности приложения или БД. Команда идемпотентна, а уникальный
+индекс БД защищает от параллельных запусков.
+
+После обновления кода и `flask db upgrade` установите units. Если каталог,
+виртуальное окружение, пользователь или группа отличаются от примера, сначала
+отредактируйте копию `officium-monthly-expenses.service`:
+
+```bash
+cd /var/www/debt_manager
+sudo install -o root -g root -m 0644 deployment/officium-monthly-expenses.service /etc/systemd/system/officium-monthly-expenses.service
+sudo install -o root -g root -m 0644 deployment/officium-monthly-expenses.timer /etc/systemd/system/officium-monthly-expenses.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now officium-monthly-expenses.timer
+sudo systemctl start officium-monthly-expenses.service
+systemctl status officium-monthly-expenses.timer --no-pager
+systemctl list-timers officium-monthly-expenses.timer --no-pager
+journalctl -u officium-monthly-expenses.service -n 100 --no-pager
+```
+
+Для проверки без ожидания нового месяца задайте целевой месяц явно. Повторите
+команду дважды: во втором результате `Generated` должен быть `0`, а записи должны
+перейти в `Skipped`.
+
+```bash
+cd /var/www/debt_manager
+target_month=$(TZ=Europe/Moscow date +%Y-%m)
+sudo -u officium venv/bin/python -m flask --app run.py generate-monthly-expenses --month "$target_month"
+```
+
+Указывайте только текущий или уже наступивший месяц при production-проверке:
+CLI технически принимает явный месяц для тестов и аварийного восстановления.
+
+## 8. Откат
 
 Миграции проекта намеренно не полагаются на автоматический downgrade для
 операций с пользовательскими финансами. При проблеме:

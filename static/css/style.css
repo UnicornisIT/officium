@@ -21,6 +21,10 @@
     --split-clr:   #8b5cf6;
     --card-radius: 14px;
     --transition:  0.18s ease;
+    --app-visual-viewport-height: 100dvh;
+    --app-stable-viewport-height: 100dvh;
+    --app-viewport-offset-top: 0px;
+    --app-keyboard-inset: 0px;
 }
 
 :root[data-theme="dark"] {
@@ -51,6 +55,7 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    min-height: var(--app-stable-viewport-height, 100dvh);
     line-height: 1.6;
 }
 
@@ -4220,6 +4225,31 @@ body.telegram-mini-app {
     background: color-mix(in srgb, var(--tg-theme-secondary-bg-color, var(--bg-card)) 91%, transparent);
     box-shadow: 0 -12px 40px rgba(3, 7, 18, 0.11);
     backdrop-filter: blur(24px) saturate(160%);
+    transition: transform 0.18s ease, opacity 0.14s ease, visibility 0.18s;
+}
+
+body.keyboard-open.telegram-mini-app,
+body.keyboard-open.has-mobile-app-nav {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+body.keyboard-open .telegram-bottom-nav {
+    visibility: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate3d(0, calc(100% + env(safe-area-inset-bottom)), 0);
+}
+
+body.keyboard-open .app-main {
+    min-height: var(--app-stable-viewport-height, 100dvh);
+    scroll-padding-bottom: 28px;
+}
+
+body.keyboard-open input,
+body.keyboard-open textarea,
+body.keyboard-open select,
+body.keyboard-open [contenteditable="true"] {
+    scroll-margin-block: 72px 24px;
 }
 
 .telegram-bottom-nav a,
@@ -4378,6 +4408,12 @@ body.telegram-mini-app {
     .telegram-mini-app .modal-header { padding: 18px 18px 12px; }
     .telegram-mini-app .modal-body { padding: 14px 18px 20px; overflow-y: auto; }
     .telegram-mini-app .modal-footer { padding: 12px 18px max(18px, env(safe-area-inset-bottom)); }
+    .telegram-mini-app.keyboard-open .modal-dialog {
+        min-height: var(--app-visual-viewport-height, 100dvh);
+    }
+    .telegram-mini-app.keyboard-open .modal-content {
+        max-height: calc(var(--app-visual-viewport-height, 100dvh) - 8px);
+    }
     .telegram-more-menu__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 

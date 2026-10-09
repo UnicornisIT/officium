@@ -71,6 +71,9 @@ def init_app(app):
                     # Если это ежемесячный расход, создаём monthly_group_id
                     if is_monthly:
                         expense.monthly_group_id = str(uuid.uuid4())
+                        expense.generated_for_month = expense_date.strftime('%Y-%m')
+                        expense.monthly_anchor_day = expense_date.day
+                        expense.monthly_settings_updated_at = datetime.utcnow()
                     
                     db.session.add(expense)
                     db.session.commit()
@@ -324,6 +327,8 @@ def init_app(app):
                     if not expense.monthly_group_id:
                         expense.monthly_group_id = str(uuid.uuid4())
                     expense.generated_for_month = expense_date.strftime('%Y-%m')
+                    expense.monthly_anchor_day = expense_date.day
+                    expense.monthly_settings_updated_at = datetime.utcnow()
 
                     duplicate = find_monthly_expense_for_month(
                         current_user.id,
@@ -563,6 +568,8 @@ def _update_monthly_expense_from_import(expense, amount, expense_date, payment_m
     expense.comment = comment
     expense.generated_for_month = target_month
     expense.is_monthly = True
+    expense.monthly_anchor_day = expense_date.day
+    expense.monthly_settings_updated_at = datetime.utcnow()
 
 
 def _import_dir():

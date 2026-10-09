@@ -3,7 +3,9 @@
 import unittest
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 from dateutil.relativedelta import relativedelta
+from sqlalchemy.exc import IntegrityError
 
 from app import create_app
 from app.models import User, Expense
@@ -533,6 +535,270 @@ class MonthlyExpensesTestCase(unittest.TestCase):
             self.assertEqual(len(records), initial_count)
             self.assertFalse(any(record.expense_date.strftime('%Y-%m') == '2026-06' for record in records))
             self.assertTrue(all(not record.is_monthly for record in records))
+
+    def test_september_to_october_and_year_rollover(self):
+        with self.app.app_context():
+            expense = Expense(
+                user_id=self.user_id,
+                amount=Decimal('680.00'),
+                category='subscriptions',
+                title='ChatGPT',
+                expense_date=date(2026, 9, 19),
+                is_monthly=True,
+                monthly_group_id='calendar-rollover',
+                generated_for_month='2026-09',
+                monthly_anchor_day=19,
+            )
+            db.session.add(expense)
+            db.session.commit()
+
+            stats = generate_monthly_expenses(target_month='2027-01')
+            records = Expense.query.filter_by(monthly_group_id='calendar-rollover').order_by(Expense.expense_date).all()
+
+            self.assertEqual(stats['created'], 4)
+            self.assertEqual([item.expense_date for item in records], [
+                date(2026, 9, 19),
+                date(2026, 10, 19),
+                date(2026, 11, 19),
+                date(2026, 12, 19),
+                date(2027, 1, 19),
+            ])
+
+    def test_anchor_days_29_30_and_31_cover_leap_and_non_leap_february(self):
+        with self.app.app_context():
+            for day in (29, 30, 31):
+                db.session.add(Expense(
+                    user_id=self.user_id,
+                    amount=day,
+                    category='subscriptions',
+                    title=f'Day {day}',
+                    expense_date=date(2027, 1, day),
+                    is_monthly=True,
+                    monthly_group_id=f'anchor-{day}',
+                    generated_for_month='2027-01',
+                    monthly_anchor_day=day,
+                ))
+            db.session.commit()
+
+            generate_monthly_expenses(target_month='2028-03')
+
+            for day in (29, 30, 31):
+                group_id = f'anchor-{day}'
+                feb_2027 = Expense.query.filter_by(
+                    monthly_group_id=group_id,
+                    generated_for_month='2027-02',
+                ).one()
+                feb_2028 = Expense.query.filter_by(
+                    monthly_group_id=group_id,
+                    generated_for_month='2028-02',
+                ).one()
+                mar_2028 = Expense.query.filter_by(
+                    monthly_group_id=group_id,
+                    generated_for_month='2028-03',
+                ).one()
+                self.assertEqual(feb_2027.expense_date, date(2027, 2, 28))
+                self.assertEqual(feb_2028.expense_date, date(2028, 2, 29))
+                self.assertEqual(mar_2028.expense_date.day, day)
+
+    def test_edit_updates_future_settings_without_rewriting_history(self):
+        with self.app.app_context():
+            self.post_expense(
+                amount='680',
+                category='subscriptions',
+                title='ChatGPT',
+                expense_date='2026-03-19',
+                payment_method='card',
+                comment='old settings',
+                is_monthly='on',
+            )
+            may = Expense.query.filter_by(
+                title='ChatGPT',
+                generated_for_month='2026-05',
+            ).one()
+            march = Expense.query.filter_by(
+                title='ChatGPT',
+                generated_for_month='2026-03',
+            ).one()
+
+            response = self.post_expense_edit(
+                may.id,
+                amount='750.50',
+                category='communication',
+                title='ChatGPT Plus',
+                expense_date='2026-05-31',
+                payment_method='cash',
+                comment='new settings',
+                is_monthly='on',
+            )
+            self.assertEqual(response.status_code, 302)
+
+            generate_monthly_expenses(target_month='2026-07')
+            db.session.refresh(march)
+            june = Expense.query.filter_by(
+                monthly_group_id=march.monthly_group_id,
+                generated_for_month='2026-06',
+            ).one()
+            july = Expense.query.filter_by(
+                monthly_group_id=march.monthly_group_id,
+                generated_for_month='2026-07',
+            ).one()
+
+            self.assertEqual(march.amount, Decimal('680.00'))
+            self.assertEqual(march.title, 'ChatGPT')
+            self.assertEqual(june.amount, Decimal('750.50'))
+            self.assertEqual(june.category, 'communication')
+            self.assertEqual(june.title, 'ChatGPT Plus')
+            self.assertEqual(june.payment_method, 'cash')
+            self.assertEqual(june.comment, 'new settings')
+            self.assertEqual(june.expense_date, date(2026, 6, 30))
+            self.assertEqual(july.expense_date, date(2026, 7, 31))
+
+    def test_multiple_series_recover_several_missed_months(self):
+        with self.app.app_context():
+            db.session.add_all([
+                Expense(
+                    user_id=self.user_id,
+                    amount=100,
+                    category='rent',
+                    title='Rent',
+                    expense_date=date(2026, 1, 5),
+                    is_monthly=True,
+                    monthly_group_id='missed-rent',
+                    generated_for_month='2026-01',
+                ),
+                Expense(
+                    user_id=self.user_id,
+                    amount=200,
+                    category='subscriptions',
+                    title='Service',
+                    expense_date=date(2026, 2, 10),
+                    is_monthly=True,
+                    monthly_group_id='missed-service',
+                    generated_for_month='2026-02',
+                ),
+            ])
+            db.session.commit()
+
+            first = generate_monthly_expenses(target_month='2026-05')
+            second = generate_monthly_expenses(target_month='2026-05')
+
+            self.assertEqual(first['created'], 7)
+            self.assertEqual(second['created'], 0)
+            self.assertEqual(Expense.query.filter_by(monthly_group_id='missed-rent').count(), 5)
+            self.assertEqual(Expense.query.filter_by(monthly_group_id='missed-service').count(), 4)
+
+    def test_legacy_series_uses_latest_values_but_original_anchor_day(self):
+        with self.app.app_context():
+            origin = Expense(
+                user_id=self.user_id,
+                amount=100,
+                category='subscriptions',
+                title='Legacy subscription',
+                expense_date=date(2026, 1, 31),
+                is_monthly=True,
+                monthly_group_id='legacy-series',
+                generated_for_month='2026-01',
+            )
+            db.session.add(origin)
+            db.session.flush()
+            february = Expense(
+                user_id=self.user_id,
+                amount=200,
+                category='communication',
+                title='Legacy edited subscription',
+                expense_date=date(2026, 2, 28),
+                is_monthly=True,
+                monthly_group_id='legacy-series',
+                generated_from_id=origin.id,
+                generated_for_month='2026-02',
+            )
+            db.session.add(february)
+            db.session.commit()
+
+            generate_monthly_expenses(target_month='2026-03')
+            march = Expense.query.filter_by(
+                monthly_group_id='legacy-series',
+                generated_for_month='2026-03',
+            ).one()
+
+            self.assertEqual(march.amount, Decimal('200.00'))
+            self.assertEqual(march.category, 'communication')
+            self.assertEqual(march.title, 'Legacy edited subscription')
+            self.assertEqual(march.expense_date, date(2026, 3, 31))
+
+    def test_database_constraint_rejects_parallel_duplicate_occurrence(self):
+        with self.app.app_context():
+            first = Expense(
+                user_id=self.user_id,
+                amount=100,
+                category='rent',
+                title='First worker',
+                expense_date=date(2026, 10, 15),
+                is_monthly=True,
+                monthly_group_id='parallel-series',
+                generated_for_month='2026-10',
+            )
+            second = Expense(
+                user_id=self.user_id,
+                amount=100,
+                category='rent',
+                title='Second worker',
+                expense_date=date(2026, 10, 15),
+                is_monthly=True,
+                monthly_group_id='parallel-series',
+                generated_for_month='2026-10',
+            )
+            db.session.add_all([first, second])
+
+            with self.assertRaises(IntegrityError):
+                db.session.commit()
+            db.session.rollback()
+
+    def test_concurrent_duplicate_does_not_rollback_other_missing_months(self):
+        with self.app.app_context():
+            origin = Expense(
+                user_id=self.user_id,
+                amount=100,
+                category='rent',
+                title='Concurrent rent',
+                expense_date=date(2026, 1, 15),
+                is_monthly=True,
+                monthly_group_id='concurrent-recovery',
+                generated_for_month='2026-01',
+            )
+            db.session.add(origin)
+            db.session.flush()
+            db.session.add(Expense(
+                user_id=self.user_id,
+                amount=100,
+                category='rent',
+                title='Concurrent rent',
+                expense_date=date(2026, 2, 15),
+                is_monthly=True,
+                monthly_group_id='concurrent-recovery',
+                generated_from_id=origin.id,
+                generated_for_month='2026-02',
+            ))
+            db.session.commit()
+
+            # Simulate a stale pre-insert read in a second worker. The unique
+            # index rejects February inside a savepoint; March must still commit.
+            with patch(
+                'app.services.monthly_expenses_service.find_monthly_expense_for_month',
+                return_value=None,
+            ):
+                stats = generate_monthly_expenses(target_month='2026-03')
+
+            self.assertEqual(stats['created'], 1)
+            self.assertEqual(stats['errors'], 0)
+            self.assertEqual(Expense.query.filter_by(
+                monthly_group_id='concurrent-recovery',
+                generated_for_month='2026-02',
+            ).count(), 1)
+            self.assertEqual(Expense.query.filter_by(
+                monthly_group_id='concurrent-recovery',
+                generated_for_month='2026-03',
+            ).count(), 1)
 
 
 if __name__ == '__main__':
