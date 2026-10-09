@@ -57,7 +57,7 @@ Copy-Item .env.example .env
 
 ```env
 OFFICIUM_ENV=development
-SECRET_KEY=local-only-random-secret-at-least-32-characters
+SECRET_KEY=
 FLASK_DEBUG=true
 SESSION_COOKIE_SECURE=false
 DB_ENGINE=sqlite
@@ -125,11 +125,20 @@ ADMIN_PASSWORD_HASH=
 
 `.env` нельзя коммитить в git.
 
+В development пустой `SECRET_KEY` заменяется случайным ключом, который живёт
+только до перезапуска процесса; приложение записывает об этом предупреждение.
+В production ключ обязателен. Для аварийного админ-входа поддерживается только
+`ADMIN_PASSWORD_HASH`. Создать хеш без вывода пароля в командную строку:
+
+```powershell
+python -c "from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass()))"
+```
+
 В режиме `OFFICIUM_ENV=production` приложение откажется запускаться со слабым
 `SECRET_KEY`, с debug/dev/test-входом, небезопасной cookie сессии, без токена
 включённых Telegram-функций, без секрета включённого Telegram webhook, без
 реквизитов включённого Google OAuth или без хеша пароля включённого аварийного
-админ-входа. Обычный `ADMIN_PASSWORD` в production не принимается.
+админ-входа.
 
 ## Миграции
 

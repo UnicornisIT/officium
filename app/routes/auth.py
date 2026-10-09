@@ -1,5 +1,4 @@
 import hashlib
-import secrets
 from datetime import datetime, timedelta
 from flask import jsonify, redirect, render_template, request, url_for, flash, session, abort, current_app
 from flask_login import UserMixin, current_user, login_user, logout_user
@@ -164,7 +163,7 @@ def init_app(app):
         is_impersonating = session.get('original_admin_id') is not None
         is_telegram_mini_app = bool(session.get('telegram_mini_app'))
         mini_app_short_name = app.config.get('TELEGRAM_MINI_APP_SHORT_NAME', '')
-        mini_app_enabled = app.config.get('TELEGRAM_MINI_APP_ENABLED', True)
+        mini_app_enabled = app.config.get('TELEGRAM_MINI_APP_ENABLED', False)
         return dict(
             current_user=current_user,
             app_name=app_name,
@@ -248,7 +247,7 @@ def init_app(app):
     def login():
         if current_user.is_authenticated:
             return redirect(url_for('index'))
-        telegram_allowed = get_setting('telegram_login_enabled', app.config.get('TELEGRAM_LOGIN_ENABLED', 'true'))
+        telegram_allowed = get_setting('telegram_login_enabled', app.config.get('TELEGRAM_LOGIN_ENABLED', 'false'))
         if isinstance(telegram_allowed, str):
             telegram_allowed = telegram_allowed.lower() in ('1', 'true', 'yes', 'on')
         return render_template(
@@ -262,7 +261,7 @@ def init_app(app):
 
     @app.route('/telegram-app')
     def telegram_mini_app():
-        if not app.config.get('TELEGRAM_MINI_APP_ENABLED', True):
+        if not app.config.get('TELEGRAM_MINI_APP_ENABLED', False):
             abort(404)
         if current_user.is_authenticated:
             session['telegram_mini_app'] = True
@@ -275,10 +274,10 @@ def init_app(app):
 
     @app.route('/auth/telegram-mini-app', methods=['POST'])
     def telegram_mini_app_login():
-        if not app.config.get('TELEGRAM_MINI_APP_ENABLED', True):
+        if not app.config.get('TELEGRAM_MINI_APP_ENABLED', False):
             return jsonify({'success': False, 'error': 'Telegram Mini App отключён.'}), 404
 
-        telegram_allowed = get_setting('telegram_login_enabled', app.config.get('TELEGRAM_LOGIN_ENABLED', 'true'))
+        telegram_allowed = get_setting('telegram_login_enabled', app.config.get('TELEGRAM_LOGIN_ENABLED', 'false'))
         if isinstance(telegram_allowed, str):
             telegram_allowed = telegram_allowed.lower() in ('1', 'true', 'yes', 'on')
         if not telegram_allowed:
@@ -421,7 +420,7 @@ def init_app(app):
         data = request.args.to_dict()
         bot_username = app.config.get('TELEGRAM_BOT_USERNAME', '')
 
-        telegram_allowed = get_setting('telegram_login_enabled', app.config.get('TELEGRAM_LOGIN_ENABLED', 'true'))
+        telegram_allowed = get_setting('telegram_login_enabled', app.config.get('TELEGRAM_LOGIN_ENABLED', 'false'))
         if isinstance(telegram_allowed, str):
             telegram_allowed = telegram_allowed.lower() in ('1', 'true', 'yes', 'on')
         if not telegram_allowed:
@@ -531,7 +530,6 @@ def init_app(app):
             return redirect(url_for('admin_dashboard'))
 
         admin_login_enabled = app.config.get('ADMIN_LOGIN_ENABLED', False)
-        admin_password = app.config.get('ADMIN_PASSWORD', '')
         admin_password_hash = app.config.get('ADMIN_PASSWORD_HASH', '')
         max_attempts = app.config.get('ADMIN_MAX_LOGIN_ATTEMPTS', 5)
         lockout_minutes = app.config.get('ADMIN_LOCKOUT_MINUTES', 15)
@@ -547,15 +545,11 @@ def init_app(app):
                 error_message = 'Слишком много неудачных попыток. Попробуйте позже.'
 
         if request.method == 'POST' and not error_message:
-            if not admin_login_enabled or (not admin_password and not admin_password_hash):
+            if not admin_login_enabled or not admin_password_hash:
                 error_message = 'Админ-вход отключён или пароль не настроен.'
             else:
                 password = request.form.get('password', '')
-                valid_password = False
-                if admin_password_hash:
-                    valid_password = check_password_hash(admin_password_hash, password)
-                elif admin_password:
-                    valid_password = secrets.compare_digest(str(password), str(admin_password))
+                valid_password = check_password_hash(admin_password_hash, password)
 
                 if valid_password:
                     session.pop('failed_admin_login_attempts', None)

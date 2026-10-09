@@ -36,7 +36,7 @@ def _today():
         return date.fromisoformat(configured)
 
     try:
-        timezone_name = current_app.config.get('APP_TIMEZONE', 'Europe/Moscow')
+        timezone_name = current_app.config.get('APP_TIMEZONE', 'UTC')
     except RuntimeError:
         timezone_name = 'Europe/Moscow'
     # Europe/Moscow has stayed at UTC+03:00 since 2014. Keeping this explicit

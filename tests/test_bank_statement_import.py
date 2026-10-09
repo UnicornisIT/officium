@@ -253,6 +253,7 @@ class BankStatementImportRouteTestCase(unittest.TestCase):
     def setUp(self):
         self.app = create_app({
             'TESTING': True,
+            'SECRET_KEY': 'bank-import-test-secret',
             'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
             'SQLALCHEMY_ENGINE_OPTIONS': {},
             'WTF_CSRF_ENABLED': False,
