@@ -46,7 +46,8 @@ class DocumentationTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('href="/documentation"', html)
         self.assertIn('Документация', html)
-        self.assertLess(html.index('site-footer__docs-button'), html.index('bi-github'))
+        self.assertNotIn('mailto:', html)
+        self.assertNotIn('github.com/', html)
         self.assertNotIn('site-footer__primary-link', html)
 
 

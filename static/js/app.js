@@ -56,7 +56,7 @@ function showToast(message, type = 'success') {
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-bs-theme', theme);
-    localStorage.setItem('debtManagerTheme', theme);
+    localStorage.setItem('officiumTheme', theme);
 
     const btn = document.getElementById('themeToggleBtn');
     if (!btn) return;
@@ -321,7 +321,7 @@ function initThemeToggle() {
         if (telegramThemeButton) telegramThemeButton.hidden = true;
         return;
     }
-    const storedTheme = localStorage.getItem('debtManagerTheme') || 'dark';
+    const storedTheme = localStorage.getItem('officiumTheme') || 'dark';
     applyTheme(storedTheme);
 
     const btn = document.getElementById('themeToggleBtn');

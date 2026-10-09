@@ -1,4 +1,4 @@
-# Развёртывание Officium
+# Развёртывание officium
 
 Эта инструкция предназначена для релизного окружения с MySQL/MariaDB, HTTPS и
 запуском Flask через Waitress за reverse proxy. SQLite оставлен для локальной
@@ -8,7 +8,7 @@
 
 Требуются Python 3.10+, MySQL 8+/MariaDB 10.6+, домен и HTTPS-сертификат.
 Перед первым запуском создайте отдельного пользователя БД с правами только на
-базу Officium. Не используйте `root` для приложения.
+базу officium. Не используйте `root` для приложения.
 
 Сгенерируйте секреты локально:
 
@@ -320,7 +320,7 @@ journalctl -u officium-monthly-expenses.service -n 100 --no-pager
 ```bash
 cd /var/www/debt_manager
 target_month=$(TZ=Europe/Moscow date +%Y-%m)
-sudo -u officium venv/bin/python -m flask --app run.py generate-monthly-expenses --month "$target_month"
+sudo -u '<service-user>' venv/bin/python -m flask --app run.py generate-monthly-expenses --month "$target_month"
 ```
 
 Указывайте только текущий или уже наступивший месяц при production-проверке:

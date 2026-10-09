@@ -238,7 +238,7 @@ HELP_TEXT = (
 
 PRIVACY_TEXT = (
     'Приватность Telegram-бота:\n'
-    '- работаю только с уже существующим аккаунтом Officium по Telegram ID;\n'
+    '- работаю только с уже существующим аккаунтом officium по Telegram ID;\n'
     '- по умолчанию принимаю команды только в личном чате;\n'
     '- не сохраняю текст Telegram-сообщений в журнал действий;\n'
     '- для защиты от повторов храню только технический update_id и время обработки;\n'
@@ -308,7 +308,7 @@ def handle_telegram_update(update):
     if not user:
         return TelegramBotResult(
             chat_id=chat_id,
-            reply_text='Я не нашел ваш аккаунт в Officium. Сначала войдите в приложение через Telegram.',
+            reply_text='Я не нашел ваш аккаунт в officium. Сначала войдите в приложение через Telegram.',
             callback_query_id=callback_query_id,
         )
     if user.is_blocked:

@@ -46,84 +46,53 @@ run.py          запуск приложения
 
 ## Быстрый старт
 
+### PowerShell
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 Copy-Item .env.example .env
-```
-
-Для локального SQLite в `.env`:
-
-```env
-OFFICIUM_ENV=development
-SECRET_KEY=
-FLASK_DEBUG=true
-SESSION_COOKIE_SECURE=false
-DB_ENGINE=sqlite
-SQLITE_PATH=dev.db
-DEV_LOGIN_ENABLED=true
-TEST_USER_ENABLED=false
-TELEGRAM_BOT_ENABLED=false
-GOOGLE_LOGIN_ENABLED=false
-```
-
-Применить миграции и запустить:
-
-```powershell
 $env:FLASK_APP = 'run.py'
 .\.venv\Scripts\python.exe -m flask db upgrade
 .\.venv\Scripts\python.exe run.py
 ```
 
-Открыть: `http://127.0.0.1:5000`.
+На Windows тот же сценарий автоматизирован командой `scripts\start.bat`: она
+создаёт `.venv` и локальный `.env`, включает development, SQLite и dev-вход.
+
+### Bash
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
+export FLASK_APP=run.py
+python -m flask db upgrade
+python run.py
+```
+
+`.env.example` уже настроен для development и SQLite. Если нужен локальный вход
+без внешнего провайдера, включите в созданном `.env` только для своей машины
+`DEV_LOGIN_ENABLED=true`. Пустой `SECRET_KEY` в development заменяется случайным
+ключом на время жизни процесса. После запуска откройте `http://127.0.0.1:5000`.
 
 ## Настройки
 
-Главные переменные окружения:
+Полный и актуальный перечень переменных находится в [`.env.example`](.env.example).
+Ключевые production-настройки:
 
-```env
-OFFICIUM_ENV=production
-SECRET_KEY=<случайная строка длиной не менее 32 символов>
-FLASK_DEBUG=false
-SESSION_COOKIE_SECURE=true
-MAX_CONTENT_LENGTH=10485760
+- `OFFICIUM_ENV=production` — режим по умолчанию в коде;
+- `SECRET_KEY` — уникальная строка длиной не менее 32 символов, обязательна в production;
+- `APP_TIMEZONE=UTC` — часовой пояс по умолчанию;
+- `DB_ENGINE=mysql` и отдельный `DB_USER=officium` — рекомендуемый production-вариант;
+- `TELEGRAM_LOGIN_ENABLED`, `TELEGRAM_MINI_APP_ENABLED`, `TELEGRAM_BOT_ENABLED`,
+  `GOOGLE_LOGIN_ENABLED` и `SERVER_UPDATE_ENABLED` выключены по умолчанию;
+- `SERVER_UPDATE_REPOSITORY` задаётся явно в формате `<repository-owner>/officium`;
+- аварийный админ-вход принимает только `ADMIN_PASSWORD_HASH`.
 
-DB_ENGINE=mysql
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=officium
-DB_PASSWORD=<пароль отдельного пользователя БД>
-DB_NAME=debt_manager
-
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_BOT_USERNAME=
-TELEGRAM_LOGIN_ENABLED=false
-TELEGRAM_MINI_APP_ENABLED=false
-TELEGRAM_MINI_APP_SHORT_NAME=
-TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS=86400
-TELEGRAM_BOT_ENABLED=false
-TELEGRAM_WEBHOOK_SECRET=long-random-secret
-TELEGRAM_PRIVATE_CHAT_ONLY=true
-TELEGRAM_BOT_RATE_LIMIT_PER_MINUTE=20
-TELEGRAM_REMINDER_DAYS=7
-TELEGRAM_UPDATE_RETENTION_DAYS=30
-TELEGRAM_CONVERSATION_TTL_MINUTES=30
-
-DEV_LOGIN_ENABLED=false
-TEST_USER_ENABLED=false
-
-GOOGLE_LOGIN_ENABLED=false
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=https://your-domain.com/auth/google/callback
-
-ADMIN_LOGIN_ENABLED=false
-ADMIN_TELEGRAM_IDS=
-ADMIN_PASSWORD_HASH=
-```
-
-`.env` нельзя коммитить в git.
+Локальный `.env`, файлы БД, журналы и резервные копии нельзя коммитить в Git.
 
 В development пустой `SECRET_KEY` заменяется случайным ключом, который живёт
 только до перезапуска процесса; приложение записывает об этом предупреждение.
@@ -132,6 +101,12 @@ ADMIN_PASSWORD_HASH=
 
 ```powershell
 python -c "from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass()))"
+```
+
+Команда для Bash совпадает:
+
+```bash
+python -c 'from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass()))'
 ```
 
 В режиме `OFFICIUM_ENV=production` приложение откажется запускаться со слабым
@@ -216,7 +191,7 @@ TELEGRAM_PRIVATE_CHAT_ONLY=true
 
 ```bash
 curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
-  -d "url=https://your-domain.com/telegram/webhook" \
+  -d "url=https://<your-domain>/telegram/webhook" \
   -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
 ```
 
@@ -231,13 +206,13 @@ $env:FLASK_APP = 'run.py'
 ## Telegram Mini App
 
 Mini App использует тот же Flask-интерфейс, маршруты и базу данных, что и обычный сайт.
-Точка входа: `https://your-domain.com/telegram-app`.
+Точка входа: `https://<your-domain>/telegram-app`.
 
 Настройка:
 
 1. Убедиться, что домен доступен по HTTPS с действующим сертификатом.
 2. В BotFather создать Main Mini App или Mini App с коротким именем.
-3. Указать URL `https://your-domain.com/telegram-app`.
+3. Указать URL `https://<your-domain>/telegram-app`.
 4. Заполнить `TELEGRAM_MINI_APP_SHORT_NAME`, если создано приложение с коротким именем.
 5. Перезапустить сервис приложения.
 
@@ -318,6 +293,11 @@ $env:FLASK_APP = 'run.py'
 ```powershell
 .\.venv\Scripts\python.exe -m unittest tests.test_migrations tests.test_schema_contract -v
 ```
+
+Workflow `.github/workflows/ci.yml` повторяет compileall, unittest и проверку
+миграций на временной SQLite для Python 3.10 и 3.13 при push и pull request в
+`master`. `pip-audit` запускается отдельной неблокирующей job и не входит в
+runtime-зависимости приложения.
 
 ## Production
 
