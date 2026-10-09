@@ -86,14 +86,14 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertNotIn("sa.Text(), nullable=False, server_default", migration_text)
 
     def test_deploy_preflight_handles_migration_states(self):
-        deploy_text = (PROJECT_ROOT / 'deploy.sh').read_text(encoding='utf-8')
+        deploy_text = (PROJECT_ROOT / 'scripts' / 'deploy.sh').read_text(encoding='utf-8')
 
         self.assertIn('stamp_baseline', deploy_text)
         self.assertIn('ADD COLUMN version_num', deploy_text)
         self.assertNotIn('stamp head', deploy_text)
 
     def test_release_deploy_requires_backup_and_exact_tag(self):
-        deploy_text = (PROJECT_ROOT / 'deploy.sh').read_text(encoding='utf-8')
+        deploy_text = (PROJECT_ROOT / 'scripts' / 'deploy.sh').read_text(encoding='utf-8')
 
         self.assertIn('OFFICIUM_BACKUP_CONFIRMED', deploy_text)
         self.assertIn('refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG', deploy_text)

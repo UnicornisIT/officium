@@ -1,6 +1,6 @@
 [Unit]
 Description=Generate missing Officium monthly expenses
-Documentation=file:/var/www/debt_manager/MONTHLY_EXPENSES_GUIDE.md
+Documentation=file:/var/www/debt_manager/docs/MONTHLY_EXPENSES_GUIDE.md
 Wants=network-online.target
 After=network-online.target
 
