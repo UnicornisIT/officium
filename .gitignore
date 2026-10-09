@@ -9,6 +9,8 @@ __pycache__/
 
 # Environment files
 .env
+.env.*
+!.env.example
 
 # Distribution / packaging
 build/
@@ -27,8 +29,16 @@ Thumbs.db
 # Logs and database files
 *.log
 *.db
+*.sqlite
 *.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+*.bak
+*.sql.gz
+backup*.sql
 test_results.txt
+test_results*.txt
 
 # Pytest cache
 .pytest_cache/
