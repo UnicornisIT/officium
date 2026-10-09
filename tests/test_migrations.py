@@ -158,3 +158,12 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertIn('Persistent=true', timer_text)
         self.assertIn('generate-monthly-expenses', service_text)
         self.assertNotIn('gunicorn', service_text.lower())
+
+    def test_windows_start_script_uses_local_safe_defaults(self):
+        start_text = (PROJECT_ROOT / 'scripts' / 'start.bat').read_text(encoding='utf-8')
+
+        self.assertIn('cd /d "%~dp0.."', start_text)
+        self.assertIn('OFFICIUM_ENV=development', start_text)
+        self.assertIn('DB_ENGINE=sqlite', start_text)
+        self.assertIn('DEV_LOGIN_ENABLED=true', start_text)
+        self.assertNotIn('pip install --upgrade pip', start_text)
