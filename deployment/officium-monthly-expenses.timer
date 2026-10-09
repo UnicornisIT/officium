@@ -1,5 +1,5 @@
 [Unit]
-Description=Run Officium monthly-expense recovery every day
+Description=Run officium monthly-expense recovery every day
 Documentation=file:/var/www/debt_manager/docs/MONTHLY_EXPENSES_GUIDE.md
 
 [Timer]

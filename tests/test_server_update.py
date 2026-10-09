@@ -34,7 +34,7 @@ class ServerUpdateServiceTestCase(unittest.TestCase):
         self.config = {
             'APP_VERSION': 'v1.0.0',
             'SERVER_UPDATE_ENABLED': True,
-            'SERVER_UPDATE_REPOSITORY': 'UnicornisIT/officium',
+            'SERVER_UPDATE_REPOSITORY': 'example-owner/officium',
             'SERVER_UPDATE_GITHUB_TOKEN': '',
             'SERVER_UPDATE_HELPER': str(self.helper.resolve()),
             'SERVER_UPDATE_USE_SUDO': False,
@@ -69,11 +69,11 @@ class ServerUpdateServiceTestCase(unittest.TestCase):
         self.assertEqual(release['tag'], 'v1.1.0')
         self.assertEqual(
             release['url'],
-            'https://github.com/UnicornisIT/officium/releases/tag/v1.1.0',
+            'https://github.com/example-owner/officium/releases/tag/v1.1.0',
         )
         self.assertEqual(
             get.call_args.args[0],
-            'https://api.github.com/repos/UnicornisIT/officium/releases/latest',
+            'https://api.github.com/repos/example-owner/officium/releases/latest',
         )
         self.assertEqual(
             get.call_args.kwargs['headers']['X-GitHub-Api-Version'],
@@ -284,7 +284,7 @@ class ServerUpdateRouteTestCase(unittest.TestCase):
             'SQLALCHEMY_ENGINE_OPTIONS': {},
             'WTF_CSRF_ENABLED': False,
             'SERVER_UPDATE_ENABLED': True,
-            'SERVER_UPDATE_REPOSITORY': 'UnicornisIT/officium',
+            'SERVER_UPDATE_REPOSITORY': 'example-owner/officium',
             'SERVER_UPDATE_APP_DIR': self.temporary_directory.name,
             'SERVER_UPDATE_STATUS_PATH': str(
                 Path(self.temporary_directory.name) / 'status.json'
@@ -318,7 +318,7 @@ class ServerUpdateRouteTestCase(unittest.TestCase):
             'tag': 'v1.1.0',
             'name': 'Release 1.1.0',
             'published_at': '2026-08-30T10:00:00Z',
-            'url': 'https://github.com/UnicornisIT/officium/releases/tag/v1.1.0',
+            'url': 'https://github.com/example-owner/officium/releases/tag/v1.1.0',
         }
         current.return_value = {'label': 'v1.0.0', 'tag': 'v1.0.0', 'commit': 'abc123'}
         self.login(self.superadmin_id)
@@ -367,7 +367,7 @@ class ServerUpdateRouteTestCase(unittest.TestCase):
                 'tag': 'v1.1.0',
                 'name': 'Release 1.1.0',
                 'published_at': '',
-                'url': 'https://github.com/UnicornisIT/officium/releases/tag/v1.1.0',
+                'url': 'https://github.com/example-owner/officium/releases/tag/v1.1.0',
             }
             current.return_value = {'label': 'v1.0.0', 'tag': 'v1.0.0', 'commit': None}
             response = self.client.get('/admin/server-update')

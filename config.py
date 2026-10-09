@@ -39,7 +39,7 @@ class Config:
     APP_VERSION = os.environ.get('APP_VERSION', '').strip() or _read_version()
     APP_TIMEZONE = os.environ.get('APP_TIMEZONE', 'UTC').strip() or 'UTC'
     SERVER_UPDATE_ENABLED = os.environ.get('SERVER_UPDATE_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
-    SERVER_UPDATE_REPOSITORY = os.environ.get('SERVER_UPDATE_REPOSITORY', 'UnicornisIT/officium')
+    SERVER_UPDATE_REPOSITORY = os.environ.get('SERVER_UPDATE_REPOSITORY', '').strip()
     SERVER_UPDATE_GITHUB_TOKEN = os.environ.get('SERVER_UPDATE_GITHUB_TOKEN', '')
     SERVER_UPDATE_HELPER = os.environ.get('SERVER_UPDATE_HELPER', '')
     SERVER_UPDATE_USE_SUDO = os.environ.get('SERVER_UPDATE_USE_SUDO', 'true').lower() in ('1', 'true', 'yes', 'on')

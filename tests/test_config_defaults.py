@@ -20,6 +20,7 @@ class ConfigDefaultsTestCase(unittest.TestCase):
             'APP_VERSION',
             'APP_TIMEZONE',
             'DB_USER',
+            'SERVER_UPDATE_REPOSITORY',
         ):
             environment.pop(key, None)
         environment['PYTHON_DOTENV_DISABLED'] = '1'
@@ -32,7 +33,8 @@ class ConfigDefaultsTestCase(unittest.TestCase):
             '"telegram_mini_app": Config.TELEGRAM_MINI_APP_ENABLED, '
             '"version": Config.APP_VERSION, '
             '"timezone": Config.APP_TIMEZONE, '
-            '"db_user": Config.DB_USER}))'
+            '"db_user": Config.DB_USER, '
+            '"server_update_repository": Config.SERVER_UPDATE_REPOSITORY}))'
         )
 
         result = subprocess.run(
@@ -52,6 +54,7 @@ class ConfigDefaultsTestCase(unittest.TestCase):
         self.assertEqual(defaults['version'], (PROJECT_ROOT / 'VERSION').read_text().strip())
         self.assertEqual(defaults['timezone'], 'UTC')
         self.assertEqual(defaults['db_user'], 'officium')
+        self.assertEqual(defaults['server_update_repository'], '')
 
     def test_local_environment_example_is_explicit(self):
         values = {}
@@ -65,4 +68,5 @@ class ConfigDefaultsTestCase(unittest.TestCase):
         self.assertEqual(values['DB_ENGINE'], 'sqlite')
         self.assertEqual(values['TELEGRAM_LOGIN_ENABLED'], 'false')
         self.assertEqual(values['TELEGRAM_MINI_APP_ENABLED'], 'false')
+        self.assertEqual(values['SERVER_UPDATE_REPOSITORY'], '<repository-owner>/officium')
         self.assertNotIn('APP_VERSION', values)
