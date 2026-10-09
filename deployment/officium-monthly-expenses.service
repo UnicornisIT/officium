@@ -6,8 +6,8 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-User=officium
-Group=officium
+User=<service-user>
+Group=<service-user>
 WorkingDirectory=/var/www/debt_manager
 EnvironmentFile=-/var/www/debt_manager/.env
 Environment=FLASK_APP=run.py

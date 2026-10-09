@@ -7,7 +7,11 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-APP_USER="${1:-officium}"
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <service-user>" >&2
+    exit 2
+fi
+APP_USER="$1"
 if ! printf '%s\n' "$APP_USER" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$'; then
     echo "Invalid application user." >&2
     exit 2
@@ -35,7 +39,7 @@ fi
 install -d -o root -g "$APP_USER" -m 2775 /var/lib/officium
 install -d -o root -g root -m 0750 /var/backups/officium
 
-sed "s/^officium /$APP_USER /" "$SCRIPT_DIR/officium-updater.sudoers" > "$SUDOERS_TEMP"
+sed "s/^<service-user> /$APP_USER /" "$SCRIPT_DIR/officium-updater.sudoers" > "$SUDOERS_TEMP"
 chmod 0440 "$SUDOERS_TEMP"
 visudo -cf "$SUDOERS_TEMP"
 install -o root -g root -m 0440 "$SUDOERS_TEMP" /etc/sudoers.d/officium-updater
