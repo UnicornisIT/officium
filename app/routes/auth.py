@@ -1,5 +1,5 @@
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import jsonify, redirect, render_template, request, url_for, flash, session, abort, current_app
 from flask_login import UserMixin, current_user, login_user, logout_user
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,6 +12,7 @@ from app.services.telegram_auth_service import (
     verify_telegram_login,
     verify_telegram_web_app_init_data,
 )
+from app.time_utils import as_utc, utc_now
 from app.utils import get_dictionary_values, get_setting, record_activity
 
 
@@ -69,7 +70,7 @@ def get_or_create_test_user(app):
             username=app.config.get('TEST_USER_USERNAME', 'testuser'),
             first_name=app.config.get('TEST_USER_FIRST_NAME', 'Тестовый'),
             last_name=app.config.get('TEST_USER_LAST_NAME', 'Пользователь'),
-            auth_date=datetime.utcnow(),
+            auth_date=utc_now(),
             role=app.config.get('TEST_USER_ROLE', 'user'),
             is_blocked=False,
             login_count=0,
@@ -199,7 +200,7 @@ def init_app(app):
     def _login_telegram_profile(profile, auth_timestamp, activity_name):
         try:
             telegram_id = int(profile.get('id'))
-            auth_date = datetime.utcfromtimestamp(int(auth_timestamp))
+            auth_date = datetime.fromtimestamp(int(auth_timestamp), timezone.utc)
         except (TypeError, ValueError, OSError, OverflowError):
             return None, 'Неверные данные авторизации Telegram.'
 
@@ -349,7 +350,7 @@ def init_app(app):
                 username=dev_user_data['username'],
                 first_name=dev_user_data['first_name'],
                 last_name=dev_user_data['last_name'],
-                auth_date=datetime.utcnow(),
+                auth_date=utc_now(),
                 role=dev_user_data['role'],
                 is_blocked=False,
             )
@@ -503,7 +504,7 @@ def init_app(app):
                     first_name=first_name[:100],
                     last_name=last_name[:100],
                     photo_url=str(picture or '')[:255] or None,
-                    auth_date=datetime.utcnow(),
+                    auth_date=utc_now(),
                     role='user',
                     google_id=google_id,
                     email=email,
@@ -541,7 +542,7 @@ def init_app(app):
                 lockout_until_dt = datetime.fromisoformat(lockout_until)
             except ValueError:
                 lockout_until_dt = None
-            if lockout_until_dt and lockout_until_dt > datetime.utcnow():
+            if lockout_until_dt and as_utc(lockout_until_dt) > utc_now():
                 error_message = 'Слишком много неудачных попыток. Попробуйте позже.'
 
         if request.method == 'POST' and not error_message:
@@ -561,8 +562,8 @@ def init_app(app):
                 attempts = session.get('failed_admin_login_attempts', 0) + 1
                 session['failed_admin_login_attempts'] = attempts
                 if attempts >= max_attempts:
-                    lockout_time = datetime.utcnow() + timedelta(minutes=lockout_minutes)
-                    session['admin_lockout_until'] = lockout_time.isoformat()
+                    lockout_time = utc_now() + timedelta(minutes=lockout_minutes)
+                    session['admin_lockout_until'] = lockout_time.replace(tzinfo=None).isoformat()
                     error_message = 'Слишком много неудачных попыток. Попробуйте через некоторое время.'
                 else:
                     error_message = 'Неверный пароль администратора.'

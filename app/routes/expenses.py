@@ -2,7 +2,7 @@ import json
 import os
 import re
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from flask import abort, current_app, redirect, render_template, request, url_for
@@ -15,6 +15,7 @@ from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
     generate_monthly_expenses_from_start_date,
 )
+from app.time_utils import as_utc, utc_now
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS, group_entries_by_month, parse_date, parse_decimal, is_local_test_user
 from flask_login import current_user
 from extensions import db
@@ -73,7 +74,7 @@ def init_app(app):
                         expense.monthly_group_id = str(uuid.uuid4())
                         expense.generated_for_month = expense_date.strftime('%Y-%m')
                         expense.monthly_anchor_day = expense_date.day
-                        expense.monthly_settings_updated_at = datetime.utcnow()
+                        expense.monthly_settings_updated_at = utc_now()
                     
                     db.session.add(expense)
                     db.session.commit()
@@ -328,7 +329,7 @@ def init_app(app):
                         expense.monthly_group_id = str(uuid.uuid4())
                     expense.generated_for_month = expense_date.strftime('%Y-%m')
                     expense.monthly_anchor_day = expense_date.day
-                    expense.monthly_settings_updated_at = datetime.utcnow()
+                    expense.monthly_settings_updated_at = utc_now()
 
                     duplicate = find_monthly_expense_for_month(
                         current_user.id,
@@ -569,7 +570,7 @@ def _update_monthly_expense_from_import(expense, amount, expense_date, payment_m
     expense.generated_for_month = target_month
     expense.is_monthly = True
     expense.monthly_anchor_day = expense_date.day
-    expense.monthly_settings_updated_at = datetime.utcnow()
+    expense.monthly_settings_updated_at = utc_now()
 
 
 def _import_dir():
@@ -579,13 +580,13 @@ def _import_dir():
 
 
 def _cleanup_old_imports():
-    threshold = datetime.utcnow() - timedelta(hours=IMPORT_TTL_HOURS)
+    threshold = utc_now() - timedelta(hours=IMPORT_TTL_HOURS)
     for filename in os.listdir(_import_dir()):
         if not filename.endswith('.json'):
             continue
         path = os.path.join(_import_dir(), filename)
         try:
-            modified = datetime.utcfromtimestamp(os.path.getmtime(path))
+            modified = datetime.fromtimestamp(os.path.getmtime(path), timezone.utc)
             if modified < threshold:
                 os.remove(path)
         except OSError:
@@ -597,7 +598,7 @@ def _save_import_payload(parse_result):
     token = secrets.token_urlsafe(24)
     payload = {
         'user_id': current_user.id,
-        'created_at': datetime.utcnow().isoformat(),
+        'created_at': utc_now().replace(tzinfo=None).isoformat(),
         'bank': parse_result.bank,
         'rows': [row.to_dict() for row in parse_result.rows],
     }
@@ -619,7 +620,7 @@ def _load_import_payload(token):
     if payload.get('user_id') != current_user.id:
         raise ValueError('Этот предпросмотр импорта принадлежит другому пользователю.')
     created_at = datetime.fromisoformat(payload.get('created_at'))
-    if created_at < datetime.utcnow() - timedelta(hours=IMPORT_TTL_HOURS):
+    if as_utc(created_at) < utc_now() - timedelta(hours=IMPORT_TTL_HOURS):
         _delete_import_payload(token)
         raise ValueError('Предпросмотр импорта устарел. Загрузите выписку еще раз.')
     return payload

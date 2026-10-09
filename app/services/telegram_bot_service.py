@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models import Debt, Expense, Income, TelegramConversationState, TelegramProcessedUpdate, User
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import add_payment
+from app.time_utils import as_utc, utc_now
 from app.utils import get_setting
 from extensions import db
 
@@ -1200,8 +1201,8 @@ def _save_state(user, chat_id, flow, step, data, state=None):
     state.flow = flow
     state.step = step
     state.data = json.dumps(data, ensure_ascii=False, sort_keys=True)
-    state.expires_at = datetime.utcnow() + timedelta(minutes=_conversation_ttl_minutes())
-    state.updated_at = datetime.utcnow()
+    state.expires_at = utc_now() + timedelta(minutes=_conversation_ttl_minutes())
+    state.updated_at = utc_now()
     db.session.flush()
     return state
 
@@ -1211,7 +1212,7 @@ def _get_active_state(user):
     state = TelegramConversationState.query.filter_by(telegram_id=user.telegram_id).first()
     if not state:
         return None
-    if state.expires_at <= datetime.utcnow():
+    if as_utc(state.expires_at) <= utc_now():
         db.session.delete(state)
         db.session.flush()
         return None
@@ -1234,8 +1235,10 @@ def _conversation_ttl_minutes():
 
 
 def _cleanup_expired_conversation_states():
-    threshold = datetime.utcnow()
-    TelegramConversationState.query.filter(TelegramConversationState.expires_at <= threshold).delete()
+    threshold = utc_now()
+    TelegramConversationState.query.filter(
+        TelegramConversationState.expires_at <= threshold
+    ).delete(synchronize_session=False)
 
 
 def _cleanup_processed_updates():
@@ -1245,8 +1248,10 @@ def _cleanup_processed_updates():
         retention_days = 30
     if retention_days <= 0:
         return
-    threshold = datetime.utcnow() - timedelta(days=retention_days)
-    TelegramProcessedUpdate.query.filter(TelegramProcessedUpdate.created_at < threshold).delete()
+    threshold = utc_now() - timedelta(days=retention_days)
+    TelegramProcessedUpdate.query.filter(
+        TelegramProcessedUpdate.created_at < threshold
+    ).delete(synchronize_session=False)
 
 
 def _result(chat_id, text, reply_markup=None, callback_answer_text=None):

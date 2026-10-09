@@ -1,5 +1,5 @@
 from calendar import monthrange
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
 from dateutil.relativedelta import relativedelta
@@ -8,6 +8,7 @@ from sqlalchemy import case, func, or_
 from extensions import db
 from app.models import Payment
 from app.services.debt_math_service import calculate_period_interest
+from app.time_utils import utc_now
 
 
 MONEY = Decimal('0.01')
@@ -59,7 +60,7 @@ def add_payment(
         bank_remaining_after_payment=bank_remaining_after_payment,
     )
 
-    debt.updated_at = datetime.utcnow()
+    debt.updated_at = utc_now()
     db.session.add(payment)
     db.session.flush()
     _recalculate_payment_balances(debt, opening_balance)
@@ -117,7 +118,7 @@ def update_payment(
 
     _recalculate_payment_balances(debt, opening_balance)
     _sync_recurring_payment_date_after_edit(debt, payment.payment_date or original_payment_date)
-    debt.updated_at = datetime.utcnow()
+    debt.updated_at = utc_now()
     db.session.commit()
 
     return payment
