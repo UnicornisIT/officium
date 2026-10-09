@@ -1,9 +1,10 @@
 from calendar import monthrange
-from datetime import datetime, date
+from datetime import date
 
 from dateutil.relativedelta import relativedelta
 from flask_login import UserMixin
 from extensions import db
+from app.time_utils import utc_now
 
 
 class User(UserMixin, db.Model):
@@ -16,7 +17,7 @@ class User(UserMixin, db.Model):
     last_name = db.Column(db.String(100), nullable=True)
     photo_url = db.Column(db.String(255), nullable=True)
     auth_date = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     role = db.Column(db.Enum('user', 'admin', 'superadmin'), nullable=False, default='user')
     is_blocked = db.Column(db.Boolean, default=False, nullable=False)
     last_login_ip = db.Column(db.String(100), nullable=True)
@@ -102,9 +103,9 @@ class Debt(db.Model):
     bank_remaining_amount = db.Column(db.Numeric(12, 2), nullable=True)
     comment = db.Column(db.Text, nullable=True)
     status = db.Column(db.Enum('active', 'archived'), nullable=False, default='active')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     user = db.relationship('User', back_populates='debts')
     payments = db.relationship('Payment', backref='debt', lazy=True, cascade='all, delete-orphan')
@@ -248,7 +249,7 @@ class Payment(db.Model):
     scheduled_payment_amount = db.Column(db.Numeric(12, 2), nullable=True)
     remaining_after_payment = db.Column(db.Numeric(12, 2), nullable=False)
     bank_remaining_after_payment = db.Column(db.Numeric(12, 2), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     def to_dict(self):
         principal_amount = self.principal_amount if self.principal_amount is not None else self.amount
@@ -291,8 +292,8 @@ class SplitPurchase(db.Model):
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     purchase_date = db.Column(db.Date, nullable=False)
     installments_count = db.Column(db.Integer, nullable=False, default=4)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     debt = db.relationship('Debt', back_populates='split_purchases')
 
@@ -325,7 +326,7 @@ class Income(db.Model):
     source = db.Column(db.String(150), nullable=True)
     income_date = db.Column(db.Date, nullable=False)
     comment = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     user = db.relationship('User', back_populates='incomes')
 
@@ -367,7 +368,7 @@ class Expense(db.Model):
     expense_date = db.Column(db.Date, nullable=False)
     payment_method = db.Column(db.String(80), nullable=True)
     comment = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
     
     # Поля для ежемесячных расходов
     is_monthly = db.Column(db.Boolean, default=False, nullable=False)
@@ -436,8 +437,8 @@ class FinancialPlanPreference(db.Model):
         nullable=False,
         default='balanced',
     )
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     user = db.relationship('User', back_populates='financial_plan_preference')
 
@@ -463,7 +464,7 @@ class EmergencyFundTransaction(db.Model):
     comment = db.Column(db.String(255), nullable=True)
     expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', ondelete='SET NULL'), nullable=True, unique=True)
     income_id = db.Column(db.Integer, db.ForeignKey('incomes.id', ondelete='SET NULL'), nullable=True, unique=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     user = db.relationship('User', back_populates='emergency_fund_transactions')
     expense = db.relationship('Expense', foreign_keys=[expense_id])
@@ -489,8 +490,8 @@ class FinancialGoal(db.Model):
     target_date = db.Column(db.Date, nullable=True)
     note = db.Column(db.String(500), nullable=True)
     priority = db.Column(db.Integer, nullable=False, default=2)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     user = db.relationship('User', back_populates='financial_goals')
     transactions = db.relationship(
@@ -520,7 +521,7 @@ class FinancialGoalTransaction(db.Model):
     comment = db.Column(db.String(255), nullable=True)
     expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', ondelete='SET NULL'), nullable=True, unique=True)
     income_id = db.Column(db.Integer, db.ForeignKey('incomes.id', ondelete='SET NULL'), nullable=True, unique=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     goal = db.relationship('FinancialGoal', back_populates='transactions')
     expense = db.relationship('Expense', foreign_keys=[expense_id])
@@ -537,8 +538,8 @@ class AppSetting(db.Model):
     key = db.Column(db.String(100), unique=True, nullable=False)
     value = db.Column(db.Text, nullable=True)
     description = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     def __repr__(self):
         return f'<AppSetting {self.key}>'
@@ -554,8 +555,8 @@ class DictionaryEntry(db.Model):
     dictionary_type = db.Column(db.Enum('bank', 'debt_type', 'debt_category', 'status', 'comment_template', 'interest_rate', 'product_type'), nullable=False)
     value = db.Column(db.String(150), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     def __repr__(self):
         return f'<DictionaryEntry {self.dictionary_type}:{self.value}>'
@@ -572,7 +573,7 @@ class ActivityLog(db.Model):
     description = db.Column(db.Text, nullable=True)
     ip_address = db.Column(db.String(100), nullable=True)
     user_agent = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     user = db.relationship('User', back_populates='activity_logs')
 
@@ -584,7 +585,7 @@ class TelegramProcessedUpdate(db.Model):
     __tablename__ = 'telegram_processed_updates'
 
     update_id = db.Column(db.BigInteger, primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     def __repr__(self):
         return f'<TelegramProcessedUpdate {self.update_id}>'
@@ -605,8 +606,8 @@ class TelegramConversationState(db.Model):
     step = db.Column(db.String(50), nullable=False)
     data = db.Column(db.Text, nullable=False, default='{}')
     expires_at = db.Column(db.DateTime, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     def __repr__(self):
         return f'<TelegramConversationState {self.telegram_id}:{self.flow}:{self.step}>'

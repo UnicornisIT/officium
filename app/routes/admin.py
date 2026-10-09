@@ -1,6 +1,5 @@
 import csv
 from io import StringIO
-from datetime import datetime
 from flask import abort, current_app, jsonify, redirect, render_template, request, url_for, Response, flash, session
 from flask_login import current_user, login_user, logout_user
 from sqlalchemy import cast
@@ -16,6 +15,7 @@ from app.services.server_update_service import (
     request_server_update,
     update_is_active,
 )
+from app.time_utils import utc_now
 from app.utils import admin_required, superadmin_required, DICTIONARY_TYPES, DEFAULT_SETTINGS, get_setting, record_activity, set_setting
 from extensions import db
 
@@ -323,7 +323,7 @@ def init_app(app):
                     username='test',
                     first_name='test',
                     last_name=None,
-                    auth_date=datetime.utcnow(),
+                    auth_date=utc_now(),
                     role='user',
                     is_blocked=False,
                     login_count=0,

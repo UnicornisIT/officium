@@ -1,4 +1,3 @@
-from datetime import datetime
 from decimal import Decimal
 
 from flask import current_app, jsonify, request
@@ -6,6 +5,7 @@ from flask_login import current_user
 from app.models import Debt, SplitPurchase
 from app.services.debt_service import get_demo_debts, get_user_debt
 from app.services.debt_schedule_service import build_debt_payment_schedule
+from app.time_utils import utc_now
 from app.utils import get_setting, is_local_test_user, parse_date, parse_decimal
 from extensions import db
 
@@ -192,7 +192,7 @@ def init_app(app):
             )
             debt.total_amount = (debt.total_amount or 0) + amount
             debt.remaining_amount = (debt.remaining_amount or 0) + amount
-            debt.updated_at = datetime.utcnow()
+            debt.updated_at = utc_now()
 
             if is_local_test_user():
                 purchase.id = max((item.id or 0 for item in getattr(debt, 'split_purchases', []) or []), default=0) + 1
@@ -310,7 +310,7 @@ def init_app(app):
             if debt.next_payment_date and debt.interest_period_start_date and debt.interest_period_start_date >= debt.next_payment_date:
                 raise ValueError('Начало процентного периода должно быть раньше даты платежа')
 
-            debt.updated_at = datetime.utcnow()
+            debt.updated_at = utc_now()
             if not is_local_test_user():
                 db.session.commit()
             return jsonify({'success': True, 'debt': debt.to_dict()})
@@ -332,7 +332,7 @@ def init_app(app):
             return jsonify({'success': False, 'error': 'Долг не найден'}), 404
 
         debt.status = 'archived'
-        debt.updated_at = datetime.utcnow()
+        debt.updated_at = utc_now()
         if not is_local_test_user():
             db.session.commit()
         return jsonify({'success': True, 'message': 'Карточка перемещена в архив'})
@@ -346,7 +346,7 @@ def init_app(app):
             return jsonify({'success': False, 'error': 'Долг не найден'}), 404
 
         debt.status = 'active'
-        debt.updated_at = datetime.utcnow()
+        debt.updated_at = utc_now()
         if not is_local_test_user():
             db.session.commit()
         return jsonify({'success': True, 'message': 'Карточка восстановлена', 'debt': debt.to_dict()})
