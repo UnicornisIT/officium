@@ -115,12 +115,12 @@ def load_runner_config():
     configured = parse_key_value_file(CONFIG_PATH, ALLOWED_CONFIG_KEYS)
     values = {
         'APP_DIR': configured.get('APP_DIR', '/var/www/debt_manager'),
-        'APP_USER': configured.get('APP_USER', 'officium'),
+        'APP_USER': configured.get('APP_USER', ''),
         'BACKUP_DIR': configured.get('BACKUP_DIR', '/var/backups/officium'),
         'GITHUB_TOKEN_FILE': configured.get('GITHUB_TOKEN_FILE', ''),
         'GIT_REMOTE': configured.get('GIT_REMOTE', 'origin'),
         'HEALTHCHECK_URL': configured.get('HEALTHCHECK_URL', ''),
-        'REPOSITORY': configured.get('REPOSITORY', 'UnicornisIT/officium'),
+        'REPOSITORY': configured.get('REPOSITORY', ''),
         'SERVICE_NAME': configured.get('SERVICE_NAME', 'debt_manager'),
         'STATUS_FILE': configured.get('STATUS_FILE', '/var/lib/officium/server-update-status.json'),
     }
@@ -265,7 +265,7 @@ def database_settings(app_dir):
         if parsed.scheme == 'mysql':
             return {
                 'engine': 'mysql',
-                'host': parsed.hostname or '127.0.0.1',
+                'host': parsed.hostname or 'localhost',
                 'port': parsed.port or 3306,
                 'user': unquote(parsed.username or ''),
                 'password': unquote(parsed.password or ''),
@@ -289,7 +289,7 @@ def database_settings(app_dir):
         raise UpdateFailure('DB_PORT is outside the valid range.')
     return {
         'engine': 'mysql',
-        'host': values.get('DB_HOST', '127.0.0.1'),
+        'host': values.get('DB_HOST', 'localhost'),
         'port': port,
         'user': values.get('DB_USER', ''),
         'password': values.get('DB_PASSWORD', ''),

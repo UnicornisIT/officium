@@ -88,6 +88,20 @@ $env:FLASK_APP = 'run.py'
 `No new upgrade operations detected`. `scripts/init_db.sql` можно использовать только
 для создания пустой MySQL-базы; схему создаёт исключительно Alembic.
 
+Production-скрипт не создаёт виртуальное окружение автоматически: до деплоя в
+корне должен существовать `venv` или `.venv` с рабочим Python.
+
+Для воспроизводимых поставок рекомендуется отдельно подготовить файл зависимостей
+с хешами и проверить его до включения в релизный процесс:
+
+```bash
+pip-compile --generate-hashes --output-file=requirements-hashed.txt requirements.txt
+python -m pip install --require-hashes -r requirements-hashed.txt
+```
+
+Это рекомендация для подготовки релиза; текущий `requirements.txt` автоматически
+не преобразуется и версии зависимостей этим изменением не обновляются.
+
 ## 4. Запуск
 
 `run.py` запускает Waitress. На сервере оформите его как системную службу с
@@ -125,13 +139,20 @@ $env:PORT = '5000'
 
 Функция намеренно выключена по умолчанию. Для её первой настройки на Linux-сервере:
 
+Сам скрипт допускает только установку точного тега после подтверждённой резервной
+копии. Голый запуск и обновление ветки запрещены:
+
+```bash
+OFFICIUM_BACKUP_CONFIRMED=true ./scripts/deploy.sh --release '<release-tag>'
+```
+
 1. Установите проверенный помощник как файл, принадлежащий `root`. Установщик
 сохраняет существующий `/etc/officium/updater.env`, проверяет sudoers через
 `visudo` и принимает имя пользователя веб-процесса первым аргументом:
 
 ```bash
 cd /var/www/debt_manager
-sudo sh deployment/install-officium-updater.sh officium
+sudo sh deployment/install-officium-updater.sh '<service-user>'
 sudo editor /etc/officium/updater.env
 ```
 
@@ -141,10 +162,10 @@ sudo editor /etc/officium/updater.env
 и виртуальным окружением, но не файлом `/usr/local/sbin/officium-update-runner`.
 
 Если автоматический установщик не используется, подготовьте каталоги состояния и
-резервных копий вручную. В примере пользователь приложения называется `officium`:
+резервных копий вручную, подставив пользователя приложения:
 
 ```bash
-sudo install -d -o root -g officium -m 2775 /var/lib/officium
+sudo install -d -o root -g '<service-user>' -m 2775 /var/lib/officium
 sudo install -d -o root -g root -m 0750 /var/backups/officium
 ```
 
@@ -165,7 +186,7 @@ API и умеет запустить только фиксированный с�
 
 ```env
 SERVER_UPDATE_ENABLED=true
-SERVER_UPDATE_REPOSITORY=UnicornisIT/officium
+SERVER_UPDATE_REPOSITORY=<repository-owner>/officium
 SERVER_UPDATE_HELPER=/usr/local/sbin/officium-update-runner
 SERVER_UPDATE_USE_SUDO=true
 SERVER_UPDATE_SUDO_PATH=/usr/bin/sudo
@@ -178,7 +199,7 @@ SERVER_UPDATE_REQUIRE_ROOT_OWNED_HELPER=true
 соответствующую реальному адресу Waitress/Gunicorn:
 
 ```env
-HEALTHCHECK_URL=http://127.0.0.1:5000/login
+HEALTHCHECK_URL=https://<your-domain>/login
 ```
 
 Если порт приложения доступен только через reverse proxy, оставьте переменную
@@ -193,7 +214,7 @@ HEALTHCHECK_URL=http://127.0.0.1:5000/login
 релиз, не изменяет checkout и не перезапускает службу.
 
 ```bash
-sudo -u officium sudo -n /usr/local/sbin/officium-update-runner --check
+sudo -u '<service-user>' sudo -n /usr/local/sbin/officium-update-runner --check
 ```
 
 Команда должна вернуть `OFFICIUM_UPDATE_RESULT={"ok":true,"code":"ready"}` и не
@@ -231,14 +252,14 @@ transient-unit `officium-update-*` через `systemd-run`. Поэтому со
 ```bash
 systemctl show debt_manager --property=User --value
 sudo visudo -cf /etc/sudoers.d/officium-updater
-sudo -l -U officium
-sudo -u officium sudo -n /usr/local/sbin/officium-update-runner --check
+sudo -l -U '<service-user>'
+sudo -u '<service-user>' sudo -n /usr/local/sbin/officium-update-runner --check
 sudo cat /var/lib/officium/server-update-status.json
 sudo journalctl -u 'officium-update-*' -n 200 --no-pager
 sudo journalctl -u debt_manager -n 100 --no-pager
 ```
 
-Если первая команда выводит не `officium`, переустановите sudoers, передав
+Если первая команда выводит другого пользователя, переустановите sudoers, передав
 фактического пользователя установщику. После обновления файлов выполните:
 
 ```bash

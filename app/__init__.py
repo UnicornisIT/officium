@@ -159,6 +159,10 @@ def _validate_runtime_config(app):
 
 
 def register_cli_commands(app):
+    from app.migration_preflight import register_migration_preflight_commands
+
+    register_migration_preflight_commands(app, db)
+
     @app.cli.command('create-superadmin')
     @click.argument('telegram_id')
     def create_superadmin(telegram_id):
