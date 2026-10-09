@@ -10,6 +10,19 @@ BASELINE_REVISION="73459c8513a1"
 RELEASE_TAG=""
 SKIP_RESTART="false"
 
+report_deploy_stage() {
+    local stage="$1"
+    if [ -z "${OFFICIUM_DEPLOY_STAGE_FILE:-}" ]; then
+        return
+    fi
+    case "$stage" in
+        preparing|installing|dependencies|migrating) ;;
+        *) echo "Invalid internal deployment stage." >&2; exit 2 ;;
+    esac
+    umask 077
+    printf '%s\n' "$stage" > "$OFFICIUM_DEPLOY_STAGE_FILE"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --release)
@@ -62,6 +75,7 @@ if [ -n "$RELEASE_TAG" ]; then
 fi
 
 cd "$APP_DIR"
+report_deploy_stage preparing
 
 if [ -n "$RELEASE_TAG" ]; then
     echo "Checking the Git working tree..."
@@ -71,6 +85,7 @@ if [ -n "$RELEASE_TAG" ]; then
     fi
 
     echo "Fetching exact release $RELEASE_TAG from Git..."
+    report_deploy_stage installing
     git fetch --force "$DEPLOY_REMOTE" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
     release_commit=$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")
     git checkout --detach "$release_commit"
@@ -96,9 +111,11 @@ else
 fi
 
 echo "Installing dependencies..."
+report_deploy_stage dependencies
 python -m pip install -r requirements.txt
 
 echo "Preparing database migrations..."
+report_deploy_stage migrating
 export FLASK_APP="${FLASK_APP:-run.py}"
 
 migration_state=$(python - <<'PY'
@@ -238,6 +255,9 @@ esac
 
 echo "Applying migrations..."
 flask db upgrade
+echo "Verifying migration state..."
+flask db current
+flask db heads
 
 if [ "$SKIP_RESTART" = "true" ]; then
     echo "Service restart delegated to the external updater."

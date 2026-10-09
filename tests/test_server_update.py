@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import tempfile
 import time
 import unittest
@@ -15,6 +16,7 @@ from app.services.server_update_service import (
     ServerUpdateError,
     current_release_has_tag,
     fetch_latest_release,
+    get_current_release,
     read_update_status,
     request_server_update,
     validate_release_tag,
@@ -98,6 +100,19 @@ class ServerUpdateServiceTestCase(unittest.TestCase):
 
         self.assertTrue(current_release_has_tag(current, 'v1.1.0'))
 
+    @patch.object(server_update_service.subprocess, 'run')
+    def test_git_tag_takes_precedence_over_stale_env_version(self, run):
+        (Path(self.config['SERVER_UPDATE_APP_DIR']) / '.git').mkdir()
+        run.side_effect = [
+            Mock(returncode=0, stdout='v1.1.0\n', stderr=''),
+            Mock(returncode=0, stdout='abc123def456\n', stderr=''),
+        ]
+
+        current = get_current_release(self.config)
+
+        self.assertEqual(current['label'], 'v1.1.0')
+        self.assertEqual(current['commit'], 'abc123def456')
+
     @patch.object(server_update_service.requests, 'get')
     def test_disabled_update_never_contacts_github(self, get):
         self.config['SERVER_UPDATE_ENABLED'] = False
@@ -121,6 +136,77 @@ class ServerUpdateServiceTestCase(unittest.TestCase):
         status = read_update_status(self.config)
         self.assertEqual(status['state'], 'queued')
         self.assertEqual(status['requested_by'], '42')
+        self.assertRegex(status['operation_id'], r'^upd-[0-9a-f]{12}$')
+
+    @patch.object(server_update_service.subprocess, 'run')
+    @patch.object(server_update_service.requests, 'get')
+    def test_helper_permission_failure_has_safe_specific_message(self, get, run):
+        get.return_value = self.github_response()
+        run.return_value = Mock(
+            returncode=1,
+            stdout=(
+                'OFFICIUM_UPDATE_RESULT='
+                '{"ok":false,"code":"authorization_failed"}\n'
+            ),
+            stderr='sudo: a password is required',
+        )
+
+        with self.assertRaisesRegex(ServerUpdateError, 'Недостаточно прав') as raised:
+            request_server_update(self.config, 'v1.1.0', requested_by=42)
+
+        self.assertRegex(str(raised.exception), r'Код операции: upd-[0-9a-f]{12}')
+        status = read_update_status(self.config)
+        self.assertEqual(status['error_code'], 'authorization_failed')
+
+    @patch.object(server_update_service.subprocess, 'run')
+    @patch.object(server_update_service.requests, 'get')
+    def test_unavailable_helper_is_reported_and_persisted(self, get, run):
+        get.return_value = self.github_response()
+        run.side_effect = OSError('exec format error')
+
+        with self.assertRaisesRegex(ServerUpdateError, 'недоступен'):
+            request_server_update(self.config, 'v1.1.0', requested_by=42)
+
+        status = read_update_status(self.config)
+        self.assertEqual(status['state'], 'failed')
+        self.assertEqual(status['error_code'], 'helper_unavailable')
+        self.assertNotIn('exec format error', status['message'])
+
+    @patch.object(server_update_service.subprocess, 'run')
+    @patch.object(server_update_service.requests, 'get')
+    def test_helper_timeout_is_reported(self, get, run):
+        get.return_value = self.github_response()
+        run.side_effect = subprocess.TimeoutExpired(['helper'], 15)
+
+        with self.assertRaisesRegex(ServerUpdateError, 'не ответил вовремя'):
+            request_server_update(self.config, 'v1.1.0', requested_by=42)
+
+        self.assertEqual(read_update_status(self.config)['error_code'], 'helper_timeout')
+
+    @patch.object(server_update_service.subprocess, 'run')
+    @patch.object(server_update_service.requests, 'get')
+    def test_background_failure_codes_are_mapped_to_safe_messages(self, get, run):
+        get.return_value = self.github_response()
+        cases = {
+            'backup_failed': 'резервную копию',
+            'dependency_failed': 'зависимости',
+            'migration_failed': 'миграции',
+            'restart_failed': 'перезапустить',
+        }
+        for code, expected in cases.items():
+            with self.subTest(code=code):
+                Path(self.config['SERVER_UPDATE_STATUS_PATH']).unlink(missing_ok=True)
+                run.return_value = Mock(
+                    returncode=1,
+                    stdout=(
+                        'OFFICIUM_UPDATE_RESULT='
+                        f'{{"ok":false,"code":"{code}"}}\n'
+                    ),
+                    stderr='technical detail',
+                )
+                with self.assertRaisesRegex(ServerUpdateError, expected):
+                    request_server_update(self.config, 'v1.1.0', requested_by=42)
+                self.assertEqual(read_update_status(self.config)['error_code'], code)
 
     @patch.object(server_update_service.subprocess, 'run')
     @patch.object(server_update_service.requests, 'get')
@@ -167,6 +253,25 @@ class ServerUpdateServiceTestCase(unittest.TestCase):
     def test_root_runner_source_is_valid_python(self):
         runner = Path(__file__).resolve().parents[1] / 'deployment' / 'officium-update-runner'
         compile(runner.read_text(encoding='utf-8'), str(runner), 'exec')
+
+    def test_status_survives_application_service_recreation(self):
+        status_path = Path(self.config['SERVER_UPDATE_STATUS_PATH'])
+        status_path.write_text(
+            json.dumps({
+                'state': 'migrating',
+                'operation_id': 'upd-persisted123',
+                'message': 'Выполнение миграций базы данных.',
+                'updated_at': server_update_service._iso_now(),
+            }),
+            encoding='utf-8',
+        )
+
+        recreated_config = dict(self.config)
+
+        self.assertEqual(
+            read_update_status(recreated_config)['operation_id'],
+            'upd-persisted123',
+        )
 
 
 class ServerUpdateRouteTestCase(unittest.TestCase):
@@ -241,6 +346,36 @@ class ServerUpdateRouteTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers['Cache-Control'], 'no-store')
+
+    def test_failed_status_and_operation_id_render_in_mobile_page(self):
+        Path(self.app.config['SERVER_UPDATE_STATUS_PATH']).write_text(
+            json.dumps({
+                'state': 'failed',
+                'message': 'Не удалось выполнить миграции базы данных.',
+                'operation_id': 'upd-mobile123456',
+                'error_code': 'migration_failed',
+                'updated_at': server_update_service._iso_now(),
+            }),
+            encoding='utf-8',
+        )
+        self.login(self.superadmin_id)
+
+        with patch('app.routes.admin.fetch_latest_release') as latest, patch(
+            'app.routes.admin.get_current_release'
+        ) as current:
+            latest.return_value = {
+                'tag': 'v1.1.0',
+                'name': 'Release 1.1.0',
+                'published_at': '',
+                'url': 'https://github.com/UnicornisIT/officium/releases/tag/v1.1.0',
+            }
+            current.return_value = {'label': 'v1.0.0', 'tag': 'v1.0.0', 'commit': None}
+            response = self.client.get('/admin/server-update')
+
+        html = response.get_data(as_text=True)
+        self.assertIn('Не удалось выполнить миграции', html)
+        self.assertIn('upd-mobile123456', html)
+        self.assertIn('viewport', html.lower())
 
     @patch('app.routes.admin.request_server_update')
     def test_update_post_requires_csrf_token(self, request_update):

@@ -28,7 +28,7 @@ class Config:
     ADMIN_PASSWORD_HASH = os.environ.get('ADMIN_PASSWORD_HASH', '')
     ADMIN_MAX_LOGIN_ATTEMPTS = int(os.environ.get('ADMIN_MAX_LOGIN_ATTEMPTS', '5'))
     ADMIN_LOCKOUT_MINUTES = int(os.environ.get('ADMIN_LOCKOUT_MINUTES', '15'))
-    APP_VERSION = os.environ.get('APP_VERSION', '').strip() or 'v0.0.5'
+    APP_VERSION = os.environ.get('APP_VERSION', '').strip() or 'v0.0.6'
     APP_TIMEZONE = os.environ.get('APP_TIMEZONE', 'Europe/Moscow').strip() or 'Europe/Moscow'
     SERVER_UPDATE_ENABLED = os.environ.get('SERVER_UPDATE_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     SERVER_UPDATE_REPOSITORY = os.environ.get('SERVER_UPDATE_REPOSITORY', 'UnicornisIT/officium')

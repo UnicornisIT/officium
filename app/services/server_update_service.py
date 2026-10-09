@@ -1,7 +1,9 @@
 import json
+import logging
 import os
 import re
 import subprocess
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -13,9 +15,38 @@ class ServerUpdateError(RuntimeError):
     """A safe, user-facing server update error."""
 
 
+logger = logging.getLogger(__name__)
+
+
 _REPOSITORY_RE = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 _RELEASE_TAG_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$')
-_ACTIVE_STATES = {'queued', 'running', 'backing_up', 'installing', 'migrating', 'restarting'}
+_ACTIVE_STATES = {
+    'queued',
+    'checking',
+    'preparing',
+    'running',  # Backward compatibility with statuses written before v0.0.6.
+    'backing_up',
+    'installing',
+    'migrating',
+    'restarting',
+    'verifying',
+}
+_HELPER_RESULT_PREFIX = 'OFFICIUM_UPDATE_RESULT='
+_HELPER_ERROR_MESSAGES = {
+    'authorization_failed': 'Недостаточно прав для запуска серверного помощника.',
+    'backup_failed': 'Не удалось создать резервную копию. Обновление не начато.',
+    'configuration_invalid': 'Конфигурация серверного помощника некорректна.',
+    'dependency_failed': 'Не удалось установить зависимости приложения.',
+    'deployment_failed': 'Не удалось установить код релиза.',
+    'github_unavailable': 'Серверный помощник не смог проверить релиз на GitHub.',
+    'healthcheck_failed': 'Новая версия запущена, но не прошла проверку работоспособности.',
+    'migration_failed': 'Не удалось выполнить миграции базы данных.',
+    'release_rejected': 'Серверный помощник отклонил выбранный релиз.',
+    'restart_failed': 'Не удалось перезапустить службу приложения.',
+    'scheduling_failed': 'Systemd не смог запланировать задачу обновления.',
+    'update_busy': 'Другое обновление уже выполняется.',
+    'unexpected_failure': 'Серверный помощник завершился с внутренней ошибкой.',
+}
 
 
 def _utc_now():
@@ -87,15 +118,14 @@ def fetch_latest_release(config):
 
 def get_current_release(config):
     configured_version = str(config.get('APP_VERSION') or '').strip()
-    if configured_version:
+    app_dir = Path(config.get('SERVER_UPDATE_APP_DIR') or '.').resolve()
+    if not (app_dir / '.git').exists() and configured_version:
         return {
             'label': configured_version,
             'tag': configured_version,
             'tags': [configured_version],
             'commit': None,
         }
-
-    app_dir = Path(config.get('SERVER_UPDATE_APP_DIR') or '.').resolve()
 
     def run_git(*args):
         try:
@@ -116,6 +146,13 @@ def get_current_release(config):
         return {'label': tags[0], 'tag': tags[0], 'tags': tags, 'commit': commit or None}
     if commit:
         return {'label': f'коммит {commit}', 'tag': None, 'tags': [], 'commit': commit}
+    if configured_version:
+        return {
+            'label': configured_version,
+            'tag': configured_version,
+            'tags': [configured_version],
+            'commit': None,
+        }
     return {'label': 'не определена', 'tag': None, 'tags': [], 'commit': None}
 
 
@@ -178,6 +215,48 @@ def _status_is_active(status, stale_minutes):
     except ValueError:
         return True
     return (_utc_now() - updated_at).total_seconds() < stale_minutes * 60
+
+
+def _parse_helper_result(stdout, stderr):
+    """Read the last bounded, machine-readable response emitted by the root helper."""
+    combined = f'{stdout or ""}\n{stderr or ""}'[-16 * 1024:]
+    for raw_line in reversed(combined.splitlines()):
+        line = raw_line.strip()
+        if not line.startswith(_HELPER_RESULT_PREFIX):
+            continue
+        try:
+            payload = json.loads(line[len(_HELPER_RESULT_PREFIX):])
+        except (TypeError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
+    return None
+
+
+def _redact_helper_output(config, value):
+    """Bound diagnostic output and remove configured credentials before logging it."""
+    output = str(value or '')[-4096:]
+    token = str(config.get('SERVER_UPDATE_GITHUB_TOKEN') or '')
+    if token:
+        output = output.replace(token, '[REDACTED]')
+    output = re.sub(
+        r'(?i)(authorization\s*[:=]\s*(?:bearer\s+)?)[^\s]+',
+        r'\1[REDACTED]',
+        output,
+    )
+    output = re.sub(r'(?i)(password|token|secret)=([^\s]+)', r'\1=[REDACTED]', output)
+    return output
+
+
+def _helper_failure_message(result, payload):
+    if payload:
+        code = str(payload.get('code') or '')
+        if code in _HELPER_ERROR_MESSAGES:
+            return code, _HELPER_ERROR_MESSAGES[code]
+
+    diagnostic = f'{result.stderr or ""}\n{result.stdout or ""}'.lower()
+    if 'password is required' in diagnostic or 'not allowed to execute' in diagnostic:
+        return 'authorization_failed', _HELPER_ERROR_MESSAGES['authorization_failed']
+    return 'unexpected_failure', _HELPER_ERROR_MESSAGES['unexpected_failure']
 
 
 def update_is_active(config, status=None):
@@ -260,10 +339,12 @@ def request_server_update(config, requested_tag, requested_by):
         if update_is_active(config, existing_status):
             raise ServerUpdateError('Обновление уже запущено. Дождитесь его завершения.')
 
+        operation_id = f'upd-{uuid.uuid4().hex[:12]}'
         queued_status = {
             'state': 'queued',
             'tag': tag,
             'message': 'Запрос принят сервером и ожидает запуска.',
+            'operation_id': operation_id,
             'requested_by': str(requested_by),
             'requested_at': _iso_now(),
             'updated_at': _iso_now(),
@@ -280,25 +361,49 @@ def request_server_update(config, requested_tag, requested_by):
                 timeout=timeout,
                 check=False,
             )
+        except subprocess.TimeoutExpired as exc:
+            failed_status = dict(queued_status)
+            failed_status.update({
+                'state': 'failed',
+                'error_code': 'helper_timeout',
+                'message': 'Серверный помощник не ответил вовремя.',
+                'updated_at': _iso_now(),
+            })
+            _write_update_status(config, failed_status)
+            logger.exception('Server update helper timed out; operation_id=%s', operation_id)
+            raise ServerUpdateError(failed_status['message']) from exc
         except (OSError, subprocess.SubprocessError) as exc:
             failed_status = dict(queued_status)
             failed_status.update({
                 'state': 'failed',
-                'message': 'Не удалось передать запрос серверному помощнику.',
+                'error_code': 'helper_unavailable',
+                'message': 'Серверный помощник недоступен или не может быть запущен.',
                 'updated_at': _iso_now(),
             })
             _write_update_status(config, failed_status)
+            logger.exception('Server update helper unavailable; operation_id=%s', operation_id)
             raise ServerUpdateError(failed_status['message']) from exc
 
+        helper_payload = _parse_helper_result(result.stdout, result.stderr)
         if result.returncode != 0:
+            error_code, message = _helper_failure_message(result, helper_payload)
             failed_status = dict(queued_status)
             failed_status.update({
                 'state': 'failed',
-                'message': 'Серверный помощник отклонил запуск обновления.',
+                'error_code': error_code,
+                'message': message,
                 'updated_at': _iso_now(),
             })
             _write_update_status(config, failed_status)
-            raise ServerUpdateError(failed_status['message'])
+            logger.error(
+                'Server update helper rejected request; operation_id=%s code=%s '
+                'returncode=%s output=%s',
+                operation_id,
+                error_code,
+                result.returncode,
+                _redact_helper_output(config, f'{result.stdout}\n{result.stderr}'),
+            )
+            raise ServerUpdateError(f'{message} Код операции: {operation_id}.')
     finally:
         try:
             lock_path.unlink(missing_ok=True)
