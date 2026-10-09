@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
@@ -6,13 +7,21 @@ from dotenv import load_dotenv
 basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv()
 
+
+def _read_version():
+    try:
+        version = (Path(basedir) / 'VERSION').read_text(encoding='utf-8').strip()
+    except OSError:
+        return 'unknown'
+    return version or 'unknown'
+
 class Config:
-    ENVIRONMENT = os.environ.get('OFFICIUM_ENV', 'development').strip().lower()
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+    ENVIRONMENT = os.environ.get('OFFICIUM_ENV', 'production').strip().lower()
+    SECRET_KEY = os.environ.get('SECRET_KEY', '').strip()
     TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
     TELEGRAM_BOT_USERNAME = os.environ.get('TELEGRAM_BOT_USERNAME', '')
-    TELEGRAM_LOGIN_ENABLED = os.environ.get('TELEGRAM_LOGIN_ENABLED', 'true').lower() in ('1', 'true', 'yes', 'on')
-    TELEGRAM_MINI_APP_ENABLED = os.environ.get('TELEGRAM_MINI_APP_ENABLED', 'true').lower() in ('1', 'true', 'yes', 'on')
+    TELEGRAM_LOGIN_ENABLED = os.environ.get('TELEGRAM_LOGIN_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
+    TELEGRAM_MINI_APP_ENABLED = os.environ.get('TELEGRAM_MINI_APP_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     TELEGRAM_MINI_APP_SHORT_NAME = os.environ.get('TELEGRAM_MINI_APP_SHORT_NAME', '')
     TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS = int(os.environ.get('TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS', '86400'))
     TELEGRAM_BOT_ENABLED = os.environ.get('TELEGRAM_BOT_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
@@ -24,12 +33,11 @@ class Config:
     TELEGRAM_CONVERSATION_TTL_MINUTES = int(os.environ.get('TELEGRAM_CONVERSATION_TTL_MINUTES', '30'))
     ADMIN_LOGIN_ENABLED = os.environ.get('ADMIN_LOGIN_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     ADMIN_TELEGRAM_IDS = [item.strip() for item in os.environ.get('ADMIN_TELEGRAM_IDS', '').split(',') if item.strip()]
-    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '')
     ADMIN_PASSWORD_HASH = os.environ.get('ADMIN_PASSWORD_HASH', '')
     ADMIN_MAX_LOGIN_ATTEMPTS = int(os.environ.get('ADMIN_MAX_LOGIN_ATTEMPTS', '5'))
     ADMIN_LOCKOUT_MINUTES = int(os.environ.get('ADMIN_LOCKOUT_MINUTES', '15'))
-    APP_VERSION = os.environ.get('APP_VERSION', '').strip() or 'v0.0.6'
-    APP_TIMEZONE = os.environ.get('APP_TIMEZONE', 'Europe/Moscow').strip() or 'Europe/Moscow'
+    APP_VERSION = os.environ.get('APP_VERSION', '').strip() or _read_version()
+    APP_TIMEZONE = os.environ.get('APP_TIMEZONE', 'UTC').strip() or 'UTC'
     SERVER_UPDATE_ENABLED = os.environ.get('SERVER_UPDATE_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     SERVER_UPDATE_REPOSITORY = os.environ.get('SERVER_UPDATE_REPOSITORY', 'UnicornisIT/officium')
     SERVER_UPDATE_GITHUB_TOKEN = os.environ.get('SERVER_UPDATE_GITHUB_TOKEN', '')
@@ -71,12 +79,9 @@ class Config:
     DATABASE_URL = os.environ.get('DATABASE_URL', '')
     DB_ENGINE = os.environ.get('DB_ENGINE', 'mysql').lower()
     SQLITE_PATH = os.environ.get('SQLITE_PATH', 'dev.db')
-    DEV_SQLITE_COPY_FROM_MYSQL = os.environ.get('DEV_SQLITE_COPY_FROM_MYSQL', 'false').lower() in ('1', 'true', 'yes', 'on')
-    DEV_SQLITE_COPY_SOURCE_URL = os.environ.get('DEV_SQLITE_COPY_SOURCE_URL', '')
-
     DB_HOST = os.environ.get('DB_HOST', 'localhost')
     DB_PORT = os.environ.get('DB_PORT', '3306')
-    DB_USER = os.environ.get('DB_USER', 'root')
+    DB_USER = os.environ.get('DB_USER', 'officium')
     DB_PASSWORD = os.environ.get('DB_PASSWORD', '')
     DB_NAME = os.environ.get('DB_NAME', 'debt_manager')
     

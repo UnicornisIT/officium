@@ -42,9 +42,16 @@ DB_NAME=debt_manager
 бота дополнительно задайте отдельный длинный `TELEGRAM_WEBHOOK_SECRET`. Если
 включён Google OAuth, задайте client ID, client secret и точный HTTPS callback
 URL. Для аварийного админ-входа используйте только `ADMIN_PASSWORD_HASH`,
-созданный `werkzeug.security.generate_password_hash`. Строгая проверка
+созданный командой ниже. Строгая проверка
 production-конфигурации останавливает запуск при небезопасных development-флагах,
 cookie или пропущенных обязательных секретах.
+
+```bash
+python -c "from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass()))"
+```
+
+`APP_TIMEZONE` по умолчанию равен `UTC`. Для сохранения прежнего календарного
+поведения существующий production должен явно задавать `Europe/Moscow`.
 
 ## 2. Резервная копия
 

@@ -79,11 +79,13 @@ class TelegramMiniAppRouteTestCase(unittest.TestCase):
     def setUp(self):
         self.app = create_app({
             'TESTING': True,
+            'SECRET_KEY': 'telegram-mini-app-test-secret',
             'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
             'SQLALCHEMY_ENGINE_OPTIONS': {},
             'WTF_CSRF_ENABLED': False,
             'TELEGRAM_BOT_TOKEN': BOT_TOKEN,
             'TELEGRAM_BOT_USERNAME': 'officium_test_bot',
+            'TELEGRAM_LOGIN_ENABLED': True,
             'TELEGRAM_MINI_APP_ENABLED': True,
         })
         self.client = self.app.test_client()

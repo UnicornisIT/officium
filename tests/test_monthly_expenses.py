@@ -24,6 +24,7 @@ class MonthlyExpensesTestCase(unittest.TestCase):
         """Set up test fixtures."""
         self.app = create_app({
             'TESTING': True,
+            'SECRET_KEY': 'monthly-expenses-test-secret',
             'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
             'SQLALCHEMY_ENGINE_OPTIONS': {},
             'WTF_CSRF_ENABLED': False,

@@ -31,6 +31,25 @@ class RuntimeSecurityTestCase(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'SECRET_KEY'):
             create_app(self._production_config(SECRET_KEY='change-me'))
 
+    def test_production_rejects_missing_secret(self):
+        with self.assertRaisesRegex(RuntimeError, 'SECRET_KEY'):
+            create_app(self._production_config(SECRET_KEY=''))
+
+    def test_development_generates_one_process_local_secret(self):
+        config = {
+            'ENVIRONMENT': 'development',
+            'SECRET_KEY': '',
+            'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+            'SQLALCHEMY_ENGINE_OPTIONS': {},
+        }
+
+        with self.assertLogs('app', level='WARNING'):
+            first_app = create_app(config)
+            second_app = create_app(config)
+
+        self.assertGreaterEqual(len(first_app.config['SECRET_KEY']), 48)
+        self.assertEqual(first_app.config['SECRET_KEY'], second_app.config['SECRET_KEY'])
+
     def test_production_requires_webhook_secret_for_enabled_bot(self):
         with self.assertRaisesRegex(RuntimeError, 'TELEGRAM_WEBHOOK_SECRET'):
             create_app(self._production_config(
@@ -59,7 +78,6 @@ class RuntimeSecurityTestCase(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'password hash'):
             create_app(self._production_config(
                 ADMIN_LOGIN_ENABLED=True,
-                ADMIN_PASSWORD='plaintext-is-not-accepted-in-production',
                 ADMIN_PASSWORD_HASH='',
             ))
 
