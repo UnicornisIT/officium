@@ -118,13 +118,13 @@ $env:PORT = '5000'
 
 Функция намеренно выключена по умолчанию. Для её первой настройки на Linux-сервере:
 
-1. Установите проверенный помощник как файл, принадлежащий `root`:
+1. Установите проверенный помощник как файл, принадлежащий `root`. Установщик
+сохраняет существующий `/etc/officium/updater.env`, проверяет sudoers через
+`visudo` и принимает имя пользователя веб-процесса первым аргументом:
 
 ```bash
 cd /var/www/debt_manager
-sudo install -o root -g root -m 0755 deployment/officium-update-runner /usr/local/sbin/officium-update-runner
-sudo install -d -o root -g root -m 0750 /etc/officium
-sudo install -o root -g root -m 0600 deployment/updater.env.example /etc/officium/updater.env
+sudo sh deployment/install-officium-updater.sh officium
 sudo editor /etc/officium/updater.env
 ```
 
@@ -133,15 +133,15 @@ sudo editor /etc/officium/updater.env
 `SERVICE_NAME` и репозиторий. Пользователь приложения должен владеть Git checkout
 и виртуальным окружением, но не файлом `/usr/local/sbin/officium-update-runner`.
 
-2. Подготовьте каталоги состояния и резервных копий. В примере пользователь
-приложения называется `officium`; замените его при необходимости:
+Если автоматический установщик не используется, подготовьте каталоги состояния и
+резервных копий вручную. В примере пользователь приложения называется `officium`:
 
 ```bash
 sudo install -d -o root -g officium -m 2775 /var/lib/officium
 sudo install -d -o root -g root -m 0750 /var/backups/officium
 ```
 
-3. Установите узкое правило sudo. Сначала проверьте имя пользователя в файле:
+Установите узкое правило sudo. Сначала проверьте имя пользователя в файле:
 
 ```bash
 sudo editor deployment/officium-updater.sudoers
@@ -154,7 +154,7 @@ sudo visudo -cf /etc/sudoers.d/officium-updater
 API и умеет запустить только фиксированный сценарий обновления. Не заменяйте это
 правило разрешением на произвольные `systemctl`, shell или `deploy.sh` от root.
 
-4. Добавьте в `.env` приложения:
+2. Добавьте в `.env` приложения:
 
 ```env
 SERVER_UPDATE_ENABLED=true
@@ -167,35 +167,99 @@ SERVER_UPDATE_STATUS_PATH=/var/lib/officium/server-update-status.json
 SERVER_UPDATE_REQUIRE_ROOT_OWNED_HELPER=true
 ```
 
+В `/etc/officium/updater.env` можно дополнительно задать локальную HTTP-проверку,
+соответствующую реальному адресу Waitress/Gunicorn:
+
+```env
+HEALTHCHECK_URL=http://127.0.0.1:5000/login
+```
+
+Если порт приложения доступен только через reverse proxy, оставьте переменную
+пустой: обязательная проверка `systemctl is-active` всё равно выполняется.
+
 Для публичного репозитория токен не нужен. Для приватного репозитория задайте
 `SERVER_UPDATE_GITHUB_TOKEN` в `.env`, а путь к отдельному root-owned файлу с тем
 же токеном — в `GITHUB_TOKEN_FILE` файла `/etc/officium/updater.env`.
 
-5. Перезапустите приложение и откройте новый раздел админки. Перед первой
-реальной установкой можно проверить разрешение без запуска обновления:
+3. Перезапустите приложение и откройте новый раздел админки. Перед первой
+реальной установкой выполните безопасную проверку конфигурации: она не скачивает
+релиз, не изменяет checkout и не перезапускает службу.
 
 ```bash
-sudo -u officium sudo -n /usr/local/sbin/officium-update-runner invalid/tag
+sudo -u officium sudo -n /usr/local/sbin/officium-update-runner --check
 ```
 
-Команда должна завершиться отказом из-за недопустимого тега, но не запросить
-пароль sudo. Реальное обновление запускайте кнопкой только после публикации
-GitHub Release. Поддерживаются теги до 128 символов без `/`, пробелов и shell-знаков,
-например `v1.4.0`.
+Команда должна вернуть `OFFICIUM_UPDATE_RESULT={"ok":true,"code":"ready"}` и не
+запрашивать пароль. Реальное обновление запускайте кнопкой только после публикации
+GitHub Release. Поддерживаются теги до 128 символов без `/`, пробелов и shell-знаков.
 
 При обновлении помощник:
 
 - независимо подтверждает, что тег является последним опубликованным релизом;
 - сверяет `origin` с разрешённым репозиторием и отказывается работать при локальных
   изменениях отслеживаемых файлов;
-- создаёт согласованную SQLite-копию либо дамп MySQL через `mysqldump`;
+- создаёт согласованную SQLite-копию либо дамп MySQL через `mysqldump`, а также
+  root-only копии `.env` и `/etc/officium/updater.env`;
 - устанавливает точный commit тега в detached HEAD, зависимости и миграции;
-- перезапускает только настроенную службу и записывает итог в
+- перезапускает только настроенную службу, проверяет её активность и, если задан,
+  `HEALTHCHECK_URL`, затем записывает итог в
   `/var/lib/officium/server-update-status.json`.
 
-Логи фоновой операции доступны через `journalctl -u 'officium-update-*'`. Сам
+Логи фоновой операции доступны через `journalctl -u 'officium-update-*'`. Статус,
+этап, безопасный код ошибки и идентификатор операции переживают перезапуск Flask,
+поскольку хранятся в `/var/lib/officium`, а не в памяти веб-процесса. Сам
 root-owned помощник не обновляется из Git checkout намеренно: если его версия
 изменилась в новом релизе, повторите команду `install` после проверки файла.
+
+### Диагностика отказа помощника
+
+Помощник не является HTTP-сервисом: у него нет адреса, порта или отдельного секрета.
+Flask запускает фиксированный root-owned файл через `sudo -n`, а тот создаёт
+transient-unit `officium-update-*` через `systemd-run`. Поэтому сообщение об
+авторизации относится к sudo/systemd, а не к Telegram или CSRF.
+
+Для существующего сервера сначала определите пользователя веб-службы и сравните
+его с первым полем `/etc/sudoers.d/officium-updater`:
+
+```bash
+systemctl show debt_manager --property=User --value
+sudo visudo -cf /etc/sudoers.d/officium-updater
+sudo -l -U officium
+sudo -u officium sudo -n /usr/local/sbin/officium-update-runner --check
+sudo cat /var/lib/officium/server-update-status.json
+sudo journalctl -u 'officium-update-*' -n 200 --no-pager
+sudo journalctl -u debt_manager -n 100 --no-pager
+```
+
+Если первая команда выводит не `officium`, переустановите sudoers, передав
+фактического пользователя установщику. После обновления файлов выполните:
+
+```bash
+cd /var/www/debt_manager
+sudo sh deployment/install-officium-updater.sh "$(systemctl show debt_manager --property=User --value)"
+sudo editor /etc/officium/updater.env
+sudo -u "$(systemctl show debt_manager --property=User --value)" sudo -n /usr/local/sbin/officium-update-runner --check
+sudo systemctl restart debt_manager
+```
+
+Если сломанная кнопка не позволяет получить релиз с исправлением, сначала обновите
+только root-owned помощник из заранее проверенного тега, не переключая рабочий
+checkout и не трогая базу. Замените `<FIX_RELEASE_TAG>` опубликованным тегом:
+
+```bash
+cd /var/www/debt_manager
+app_user="$(systemctl show debt_manager --property=User --value)"
+fix_tag='<FIX_RELEASE_TAG>'
+sudo -u "$app_user" git fetch origin "refs/tags/$fix_tag:refs/tags/$fix_tag"
+helper_temp="$(mktemp)"
+sudo -u "$app_user" git show "$fix_tag:deployment/officium-update-runner" > "$helper_temp"
+sudo install -o root -g root -m 0755 "$helper_temp" /usr/local/sbin/officium-update-runner
+rm -f "$helper_temp"
+sudo -u "$app_user" sudo -n /usr/local/sbin/officium-update-runner --check
+```
+
+После успешного `--check` можно устанавливать этот же тег кнопкой. После завершения
+повторно запустите `install-officium-updater.sh` уже из обновлённого checkout.
 
 ## 7. Автоматические ежемесячные расходы
 

@@ -162,6 +162,8 @@ def init_app(app):
             'state': str(status.get('state') or 'unknown'),
             'tag': str(status.get('tag') or ''),
             'message': str(status.get('message') or ''),
+            'operation_id': str(status.get('operation_id') or ''),
+            'error_code': str(status.get('error_code') or ''),
             'updated_at': str(status.get('updated_at') or ''),
         })
         response.headers['Cache-Control'] = 'no-store'

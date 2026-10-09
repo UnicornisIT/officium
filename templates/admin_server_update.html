@@ -4,11 +4,14 @@
 {% block content %}
 {% set status_labels = {
     'queued': ('В очереди', 'info'),
+    'checking': ('Проверка обновления', 'primary'),
+    'preparing': ('Подготовка', 'primary'),
     'running': ('Запущено', 'primary'),
     'backing_up': ('Резервная копия', 'primary'),
     'installing': ('Установка', 'primary'),
     'migrating': ('Миграции', 'primary'),
     'restarting': ('Перезапуск', 'warning'),
+    'verifying': ('Проверка работоспособности', 'primary'),
     'success': ('Завершено', 'success'),
     'failed': ('Ошибка', 'danger')
 } %}
@@ -74,6 +77,9 @@
                     <span id="updateStatusBadge" class="badge bg-{{ status_meta[1] }}">{{ status_meta[0] }}</span>
                     {% if update_status.tag %}<span class="ms-2">{{ update_status.tag }}</span>{% endif %}
                     <p id="updateStatusMessage" class="mb-0 mt-2 text-muted">{{ update_status.message or '' }}</p>
+                    {% if update_status.operation_id %}
+                    <div class="small text-muted mt-1">Код операции: <code id="updateOperationId">{{ update_status.operation_id }}</code></div>
+                    {% endif %}
                     {% if update_status.updated_at %}
                     <div id="updateStatusTime" class="small text-muted mt-1">Обновлено: {{ update_status.updated_at }}</div>
                     {% endif %}
@@ -90,9 +96,9 @@
     <h2 class="h5">Что произойдёт</h2>
     <ol class="mb-4 mt-3">
         <li>Сервер повторно проверит, что выбран именно последний GitHub-релиз.</li>
-        <li>Создаст резервную копию базы данных.</li>
+        <li>Создаст резервную копию базы данных и локальной конфигурации.</li>
         <li>Установит код точного тега, зависимости и миграции.</li>
-        <li>Перезапустит службу приложения и запишет результат.</li>
+        <li>Перезапустит службу приложения, проверит её работоспособность и запишет результат.</li>
     </ol>
 
     {% if enabled and latest_release and not is_current and not is_active %}
@@ -117,11 +123,14 @@
     const terminalStates = new Set(['success', 'failed']);
     const labels = {
         queued: ['В очереди', 'info'],
+        checking: ['Проверка обновления', 'primary'],
+        preparing: ['Подготовка', 'primary'],
         running: ['Запущено', 'primary'],
         backing_up: ['Резервная копия', 'primary'],
         installing: ['Установка', 'primary'],
         migrating: ['Миграции', 'primary'],
         restarting: ['Перезапуск', 'warning'],
+        verifying: ['Проверка работоспособности', 'primary'],
         success: ['Завершено', 'success'],
         failed: ['Ошибка', 'danger']
     };

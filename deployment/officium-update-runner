@@ -7,11 +7,13 @@ import json
 import os
 import pwd
 import re
+import signal
 import shutil
 import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -31,14 +33,38 @@ ALLOWED_CONFIG_KEYS = {
     'BACKUP_DIR',
     'GITHUB_TOKEN_FILE',
     'GIT_REMOTE',
+    'HEALTHCHECK_URL',
     'REPOSITORY',
     'SERVICE_NAME',
     'STATUS_FILE',
 }
+RESULT_PREFIX = 'OFFICIUM_UPDATE_RESULT='
+PUBLIC_MESSAGES = {
+    'authorization_failed': 'Недостаточно прав для запуска серверного помощника.',
+    'backup_failed': 'Не удалось создать резервную копию. Обновление не начато.',
+    'configuration_invalid': 'Конфигурация серверного помощника некорректна.',
+    'dependency_failed': 'Не удалось установить зависимости приложения.',
+    'deployment_failed': 'Не удалось установить код релиза.',
+    'github_unavailable': 'Серверный помощник не смог проверить релиз на GitHub.',
+    'healthcheck_failed': 'Новая версия запущена, но не прошла проверку работоспособности.',
+    'migration_failed': 'Не удалось выполнить миграции базы данных.',
+    'release_rejected': 'Серверный помощник отклонил выбранный релиз.',
+    'restart_failed': 'Не удалось перезапустить службу приложения.',
+    'scheduling_failed': 'Systemd не смог запланировать задачу обновления.',
+    'update_busy': 'Другое обновление уже выполняется.',
+    'unexpected_failure': 'Серверный помощник завершился с внутренней ошибкой.',
+}
 
 
 class UpdateFailure(RuntimeError):
-    pass
+    def __init__(self, message, code='configuration_invalid'):
+        super().__init__(message)
+        self.code = code
+
+
+def emit_result(ok, **fields):
+    payload = {'ok': bool(ok), **fields}
+    print(f'{RESULT_PREFIX}{json.dumps(payload, ensure_ascii=True, separators=(",", ":"))}')
 
 
 def utc_now():
@@ -93,6 +119,7 @@ def load_runner_config():
         'BACKUP_DIR': configured.get('BACKUP_DIR', '/var/backups/officium'),
         'GITHUB_TOKEN_FILE': configured.get('GITHUB_TOKEN_FILE', ''),
         'GIT_REMOTE': configured.get('GIT_REMOTE', 'origin'),
+        'HEALTHCHECK_URL': configured.get('HEALTHCHECK_URL', ''),
         'REPOSITORY': configured.get('REPOSITORY', 'UnicornisIT/officium'),
         'SERVICE_NAME': configured.get('SERVICE_NAME', 'debt_manager'),
         'STATUS_FILE': configured.get('STATUS_FILE', '/var/lib/officium/server-update-status.json'),
@@ -125,7 +152,7 @@ def read_status(status_path):
         return {}
 
 
-def write_status(config, state, tag, message):
+def write_status(config, state, tag, message, **fields):
     status_path = Path(config['STATUS_FILE'])
     status_path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     payload = read_status(status_path)
@@ -135,6 +162,7 @@ def write_status(config, state, tag, message):
         'message': message,
         'updated_at': iso_now(),
     })
+    payload.update(fields)
     temporary = status_path.with_name(f'.{status_path.name}.{os.getpid()}.tmp')
     try:
         temporary.write_text(
@@ -179,9 +207,12 @@ def latest_release_tag(config):
                 raise UpdateFailure('GitHub release response is too large.')
             payload = json.loads(raw_payload.decode('utf-8'))
     except (HTTPError, URLError, OSError, ValueError) as exc:
-        raise UpdateFailure('Cannot verify the latest GitHub release.') from exc
+        raise UpdateFailure(
+            'Cannot verify the latest GitHub release.',
+            'github_unavailable',
+        ) from exc
     if not isinstance(payload, dict):
-        raise UpdateFailure('GitHub returned an invalid release response.')
+        raise UpdateFailure('GitHub returned an invalid release response.', 'github_unavailable')
     return validate_tag(str(payload.get('tag_name') or ''))
 
 
@@ -329,6 +360,48 @@ def backup_database(config, tag):
     return destination
 
 
+def backup_configuration(config, tag):
+    """Copy local configuration without exposing it to the application checkout."""
+    backup_dir = Path(config['BACKUP_DIR'])
+    timestamp = utc_now().strftime('%Y%m%dT%H%M%SZ')
+    safe_tag = re.sub(r'[^A-Za-z0-9._+-]', '_', tag)
+    destination = backup_dir / f'officium-{safe_tag}-{timestamp}-config'
+    destination.mkdir(mode=0o700)
+    sources = (
+        (Path(config['APP_DIR']) / '.env', 'app.env'),
+        (CONFIG_PATH, 'updater.env'),
+    )
+    copied = 0
+    try:
+        for source, name in sources:
+            if not source.is_file():
+                continue
+            target = destination / name
+            shutil.copyfile(source, target)
+            target.chmod(0o600)
+            copied += 1
+    except OSError:
+        shutil.rmtree(destination, ignore_errors=True)
+        raise
+    if copied == 0:
+        shutil.rmtree(destination, ignore_errors=True)
+        raise UpdateFailure('No local configuration files were found.', 'backup_failed')
+    return destination
+
+
+def create_backups(config, tag):
+    try:
+        database_path = backup_database(config, tag)
+        configuration_path = backup_configuration(config, tag)
+    except UpdateFailure as exc:
+        if exc.code == 'configuration_invalid':
+            raise UpdateFailure(str(exc), 'backup_failed') from exc
+        raise
+    except (OSError, sqlite3.Error, subprocess.SubprocessError) as exc:
+        raise UpdateFailure('Backup creation failed.', 'backup_failed') from exc
+    return database_path, configuration_path
+
+
 def run_deployment(config, tag):
     app_dir = Path(config['APP_DIR'])
     deploy_source = app_dir / 'deploy.sh'
@@ -339,6 +412,7 @@ def run_deployment(config, tag):
         raise UpdateFailure('runuser is not installed.')
 
     temporary_path = None
+    stage_path = None
     try:
         with tempfile.NamedTemporaryFile(
             mode='wb', prefix='officium-deploy-', suffix='.sh', delete=False
@@ -347,6 +421,14 @@ def run_deployment(config, tag):
             with deploy_source.open('rb') as source:
                 shutil.copyfileobj(source, temporary)
         temporary_path.chmod(0o755)
+        with tempfile.NamedTemporaryFile(
+            mode='w', prefix='officium-deploy-stage-', delete=False
+        ) as stage_file:
+            stage_path = Path(stage_file.name)
+            stage_file.write('preparing\n')
+        account = pwd.getpwnam(config['APP_USER'])
+        os.chown(stage_path, account.pw_uid, account.pw_gid)
+        stage_path.chmod(0o600)
         command = [
             runuser,
             '-u',
@@ -355,6 +437,7 @@ def run_deployment(config, tag):
             '/usr/bin/env',
             f'APP_DIR={app_dir}',
             f'DEPLOY_REMOTE={config["GIT_REMOTE"]}',
+            f'OFFICIUM_DEPLOY_STAGE_FILE={stage_path}',
             'OFFICIUM_BACKUP_CONFIRMED=true',
             '/bin/bash',
             str(temporary_path),
@@ -362,12 +445,109 @@ def run_deployment(config, tag):
             tag,
             '--skip-restart',
         ]
-        result = subprocess.run(command, timeout=900, check=False)
-        if result.returncode != 0:
-            raise UpdateFailure('Release deployment failed. See the system journal for details.')
+        process = subprocess.Popen(command, start_new_session=True)
+        deadline = time.monotonic() + 900
+        last_stage = ''
+        stage_messages = {
+            'preparing': ('preparing', 'Подготовка сервера к установке релиза.'),
+            'installing': ('installing', 'Установка кода проверенного релиза.'),
+            'dependencies': ('installing', 'Установка зависимостей приложения.'),
+            'migrating': ('migrating', 'Выполнение миграций базы данных.'),
+        }
+        while process.poll() is None:
+            try:
+                stage = stage_path.read_text(encoding='utf-8').strip()
+            except OSError:
+                stage = ''
+            if stage in stage_messages and stage != last_stage:
+                state, message = stage_messages[stage]
+                write_status(config, state, tag, message)
+                last_stage = stage
+            if time.monotonic() >= deadline:
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                raise UpdateFailure('Release deployment timed out.', 'deployment_failed')
+            time.sleep(0.25)
+        try:
+            final_stage = stage_path.read_text(encoding='utf-8').strip()
+        except OSError:
+            final_stage = ''
+        if final_stage in stage_messages:
+            last_stage = final_stage
+        if process.returncode != 0:
+            if last_stage == 'dependencies':
+                code = 'dependency_failed'
+            elif last_stage == 'migrating':
+                code = 'migration_failed'
+            else:
+                code = 'deployment_failed'
+            raise UpdateFailure(
+                'Release deployment failed. See the system journal for details.',
+                code,
+            )
     finally:
         if temporary_path:
             temporary_path.unlink(missing_ok=True)
+        if stage_path:
+            stage_path.unlink(missing_ok=True)
+
+
+def verify_service_health(config):
+    systemctl = shutil.which('systemctl')
+    if not systemctl:
+        raise UpdateFailure('systemctl is not installed.', 'restart_failed')
+
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            [systemctl, 'is-active', '--quiet', config['SERVICE_NAME']],
+            timeout=10,
+            check=False,
+        )
+        if result.returncode == 0:
+            break
+        time.sleep(1)
+    else:
+        raise UpdateFailure('Application service did not become active.', 'healthcheck_failed')
+
+    healthcheck_url = config.get('HEALTHCHECK_URL', '').strip()
+    if not healthcheck_url:
+        return
+    parsed = urlsplit(healthcheck_url)
+    if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+        raise UpdateFailure('HEALTHCHECK_URL is invalid.', 'configuration_invalid')
+
+    request = Request(
+        healthcheck_url,
+        headers={'User-Agent': 'officium-server-updater-healthcheck'},
+        method='GET',
+    )
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        try:
+            with urlopen(request, timeout=5) as response:
+                if 200 <= response.status < 400:
+                    return
+        except (HTTPError, URLError, OSError):
+            pass
+        time.sleep(1)
+    raise UpdateFailure('Application HTTP health check failed.', 'healthcheck_failed')
+
+
+def check_readiness():
+    config = load_runner_config()
+    verify_git_remote(config)
+    for command in ('git', 'runuser', 'systemctl', 'systemd-run'):
+        if not shutil.which(command):
+            raise UpdateFailure(f'{command} is not installed.', 'configuration_invalid')
+    backup_dir = Path(config['BACKUP_DIR'])
+    backup_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
+    if not os.access(backup_dir, os.W_OK):
+        raise UpdateFailure('BACKUP_DIR is not writable.', 'configuration_invalid')
+    emit_result(True, code='ready')
 
 
 def perform_update(tag):
@@ -377,65 +557,90 @@ def perform_update(tag):
         try:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            raise UpdateFailure('Another server update is already running.') from exc
+            raise UpdateFailure('Another server update is already running.', 'update_busy') from exc
 
         try:
-            write_status(config, 'running', tag, 'Проверка релиза и конфигурации сервера.')
+            write_status(config, 'checking', tag, 'Проверка релиза и конфигурации сервера.')
             if latest_release_tag(config) != tag:
-                raise UpdateFailure('Requested tag is not the latest published GitHub release.')
+                raise UpdateFailure(
+                    'Requested tag is not the latest published GitHub release.',
+                    'release_rejected',
+                )
             verify_git_remote(config)
 
+            write_status(config, 'preparing', tag, 'Подготовка сервера к обновлению.')
             write_status(config, 'backing_up', tag, 'Создание резервной копии базы данных.')
-            backup_path = backup_database(config, tag)
+            backup_path, config_backup_path = create_backups(config, tag)
 
-            write_status(
-                config,
-                'installing',
-                tag,
-                'Установка кода, зависимостей и миграций.',
-            )
             run_deployment(config, tag)
 
             write_status(config, 'restarting', tag, 'Перезапуск службы приложения.')
             systemctl = shutil.which('systemctl')
             if not systemctl:
-                raise UpdateFailure('systemctl is not installed.')
+                raise UpdateFailure('systemctl is not installed.', 'restart_failed')
             result = subprocess.run(
                 [systemctl, 'restart', config['SERVICE_NAME']],
                 timeout=60,
                 check=False,
             )
             if result.returncode != 0:
-                raise UpdateFailure('Application service restart failed.')
+                raise UpdateFailure('Application service restart failed.', 'restart_failed')
+
+            write_status(config, 'verifying', tag, 'Проверка работоспособности новой версии.')
+            verify_service_health(config)
 
             write_status(
                 config,
                 'success',
                 tag,
-                f'Обновление завершено. Резервная копия: {backup_path.name}',
+                'Обновление завершено. '
+                f'Копии: {backup_path.name}, {config_backup_path.name}',
             )
-        except Exception:
+        except UpdateFailure as exc:
             write_status(
                 config,
                 'failed',
                 tag,
-                'Обновление остановлено. Подробности доступны в системном журнале.',
+                PUBLIC_MESSAGES.get(exc.code, PUBLIC_MESSAGES['unexpected_failure']),
+                error_code=exc.code,
             )
             raise
+        except Exception as exc:
+            write_status(
+                config,
+                'failed',
+                tag,
+                PUBLIC_MESSAGES['unexpected_failure'],
+                error_code='unexpected_failure',
+            )
+            raise UpdateFailure('Unexpected update failure.', 'unexpected_failure') from exc
 
 
 def request_background_update(tag):
     config = load_runner_config()
     # Fail before scheduling if the release or repository cannot be verified.
     if latest_release_tag(config) != tag:
-        raise UpdateFailure('Requested tag is not the latest published GitHub release.')
+        raise UpdateFailure(
+            'Requested tag is not the latest published GitHub release.',
+            'release_rejected',
+        )
     verify_git_remote(config)
 
     systemd_run = shutil.which('systemd-run')
     if not systemd_run:
-        raise UpdateFailure('systemd-run is not installed.')
+        raise UpdateFailure('systemd-run is not installed.', 'scheduling_failed')
     unit_suffix = hashlib.sha256(f'{tag}:{os.getpid()}:{iso_now()}'.encode()).hexdigest()[:16]
     unit_name = f'officium-update-{unit_suffix}'
+    status = read_status(Path(config['STATUS_FILE']))
+    operation_id = str(status.get('operation_id') or f'upd-{unit_suffix[:12]}')
+    if not status.get('operation_id'):
+        write_status(
+            config,
+            str(status.get('state') or 'queued'),
+            tag,
+            str(status.get('message') or 'Запрос принят серверным помощником.'),
+            operation_id=operation_id,
+        )
     result = subprocess.run(
         [
             systemd_run,
@@ -451,12 +656,24 @@ def request_background_update(tag):
         check=False,
     )
     if result.returncode != 0:
-        raise UpdateFailure('systemd could not schedule the update task.')
+        raise UpdateFailure('systemd could not schedule the update task.', 'scheduling_failed')
+    emit_result(
+        True,
+        code='scheduled',
+        operation_id=operation_id,
+        unit=unit_name,
+    )
 
 
 def main(argv):
     if os.geteuid() != 0:
-        raise UpdateFailure('This updater must run as root through the configured sudo rule.')
+        raise UpdateFailure(
+            'This updater must run as root through the configured sudo rule.',
+            'authorization_failed',
+        )
+    if len(argv) == 2 and argv[1] == '--check':
+        check_readiness()
+        return 0
     if len(argv) == 2:
         request_background_update(validate_tag(argv[1]))
         return 0
@@ -471,7 +688,9 @@ if __name__ == '__main__':
         raise SystemExit(main(sys.argv))
     except UpdateFailure as exc:
         print(f'officium updater: {exc}', file=sys.stderr)
+        emit_result(False, code=exc.code)
         raise SystemExit(1)
     except Exception:
         print('officium updater: unexpected failure; inspect the system journal.', file=sys.stderr)
+        emit_result(False, code='unexpected_failure')
         raise SystemExit(1)
