@@ -1,0 +1,18 @@
+[Unit]
+Description=Generate missing Officium monthly expenses
+Documentation=file:/var/www/debt_manager/MONTHLY_EXPENSES_GUIDE.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=officium
+Group=officium
+WorkingDirectory=/var/www/debt_manager
+EnvironmentFile=-/var/www/debt_manager/.env
+Environment=FLASK_APP=run.py
+ExecStart=/var/www/debt_manager/venv/bin/python -m flask generate-monthly-expenses
+TimeoutStartSec=15min
+NoNewPrivileges=true
+PrivateTmp=true
+

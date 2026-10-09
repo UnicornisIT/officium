@@ -117,6 +117,15 @@ class SchemaContractTestCase(unittest.TestCase):
             ),
         )
 
+    def test_expense_tracks_recurring_anchor_and_settings_revision(self):
+        columns = Expense.__table__.c
+
+        self.assertIn('monthly_anchor_day', columns)
+        self.assertIn('monthly_settings_updated_at', columns)
+        self.assertIn('uq_expenses_monthly_occurrence', {
+            index.name for index in Expense.__table__.indexes
+        })
+
     def test_income_category_enum_contains_vacation_pay(self):
         income_category = Income.__table__.c.category.type
 

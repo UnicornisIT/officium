@@ -171,8 +171,16 @@ def register_cli_commands(app):
         stats = gen_expenses(user_id=user_id, target_month=month)
         click.echo(f"Generated: {stats['created']} expenses")
         click.echo(f"Skipped: {stats['skipped']} (already exist)")
+        click.echo(f"Errors: {stats['errors']}")
+        app.logger.info(
+            'Monthly expense generation finished: target=%s created=%s skipped=%s errors=%s',
+            stats['target_month'],
+            stats['created'],
+            stats['skipped'],
+            stats['errors'],
+        )
         if stats['errors'] > 0:
-            click.echo(f"Errors: {stats['errors']}")
+            raise click.ClickException('Monthly expense generation completed with errors')
 
     @app.cli.command('copy-mysql-to-sqlite')
     def copy_mysql_to_sqlite():
