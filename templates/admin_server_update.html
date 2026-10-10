@@ -1,166 +1,80 @@
-{% extends 'base.html' %}
-{% block title %}Обновление сервера — Админка{% endblock %}
-
-{% block content %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon, status_badge %}
+{% block title %}Обновление сервера — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Обновление сервера{% endblock %}
 {% set status_labels = {
-    'queued': ('В очереди', 'info'),
-    'checking': ('Проверка обновления', 'primary'),
-    'preparing': ('Подготовка', 'primary'),
-    'running': ('Запущено', 'primary'),
-    'backing_up': ('Резервная копия', 'primary'),
-    'installing': ('Установка', 'primary'),
-    'migrating': ('Миграции', 'primary'),
-    'restarting': ('Перезапуск', 'warning'),
+    'queued': ('В очереди', 'info'), 'checking': ('Проверка обновления', 'primary'),
+    'preparing': ('Подготовка', 'primary'), 'running': ('Запущено', 'primary'),
+    'backing_up': ('Резервная копия', 'primary'), 'installing': ('Установка', 'primary'),
+    'migrating': ('Миграции', 'primary'), 'restarting': ('Перезапуск', 'warning'),
     'verifying': ('Проверка работоспособности', 'primary'),
-    'success': ('Завершено', 'success'),
-    'failed': ('Ошибка', 'danger')
+    'success': ('Завершено', 'success'), 'failed': ('Ошибка', 'danger')
 } %}
-<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-    <div>
-        <h1 class="h3 mb-1">Обновление сервера</h1>
-        <p class="text-muted mb-0">Установка последнего опубликованного релиза officium.</p>
-    </div>
-    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">Вернуться в админку</a>
+
+{% block admin_content %}
+<header class="admin-page-header"><div><p class="admin-page-kicker">Обслуживание</p><h1>Обновление сервера</h1><p>Установка последнего опубликованного релиза officium с резервной копией и проверкой.</p></div><a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">Вернуться к обзору</a></header>
+{% if not enabled %}<div class="alert alert-warning" role="alert"><strong>Обновление отключено.</strong> Установите серверный помощник и включите <code>SERVER_UPDATE_ENABLED</code> по инструкции развертывания.</div>{% endif %}
+{% if release_error %}<div class="alert alert-danger" role="alert">{{ release_error }}</div>{% endif %}
+
+<div class="admin-release-grid">
+    <section class="admin-panel admin-release-card"><span class="admin-release-card__icon">{{ icon('server', 23) }}</span><div><p class="admin-page-kicker">На сервере</p><h2>Установленная версия</h2><strong>{{ current_release.label }}</strong>{% if current_release.commit %}<small>Коммит: <span class="admin-mono">{{ current_release.commit }}</span></small>{% endif %}</div></section>
+    <section class="admin-panel admin-release-card"><span class="admin-release-card__icon">{{ icon('update', 23) }}</span><div><p class="admin-page-kicker">GitHub Releases</p><h2>Последний релиз</h2>{% if latest_release %}<strong>{{ latest_release.tag }}</strong>{% if is_current %}{{ status_badge('success') }}{% endif %}<small>{{ latest_release.name }}</small>{% if latest_release.published_at %}<small>Опубликован: {{ latest_release.published_at }}</small>{% endif %}<a href="{{ latest_release.url }}" target="_blank" rel="noopener noreferrer">Открыть релиз на GitHub</a>{% elif enabled and not release_error %}<span>Сведения о релизе пока недоступны.</span>{% else %}<span>Проверка начнется после включения обновлений.</span>{% endif %}</div></section>
 </div>
 
-{% if not enabled %}
-<div class="alert alert-warning" role="alert">
-    <strong>Обновление отключено.</strong>
-    Сначала установите серверный помощник и включите <code>SERVER_UPDATE_ENABLED</code>
-    по инструкции развёртывания. До этого кнопка запуска недоступна.
-</div>
-{% endif %}
-
-{% if release_error %}
-<div class="alert alert-danger" role="alert">{{ release_error }}</div>
-{% endif %}
-
-<div class="row g-4">
-    <div class="col-lg-6">
-        <div class="card p-4 h-100">
-            <h2 class="h5">Установленная версия</h2>
-            <div class="fs-4 fw-semibold mt-2">{{ current_release.label }}</div>
-            {% if current_release.commit %}
-            <div class="text-muted small mt-1">Коммит: {{ current_release.commit }}</div>
-            {% endif %}
+<section class="admin-panel admin-update-status">
+    <div class="admin-panel__header"><div><p class="admin-page-kicker">Текущая операция</p><h2>Состояние обновления</h2></div><a href="{{ url_for('admin_server_update') }}" class="btn btn-outline-secondary btn-sm">Обновить сведения</a></div>
+    {% if update_status %}
+        {% set status_meta = status_labels.get(update_status.state, ('Неизвестно', 'secondary')) %}
+        <div id="updateStatus" data-state="{{ update_status.state }}" class="admin-update-status__body">
+            <span id="updateStatusBadge" class="admin-badge admin-badge--{{ update_status.state }}"><span class="admin-badge__dot"></span>{{ status_meta[0] }}</span>
+            {% if update_status.tag %}<strong>{{ update_status.tag }}</strong>{% endif %}
+            <p id="updateStatusMessage">{{ update_status.message or '' }}</p>
+            {% if update_status.operation_id %}<small>Код операции: <code id="updateOperationId">{{ update_status.operation_id }}</code></small>{% endif %}
+            {% if update_status.updated_at %}<small id="updateStatusTime">Обновлено: {{ update_status.updated_at }}</small>{% endif %}
         </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card p-4 h-100">
-            <h2 class="h5">Последний релиз</h2>
-            {% if latest_release %}
-            <div class="d-flex align-items-center gap-2 mt-2">
-                <span class="fs-4 fw-semibold">{{ latest_release.tag }}</span>
-                {% if is_current %}<span class="badge bg-success">Установлен</span>{% endif %}
-            </div>
-            <div class="text-muted mt-1">{{ latest_release.name }}</div>
-            {% if latest_release.published_at %}
-            <div class="text-muted small mt-1">Опубликован: {{ latest_release.published_at }}</div>
-            {% endif %}
-            <a href="{{ latest_release.url }}" class="mt-3" target="_blank" rel="noopener noreferrer">Открыть релиз на GitHub</a>
-            {% elif enabled and not release_error %}
-            <div class="text-muted mt-2">Сведения о релизе пока недоступны.</div>
-            {% else %}
-            <div class="text-muted mt-2">Проверка начнётся после включения обновлений.</div>
-            {% endif %}
-        </div>
-    </div>
-</div>
+    {% else %}<div id="updateStatus" data-state="idle" class="admin-empty-state admin-empty-state--compact">{{ icon('update', 26) }}<p>Обновление еще не запускалось.</p></div>{% endif %}
+</section>
 
-<div class="card p-4 mt-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-        <div>
-            <h2 class="h5 mb-1">Состояние обновления</h2>
-            {% if update_status %}
-                {% set status_meta = status_labels.get(update_status.state, ('Неизвестно', 'secondary')) %}
-                <div id="updateStatus" data-state="{{ update_status.state }}" class="mt-2">
-                    <span id="updateStatusBadge" class="badge bg-{{ status_meta[1] }}">{{ status_meta[0] }}</span>
-                    {% if update_status.tag %}<span class="ms-2">{{ update_status.tag }}</span>{% endif %}
-                    <p id="updateStatusMessage" class="mb-0 mt-2 text-muted">{{ update_status.message or '' }}</p>
-                    {% if update_status.operation_id %}
-                    <div class="small text-muted mt-1">Код операции: <code id="updateOperationId">{{ update_status.operation_id }}</code></div>
-                    {% endif %}
-                    {% if update_status.updated_at %}
-                    <div id="updateStatusTime" class="small text-muted mt-1">Обновлено: {{ update_status.updated_at }}</div>
-                    {% endif %}
-                </div>
-            {% else %}
-                <div id="updateStatus" data-state="idle" class="text-muted mt-2">Обновление ещё не запускалось.</div>
-            {% endif %}
-        </div>
-        <a href="{{ url_for('admin_server_update') }}" class="btn btn-outline-secondary">Обновить сведения</a>
-    </div>
-</div>
-
-<div class="card p-4 mt-4">
-    <h2 class="h5">Что произойдёт</h2>
-    <ol class="mb-4 mt-3">
-        <li>Сервер повторно проверит, что выбран именно последний GitHub-релиз.</li>
-        <li>Создаст резервную копию базы данных и локальной конфигурации.</li>
-        <li>Установит код точного тега, зависимости и миграции.</li>
-        <li>Перезапустит службу приложения, проверит её работоспособность и запишет результат.</li>
-    </ol>
-
+<section class="admin-panel admin-update-plan">
+    <div class="admin-panel__header"><div><p class="admin-page-kicker">Безопасный сценарий</p><h2>Что произойдет</h2></div></div>
+    <ol><li><span>1</span><div><strong>Проверка релиза</strong><p>Сервер подтвердит, что выбран последний опубликованный GitHub-релиз.</p></div></li><li><span>2</span><div><strong>Резервная копия</strong><p>Будут сохранены база данных и локальная конфигурация.</p></div></li><li><span>3</span><div><strong>Установка</strong><p>Будут установлены код точного тега, зависимости и миграции.</p></div></li><li><span>4</span><div><strong>Проверка</strong><p>Служба перезапустится, пройдет проверку работоспособности и запишет результат.</p></div></li></ol>
     {% if enabled and latest_release and not is_current and not is_active %}
-    <form method="post" action="{{ url_for('admin_server_update_apply') }}"
-          onsubmit="return confirm('Начать обновление сервера до {{ latest_release.tag }}? На время перезапуска панель может быть недоступна несколько секунд.');">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="tag" value="{{ latest_release.tag }}">
-        <button type="submit" class="btn btn-primary">Обновить до {{ latest_release.tag }}</button>
+    <form method="post" action="{{ url_for('admin_server_update_apply') }}" data-admin-confirm="Начать обновление сервера до {{ latest_release.tag }}? Во время перезапуска панель может быть кратковременно недоступна.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="tag" value="{{ latest_release.tag }}">
+        <button type="submit" class="btn btn-primary">{{ icon('update', 17) }} Обновить до {{ latest_release.tag }}</button>
     </form>
-    {% elif is_current %}
-    <div class="alert alert-success mb-0">Уже установлена последняя версия.</div>
-    {% elif is_active %}
-    <div class="alert alert-info mb-0">Обновление выполняется. Повторный запуск временно заблокирован.</div>
-    {% elif enabled %}
-    <button type="button" class="btn btn-primary" disabled>Обновление недоступно</button>
-    {% endif %}
-</div>
+    {% elif is_current %}<div class="alert alert-success mb-0">Уже установлена последняя версия.</div>
+    {% elif is_active %}<div class="alert alert-info mb-0">Обновление выполняется. Повторный запуск временно заблокирован.</div>
+    {% elif enabled %}<button type="button" class="btn btn-primary" disabled>Обновление недоступно</button>{% endif %}
+</section>
+{% endblock %}
 
+{% block admin_extra_js %}
 {% if is_active %}
 <script>
 (() => {
     const terminalStates = new Set(['success', 'failed']);
     const labels = {
-        queued: ['В очереди', 'info'],
-        checking: ['Проверка обновления', 'primary'],
-        preparing: ['Подготовка', 'primary'],
-        running: ['Запущено', 'primary'],
-        backing_up: ['Резервная копия', 'primary'],
-        installing: ['Установка', 'primary'],
-        migrating: ['Миграции', 'primary'],
-        restarting: ['Перезапуск', 'warning'],
-        verifying: ['Проверка работоспособности', 'primary'],
-        success: ['Завершено', 'success'],
-        failed: ['Ошибка', 'danger']
+        queued: 'В очереди', checking: 'Проверка обновления', preparing: 'Подготовка', running: 'Запущено',
+        backing_up: 'Резервная копия', installing: 'Установка', migrating: 'Миграции', restarting: 'Перезапуск',
+        verifying: 'Проверка работоспособности', success: 'Завершено', failed: 'Ошибка'
     };
     const poll = async () => {
         try {
-            const response = await fetch('{{ url_for("admin_server_update_status") }}', {
-                credentials: 'same-origin',
-                headers: {'Accept': 'application/json'}
-            });
+            const response = await fetch('{{ url_for("admin_server_update_status") }}', {credentials: 'same-origin', headers: {'Accept': 'application/json'}});
             if (!response.ok) return;
             const status = await response.json();
             const statusElement = document.getElementById('updateStatus');
             const oldState = statusElement?.dataset.state;
             if (statusElement) statusElement.dataset.state = status.state;
             const badgeElement = document.getElementById('updateStatusBadge');
-            const label = labels[status.state] || ['Неизвестно', 'secondary'];
-            if (badgeElement) {
-                badgeElement.textContent = label[0];
-                badgeElement.className = `badge bg-${label[1]}`;
-            }
+            if (badgeElement) { badgeElement.innerHTML = `<span class="admin-badge__dot"></span>${labels[status.state] || 'Неизвестно'}`; badgeElement.className = `admin-badge admin-badge--${status.state}`; }
             const messageElement = document.getElementById('updateStatusMessage');
             if (messageElement) messageElement.textContent = status.message || '';
             const timeElement = document.getElementById('updateStatusTime');
             if (timeElement) timeElement.textContent = status.updated_at ? `Обновлено: ${status.updated_at}` : '';
-            if (terminalStates.has(status.state) && status.state !== oldState) {
-                window.location.reload();
-            }
-        } catch (_error) {
-            // Во время перезапуска службы короткая потеря связи ожидаема.
-        }
+            if (terminalStates.has(status.state) && status.state !== oldState) window.location.reload();
+        } catch (_error) { /* Короткая потеря связи при перезапуске ожидаема. */ }
     };
     window.setInterval(poll, 4000);
 })();

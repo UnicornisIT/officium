@@ -1,0 +1,42 @@
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon, status_badge %}
+{% block title %}Состояние системы — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Состояние системы{% endblock %}
+
+{% block admin_content %}
+<header class="admin-page-header"><div><p class="admin-page-kicker">Мониторинг</p><h1>Состояние системы</h1><p>Безопасная диагностическая сводка без секретов и строк подключения.</p></div></header>
+
+<div class="admin-system-grid">
+    <section class="admin-panel admin-health-card">
+        <span class="admin-health-card__icon admin-health-card__icon--{{ database_state }}">{{ icon('database', 24) }}</span>
+        <div><span>База данных</span><strong>{{ status_badge(database_state) }}</strong><small>Проверка доступности выполнена при открытии страницы</small></div>
+    </section>
+    <section class="admin-panel admin-health-card">
+        <span class="admin-health-card__icon admin-health-card__icon--healthy">{{ icon('server', 24) }}</span>
+        <div><span>Веб-приложение</span><strong>{{ status_badge('healthy') }}</strong><small>Административный интерфейс отвечает</small></div>
+    </section>
+    <section class="admin-panel admin-health-card">
+        <span class="admin-health-card__icon admin-health-card__icon--healthy">{{ icon('shield', 24) }}</span>
+        <div><span>Версия</span><strong class="admin-mono">{{ app_version }}</strong><small>Установленный выпуск officium</small></div>
+    </section>
+</div>
+
+<div class="admin-dashboard-grid admin-dashboard-grid--balanced">
+    <section class="admin-panel" aria-labelledby="features-title">
+        <div class="admin-panel__header"><div><p class="admin-page-kicker">Конфигурация</p><h2 id="features-title">Доступность функций</h2></div></div>
+        <div class="admin-feature-list">
+            {% for label, enabled in feature_states %}<div><span>{{ label }}</span>{{ status_badge('enabled' if enabled else 'disabled') }}</div>{% endfor %}
+        </div>
+    </section>
+    <section class="admin-panel" aria-labelledby="environment-title">
+        <div class="admin-panel__header"><div><p class="admin-page-kicker">Среда</p><h2 id="environment-title">Техническая сводка</h2></div></div>
+        <dl class="admin-system-details">
+            <div><dt>Окружение</dt><dd class="admin-mono">{{ environment }}</dd></div>
+            <div><dt>Часовой пояс</dt><dd class="admin-mono">{{ timezone }}</dd></div>
+            <div><dt>Драйвер базы данных</dt><dd class="admin-mono">{{ database_engine }}</dd></div>
+            <div><dt>Версия приложения</dt><dd class="admin-mono">{{ app_version }}</dd></div>
+        </dl>
+        <p class="admin-security-note">{{ icon('lock', 17) }} Конфиденциальные значения и параметры подключения намеренно не отображаются.</p>
+    </section>
+</div>
+{% endblock %}

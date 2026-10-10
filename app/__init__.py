@@ -10,6 +10,15 @@ from flask_wtf.csrf import CSRFProtect
 from config import Config
 from extensions import db
 from app.models import AppSetting, ActivityLog, Debt, DictionaryEntry, EmergencyFundTransaction, Expense, FinancialGoal, FinancialGoalTransaction, FinancialPlanPreference, Income, Payment, SplitPurchase, TelegramConversationState, TelegramProcessedUpdate, User
+from app.admin_presenters import (
+    admin_entity_label,
+    admin_event_icon,
+    admin_event_label,
+    admin_event_tone,
+    admin_field_label,
+    admin_role_label,
+    admin_status_label,
+)
 from app.utils import display_value, format_currency
 
 login_manager = LoginManager()
@@ -42,6 +51,13 @@ def create_app(config_overrides=None):
 
     app.jinja_env.filters['money'] = format_currency
     app.jinja_env.filters['display'] = display_value
+    app.jinja_env.filters['admin_field'] = admin_field_label
+    app.jinja_env.filters['admin_role'] = admin_role_label
+    app.jinja_env.filters['admin_status'] = admin_status_label
+    app.jinja_env.filters['admin_entity'] = admin_entity_label
+    app.jinja_env.filters['admin_event'] = admin_event_label
+    app.jinja_env.filters['admin_event_tone'] = admin_event_tone
+    app.jinja_env.filters['admin_event_icon'] = admin_event_icon
 
     from app.routes import auth, admin, debts, documentation, payments, incomes, expenses, main, telegram_bot
 

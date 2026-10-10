@@ -2026,11 +2026,14 @@ html[data-theme="dark"] .navbar {
     align-items: center;
     justify-content: center;
     width: 38px; height: 38px;
-    background: var(--primary);
-    border-radius: 12px;
-    font-weight: 800;
-    font-size: 1.1rem;
-    color: #fff;
+    background: transparent;
+    border-radius: 0;
+}
+.brand-icon img,
+.telegram-app-bar__logo img {
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 .brand-text {
     font-weight: 700;
@@ -4108,11 +4111,8 @@ body.telegram-mini-app {
 }
 
 .telegram-app-bar__logo {
-    color: var(--tg-theme-button-text-color, #fff);
-    background: var(--tg-theme-button-color, var(--primary));
-    box-shadow: 0 8px 20px color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 30%, transparent);
-    font-size: 1.05rem;
-    font-weight: 800;
+    background: transparent;
+    box-shadow: none;
 }
 
 .telegram-app-bar__actions {

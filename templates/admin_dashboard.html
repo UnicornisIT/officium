@@ -1,89 +1,94 @@
-{% extends 'base.html' %}
-{% block title %}Админка — officium{% endblock %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon, status_badge %}
+{% block title %}Обзор — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Обзор{% endblock %}
 
-{% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+{% block admin_content %}
+<header class="admin-page-header">
     <div>
-        <h1 class="h3 mb-1">Админская панель</h1>
-        <p class="text-muted">Быстрый доступ к разделам управления и мониторинга.</p>
+        <p class="admin-page-kicker">Центр управления</p>
+        <h1>Добро пожаловать, {{ current_user.first_name or current_user.username or 'администратор' }}</h1>
+        <p>Ключевые показатели, состояние сервиса и последние события в одном месте.</p>
     </div>
-    <form method="post" action="{{ url_for('admin_impersonate_test') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-primary">Войти как тестовый пользователь</button>
-    </form>
-</div>
+    <div class="admin-page-header__actions">
+        {% if show_test_impersonation %}
+        <form method="post" action="{{ url_for('admin_impersonate_test') }}"
+              data-admin-confirm="Открыть приложение от имени тестового пользователя?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-primary">{{ icon('user', 18) }} Тестовый пользователь</button>
+        </form>
+        {% endif %}
+        <a class="btn btn-primary" href="{{ url_for('admin_users') }}">{{ icon('users', 18) }} Пользователи</a>
+    </div>
+</header>
 
-{% if error_message %}
-<div class="alert alert-warning" role="alert">
-    {{ error_message }}
-</div>
-{% endif %}
+{% if error_message %}<div class="alert alert-warning" role="alert">{{ error_message }}</div>{% endif %}
 
-<div class="row g-4">
-    <div class="col-md-6 col-xl-3">
-        <div class="card p-4 h-100">
-            <div class="d-flex align-items-center justify-content-between mb-3">
-                <div>
-                    <h5 class="mb-1">Пользователи</h5>
-                    <p class="text-muted mb-0">Всего</p>
-                </div>
-                <span class="badge bg-primary rounded-pill fs-5">{{ stats.users }}</span>
-            </div>
-            <a href="{{ url_for('admin_users') }}" class="stretched-link">Перейти</a>
+<section id="statistics" aria-labelledby="statistics-title">
+    <div class="admin-section-heading">
+        <div><p class="admin-page-kicker">Сводка</p><h2 id="statistics-title">Общая статистика</h2></div>
+        <span class="admin-section-heading__meta">Обновлено при открытии страницы</span>
+    </div>
+    <div class="admin-stat-grid">
+        <a class="admin-stat-card admin-stat-card--blue" href="{{ url_for('admin_users') }}">
+            <span class="admin-stat-card__icon">{{ icon('users', 22) }}</span><span class="admin-stat-card__label">Пользователи</span><strong>{{ stats.users }}</strong><span class="admin-stat-card__footer">Открыть список {{ icon('chevron-right', 16) }}</span>
+        </a>
+        <a class="admin-stat-card admin-stat-card--green" href="{{ url_for('admin_users', status='active') }}">
+            <span class="admin-stat-card__icon">{{ icon('check-circle', 22) }}</span><span class="admin-stat-card__label">Активные</span><strong>{{ stats.active_users }}</strong><span class="admin-stat-card__footer">Без блокировки {{ icon('chevron-right', 16) }}</span>
+        </a>
+        <a class="admin-stat-card admin-stat-card--red" href="{{ url_for('admin_users', status='blocked') }}">
+            <span class="admin-stat-card__icon">{{ icon('ban', 22) }}</span><span class="admin-stat-card__label">Заблокированные</span><strong>{{ stats.blocked_users }}</strong><span class="admin-stat-card__footer">Проверить статусы {{ icon('chevron-right', 16) }}</span>
+        </a>
+        <a class="admin-stat-card admin-stat-card--violet" href="{{ url_for('admin_finance', section='debts') }}">
+            <span class="admin-stat-card__icon">{{ icon('wallet', 22) }}</span><span class="admin-stat-card__label">Долги</span><strong>{{ stats.debts }}</strong><span class="admin-stat-card__footer">Финансовые записи {{ icon('chevron-right', 16) }}</span>
+        </a>
+        <a class="admin-stat-card admin-stat-card--cyan" href="{{ url_for('admin_finance', section='payments') }}">
+            <span class="admin-stat-card__icon">{{ icon('chart', 22) }}</span><span class="admin-stat-card__label">Платежи</span><strong>{{ stats.payments }}</strong><span class="admin-stat-card__footer">История платежей {{ icon('chevron-right', 16) }}</span>
+        </a>
+        <a class="admin-stat-card admin-stat-card--amber" href="{{ url_for('admin_logs') }}">
+            <span class="admin-stat-card__icon">{{ icon('activity', 22) }}</span><span class="admin-stat-card__label">События</span><strong>{{ stats.logs }}</strong><span class="admin-stat-card__footer">Открыть журнал {{ icon('chevron-right', 16) }}</span>
+        </a>
+        {% if current_user.is_superadmin %}
+        <a class="admin-stat-card admin-stat-card--system" href="{{ url_for('admin_system') }}">
+            <span class="admin-stat-card__icon">{{ icon('pulse', 22) }}</span><span class="admin-stat-card__label">Система</span><strong class="admin-stat-card__status">{{ status_badge(system_state) }}</strong><span class="admin-stat-card__footer">Диагностика {{ icon('chevron-right', 16) }}</span>
+        </a>
+        {% else %}
+        <div class="admin-stat-card admin-stat-card--system">
+            <span class="admin-stat-card__icon">{{ icon('pulse', 22) }}</span><span class="admin-stat-card__label">Система</span><strong class="admin-stat-card__status">{{ status_badge(system_state) }}</strong><span class="admin-stat-card__footer">Базовая проверка</span>
+        </div>
+        {% endif %}
+        <div class="admin-stat-card admin-stat-card--neutral">
+            <span class="admin-stat-card__icon">{{ icon('shield', 22) }}</span><span class="admin-stat-card__label">Версия приложения</span><strong class="admin-stat-card__version">{{ app_version }}</strong><span class="admin-stat-card__footer">Текущий выпуск</span>
         </div>
     </div>
-    <div class="col-md-6 col-xl-3">
-        <div class="card p-4 h-100">
-            <div class="d-flex align-items-center justify-content-between mb-3">
-                <div>
-                    <h5 class="mb-1">Долги</h5>
-                    <p class="text-muted mb-0">Всего записей</p>
-                </div>
-                <span class="badge bg-success rounded-pill fs-5">{{ stats.debts }}</span>
-            </div>
-            <a href="{{ url_for('admin_export') }}" class="stretched-link">Перейти</a>
-        </div>
-    </div>
-    <div class="col-md-6 col-xl-3">
-        <div class="card p-4 h-100">
-            <div class="d-flex align-items-center justify-content-between mb-3">
-                <div>
-                    <h5 class="mb-1">Платежи</h5>
-                    <p class="text-muted mb-0">Всего платежей</p>
-                </div>
-                <span class="badge bg-warning rounded-pill fs-5">{{ stats.payments }}</span>
-            </div>
-            <a href="{{ url_for('admin_export') }}" class="stretched-link">Перейти</a>
-        </div>
-    </div>
-    <div class="col-md-6 col-xl-3">
-        <div class="card p-4 h-100">
-            <div class="d-flex align-items-center justify-content-between mb-3">
-                <div>
-                    <h5 class="mb-1">Журнал</h5>
-                    <p class="text-muted mb-0">Записей</p>
-                </div>
-                <span class="badge bg-danger rounded-pill fs-5">{{ stats.logs }}</span>
-            </div>
-            <a href="{{ url_for('admin_logs') }}" class="stretched-link">Перейти</a>
-        </div>
-    </div>
-</div>
+</section>
 
-<div class="row mt-4">
-    <div class="col-md-6">
-        <div class="card p-4">
-            <h5>Быстрые ссылки</h5>
-            <ul class="list-group list-group-flush mt-3">
-                <li class="list-group-item"><a href="{{ url_for('admin_settings') }}">Настройки приложения</a></li>
-                <li class="list-group-item"><a href="{{ url_for('admin_dictionaries') }}">Справочники</a></li>
-                <li class="list-group-item"><a href="{{ url_for('admin_users') }}">Пользователи</a></li>
-                <li class="list-group-item"><a href="{{ url_for('admin_export') }}">Экспорт данных</a></li>
-                {% if current_user.is_superadmin %}
-                <li class="list-group-item"><a href="{{ url_for('admin_server_update') }}">Обновление сервера</a></li>
-                {% endif %}
-            </ul>
+<div class="admin-dashboard-grid">
+    <section class="admin-panel" aria-labelledby="recent-title">
+        <div class="admin-panel__header">
+            <div><p class="admin-page-kicker">Мониторинг</p><h2 id="recent-title">Последние события</h2></div>
+            <a href="{{ url_for('admin_logs') }}">Весь журнал {{ icon('chevron-right', 16) }}</a>
         </div>
-    </div>
+        <div class="admin-event-list">
+            {% for log in recent_logs %}
+            <article class="admin-event">
+                <span class="admin-event__icon admin-event__icon--{{ log.action|admin_event_tone }}">{{ icon(log.action|admin_event_icon, 18) }}</span>
+                <div class="admin-event__content"><strong>{{ log.action|admin_event }}</strong><span>{{ log.description or (log.entity_type|admin_entity) }}</span></div>
+                <time datetime="{{ log.created_at.isoformat() if log.created_at else '' }}">{{ log.created_at.strftime('%d.%m.%Y %H:%M') if log.created_at else '—' }}</time>
+            </article>
+            {% else %}
+            <div class="admin-empty-state">{{ icon('activity', 30) }}<p>Событий пока нет.</p></div>
+            {% endfor %}
+        </div>
+    </section>
+    <aside class="admin-panel" aria-labelledby="quick-actions-title">
+        <div class="admin-panel__header"><div><p class="admin-page-kicker">Навигация</p><h2 id="quick-actions-title">Быстрые действия</h2></div></div>
+        <div class="admin-quick-actions">
+            <a href="{{ url_for('admin_users') }}">{{ icon('users', 20) }}<span><strong>Найти пользователя</strong><small>По имени или идентификатору</small></span>{{ icon('chevron-right', 16) }}</a>
+            <a href="{{ url_for('admin_logs') }}">{{ icon('activity', 20) }}<span><strong>Проверить события</strong><small>Фильтры по типу и периоду</small></span>{{ icon('chevron-right', 16) }}</a>
+            <a href="{{ url_for('admin_finance') }}">{{ icon('wallet', 20) }}<span><strong>Долги и платежи</strong><small>Сводный финансовый список</small></span>{{ icon('chevron-right', 16) }}</a>
+            {% if current_user.is_superadmin %}<a href="{{ url_for('admin_settings') }}">{{ icon('settings', 20) }}<span><strong>Настройки приложения</strong><small>Доступность функций</small></span>{{ icon('chevron-right', 16) }}</a>{% endif %}
+        </div>
+    </aside>
 </div>
 {% endblock %}

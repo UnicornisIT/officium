@@ -21,19 +21,25 @@
         })();
     </script>
     <title>{% block title %}officium{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}?v=0.0.7" type="image/svg+xml">
+    <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}?v=0.0.7" sizes="any">
+    <link rel="icon" href="{{ url_for('static', filename='favicon-16x16.png') }}?v=0.0.7" type="image/png" sizes="16x16">
+    <link rel="icon" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=0.0.7" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v=0.0.7" sizes="180x180">
     <link href="{{ url_for('static', filename='vendor/onest/onest.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=20261009-mobile-keyboard" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=0.0.7" rel="stylesheet">
+    {% block extra_css %}{% endblock %}
 </head>
-<body{% if is_telegram_mini_app %} class="telegram-mini-app"{% elif current_user.is_authenticated and not request.path.startswith('/admin') %} class="has-mobile-app-nav"{% endif %}>
+<body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
 
 <!-- Навигация -->
 {% if is_telegram_mini_app %}
 <header class="telegram-app-bar">
     <a class="telegram-app-bar__brand" href="{{ url_for('index') }}" aria-label="officium — дашборд">
-        <span class="telegram-app-bar__logo">₽</span>
+        <span class="telegram-app-bar__logo"><img src="{{ url_for('static', filename='images/brand/officium-mark.svg') }}" width="34" height="34" alt=""></span>
         <span>
             <strong>{{ app_name }}</strong>
             <small>Ваш финансовый центр</small>
@@ -74,8 +80,8 @@
                 <i class="bi bi-journal-text"></i><span>Помощь</span>
             </a>
             {% if current_user.is_admin %}
-            <a href="{{ url_for('admin_dashboard') }}">
-                <i class="bi bi-shield-lock"></i><span>Админка</span>
+            <a href="{{ url_for('admin_dashboard') }}" aria-label="Административная панель">
+                <i class="bi bi-shield-lock"></i><span>Административная панель</span>
             </a>
             {% endif %}
             <a href="{{ url_for('logout') }}" class="telegram-more-menu__logout">
@@ -91,11 +97,11 @@
         </div>
     </div>
 </div>
-{% else %}
+{% elif not request.path.startswith('/admin') %}
 <nav class="navbar navbar-expand-lg">
     <div class="container-fluid px-4">
         <a class="navbar-brand" href="/">
-            <span class="brand-icon">₽</span>
+            <span class="brand-icon"><img src="{{ url_for('static', filename='images/brand/officium-mark.svg') }}" width="32" height="32" alt=""></span>
             <span class="brand-text">{{ app_name }}</span>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -151,8 +157,8 @@
                 {% if current_user.is_authenticated and current_user.is_admin %}
                 <li class="nav-item">
                     <a class="nav-link nav-expand {% if request.path.startswith('/admin') %}active{% endif %}" href="{{ url_for('admin_dashboard') }}">
-                        <span class="nav-expand__compact"><i class="bi bi-shield-lock me-1"></i>Админка</span>
-                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock"></i>Админка</span>
+                        <span class="nav-expand__compact"><i class="bi bi-shield-lock me-1"></i>Административная панель</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock"></i>Административная панель</span>
                     </a>
                 </li>
                 {% endif %}
@@ -167,8 +173,8 @@
                 {% if not current_user.is_authenticated and admin_login_enabled %}
                 <li class="nav-item ms-2">
                     <a class="btn btn-outline-primary btn-sm nav-expand" href="{{ url_for('admin_login') }}">
-                        <span class="nav-expand__compact"><i class="bi bi-shield-lock-fill me-1"></i>Админ-панель</span>
-                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock-fill"></i>Админ-панель</span>
+                        <span class="nav-expand__compact"><i class="bi bi-shield-lock-fill me-1"></i>Административная панель</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock-fill"></i>Административная панель</span>
                     </a>
                 </li>
                 {% endif %}
@@ -205,7 +211,7 @@
         <strong>Вы просматриваете сайт как пользователь.</strong>
         <form method="post" action="{{ url_for('stop_impersonate') }}" class="d-inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-link alert-link p-0 align-baseline">Вернуться в админку</button>
+            <button type="submit" class="btn btn-link alert-link p-0 align-baseline">Вернуться в административную панель</button>
         </form>
     </div>
 </div>
@@ -254,7 +260,7 @@
 </nav>
 {% endif %}
 
-{% if not is_telegram_mini_app %}
+{% if not is_telegram_mini_app and not request.path.startswith('/admin') %}
 <footer class="site-footer container-fluid px-4 py-4 mt-4 border-top">
     <div class="container d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
         <div>
@@ -270,6 +276,7 @@
 </footer>
 {% endif %}
 
+{% if not request.path.startswith('/admin') %}
 <!-- Toast уведомления -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999">
     <div id="mainToast" class="toast align-items-center border-0" role="alert">
@@ -703,8 +710,9 @@
     </div>
 </div>
 
+{% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=20261009-mobile-keyboard"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=0.0.7"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const params = new URLSearchParams(window.location.search);

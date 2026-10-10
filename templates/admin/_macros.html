@@ -1,0 +1,44 @@
+{% macro icon(name, size=20, class_name='') -%}
+<svg class="admin-icon {{ class_name }}" width="{{ size }}" height="{{ size }}" aria-hidden="true" focusable="false">
+    <use href="{{ url_for('static', filename='images/icons/admin-icons.svg') }}#{{ name }}"></use>
+</svg>
+{%- endmacro %}
+
+{% macro field_label(technical_name) -%}
+<span class="admin-field-label">
+    <span>{{ technical_name|admin_field }}</span>
+    <button type="button" class="admin-field-info" data-bs-toggle="tooltip"
+            data-bs-title="Поле базы данных: {{ technical_name }}"
+            aria-label="Техническое имя поля: {{ technical_name }}">
+        {{ icon('info', 15) }}
+    </button>
+</span>
+{%- endmacro %}
+
+{% macro role_badge(role) -%}
+<span class="admin-badge admin-badge--role-{{ role|e }}" title="Техническое значение: {{ role }}">
+    {{ role|admin_role }}
+</span>
+{%- endmacro %}
+
+{% macro status_badge(status) -%}
+<span class="admin-badge admin-badge--{{ status|e }}" title="Техническое значение: {{ status }}">
+    <span class="admin-badge__dot" aria-hidden="true"></span>{{ status|admin_status }}
+</span>
+{%- endmacro %}
+
+{% macro pagination_nav(pagination) -%}
+{% if pagination and pagination.pages > 1 %}
+<nav class="admin-pagination" aria-label="Навигация по страницам">
+    <a class="admin-pagination__button{% if not pagination.has_prev %} disabled{% endif %}"
+       {% if pagination.has_prev %}href="{{ admin_page_url(pagination.prev_num) }}"{% else %}aria-disabled="true"{% endif %}>
+        Назад
+    </a>
+    <span class="admin-pagination__summary">Страница {{ pagination.page }} из {{ pagination.pages }}</span>
+    <a class="admin-pagination__button{% if not pagination.has_next %} disabled{% endif %}"
+       {% if pagination.has_next %}href="{{ admin_page_url(pagination.next_num) }}"{% else %}aria-disabled="true"{% endif %}>
+        Вперёд
+    </a>
+</nav>
+{% endif %}
+{%- endmacro %}

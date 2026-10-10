@@ -1,42 +1,61 @@
-{% extends 'base.html' %}
-{% block title %}Журнал действий — Админка{% endblock %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon, field_label, pagination_nav with context %}
+{% block title %}Журнал действий — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Журнал действий{% endblock %}
 
-{% block content %}
-<div class="mb-4">
-    <h1 class="h3">Журнал действий</h1>
-    <p class="text-muted">Последние системные и пользовательские события.</p>
-</div>
+{% block admin_content %}
+<header class="admin-page-header">
+    <div><p class="admin-page-kicker">Мониторинг</p><h1>Журнал действий</h1><p>События пользователей, администраторов и системных процессов.</p></div>
+</header>
 
-<div class="card p-4">
-    <div class="table-responsive">
-        <table class="table table-striped align-middle">
-            <thead>
-                <tr>
-                    <th>Дата</th>
-                    <th>Пользователь</th>
-                    <th>Действие</th>
-                    <th>Тип</th>
-                    <th>ID</th>
-                    <th>Описание</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in logs %}
-                <tr>
-                    <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                    <td>{{ log.user.first_name or log.user.username if log.user else 'Система' }}</td>
-                    <td>{{ log.action }}</td>
-                    <td>{{ log.entity_type or '—' }}</td>
-                    <td>{{ log.entity_id or '—' }}</td>
-                    <td>{{ log.description or '—' }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="6" class="text-center text-muted">Нет записей.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<section class="admin-panel admin-filter-panel" aria-label="Фильтры журнала">
+    <form method="get" class="admin-filter-grid admin-filter-grid--logs">
+        <label class="admin-control"><span>Пользователь</span><select name="user">
+            <option value="">Все пользователи</option>
+            {% for user in filter_users %}<option value="{{ user.id }}" {% if user_filter == user.id %}selected{% endif %}>{{ [user.first_name, user.last_name]|select|join(' ') or user.username or ('Пользователь #' ~ user.id) }}</option>{% endfor %}
+        </select></label>
+        <label class="admin-control"><span>Событие</span><select name="event">
+            <option value="">Все события</option>
+            {% for event in event_values %}<option value="{{ event }}" {% if event_filter == event %}selected{% endif %}>{{ event|admin_event }}</option>{% endfor %}
+        </select></label>
+        <label class="admin-control"><span>Дата от</span><input type="date" name="date_from" value="{{ date_from }}"></label>
+        <label class="admin-control"><span>Дата до</span><input type="date" name="date_to" value="{{ date_to }}"></label>
+        <div class="admin-filter-actions">
+            <button type="submit" class="btn btn-primary">{{ icon('filter', 17) }} Применить</button>
+            {% if user_filter or event_filter or date_from or date_to %}<a class="btn btn-outline-secondary" href="{{ url_for('admin_logs') }}">Сбросить</a>{% endif %}
+        </div>
+    </form>
+</section>
+
+<section class="admin-panel admin-table-panel" aria-labelledby="events-title">
+    <div class="admin-panel__header"><div><p class="admin-page-kicker">Результаты</p><h2 id="events-title">События</h2></div><span class="admin-section-heading__meta">Найдено: {{ pagination.total }}</span></div>
+    <div class="admin-log-list">
+        {% for log in logs %}
+        <article class="admin-log-row">
+            <span class="admin-event__icon admin-event__icon--{{ log.action|admin_event_tone }}">{{ icon(log.action|admin_event_icon, 18) }}</span>
+            <div class="admin-log-row__main">
+                <div class="admin-log-row__headline"><strong>{{ log.action|admin_event }}</strong><time datetime="{{ log.created_at.isoformat() if log.created_at else '' }}">{{ log.created_at.strftime('%d.%m.%Y %H:%M:%S') if log.created_at else '—' }}</time></div>
+                <p>{{ log.description or 'Без дополнительного описания' }}</p>
+                <div class="admin-log-row__meta">
+                    {% if log.user %}<a href="{{ url_for('admin_user_detail', user_id=log.user.id) }}">{{ icon('user', 15) }} {{ [log.user.first_name, log.user.last_name]|select|join(' ') or log.user.username or ('Пользователь #' ~ log.user.id) }}</a>{% else %}<span>{{ icon('server', 15) }} Система</span>{% endif %}
+                    {% if log.entity_type %}<span>{{ log.entity_type|admin_entity }}{% if log.entity_id %} · #{{ log.entity_id }}{% endif %}</span>{% endif %}
+                </div>
+                {% if current_user.is_superadmin %}
+                <details class="admin-log-row__details">
+                    <summary>Технические сведения</summary>
+                    <dl>
+                        <div><dt>{{ field_label('action') }}</dt><dd class="admin-mono">{{ log.action }}</dd></div>
+                        <div><dt>{{ field_label('entity_type') }}</dt><dd class="admin-mono">{{ log.entity_type or '—' }}</dd></div>
+                        <div><dt>{{ field_label('entity_id') }}</dt><dd class="admin-mono">{{ log.entity_id or '—' }}</dd></div>
+                        <div><dt>{{ field_label('ip_address') }}</dt><dd class="admin-mono">{{ log.ip_address or '—' }}</dd></div>
+                        <div class="admin-log-row__details-wide"><dt>{{ field_label('user_agent') }}</dt><dd class="admin-break-word">{{ log.user_agent or '—' }}</dd></div>
+                    </dl>
+                </details>
+                {% endif %}
+            </div>
+        </article>
+        {% else %}<div class="admin-empty-state">{{ icon('activity', 30) }}<p>События по заданным условиям не найдены.</p></div>{% endfor %}
     </div>
-</div>
+    {{ pagination_nav(pagination) }}
+</section>
 {% endblock %}

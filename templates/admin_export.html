@@ -1,123 +1,39 @@
-{% extends 'base.html' %}
-{% block title %}Экспорт данных — Админка{% endblock %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon, field_label, status_badge %}
+{% block title %}Экспорт данных — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Экспорт данных{% endblock %}
 
-{% block content %}
-<div class="mb-4">
-    <h1 class="h3">Экспорт данных</h1>
-    <p class="text-muted">Выгрузка CSV-отчетов по пользователям, долгам и платежам.</p>
+{% block admin_content %}
+<header class="admin-page-header"><div><p class="admin-page-kicker">Обслуживание</p><h1>Экспорт данных</h1><p>Безопасная выгрузка отчетов в CSV для дальнейшего анализа.</p></div></header>
+<div class="admin-export-grid">
+    {% for export_type, title, description, export_icon in [
+        ('users', 'Пользователи', 'Учетные записи, роли и статусы доступа.', 'users'),
+        ('debts', 'Долги', 'Карточки долгов и актуальные остатки.', 'wallet'),
+        ('payments', 'Платежи', 'Полная история проведенных платежей.', 'chart')
+    ] %}
+    <section class="admin-panel admin-export-card">
+        <span class="admin-export-card__icon">{{ icon(export_icon, 24) }}</span><div><h2>{{ title }}</h2><p>{{ description }}</p></div>
+        <form method="post" action="{{ url_for('admin_export_csv', export_type=export_type) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary">{{ icon('export', 17) }} Скачать CSV</button>
+        </form>
+    </section>
+    {% endfor %}
 </div>
 
-<div class="row g-4">
-    <div class="col-md-4">
-        <div class="card p-4 h-100">
-            <h5>Пользователи</h5>
-            <p class="text-muted">Выгрузить всех зарегистрированных пользователей.</p>
-            <form method="post" action="{{ url_for('admin_export_csv', export_type='users') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-primary">Скачать CSV</button>
-            </form>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card p-4 h-100">
-            <h5>Долги</h5>
-            <p class="text-muted">Выгрузить все карточки долгов.</p>
-            <form method="post" action="{{ url_for('admin_export_csv', export_type='debts') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-primary">Скачать CSV</button>
-            </form>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card p-4 h-100">
-            <h5>Платежи</h5>
-            <p class="text-muted">Выгрузить историю всех платежей.</p>
-            <form method="post" action="{{ url_for('admin_export_csv', export_type='payments') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-primary">Скачать CSV</button>
-            </form>
-        </div>
-    </div>
-</div>
+<section class="admin-panel admin-table-panel">
+    <div class="admin-panel__header"><div><p class="admin-page-kicker">Предпросмотр</p><h2>Последние долги</h2></div><a href="{{ url_for('admin_finance', section='debts') }}">Открыть все {{ icon('chevron-right', 16) }}</a></div>
+    <div class="admin-table-wrap"><table class="admin-table admin-table--responsive"><thead><tr><th>{{ field_label('id') }}</th><th>Пользователь</th><th>Банк и продукт</th><th>{{ field_label('remaining_amount') }}</th><th>{{ field_label('status') }}</th><th>Создан</th></tr></thead><tbody>
+        {% for debt in debts %}<tr><td data-label="ID">#{{ debt.id }}</td><td data-label="Пользователь"><a href="{{ url_for('admin_user_detail', user_id=debt.user_id) }}">{{ debt.user.first_name or debt.user.username or ('#' ~ debt.user_id) }}</a></td><td data-label="Банк и продукт"><strong>{{ debt.bank_name }}</strong><small class="admin-table__subline">{{ debt.product_name }}</small></td><td data-label="Остаток">{{ debt.remaining_amount|money }}</td><td data-label="Статус">{{ status_badge(debt.status) }}</td><td data-label="Создан">{{ debt.created_at.strftime('%d.%m.%Y') if debt.created_at else '—' }}</td></tr>
+        {% else %}<tr><td colspan="6"><div class="admin-empty-state">{{ icon('wallet', 30) }}<p>Нет долгов для отображения.</p></div></td></tr>{% endfor %}
+    </tbody></table></div>
+</section>
 
-<div class="row g-4 mt-4">
-    <div class="col-12">
-        <div class="card p-4">
-            <h5 class="mb-3">Последние долги</h5>
-            {% if debts %}
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Пользователь</th>
-                            <th>Банк</th>
-                            <th>Продукт</th>
-                            <th>Остаток</th>
-                            <th>Статус</th>
-                            <th>Дата</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for debt in debts %}
-                        <tr>
-                            <td>{{ debt.id }}</td>
-                            <td>{{ debt.user_id }}</td>
-                            <td>{{ debt.bank_name }}</td>
-                            <td>{{ debt.product_name }}</td>
-                            <td>{{ debt.remaining_amount|money }}</td>
-                            <td>{{ debt.status }}</td>
-                            <td>{{ debt.created_at.strftime('%d.%m.%Y') if debt.created_at else '—' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <p class="text-muted">Нет долгов для отображения.</p>
-            {% endif %}
-        </div>
-    </div>
-    <div class="col-12">
-        <div class="card p-4">
-            <h5 class="mb-3">Последние платежи</h5>
-            {% if payments %}
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Долг ID</th>
-                            <th>Сумма</th>
-                            <th>Основной долг</th>
-                            <th>Проценты</th>
-                            <th>Комиссии</th>
-                            <th>Дата</th>
-                            <th>Остаток банка</th>
-                            <th>Комментарий</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for payment in payments %}
-                        <tr>
-                            <td>{{ payment.id }}</td>
-                            <td>{{ payment.debt_id }}</td>
-                            <td>{{ payment.amount|money }}</td>
-                            <td>{{ payment.principal_amount|money }}</td>
-                            <td>{{ payment.interest_amount|money }}</td>
-                            <td>{{ payment.fee_amount|money }}</td>
-                            <td>{{ payment.payment_date.strftime('%d.%m.%Y') if payment.payment_date else '—' }}</td>
-                            <td>{{ payment.bank_remaining_after_payment|money if payment.bank_remaining_after_payment is not none else '—' }}</td>
-                            <td>{{ payment.comment or '—' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <p class="text-muted">Нет платежей для отображения.</p>
-            {% endif %}
-        </div>
-    </div>
-</div>
+<section class="admin-panel admin-table-panel">
+    <div class="admin-panel__header"><div><p class="admin-page-kicker">Предпросмотр</p><h2>Последние платежи</h2></div><a href="{{ url_for('admin_finance', section='payments') }}">Открыть все {{ icon('chevron-right', 16) }}</a></div>
+    <div class="admin-table-wrap"><table class="admin-table admin-table--responsive"><thead><tr><th>{{ field_label('id') }}</th><th>{{ field_label('debt_id') }}</th><th>{{ field_label('amount') }}</th><th>Основной долг</th><th>Проценты</th><th>{{ field_label('payment_date') }}</th><th>Остаток банка</th></tr></thead><tbody>
+        {% for payment in payments %}<tr><td data-label="ID">#{{ payment.id }}</td><td data-label="Долг">#{{ payment.debt_id }}</td><td data-label="Сумма"><strong>{{ payment.amount|money }}</strong></td><td data-label="Основной долг">{{ payment.principal_amount|money }}</td><td data-label="Проценты">{{ payment.interest_amount|money }}</td><td data-label="Дата">{{ payment.payment_date.strftime('%d.%m.%Y') if payment.payment_date else '—' }}</td><td data-label="Остаток банка">{{ payment.bank_remaining_after_payment|money if payment.bank_remaining_after_payment is not none else '—' }}</td></tr>
+        {% else %}<tr><td colspan="7"><div class="admin-empty-state">{{ icon('chart', 30) }}<p>Нет платежей для отображения.</p></div></td></tr>{% endfor %}
+    </tbody></table></div>
+</section>
 {% endblock %}
