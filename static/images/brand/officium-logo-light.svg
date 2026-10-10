@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 64" role="img" aria-labelledby="title">
+  <title id="title">officium для светлого фона</title>
+  <path d="M46.6 12.4A24 24 0 1 0 54.9 28" fill="none" stroke="#2563eb" stroke-width="7" stroke-linecap="round"/>
+  <path d="M17 39h13.5L47 18.5M17 25h20" fill="none" stroke="#0891b2" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="47" cy="18.5" r="4.5" fill="#2563eb"/>
+  <text x="76" y="42" fill="#0f172a" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" letter-spacing="-1">officium</text>
+</svg>

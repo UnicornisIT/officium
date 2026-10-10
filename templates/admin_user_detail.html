@@ -1,115 +1,100 @@
-{% extends 'base.html' %}
-{% block title %}Пользователь {{ user.id }} — Админка{% endblock %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon, field_label, role_badge, status_badge %}
+{% block title %}Профиль пользователя — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Профиль пользователя{% endblock %}
 
-{% block content %}
-<div class="d-flex justify-content-between align-items-start mb-4">
-    <div>
-        <h1 class="h3">Пользователь #{{ user.id }}</h1>
-        <p class="text-muted">Профиль, долги, статистика и административные действия.</p>
+{% block admin_content %}
+<nav class="admin-breadcrumbs" aria-label="Хлебные крошки"><a href="{{ url_for('admin_users') }}">Пользователи</a>{{ icon('chevron-right', 14) }}<span>#{{ user.id }}</span></nav>
+
+<header class="admin-user-hero">
+    <span class="admin-user-hero__avatar">{{ (user.first_name or user.username or 'П')[:1]|upper }}</span>
+    <div class="admin-user-hero__identity">
+        <p class="admin-page-kicker">Учетная запись #{{ user.id }}</p>
+        <h1>{{ [user.first_name, user.last_name]|select|join(' ') or user.username or 'Пользователь без имени' }}</h1>
+        <div class="admin-user-hero__badges">{{ role_badge(user.role) }}{{ status_badge('blocked' if user.is_blocked else 'active') }}</div>
     </div>
-</div>
+    <div class="admin-user-hero__actions">
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin_users') }}">Назад к списку</a>
+        {% if current_user.is_superadmin and not user.is_blocked and not user.is_superadmin %}
+        <form method="post" action="{{ url_for('admin_impersonate_user', user_id=user.id) }}" data-admin-confirm="Открыть приложение от имени этого пользователя?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary">{{ icon('user', 17) }} Открыть как пользователь</button>
+        </form>
+        {% endif %}
+    </div>
+</header>
 
-{% if success_message %}
-<div class="alert alert-success">{{ success_message }}</div>
-{% endif %}
+{% if success_message %}<div class="alert alert-success" role="status">{{ success_message }}</div>{% endif %}
 
-<div class="row g-4">
-    <div class="col-lg-6">
-        <div class="card p-4">
-            <h5 class="mb-3">Профиль</h5>
-            <dl class="row">
-                <dt class="col-5">Telegram ID</dt>
-                <dd class="col-7">{{ user.telegram_id }}</dd>
-                <dt class="col-5">Username</dt>
-                <dd class="col-7">{{ user.username or '—' }}</dd>
-                <dt class="col-5">Имя</dt>
-                <dd class="col-7">{{ user.first_name or '—' }}</dd>
-                <dt class="col-5">Роль</dt>
-                <dd class="col-7">{{ user.role }}</dd>
-                <dt class="col-5">Статус</dt>
-                <dd class="col-7">{% if user.is_blocked %}<span class="badge bg-danger">Заблокирован</span>{% else %}<span class="badge bg-success">Активен</span>{% endif %}</dd>
-                <dt class="col-5">Последний вход</dt>
-                <dd class="col-7">{{ user.auth_date.strftime('%Y-%m-%d %H:%M:%S') if user.auth_date else '—' }}</dd>
-                <dt class="col-5">IP</dt>
-                <dd class="col-7">{{ user.last_login_ip or '—' }}</dd>
-                <dt class="col-5">User Agent</dt>
-                <dd class="col-7">{{ user.last_user_agent or '—' }}</dd>
-                <dt class="col-5">Входов</dt>
-                <dd class="col-7">{{ user.login_count }}</dd>
-                <dt class="col-5">Зарегистрирован</dt>
-                <dd class="col-7">{{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else '—' }}</dd>
+<div class="admin-detail-grid">
+    <div class="admin-detail-main">
+        <section class="admin-panel" aria-labelledby="profile-title">
+            <div class="admin-panel__header"><div><p class="admin-page-kicker">Профиль</p><h2 id="profile-title">Основная информация</h2></div></div>
+            <dl class="admin-definition-grid">
+                <div><dt>{{ field_label('telegram_id') }}</dt><dd class="admin-mono">{{ user.telegram_id }}</dd></div>
+                <div><dt>{{ field_label('username') }}</dt><dd>{{ '@' ~ user.username if user.username else '—' }}</dd></div>
+                <div><dt>{{ field_label('email') }}</dt><dd>{{ user.email or '—' }}</dd></div>
+                <div><dt>{{ field_label('auth_date') }}</dt><dd>{{ user.auth_date.strftime('%d.%m.%Y %H:%M') if user.auth_date else '—' }}</dd></div>
+                <div><dt>{{ field_label('created_at') }}</dt><dd>{{ user.created_at.strftime('%d.%m.%Y %H:%M') if user.created_at else '—' }}</dd></div>
+                <div><dt>{{ field_label('login_count') }}</dt><dd>{{ user.login_count }}</dd></div>
             </dl>
-        </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card p-4">
-            <h5 class="mb-3">Статистика</h5>
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Активных долгов
-                    <span class="badge bg-primary rounded-pill">{{ active_debts }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Архивных долгов
-                    <span class="badge bg-secondary rounded-pill">{{ archived_debts }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Платежей
-                    <span class="badge bg-success rounded-pill">{{ payments }}</span>
-                </li>
-            </ul>
-        </div>
-    </div>
-</div>
+            {% if current_user.is_superadmin %}
+            <details class="admin-technical-details">
+                <summary>{{ icon('database', 17) }} Технические сведения</summary>
+                <dl class="admin-definition-grid admin-definition-grid--technical">
+                    <div><dt>{{ field_label('last_login_ip') }}</dt><dd class="admin-mono">{{ user.last_login_ip or '—' }}</dd></div>
+                    <div><dt>{{ field_label('google_id') }}</dt><dd class="admin-mono">{{ user.google_id or '—' }}</dd></div>
+                    <div class="admin-definition-grid__wide"><dt>{{ field_label('last_user_agent') }}</dt><dd class="admin-break-word">{{ user.last_user_agent or '—' }}</dd></div>
+                </dl>
+            </details>
+            {% endif %}
+        </section>
 
-<div class="row g-4 mt-3">
-    <div class="col-lg-8">
-        <div class="card p-4">
-            <h5 class="mb-3">Последние действия</h5>
-            <div class="table-responsive">
-                <table class="table table-sm table-striped align-middle">
-                    <thead>
-                        <tr>
-                            <th>Дата</th>
-                            <th>Действие</th>
-                            <th>Описание</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for action in recent_actions %}
-                        <tr>
-                            <td>{{ action.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                            <td>{{ action.action }}</td>
-                            <td>{{ action.description or '—' }}</td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="3" class="text-center text-muted">Нет действий.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        <section class="admin-panel" aria-labelledby="history-title">
+            <div class="admin-panel__header"><div><p class="admin-page-kicker">Активность</p><h2 id="history-title">История действий</h2></div><a href="{{ url_for('admin_logs', user=user.id) }}">Весь журнал {{ icon('chevron-right', 16) }}</a></div>
+            <div class="admin-event-list">
+                {% for action in recent_actions %}
+                <article class="admin-event">
+                    <span class="admin-event__icon admin-event__icon--{{ action.action|admin_event_tone }}">{{ icon(action.action|admin_event_icon, 18) }}</span>
+                    <div class="admin-event__content"><strong>{{ action.action|admin_event }}</strong><span>{{ action.description or 'Без дополнительного описания' }}</span></div>
+                    <time datetime="{{ action.created_at.isoformat() if action.created_at else '' }}">{{ action.created_at.strftime('%d.%m.%Y %H:%M') if action.created_at else '—' }}</time>
+                </article>
+                {% else %}<div class="admin-empty-state">{{ icon('activity', 30) }}<p>История действий пуста.</p></div>{% endfor %}
             </div>
-        </div>
+        </section>
     </div>
-    <div class="col-lg-4">
-        <div class="card p-4">
-            <h5 class="mb-3">Действия администратора</h5>
-            <form method="post" class="d-grid gap-2">
+
+    <aside class="admin-detail-aside">
+        <section class="admin-panel" aria-labelledby="finance-summary-title">
+            <div class="admin-panel__header"><div><p class="admin-page-kicker">Финансы</p><h2 id="finance-summary-title">Сводка</h2></div></div>
+            <div class="admin-mini-stats">
+                <a href="{{ url_for('admin_finance', section='debts', status='active', q=user.telegram_id) }}"><span>Активные долги</span><strong>{{ active_debts }}</strong></a>
+                <a href="{{ url_for('admin_finance', section='debts', status='archived', q=user.telegram_id) }}"><span>Архивные долги</span><strong>{{ archived_debts }}</strong></a>
+                <a href="{{ url_for('admin_finance', section='payments', q=user.telegram_id) }}"><span>Платежи</span><strong>{{ payments }}</strong></a>
+            </div>
+        </section>
+
+        <section class="admin-panel" aria-labelledby="management-title">
+            <div class="admin-panel__header"><div><p class="admin-page-kicker">Доступ</p><h2 id="management-title">Управление</h2></div></div>
+            <form method="post" class="admin-action-stack">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if user.is_blocked %}
-                <button type="submit" name="action" value="unblock" class="btn btn-success">Разблокировать</button>
+                <button type="submit" name="action" value="unblock" class="btn btn-success" data-admin-confirm="Разблокировать пользователя?">{{ icon('check-circle', 17) }} Разблокировать</button>
                 {% else %}
-                <button type="submit" name="action" value="block" class="btn btn-danger">Заблокировать</button>
+                <button type="submit" name="action" value="block" class="btn btn-outline-danger" data-admin-confirm="Заблокировать пользователя? Он потеряет доступ к приложению.">{{ icon('ban', 17) }} Заблокировать</button>
                 {% endif %}
                 {% if current_user.is_superadmin %}
-                <button type="submit" name="action" value="make_admin" class="btn btn-outline-primary">Сделать администратором</button>
-                <button type="submit" name="action" value="make_superadmin" class="btn btn-outline-warning">Сделать супер-админом</button>
-                <button type="submit" name="action" value="make_user" class="btn btn-outline-secondary">Снять права администратора</button>
-                <button type="submit" name="action" value="delete" class="btn btn-outline-danger">Удалить пользователя</button>
+                <div class="admin-action-divider"><span>Изменить роль</span></div>
+                {% if user.role != 'admin' %}<button type="submit" name="action" value="make_admin" class="btn btn-outline-primary" data-admin-confirm="Назначить роль администратора?">Назначить администратором</button>{% endif %}
+                {% if user.role != 'superadmin' %}<button type="submit" name="action" value="make_superadmin" class="btn btn-outline-warning" data-admin-confirm="Назначить роль супер-администратора? Пользователь получит полный доступ.">Назначить супер-администратором</button>{% endif %}
+                {% if user.role != 'user' %}<button type="submit" name="action" value="make_user" class="btn btn-outline-secondary" data-admin-confirm="Снять административные права?">Оставить обычным пользователем</button>{% endif %}
+                <div class="admin-danger-zone">
+                    <strong>Опасная зона</strong><p>Удаление затронет связанные данные и не отменяется из интерфейса.</p>
+                    <button type="submit" name="action" value="delete" class="btn btn-danger" data-admin-confirm="Удалить пользователя и связанные с ним данные? Это действие необратимо.">{{ icon('alert', 17) }} Удалить пользователя</button>
+                </div>
                 {% endif %}
             </form>
-        </div>
-    </div>
+        </section>
+    </aside>
 </div>
 {% endblock %}

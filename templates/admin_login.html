@@ -1,32 +1,23 @@
 {% extends 'base.html' %}
-{% block title %}Вход в админ-панель{% endblock %}
-
+{% block title %}Вход — Административная панель officium{% endblock %}
+{% block extra_css %}<link href="{{ url_for('static', filename='css/admin.css') }}?v=0.0.7" rel="stylesheet">{% endblock %}
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-xl-4 col-lg-5 col-md-7">
-        <div class="card shadow-sm border-0">
-            <div class="card-body text-center py-5">
-                <h1 class="h4 mb-3">Вход в админ-панель</h1>
-                <p class="text-muted mb-4">Введите админ-пароль</p>
-
-                {% if error_message %}
-                <div class="alert alert-danger">{{ error_message }}</div>
-                {% endif %}
-
-                {% if not admin_login_enabled %}
-                <div class="alert alert-warning">Админ-вход отключён. Включите <code>ADMIN_LOGIN_ENABLED</code> в <code>.env</code>.</div>
-                {% else %}
-                <form method="post" class="text-start">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="mb-3">
-                        <label class="form-label">Пароль администратора</label>
-                        <input type="password" name="password" class="form-control" autocomplete="current-password" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Войти</button>
-                </form>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
+<main class="admin-login-shell">
+    <section class="admin-login-card" aria-labelledby="admin-login-title">
+        <div class="admin-login-card__brand"><img src="{{ url_for('static', filename='images/brand/officium-logo.svg') }}" width="174" height="44" alt="officium"><span>Административная панель</span></div>
+        <div class="admin-login-card__icon">{% from 'admin/_macros.html' import icon %}{{ icon('lock', 26) }}</div>
+        <p class="admin-page-kicker">Защищенный доступ</p><h1 id="admin-login-title">Вход для администратора</h1><p>Введите пароль административной учетной записи.</p>
+        {% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
+        {% if not admin_login_enabled %}
+        <div class="alert alert-warning">Вход администратора отключен. Включите параметр <code>ADMIN_LOGIN_ENABLED</code> в конфигурации окружения.</div>
+        {% else %}
+        <form method="post" class="admin-login-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="admin-control"><span>Пароль администратора</span><input type="password" name="password" autocomplete="current-password" required autofocus></label>
+            <button type="submit" class="btn btn-primary">Войти в панель {{ icon('chevron-right', 17) }}</button>
+        </form>
+        {% endif %}
+        <a class="admin-login-card__back" href="{{ url_for('index') }}">Вернуться в приложение</a>
+    </section>
+</main>
 {% endblock %}

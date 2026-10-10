@@ -1,99 +1,90 @@
-{% extends 'base.html' %}
-{% block title %}Пользователи — Админка{% endblock %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon, field_label, role_badge, status_badge, pagination_nav with context %}
+{% block title %}Пользователи — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Пользователи{% endblock %}
 
-{% block content %}
-<div class="d-flex justify-content-between align-items-start mb-3">
-    <div>
-        <h1 class="h3">Пользователи</h1>
-        <p class="text-muted">Список зарегистрированных пользователей и их статусы.</p>
-    </div>
-    <form method="post" action="{{ url_for('admin_impersonate_test') }}">
+{% block admin_content %}
+<header class="admin-page-header">
+    <div><p class="admin-page-kicker">Управление доступом</p><h1>Пользователи</h1><p>Учетные записи, роли, статусы и история входов.</p></div>
+    {% if show_test_impersonation %}
+    <form method="post" action="{{ url_for('admin_impersonate_test') }}" data-admin-confirm="Открыть приложение от имени тестового пользователя?">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-primary">Войти как тестовый пользователь</button>
+        <button type="submit" class="btn btn-outline-primary">{{ icon('user', 18) }} Тестовый пользователь</button>
     </form>
-</div>
+    {% endif %}
+</header>
 
-<div class="card p-4 mb-4">
-    <form method="get" class="row g-3 align-items-end">
-        <div class="col-md-4">
-            <label class="form-label">Поиск</label>
-            <input type="search" name="q" class="form-control" value="{{ q or '' }}" placeholder="Telegram ID, имя или username">
-        </div>
-        <div class="col-md-3">
-            <label class="form-label">Роль</label>
-            <select name="role" class="form-select">
-                <option value="">Все</option>
-                <option value="user" {% if role_filter == 'user' %}selected{% endif %}>user</option>
-                <option value="admin" {% if role_filter == 'admin' %}selected{% endif %}>admin</option>
-                <option value="superadmin" {% if role_filter == 'superadmin' %}selected{% endif %}>superadmin</option>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label">Статус</label>
-            <select name="status" class="form-select">
-                <option value="">Все</option>
-                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Активные</option>
-                <option value="blocked" {% if status_filter == 'blocked' %}selected{% endif %}>Заблокированные</option>
-            </select>
-        </div>
-        <div class="col-md-2 d-grid">
-            <button type="submit" class="btn btn-primary">Применить</button>
+<section class="admin-panel admin-filter-panel" aria-label="Фильтры пользователей">
+    <form method="get" class="admin-filter-grid admin-filter-grid--users">
+        <label class="admin-control admin-control--search">
+            <span>Поиск</span>
+            <span class="admin-input-icon">{{ icon('search', 18) }}<input type="search" name="q" value="{{ q or '' }}" placeholder="Имя, username или Telegram ID"></span>
+        </label>
+        <label class="admin-control"><span>Роль</span><select name="role" data-admin-auto-submit>
+            <option value="">Все роли</option>
+            <option value="user" {% if role_filter == 'user' %}selected{% endif %}>Пользователь</option>
+            <option value="admin" {% if role_filter == 'admin' %}selected{% endif %}>Администратор</option>
+            <option value="superadmin" {% if role_filter == 'superadmin' %}selected{% endif %}>Супер-администратор</option>
+        </select></label>
+        <label class="admin-control"><span>Статус</span><select name="status" data-admin-auto-submit>
+            <option value="">Все статусы</option>
+            <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Активные</option>
+            <option value="blocked" {% if status_filter == 'blocked' %}selected{% endif %}>Заблокированные</option>
+        </select></label>
+        <label class="admin-control"><span>Сортировка</span><select name="sort" data-admin-auto-submit>
+            <option value="newest" {% if sort == 'newest' %}selected{% endif %}>Сначала новые</option>
+            <option value="oldest" {% if sort == 'oldest' %}selected{% endif %}>Сначала старые</option>
+            <option value="name" {% if sort == 'name' %}selected{% endif %}>По имени</option>
+            <option value="activity" {% if sort == 'activity' %}selected{% endif %}>По активности</option>
+            <option value="role" {% if sort == 'role' %}selected{% endif %}>По роли</option>
+        </select></label>
+        <div class="admin-filter-actions">
+            <button type="submit" class="btn btn-primary">{{ icon('filter', 17) }} Применить</button>
+            {% if q or role_filter or status_filter or sort != 'newest' %}<a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary">Сбросить</a>{% endif %}
         </div>
     </form>
-</div>
+</section>
 
-<div class="card p-4">
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Telegram ID</th>
-                    <th>Имя</th>
-                    <th>Роль</th>
-                    <th>Блок</th>
-                    <th>Входов</th>
-                    <th>Создан</th>
-                    <th></th>
-                </tr>
-            </thead>
+<section class="admin-panel admin-table-panel" aria-labelledby="users-table-title">
+    <div class="admin-panel__header">
+        <div><p class="admin-page-kicker">Результаты</p><h2 id="users-table-title">Учетные записи</h2></div>
+        <span class="admin-section-heading__meta">Найдено: {{ pagination.total }}</span>
+    </div>
+    <div class="admin-table-wrap">
+        <table class="admin-table admin-table--responsive">
+            <thead><tr>
+                <th>{{ field_label('id') }}</th><th><span class="admin-field-label"><span>Пользователь</span><button type="button" class="admin-field-info" data-bs-toggle="tooltip" data-bs-title="Поле базы данных: telegram_id" aria-label="Техническое имя идентификатора: telegram_id">{{ icon('info', 15) }}</button></span></th><th>{{ field_label('role') }}</th><th>{{ field_label('is_blocked') }}</th><th>{{ field_label('login_count') }}</th><th>{{ field_label('created_at') }}</th><th><span class="visually-hidden">Действия</span></th>
+            </tr></thead>
             <tbody>
-                {% for user in users %}
-                <tr>
-                    <td>{{ user.id }}</td>
-                    <td>{{ user.telegram_id }}</td>
-                    <td>{{ user.first_name or user.username or '—' }}</td>
-                    <td>
-                        {% if user.role == 'superadmin' %}
-                        <span class="badge bg-danger">superadmin</span>
-                        {% elif user.role == 'admin' %}
-                        <span class="badge bg-primary">admin</span>
-                        {% else %}
-                        <span class="badge bg-secondary">user</span>
-                        {% endif %}
-                    </td>
-                    <td>{% if user.is_blocked %}<span class="badge bg-danger">Заблокирован</span>{% else %}<span class="badge bg-success">Активен</span>{% endif %}</td>
-                    <td>{{ user.login_count }}</td>
-                    <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '—' }}</td>
-                    <td>
-                        <div class="btn-group" role="group">
-                            <a href="{{ url_for('admin_user_detail', user_id=user.id) }}" class="btn btn-outline-primary btn-sm">Открыть</a>
-                            {% if current_user.is_superadmin %}
-                            <form method="post" action="{{ url_for('admin_impersonate_user', user_id=user.id) }}" class="d-inline">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-outline-success btn-sm">Имперсонализировать</button>
-                            </form>
-                            {% endif %}
-                        </div>
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="8" class="text-center text-muted">Нет пользователей.</td>
-                </tr>
-                {% endfor %}
+            {% for user in users %}
+            <tr data-admin-row-href="{{ url_for('admin_user_detail', user_id=user.id) }}">
+                <td data-label="ID"><span class="admin-mono">#{{ user.id }}</span></td>
+                <td data-label="Пользователь">
+                    <div class="admin-person">
+                        <span class="admin-person__avatar">{{ (user.first_name or user.username or 'П')[:1]|upper }}</span>
+                        <span><strong>{{ [user.first_name, user.last_name]|select|join(' ') or user.username or 'Без имени' }}</strong><small>{% if user.username %}@{{ user.username }} · {% endif %}{{ user.telegram_id }}</small></span>
+                    </div>
+                </td>
+                <td data-label="Роль">{{ role_badge(user.role) }}</td>
+                <td data-label="Статус">{{ status_badge('blocked' if user.is_blocked else 'active') }}</td>
+                <td data-label="Количество входов">{{ user.login_count }}</td>
+                <td data-label="Дата регистрации"><time datetime="{{ user.created_at.isoformat() if user.created_at else '' }}">{{ user.created_at.strftime('%d.%m.%Y') if user.created_at else '—' }}</time></td>
+                <td class="admin-table__actions" data-label="Действия">
+                    <a href="{{ url_for('admin_user_detail', user_id=user.id) }}" class="admin-icon-button" aria-label="Открыть профиль пользователя">{{ icon('chevron-right', 18) }}</a>
+                    {% if current_user.is_superadmin and not user.is_blocked and not user.is_superadmin %}
+                    <form method="post" action="{{ url_for('admin_impersonate_user', user_id=user.id) }}" data-admin-confirm="Открыть приложение от имени выбранного пользователя?">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="admin-icon-button" aria-label="Открыть приложение от имени пользователя">{{ icon('user', 18) }}</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7"><div class="admin-empty-state">{{ icon('search', 30) }}<p>По заданным условиям пользователи не найдены.</p></div></td></tr>
+            {% endfor %}
             </tbody>
         </table>
     </div>
-</div>
+    {{ pagination_nav(pagination) }}
+</section>
 {% endblock %}

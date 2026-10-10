@@ -1,75 +1,29 @@
-{% extends 'base.html' %}
-{% block title %}Справочники — Админка{% endblock %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon %}
+{% block title %}Справочники — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Справочники{% endblock %}
 
-{% block content %}
-<div class="mb-4">
-    <h1 class="h3">Справочники</h1>
-    <p class="text-muted">Управляйте банками, типами долгов, статусами и другими справочными данными.</p>
-</div>
+{% block admin_content %}
+<header class="admin-page-header"><div><p class="admin-page-kicker">Системные данные</p><h1>Справочники</h1><p>Управление списками банков, категорий и других значений приложения.</p></div></header>
+{% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
+{% if success_message %}<div class="alert alert-success" role="status">{{ success_message }}</div>{% endif %}
 
-{% if error_message %}
-<div class="alert alert-danger">{{ error_message }}</div>
-{% endif %}
-{% if success_message %}
-<div class="alert alert-success">{{ success_message }}</div>
-{% endif %}
-
-<div class="row g-4">
-    <div class="col-lg-5">
-        <div class="card p-4">
-            <h5 class="mb-3">Добавить элемент</h5>
-            <form method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="mb-3">
-                    <label class="form-label">Тип справочника</label>
-                    <select class="form-select" name="dictionary_type">
-                        <option value="">— выберите —</option>
-                        {% for key, label in types %}
-                        <option value="{{ key }}">{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Значение</label>
-                    <input type="text" class="form-control" name="value" placeholder="Введите значение">
-                </div>
-                <button type="submit" class="btn btn-primary">Добавить</button>
-            </form>
-        </div>
-    </div>
-    <div class="col-lg-7">
-        <div class="card p-4">
-            <h5 class="mb-3">Элементы справочников</h5>
-            <div class="table-responsive">
-                <table class="table table-striped align-middle">
-                    <thead>
-                        <tr>
-                            <th>Тип</th>
-                            <th>Значение</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in entries %}
-                        <tr>
-                            <td>{{ type_labels[entry.dictionary_type] }}</td>
-                            <td>{{ entry.value }}</td>
-                            <td>
-                                <form method="post" action="{{ url_for('admin_delete_dictionary_entry', entry_id=entry.id) }}" class="d-inline">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="3" class="text-center text-muted">Нет элементов справочников.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+<div class="admin-detail-grid admin-detail-grid--dictionary">
+    <section class="admin-panel admin-detail-aside">
+        <div class="admin-panel__header"><div><p class="admin-page-kicker">Новая запись</p><h2>Добавить элемент</h2></div></div>
+        <form method="post" class="admin-action-stack">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="admin-control"><span>Тип справочника</span><select name="dictionary_type" required><option value="">Выберите тип</option>{% for key, label in types %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label>
+            <label class="admin-control"><span>Значение</span><input type="text" name="value" maxlength="150" placeholder="Введите значение" required></label>
+            <button type="submit" class="btn btn-primary">{{ icon('check-circle', 17) }} Добавить</button>
+        </form>
+    </section>
+    <section class="admin-panel admin-detail-main">
+        <div class="admin-panel__header"><div><p class="admin-page-kicker">Текущие данные</p><h2>Элементы справочников</h2></div><span class="admin-section-heading__meta">Всего: {{ entries|length }}</span></div>
+        <div class="admin-table-wrap"><table class="admin-table admin-table--responsive"><thead><tr><th>Тип</th><th>Значение</th><th><span class="visually-hidden">Действия</span></th></tr></thead><tbody>
+            {% for entry in entries %}<tr><td data-label="Тип"><span class="admin-badge admin-badge--neutral">{{ type_labels.get(entry.dictionary_type, entry.dictionary_type) }}</span></td><td data-label="Значение"><strong>{{ entry.value }}</strong></td><td data-label="Действия" class="admin-table__actions"><form method="post" action="{{ url_for('admin_delete_dictionary_entry', entry_id=entry.id) }}" data-admin-confirm="Удалить элемент справочника «{{ entry.value }}»?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="admin-icon-button admin-icon-button--danger" aria-label="Удалить элемент">{{ icon('alert', 17) }}</button></form></td></tr>
+            {% else %}<tr><td colspan="3"><div class="admin-empty-state">{{ icon('book', 30) }}<p>Справочники пока пусты.</p></div></td></tr>{% endfor %}
+        </tbody></table></div>
+    </section>
 </div>
 {% endblock %}

@@ -1,8 +1,9 @@
 import csv
+from datetime import datetime, timedelta
 from io import StringIO
 from flask import abort, current_app, jsonify, redirect, render_template, request, url_for, Response, flash, session
 from flask_login import current_user, login_user, logout_user
-from sqlalchemy import cast
+from sqlalchemy import and_, cast, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from app.models import ActivityLog, Debt, DictionaryEntry, Payment, User, AppSetting
 from app.routes.auth import LocalTestUser
@@ -33,6 +34,27 @@ def _setting_enabled(key, default=True):
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _test_impersonation_enabled():
+    return (
+        str(current_app.config.get('ENVIRONMENT', '')).strip().lower() == 'development'
+        and bool(current_app.config.get('TEST_USER_ENABLED'))
+    )
+
+
+def _page_number():
+    return max(request.args.get('page', 1, type=int) or 1, 1)
+
+
+def _filter_datetime(value, *, end=False):
+    if not value:
+        return None
+    try:
+        parsed = datetime.strptime(str(value), '%Y-%m-%d')
+    except ValueError:
+        return None
+    return parsed + timedelta(days=1) if end else parsed
 
 
 def _csv_safe(value):
@@ -90,10 +112,20 @@ def _validated_settings(form):
 
 
 def init_app(app):
+    @app.context_processor
+    def inject_admin_navigation_helpers():
+        def admin_page_url(page):
+            arguments = request.args.to_dict()
+            arguments['page'] = page
+            return url_for(request.endpoint, **arguments)
+
+        return {'admin_page_url': admin_page_url}
+
     @app.route('/admin')
     @admin_required
     def admin_dashboard():
         error_message = None
+        system_state = 'healthy'
         stats = {
             'users': '—',
             'active_users': '—',
@@ -116,9 +148,21 @@ def init_app(app):
             }
             recent_logs = ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(5).all()
         except SQLAlchemyError:
+            db.session.rollback()
+            system_state = 'warning'
             error_message = 'Ошибка подключения к базе данных. Админ-табло недоступно.'
 
-        return render_template('admin_dashboard.html', stats=stats, error_message=error_message, recent_logs=recent_logs)
+        return render_template(
+            'admin_dashboard.html',
+            stats=stats,
+            error_message=error_message,
+            recent_logs=recent_logs,
+            system_state=system_state,
+            app_version=current_app.config.get('APP_VERSION', 'unknown'),
+            show_test_impersonation=(
+                current_user.is_superadmin and _test_impersonation_enabled()
+            ),
+        )
 
     @app.route('/admin/server-update')
     @superadmin_required
@@ -293,6 +337,7 @@ def init_app(app):
         role_filter = request.args.get('role')
         status_filter = request.args.get('status')
         search_query = (request.args.get('q') or '').strip()
+        sort = request.args.get('sort', 'newest')
 
         users_query = User.query
         if role_filter in ('user', 'admin', 'superadmin'):
@@ -309,12 +354,38 @@ def init_app(app):
                 (cast(User.telegram_id, db.String).ilike(f'%{search_query}%'))
             )
 
-        users = users_query.order_by(User.role.desc(), User.created_at.desc()).all()
-        return render_template('admin_users.html', users=users, role_filter=role_filter, status_filter=status_filter, q=search_query)
+        sort_options = {
+            'newest': (User.created_at.desc(), User.id.desc()),
+            'oldest': (User.created_at.asc(), User.id.asc()),
+            'name': (User.first_name.asc(), User.last_name.asc(), User.username.asc()),
+            'activity': (User.login_count.desc(), User.created_at.desc()),
+            'role': (User.role.desc(), User.created_at.desc()),
+        }
+        if sort not in sort_options:
+            sort = 'newest'
+        pagination = users_query.order_by(*sort_options[sort]).paginate(
+            page=_page_number(),
+            per_page=20,
+            error_out=False,
+        )
+        return render_template(
+            'admin_users.html',
+            users=pagination.items,
+            pagination=pagination,
+            role_filter=role_filter,
+            status_filter=status_filter,
+            q=search_query,
+            sort=sort,
+            show_test_impersonation=(
+                current_user.is_superadmin and _test_impersonation_enabled()
+            ),
+        )
 
     @app.route('/admin/impersonate/test', methods=['POST'])
     @superadmin_required
     def admin_impersonate_test():
+        if not _test_impersonation_enabled():
+            abort(404)
         try:
             test_user = User.query.filter_by(username='test').first()
             if not test_user:
@@ -351,7 +422,7 @@ def init_app(app):
     def admin_impersonate_user(user_id):
         user = User.query.get_or_404(user_id)
         if user.is_blocked or user.is_superadmin:
-            flash('Нельзя выполнять impersonate для этого пользователя.', 'warning')
+            flash('Нельзя открыть интерфейс от имени этого пользователя.', 'warning')
             return redirect(url_for('admin_users'))
 
         session['original_admin_id'] = current_user.id
@@ -373,7 +444,7 @@ def init_app(app):
                 elif user.is_superadmin and not current_user.is_superadmin:
                     flash('Нельзя заблокировать супер-администратора.', 'warning')
                 elif _is_last_superadmin(user):
-                    flash('Нельзя заблокировать последнего superadmin.', 'warning')
+                    flash('Нельзя заблокировать последнего супер-администратора.', 'warning')
                 else:
                     user.is_blocked = True
                     record_activity('Заблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
@@ -391,11 +462,11 @@ def init_app(app):
                 if not current_user.is_superadmin:
                     flash('Недостаточно прав для изменения ролей.', 'warning')
                 elif user.id == current_user.id and action != 'make_superadmin' and _is_last_superadmin(user):
-                    flash('Нельзя понизить последнего superadmin.', 'warning')
+                    flash('Нельзя понизить последнего супер-администратора.', 'warning')
                 else:
                     if action == 'make_admin':
                         if user.is_superadmin and _is_last_superadmin(user):
-                            flash('Нельзя понизить последнего superadmin.', 'warning')
+                            flash('Нельзя понизить последнего супер-администратора.', 'warning')
                         else:
                             user.role = 'admin'
                             record_activity('Назначил администратора', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}')
@@ -406,7 +477,7 @@ def init_app(app):
                         successful = True
                     else:
                         if user.is_superadmin and _is_last_superadmin(user):
-                            flash('Нельзя понизить последнего superadmin.', 'warning')
+                            flash('Нельзя понизить последнего супер-администратора.', 'warning')
                         else:
                             user.role = 'user'
                             record_activity('Снял административные права', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}')
@@ -417,7 +488,7 @@ def init_app(app):
                 elif user.id == current_user.id:
                     flash('Нельзя удалить себя.', 'warning')
                 elif user.is_superadmin and _is_last_superadmin(user):
-                    flash('Нельзя удалить последнего superadmin.', 'warning')
+                    flash('Нельзя удалить последнего супер-администратора.', 'warning')
                 else:
                     record_activity('Удалил пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
                     db.session.delete(user)
@@ -432,14 +503,135 @@ def init_app(app):
         active_debts = Debt.query.filter_by(user_id=user.id, status='active').count()
         archived_debts = Debt.query.filter_by(user_id=user.id, status='archived').count()
         payments = Payment.query.join(Debt).filter(Debt.user_id == user.id).count()
-        recent_actions = ActivityLog.query.filter_by(user_id=user.id).order_by(ActivityLog.created_at.desc()).limit(20).all()
+        recent_actions = ActivityLog.query.filter(
+            or_(
+                ActivityLog.user_id == user.id,
+                and_(ActivityLog.entity_type == 'user', ActivityLog.entity_id == user.id),
+            )
+        ).order_by(ActivityLog.created_at.desc()).limit(20).all()
         return render_template('admin_user_detail.html', user=user, active_debts=active_debts, archived_debts=archived_debts, payments=payments, recent_actions=recent_actions, success_message=request.args.get('success'))
 
     @app.route('/admin/logs')
     @admin_required
     def admin_logs():
-        logs = ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(100).all()
-        return render_template('admin_logs.html', logs=logs)
+        user_filter = request.args.get('user', type=int)
+        event_filter = (request.args.get('event') or '').strip()
+        date_from_raw = (request.args.get('date_from') or '').strip()
+        date_to_raw = (request.args.get('date_to') or '').strip()
+
+        logs_query = ActivityLog.query
+        if user_filter:
+            logs_query = logs_query.filter(ActivityLog.user_id == user_filter)
+        if event_filter:
+            logs_query = logs_query.filter(ActivityLog.action == event_filter)
+        date_from = _filter_datetime(date_from_raw)
+        date_to = _filter_datetime(date_to_raw, end=True)
+        if date_from:
+            logs_query = logs_query.filter(ActivityLog.created_at >= date_from)
+        if date_to:
+            logs_query = logs_query.filter(ActivityLog.created_at < date_to)
+
+        pagination = logs_query.order_by(ActivityLog.created_at.desc()).paginate(
+            page=_page_number(),
+            per_page=30,
+            error_out=False,
+        )
+        filter_users = User.query.order_by(User.first_name.asc(), User.username.asc()).all()
+        event_values = [
+            item[0]
+            for item in db.session.query(ActivityLog.action)
+            .distinct()
+            .order_by(ActivityLog.action.asc())
+            .all()
+        ]
+        return render_template(
+            'admin_logs.html',
+            logs=pagination.items,
+            pagination=pagination,
+            filter_users=filter_users,
+            event_values=event_values,
+            user_filter=user_filter,
+            event_filter=event_filter,
+            date_from=date_from_raw,
+            date_to=date_to_raw,
+        )
+
+    @app.route('/admin/finance')
+    @admin_required
+    def admin_finance():
+        section = request.args.get('section', 'debts')
+        if section not in ('debts', 'payments'):
+            section = 'debts'
+        search_query = (request.args.get('q') or '').strip()
+        status_filter = request.args.get('status')
+
+        if section == 'payments':
+            rows_query = Payment.query.join(Debt).join(User, Debt.user_id == User.id)
+            if search_query:
+                rows_query = rows_query.filter(or_(
+                    Debt.bank_name.ilike(f'%{search_query}%'),
+                    Debt.product_name.ilike(f'%{search_query}%'),
+                    User.username.ilike(f'%{search_query}%'),
+                    User.first_name.ilike(f'%{search_query}%'),
+                    cast(User.telegram_id, db.String).ilike(f'%{search_query}%'),
+                    cast(Payment.id, db.String).ilike(f'%{search_query}%'),
+                ))
+            rows_query = rows_query.order_by(Payment.payment_date.desc(), Payment.id.desc())
+        else:
+            rows_query = Debt.query.join(User)
+            if status_filter in ('active', 'archived'):
+                rows_query = rows_query.filter(Debt.status == status_filter)
+            if search_query:
+                rows_query = rows_query.filter(or_(
+                    Debt.bank_name.ilike(f'%{search_query}%'),
+                    Debt.product_name.ilike(f'%{search_query}%'),
+                    User.username.ilike(f'%{search_query}%'),
+                    User.first_name.ilike(f'%{search_query}%'),
+                    cast(User.telegram_id, db.String).ilike(f'%{search_query}%'),
+                    cast(Debt.id, db.String).ilike(f'%{search_query}%'),
+                ))
+            rows_query = rows_query.order_by(Debt.created_at.desc(), Debt.id.desc())
+
+        pagination = rows_query.paginate(
+            page=_page_number(),
+            per_page=25,
+            error_out=False,
+        )
+        return render_template(
+            'admin_finance.html',
+            section=section,
+            rows=pagination.items,
+            pagination=pagination,
+            q=search_query,
+            status_filter=status_filter,
+        )
+
+    @app.route('/admin/system')
+    @superadmin_required
+    def admin_system():
+        database_state = 'healthy'
+        try:
+            db.session.execute(text('SELECT 1'))
+        except SQLAlchemyError:
+            db.session.rollback()
+            database_state = 'warning'
+
+        feature_states = (
+            ('Вход через Telegram', current_app.config.get('TELEGRAM_LOGIN_ENABLED')),
+            ('Telegram Mini App', current_app.config.get('TELEGRAM_MINI_APP_ENABLED')),
+            ('Telegram-бот', current_app.config.get('TELEGRAM_BOT_ENABLED')),
+            ('Google OAuth', current_app.config.get('GOOGLE_LOGIN_ENABLED')),
+            ('Обновление сервера', current_app.config.get('SERVER_UPDATE_ENABLED')),
+        )
+        return render_template(
+            'admin_system.html',
+            database_state=database_state,
+            feature_states=feature_states,
+            app_version=current_app.config.get('APP_VERSION', 'unknown'),
+            environment=current_app.config.get('ENVIRONMENT', 'unknown'),
+            timezone=current_app.config.get('APP_TIMEZONE', 'UTC'),
+            database_engine=current_app.config.get('DB_ENGINE', 'unknown'),
+        )
 
     @app.route('/admin/export')
     @superadmin_required

@@ -1,0 +1,53 @@
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon, field_label, status_badge, pagination_nav with context %}
+{% block title %}Долги и платежи — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Долги и платежи{% endblock %}
+
+{% block admin_content %}
+<header class="admin-page-header"><div><p class="admin-page-kicker">Финансовые данные</p><h1>Долги и платежи</h1><p>Просмотр финансовых записей без изменения пользовательских данных.</p></div></header>
+
+<nav class="admin-tabs" aria-label="Раздел финансовых данных">
+    <a href="{{ url_for('admin_finance', section='debts') }}" class="{% if section == 'debts' %}active{% endif %}">{{ icon('wallet', 18) }} Долги</a>
+    <a href="{{ url_for('admin_finance', section='payments') }}" class="{% if section == 'payments' %}active{% endif %}">{{ icon('chart', 18) }} Платежи</a>
+</nav>
+
+<section class="admin-panel admin-filter-panel" aria-label="Фильтры финансовых данных">
+    <form method="get" class="admin-filter-grid admin-filter-grid--finance">
+        <input type="hidden" name="section" value="{{ section }}">
+        <label class="admin-control admin-control--search"><span>Поиск</span><span class="admin-input-icon">{{ icon('search', 18) }}<input type="search" name="q" value="{{ q }}" placeholder="Банк, продукт, пользователь или ID"></span></label>
+        {% if section == 'debts' %}<label class="admin-control"><span>Статус</span><select name="status"><option value="">Все статусы</option><option value="active" {% if status_filter == 'active' %}selected{% endif %}>Активные</option><option value="archived" {% if status_filter == 'archived' %}selected{% endif %}>Архивные</option></select></label>{% endif %}
+        <div class="admin-filter-actions"><button type="submit" class="btn btn-primary">{{ icon('filter', 17) }} Применить</button>{% if q or status_filter %}<a class="btn btn-outline-secondary" href="{{ url_for('admin_finance', section=section) }}">Сбросить</a>{% endif %}</div>
+    </form>
+</section>
+
+<section class="admin-panel admin-table-panel" aria-labelledby="finance-table-title">
+    <div class="admin-panel__header"><div><p class="admin-page-kicker">Результаты</p><h2 id="finance-table-title">{{ 'Платежи' if section == 'payments' else 'Долговые обязательства' }}</h2></div><span class="admin-section-heading__meta">Найдено: {{ pagination.total }}</span></div>
+    <div class="admin-table-wrap">
+        {% if section == 'payments' %}
+        <table class="admin-table admin-table--responsive"><thead><tr><th>{{ field_label('id') }}</th><th>Пользователь</th><th>Долг</th><th>{{ field_label('amount') }}</th><th>{{ field_label('payment_date') }}</th><th>{{ field_label('remaining_after_payment') }}</th></tr></thead><tbody>
+            {% for payment in rows %}<tr>
+                <td data-label="ID"><span class="admin-mono">#{{ payment.id }}</span></td>
+                <td data-label="Пользователь"><a href="{{ url_for('admin_user_detail', user_id=payment.debt.user.id) }}">{{ payment.debt.user.first_name or payment.debt.user.username or ('#' ~ payment.debt.user.id) }}</a></td>
+                <td data-label="Долг"><strong>{{ payment.debt.bank_name }}</strong><small class="admin-table__subline">{{ payment.debt.product_name }}</small></td>
+                <td data-label="Сумма"><strong>{{ '%.2f'|format(payment.amount) }} ₽</strong>{% if payment.is_early_repayment %}<small class="admin-table__subline">Досрочное погашение</small>{% endif %}</td>
+                <td data-label="Дата платежа">{{ payment.payment_date.strftime('%d.%m.%Y') if payment.payment_date else '—' }}</td>
+                <td data-label="Остаток после платежа">{{ '%.2f'|format(payment.remaining_after_payment) }} ₽</td>
+            </tr>{% else %}<tr><td colspan="6"><div class="admin-empty-state">{{ icon('search', 30) }}<p>Платежи не найдены.</p></div></td></tr>{% endfor %}
+        </tbody></table>
+        {% else %}
+        <table class="admin-table admin-table--responsive"><thead><tr><th>{{ field_label('id') }}</th><th>Пользователь</th><th>Банк и продукт</th><th>{{ field_label('total_amount') }}</th><th>{{ field_label('remaining_amount') }}</th><th>{{ field_label('next_payment_date') }}</th><th>{{ field_label('status') }}</th></tr></thead><tbody>
+            {% for debt in rows %}<tr>
+                <td data-label="ID"><span class="admin-mono">#{{ debt.id }}</span></td>
+                <td data-label="Пользователь"><a href="{{ url_for('admin_user_detail', user_id=debt.user.id) }}">{{ debt.user.first_name or debt.user.username or ('#' ~ debt.user.id) }}</a></td>
+                <td data-label="Банк и продукт"><strong>{{ debt.bank_name }}</strong><small class="admin-table__subline">{{ debt.product_name }} · {{ debt.DEBT_TYPE_LABELS.get(debt.debt_type, debt.debt_type) }}</small></td>
+                <td data-label="Первоначальная сумма">{{ '%.2f'|format(debt.total_amount) }} ₽</td>
+                <td data-label="Текущий остаток"><strong>{{ '%.2f'|format(debt.remaining_amount) }} ₽</strong></td>
+                <td data-label="Следующий платеж">{{ debt.next_payment_date.strftime('%d.%m.%Y') if debt.next_payment_date else '—' }}</td>
+                <td data-label="Статус">{{ status_badge(debt.status) }}</td>
+            </tr>{% else %}<tr><td colspan="7"><div class="admin-empty-state">{{ icon('search', 30) }}<p>Долговые обязательства не найдены.</p></div></td></tr>{% endfor %}
+        </tbody></table>
+        {% endif %}
+    </div>
+    {{ pagination_nav(pagination) }}
+</section>
+{% endblock %}

@@ -23,13 +23,13 @@ const scheduleModalEl = document.getElementById('scheduleModal');
 const splitPurchaseModalEl = document.getElementById('splitPurchaseModal');
 const archiveConfirmEl = document.getElementById('archiveConfirmModal');
 
-const debtModal       = new bootstrap.Modal(debtModalEl);
-const paymentModal    = new bootstrap.Modal(paymentModalEl);
-const editPaymentModal = new bootstrap.Modal(editPaymentModalEl);
-const historyModal    = new bootstrap.Modal(historyModalEl);
-const scheduleModal   = new bootstrap.Modal(scheduleModalEl);
-const splitPurchaseModal = new bootstrap.Modal(splitPurchaseModalEl);
-const archiveConfirmModal = new bootstrap.Modal(archiveConfirmEl);
+const debtModal       = debtModalEl ? new bootstrap.Modal(debtModalEl) : null;
+const paymentModal    = paymentModalEl ? new bootstrap.Modal(paymentModalEl) : null;
+const editPaymentModal = editPaymentModalEl ? new bootstrap.Modal(editPaymentModalEl) : null;
+const historyModal    = historyModalEl ? new bootstrap.Modal(historyModalEl) : null;
+const scheduleModal   = scheduleModalEl ? new bootstrap.Modal(scheduleModalEl) : null;
+const splitPurchaseModal = splitPurchaseModalEl ? new bootstrap.Modal(splitPurchaseModalEl) : null;
+const archiveConfirmModal = archiveConfirmEl ? new bootstrap.Modal(archiveConfirmEl) : null;
 
 // ══════════════════════════════════════════════════════════
 // УТИЛИТЫ
@@ -1078,18 +1078,23 @@ async function submitPayment() {
 }
 
 // Обработчик кнопки подтверждения архивации
-document.getElementById('confirmArchiveBtn').addEventListener('click', async () => {
-    if (!pendingArchiveId) return;
-    archiveConfirmModal.hide();
-    await archiveDebt(pendingArchiveId);
-    pendingArchiveId = null;
-});
+const confirmArchiveButton = document.getElementById('confirmArchiveBtn');
+if (confirmArchiveButton) {
+    confirmArchiveButton.addEventListener('click', async () => {
+        if (!pendingArchiveId) return;
+        archiveConfirmModal?.hide();
+        await archiveDebt(pendingArchiveId);
+        pendingArchiveId = null;
+    });
+}
 
 // Если пользователь закрыл модалку без архивации — перезагружаем страницу
-archiveConfirmEl.addEventListener('hidden.bs.modal', () => {
-    if (!pendingArchiveId) return;
-    setTimeout(() => location.reload(), 100);
-});
+if (archiveConfirmEl) {
+    archiveConfirmEl.addEventListener('hidden.bs.modal', () => {
+        if (!pendingArchiveId) return;
+        setTimeout(() => location.reload(), 100);
+    });
+}
 
 // ══════════════════════════════════════════════════════════
 // АРХИВИРОВАНИЕ
@@ -1524,7 +1529,7 @@ function getNextDay(dateStr) {
 
 document.addEventListener('DOMContentLoaded', () => {
     // Сбросить форму при закрытии модалки долга
-    debtModalEl.addEventListener('hidden.bs.modal', clearDebtForm);
+    debtModalEl?.addEventListener('hidden.bs.modal', clearDebtForm);
 
     // Enter в поле суммы платежа — отправить
     const pmAmount = document.getElementById('pm_amount');

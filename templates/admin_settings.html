@@ -1,73 +1,35 @@
-{% extends 'base.html' %}
-{% block title %}Настройки приложения — Админка{% endblock %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon %}
+{% block title %}Настройки приложения — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Настройки приложения{% endblock %}
 
-{% block content %}
-<div class="mb-4">
-    <h1 class="h3">Настройки приложения</h1>
-    <p class="text-muted">Здесь можно включать или отключать ключевые функции и управлять системными параметрами.</p>
-</div>
+{% block admin_content %}
+<header class="admin-page-header"><div><p class="admin-page-kicker">Конфигурация</p><h1>Настройки приложения</h1><p>Управление общими параметрами и доступностью пользовательских функций.</p></div></header>
+{% if success_message %}<div class="alert alert-success" role="status">{{ success_message }}</div>{% endif %}
+{% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
 
-{% if success_message %}
-<div class="alert alert-success">{{ success_message }}</div>
-{% endif %}
-{% if error_message %}
-<div class="alert alert-danger" role="alert">{{ error_message }}</div>
-{% endif %}
-
-<form method="post" class="row g-3">
+<form method="post" class="admin-settings-form" data-admin-confirm="Сохранить изменения настроек приложения?" data-confirm-tone="primary">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="col-md-6">
-        <label class="form-label">Название приложения</label>
-        <input type="text" name="app_name" class="form-control" maxlength="80" required value="{{ settings.app_name }}">
-    </div>
-    <div class="col-md-6">
-        <label class="form-label">Валюта по умолчанию</label>
-        <input type="text" name="default_currency" class="form-control" maxlength="3" pattern="[A-Za-z]{3}" required value="{{ settings.default_currency }}">
-    </div>
-    <div class="col-md-6">
-        <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" id="telegram_login_enabled" name="telegram_login_enabled" {% if settings.telegram_login_enabled == 'true' %}checked{% endif %}>
-            <label class="form-check-label" for="telegram_login_enabled">Включить вход через Telegram</label>
+    <section class="admin-panel">
+        <div class="admin-panel__header"><div><p class="admin-page-kicker">Основные параметры</p><h2>Приложение</h2></div></div>
+        <div class="admin-form-grid">
+            <label class="admin-control"><span>Название приложения</span><input type="text" name="app_name" maxlength="80" required value="{{ settings.app_name }}"><small>Отображается пользователям в интерфейсе.</small></label>
+            <label class="admin-control"><span>Валюта по умолчанию</span><input class="admin-mono" type="text" name="default_currency" maxlength="3" pattern="[A-Za-z]{3}" required value="{{ settings.default_currency }}"><small>Трехбуквенный код, например RUB.</small></label>
+            <label class="admin-control"><span>Лимит долгов на пользователя</span><input type="number" name="debt_limit_per_user" min="1" max="1000" required value="{{ settings.debt_limit_per_user }}"></label>
+            <label class="admin-control"><span>Предупреждать о платеже за, дней</span><input type="number" name="payment_warning_days" min="0" max="365" required value="{{ settings.payment_warning_days }}"></label>
+            <label class="admin-control"><span>Считать платеж срочным за, дней</span><input type="number" name="urgent_payment_days" min="0" max="365" required value="{{ settings.urgent_payment_days }}"></label>
         </div>
-    </div>
-    <div class="col-md-6">
-        <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" id="registration_enabled" name="registration_enabled" {% if settings.registration_enabled == 'true' %}checked{% endif %}>
-            <label class="form-check-label" for="registration_enabled">Включить регистрацию новых пользователей</label>
+    </section>
+    <section class="admin-panel">
+        <div class="admin-panel__header"><div><p class="admin-page-kicker">Доступность</p><h2>Функции</h2></div></div>
+        <div class="admin-switch-list">
+            <label><span><strong>Вход через Telegram</strong><small>Разрешить авторизацию через виджет Telegram.</small></span><input type="checkbox" id="telegram_login_enabled" name="telegram_login_enabled" {% if settings.telegram_login_enabled == 'true' %}checked{% endif %}><i aria-hidden="true"></i></label>
+            <label><span><strong>Регистрация новых пользователей</strong><small>Разрешить создание новых учетных записей.</small></span><input type="checkbox" id="registration_enabled" name="registration_enabled" {% if settings.registration_enabled == 'true' %}checked{% endif %}><i aria-hidden="true"></i></label>
+            <label><span><strong>Архив</strong><small>Показывать функции архивирования долгов.</small></span><input type="checkbox" id="archive_enabled" name="archive_enabled" {% if settings.archive_enabled == 'true' %}checked{% endif %}><i aria-hidden="true"></i></label>
+            <label><span><strong>Экспорт данных</strong><small>Разрешить супер-администраторам выгружать CSV.</small></span><input type="checkbox" id="export_enabled" name="export_enabled" {% if settings.export_enabled == 'true' %}checked{% endif %}><i aria-hidden="true"></i></label>
+            <label><span><strong>Просрочка после даты платежа</strong><small>Считать платеж просроченным только после указанной даты.</small></span><input type="checkbox" id="overdue_after_date" name="overdue_after_date" {% if settings.overdue_after_date == 'true' %}checked{% endif %}><i aria-hidden="true"></i></label>
         </div>
-    </div>
-    <div class="col-md-6">
-        <label class="form-label">Лимит долгов на пользователя</label>
-        <input type="number" name="debt_limit_per_user" class="form-control" min="1" max="1000" required value="{{ settings.debt_limit_per_user }}">
-    </div>
-    <div class="col-md-6">
-        <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" id="archive_enabled" name="archive_enabled" {% if settings.archive_enabled == 'true' %}checked{% endif %}>
-            <label class="form-check-label" for="archive_enabled">Включить архив</label>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" id="export_enabled" name="export_enabled" {% if settings.export_enabled == 'true' %}checked{% endif %}>
-            <label class="form-check-label" for="export_enabled">Включить экспорт</label>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <label class="form-label">Предупреждать о платеже за (дней)</label>
-        <input type="number" name="payment_warning_days" class="form-control" min="0" max="365" required value="{{ settings.payment_warning_days }}">
-    </div>
-    <div class="col-md-6">
-        <label class="form-label">Считать платёж срочным за (дней)</label>
-        <input type="number" name="urgent_payment_days" class="form-control" min="0" max="365" required value="{{ settings.urgent_payment_days }}">
-    </div>
-    <div class="col-md-6">
-        <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" id="overdue_after_date" name="overdue_after_date" {% if settings.overdue_after_date == 'true' %}checked{% endif %}>
-            <label class="form-check-label" for="overdue_after_date">Считать просрочку после даты платежа</label>
-        </div>
-    </div>
-    <div class="col-12 mt-4">
-        <button type="submit" class="btn btn-primary">Сохранить настройки</button>
-    </div>
+    </section>
+    <div class="admin-sticky-actions"><span>{{ icon('info', 17) }} Изменения применяются сразу после сохранения.</span><button type="submit" class="btn btn-primary">{{ icon('check-circle', 17) }} Сохранить настройки</button></div>
 </form>
 {% endblock %}

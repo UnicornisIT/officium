@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% from 'admin/_macros.html' import icon, role_badge %}
+
+{% block extra_css %}
+<link href="{{ url_for('static', filename='css/admin.css') }}?v=0.0.7" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="admin-shell" data-admin-shell>
+    <div class="admin-sidebar-backdrop" data-admin-sidebar-close></div>
+    <aside class="admin-sidebar" id="adminSidebar" aria-label="Навигация административной панели">
+        <div class="admin-sidebar__brand">
+            <a href="{{ url_for('admin_dashboard') }}" aria-label="Административная панель officium">
+                <img src="{{ url_for('static', filename='images/brand/officium-mark.svg') }}" width="38" height="38" alt="">
+                <span><strong>officium</strong><small>Административная панель</small></span>
+            </a>
+            <button class="admin-sidebar__close" type="button" data-admin-sidebar-close aria-label="Закрыть меню">
+                <span aria-hidden="true">×</span>
+            </button>
+        </div>
+
+        <nav class="admin-nav">
+            <div class="admin-nav__group">
+                <span class="admin-nav__eyebrow">Обзор</span>
+                <a href="{{ url_for('admin_dashboard') }}" class="{% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
+                    {{ icon('dashboard') }}<span>Главная страница</span>
+                </a>
+                <a href="{{ url_for('admin_dashboard') }}#statistics">
+                    {{ icon('chart') }}<span>Общая статистика</span>
+                </a>
+            </div>
+
+            <div class="admin-nav__group">
+                <span class="admin-nav__eyebrow">Управление</span>
+                <a href="{{ url_for('admin_users') }}" class="{% if request.endpoint in ('admin_users', 'admin_user_detail') %}active{% endif %}">
+                    {{ icon('users') }}<span>Пользователи</span>
+                </a>
+                <a href="{{ url_for('admin_finance') }}" class="{% if request.endpoint == 'admin_finance' %}active{% endif %}">
+                    {{ icon('wallet') }}<span>Долги и платежи</span>
+                </a>
+                {% if current_user.is_superadmin %}
+                <a href="{{ url_for('admin_dictionaries') }}" class="{% if request.endpoint == 'admin_dictionaries' %}active{% endif %}">
+                    {{ icon('book') }}<span>Справочники</span>
+                </a>
+                <a href="{{ url_for('admin_settings') }}" class="{% if request.endpoint == 'admin_settings' %}active{% endif %}">
+                    {{ icon('settings') }}<span>Настройки приложения</span>
+                </a>
+                {% endif %}
+            </div>
+
+            <div class="admin-nav__group">
+                <span class="admin-nav__eyebrow">Мониторинг</span>
+                <a href="{{ url_for('admin_logs') }}" class="{% if request.endpoint == 'admin_logs' %}active{% endif %}">
+                    {{ icon('activity') }}<span>Журнал действий</span>
+                </a>
+                {% if current_user.is_superadmin %}
+                <a href="{{ url_for('admin_system') }}" class="{% if request.endpoint == 'admin_system' %}active{% endif %}">
+                    {{ icon('pulse') }}<span>Состояние системы</span>
+                </a>
+                {% endif %}
+            </div>
+
+            {% if current_user.is_superadmin %}
+            <div class="admin-nav__group">
+                <span class="admin-nav__eyebrow">Обслуживание</span>
+                <a href="{{ url_for('admin_export') }}" class="{% if request.endpoint == 'admin_export' %}active{% endif %}">
+                    {{ icon('export') }}<span>Экспорт данных</span>
+                </a>
+                <a href="{{ url_for('admin_server_update') }}" class="{% if request.endpoint == 'admin_server_update' %}active{% endif %}">
+                    {{ icon('update') }}<span>Обновление сервера</span>
+                </a>
+            </div>
+            {% endif %}
+        </nav>
+
+        <div class="admin-sidebar__footer">
+            <a href="{{ url_for('index') }}">{{ icon('home') }}<span>Вернуться в приложение</span></a>
+            <a href="{{ url_for('logout') }}">{{ icon('logout') }}<span>Выйти</span></a>
+        </div>
+    </aside>
+
+    <section class="admin-stage">
+        <header class="admin-topbar">
+            <button class="admin-topbar__menu" type="button" data-admin-sidebar-open
+                    aria-controls="adminSidebar" aria-expanded="false" aria-label="Открыть меню административной панели">
+                {{ icon('menu', 22) }}
+            </button>
+            <div class="admin-topbar__context">
+                <span class="admin-topbar__eyebrow">Административная панель</span>
+                <strong>{% block admin_topbar_title %}Обзор{% endblock %}</strong>
+            </div>
+            <div class="admin-topbar__actions">
+                <button id="themeToggleBtn" class="admin-icon-button" type="button" aria-label="Переключить тему"></button>
+                <span class="admin-topbar__divider" aria-hidden="true"></span>
+                <span class="admin-topbar__avatar" aria-hidden="true">{{ (current_user.first_name or current_user.username or 'A')[:1]|upper }}</span>
+                <span class="admin-topbar__identity">
+                    <strong>{{ current_user.first_name or current_user.username or 'Администратор' }}</strong>
+                    {{ role_badge(current_user.role) }}
+                </span>
+            </div>
+        </header>
+
+        <div class="admin-content">
+            {% block admin_content %}{% endblock %}
+        </div>
+    </section>
+</div>
+
+<div class="modal fade" id="adminConfirmModal" tabindex="-1" aria-labelledby="adminConfirmTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content admin-confirm-modal">
+            <div class="modal-body">
+                <span class="admin-confirm-modal__icon">{{ icon('alert', 26) }}</span>
+                <p class="admin-page-kicker mb-2">Подтверждение действия</p>
+                <h2 class="h4" id="adminConfirmTitle">Продолжить?</h2>
+                <p class="text-muted" id="adminConfirmMessage">Проверьте действие перед продолжением.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="adminConfirmSubmit">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/admin.js') }}?v=0.0.7"></script>
+{% block admin_extra_js %}{% endblock %}
+{% endblock %}
