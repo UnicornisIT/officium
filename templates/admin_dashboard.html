@@ -8,7 +8,7 @@
     <div>
         <p class="admin-page-kicker">Центр управления</p>
         <h1>Добро пожаловать, {{ current_user.first_name or current_user.username or 'администратор' }}</h1>
-        <p>Ключевые показатели, состояние сервиса и последние события в одном месте.</p>
+        <p>Учётные записи, сеансы входа от имени пользователей, состояние сервиса и последние события. Финансовые данные пользователей здесь не показываются.</p>
     </div>
     <div class="admin-page-header__actions">
         {% if show_test_impersonation %}
@@ -31,13 +31,19 @@
     </div>
     <div class="admin-stat-grid">
         <a class="admin-stat-card admin-stat-card--blue" href="{{ url_for('admin_users') }}">
-            <span class="admin-stat-card__icon">{{ icon('users', 22) }}</span><span class="admin-stat-card__label">Пользователи</span><strong>{{ stats.users }}</strong><span class="admin-stat-card__footer">Открыть список {{ icon('chevron-right', 16) }}</span>
+            <span class="admin-stat-card__icon">{{ icon('users', 22) }}</span><span class="admin-stat-card__label">Пользователи</span><strong>{{ stats.users }}</strong><span class="admin-stat-card__footer">Все учётные записи {{ icon('chevron-right', 16) }}</span>
+        </a>
+        <a class="admin-stat-card admin-stat-card--violet" href="{{ url_for('admin_users', sort='newest') }}">
+            <span class="admin-stat-card__icon">{{ icon('user', 22) }}</span><span class="admin-stat-card__label">Новые за 7 дней</span><strong>{{ stats.new_7 }}</strong><span class="admin-stat-card__footer">За 30 дней: {{ stats.new_30 }} {{ icon('chevron-right', 16) }}</span>
         </a>
         <a class="admin-stat-card admin-stat-card--green" href="{{ url_for('admin_users', status='active') }}">
             <span class="admin-stat-card__icon">{{ icon('check-circle', 22) }}</span><span class="admin-stat-card__label">Активные</span><strong>{{ stats.active_users }}</strong><span class="admin-stat-card__footer">Без блокировки {{ icon('chevron-right', 16) }}</span>
         </a>
         <a class="admin-stat-card admin-stat-card--red" href="{{ url_for('admin_users', status='blocked') }}">
             <span class="admin-stat-card__icon">{{ icon('ban', 22) }}</span><span class="admin-stat-card__label">Заблокированные</span><strong>{{ stats.blocked_users }}</strong><span class="admin-stat-card__footer">Проверить статусы {{ icon('chevron-right', 16) }}</span>
+        </a>
+        <a class="admin-stat-card admin-stat-card--cyan" href="{{ url_for('admin_users', status='impersonated') }}">
+            <span class="admin-stat-card__icon">{{ icon('shield', 22) }}</span><span class="admin-stat-card__label">Вход от имени сейчас</span><strong>{{ stats.impersonations }}</strong><span class="admin-stat-card__footer">Активные сеансы {{ icon('chevron-right', 16) }}</span>
         </a>
         <a class="admin-stat-card admin-stat-card--amber" href="{{ url_for('admin_logs') }}">
             <span class="admin-stat-card__icon">{{ icon('activity', 22) }}</span><span class="admin-stat-card__label">События</span><strong>{{ stats.logs }}</strong><span class="admin-stat-card__footer">Открыть журнал {{ icon('chevron-right', 16) }}</span>
@@ -46,14 +52,19 @@
         <a class="admin-stat-card admin-stat-card--system" href="{{ url_for('admin_system') }}">
             <span class="admin-stat-card__icon">{{ icon('pulse', 22) }}</span><span class="admin-stat-card__label">Система</span><strong class="admin-stat-card__status">{{ status_badge(system_state) }}</strong><span class="admin-stat-card__footer">Диагностика {{ icon('chevron-right', 16) }}</span>
         </a>
+        <a class="admin-stat-card admin-stat-card--neutral" href="{{ url_for('admin_server_update') }}">
+            <span class="admin-stat-card__icon">{{ icon('update', 22) }}</span><span class="admin-stat-card__label">Версия {{ app_version }}</span>
+            <strong class="admin-stat-card__status">{% if not update_enabled %}<span class="admin-badge admin-badge--neutral">Обновление выключено</span>{% elif update_status %}{{ status_badge(update_status.state) }}{% else %}<span class="admin-badge admin-badge--neutral">Не запускалось</span>{% endif %}</strong>
+            <span class="admin-stat-card__footer">Обновление сервера {{ icon('chevron-right', 16) }}</span>
+        </a>
         {% else %}
         <div class="admin-stat-card admin-stat-card--system">
             <span class="admin-stat-card__icon">{{ icon('pulse', 22) }}</span><span class="admin-stat-card__label">Система</span><strong class="admin-stat-card__status">{{ status_badge(system_state) }}</strong><span class="admin-stat-card__footer">Базовая проверка</span>
         </div>
-        {% endif %}
         <div class="admin-stat-card admin-stat-card--neutral">
             <span class="admin-stat-card__icon">{{ icon('shield', 22) }}</span><span class="admin-stat-card__label">Версия приложения</span><strong class="admin-stat-card__version">{{ app_version }}</strong><span class="admin-stat-card__footer">Текущий выпуск</span>
         </div>
+        {% endif %}
     </div>
 </section>
 

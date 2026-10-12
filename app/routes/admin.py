@@ -330,27 +330,31 @@ def init_app(app):
     def admin_dashboard():
         error_message = None
         system_state = 'healthy'
-        stats = {
-            'users': '—',
-            'active_users': '—',
-            'blocked_users': '—',
-            'logs': '—',
-            'dictionary_entries': '—',
-        }
+        empty = '—'
+        stats = dict.fromkeys(
+            ('users', 'new_7', 'new_30', 'active_users', 'blocked_users', 'impersonations', 'logs'), empty,
+        )
         recent_logs = []
         try:
+            now = utc_now().replace(tzinfo=None)
             stats = {
                 'users': User.query.count(),
+                'new_7': User.query.filter(User.created_at >= now - timedelta(days=7)).count(),
+                'new_30': User.query.filter(User.created_at >= now - timedelta(days=30)).count(),
                 'active_users': User.query.filter_by(is_blocked=False).count(),
                 'blocked_users': User.query.filter_by(is_blocked=True).count(),
+                'impersonations': impersonation.active_count(),
                 'logs': ActivityLog.query.count(),
-                'dictionary_entries': DictionaryEntry.query.count(),
             }
-            recent_logs = ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(5).all()
+            recent_logs = ActivityLog.query.order_by(ActivityLog.created_at.desc(), ActivityLog.id.desc()).limit(5).all()
         except SQLAlchemyError:
             db.session.rollback()
             system_state = 'warning'
-            error_message = 'Ошибка подключения к базе данных. Админ-табло недоступно.'
+            error_message = 'База данных недоступна: показатели и события временно не загружены.'
+
+        update_status = None
+        if current_user.is_superadmin and current_app.config.get('SERVER_UPDATE_ENABLED'):
+            update_status = read_update_status(current_app.config)
 
         return render_template(
             'admin_dashboard.html',
@@ -359,6 +363,8 @@ def init_app(app):
             recent_logs=recent_logs,
             system_state=system_state,
             app_version=current_app.config.get('APP_VERSION', 'unknown'),
+            update_enabled=bool(current_app.config.get('SERVER_UPDATE_ENABLED')),
+            update_status=update_status,
             show_test_impersonation=(
                 current_user.is_superadmin and _test_impersonation_enabled()
             ),

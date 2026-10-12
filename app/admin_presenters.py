@@ -60,6 +60,14 @@ STATUS_LABELS = {
     'queued': 'В очереди',
     'running': 'Выполняется',
     'healthy': 'Работает',
+    'checking': 'Проверка обновления',
+    'preparing': 'Подготовка',
+    'backing_up': 'Резервная копия',
+    'installing': 'Установка',
+    'dependencies': 'Зависимости',
+    'migrating': 'Миграции',
+    'restarting': 'Перезапуск',
+    'verifying': 'Проверка работоспособности',
 }
 
 ENTITY_LABELS = {
