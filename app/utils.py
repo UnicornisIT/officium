@@ -75,7 +75,6 @@ def income_source_suggestions(incomes, limit=12):
 
 DEFAULT_SETTINGS = {
     'app_name': 'officium',
-    'default_currency': 'RUB',
     'registration_enabled': 'false',
     'telegram_login_enabled': 'true',
     'debt_limit_per_user': '50',
@@ -83,7 +82,6 @@ DEFAULT_SETTINGS = {
     'export_enabled': 'true',
     'payment_warning_days': '7',
     'urgent_payment_days': '3',
-    'overdue_after_date': 'true',
     'impersonation_timeout_minutes': '30',
 }
 
@@ -193,6 +191,28 @@ def telegram_feature_states(config):
             'verified': None,
         },
     }
+
+
+def setting_enabled(key, default=True):
+    value = get_setting(key, 'true' if default else 'false')
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _setting_int(key, default, minimum, maximum):
+    try:
+        value = int(str(get_setting(key, default)).strip())
+    except (TypeError, ValueError):
+        return default
+    return min(max(value, minimum), maximum)
+
+
+def payment_thresholds():
+    """Days before a payment when it is highlighted as upcoming and as urgent."""
+    warning = _setting_int('payment_warning_days', 7, 0, 365)
+    urgent = min(_setting_int('urgent_payment_days', 3, 0, 365), warning)
+    return {'warning': warning, 'urgent': urgent}
 
 
 def get_dictionary_values(dictionary_type):

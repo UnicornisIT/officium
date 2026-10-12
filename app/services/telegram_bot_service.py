@@ -496,7 +496,8 @@ def answer_telegram_callback_query(callback_query_id, text=None, bot_token=None)
 
 def send_debt_reminders(days=None, dry_run=False, sender=send_telegram_message):
     if days is None:
-        days = current_app.config.get('TELEGRAM_REMINDER_DAYS', 7)
+        # The admin setting wins; TELEGRAM_REMINDER_DAYS is the fallback until it is saved.
+        days = get_setting('payment_warning_days', current_app.config.get('TELEGRAM_REMINDER_DAYS', 7))
     days = int(days)
     today = date.today()
     stats = {'users_checked': 0, 'messages': 0, 'errors': 0}

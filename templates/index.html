@@ -160,8 +160,8 @@
         <div class="debt-card
             {% if days is not none %}
                 {% if days < 0 %}debt-card--overdue
-                {% elif days <= 3 %}debt-card--urgent
-                {% elif days <= 7 %}debt-card--warning
+                {% elif days <= payment_days.urgent %}debt-card--urgent
+                {% elif days <= payment_days.warning %}debt-card--warning
                 {% else %}debt-card--ok{% endif %}
             {% else %}debt-card--ok{% endif %}
         " data-id="{{ debt.id }}">
@@ -211,8 +211,8 @@
                     <span class="detail-value
                         {% if days is not none %}
                             {% if days < 0 %}text-danger fw-semibold
-                            {% elif days <= 3 %}text-orange fw-semibold
-                            {% elif days <= 7 %}text-warning-strong{% endif %}
+                            {% elif days <= payment_days.urgent %}text-orange fw-semibold
+                            {% elif days <= payment_days.warning %}text-warning-strong{% endif %}
                         {% endif %}
                     ">
                         {% if payment_date %}
@@ -227,7 +227,7 @@
                                     <span class="badge bg-danger ms-1">просрочен</span>
                                 {% elif days == 0 %}
                                     <span class="badge bg-danger ms-1">сегодня</span>
-                                {% elif days <= 3 %}
+                                {% elif days <= payment_days.urgent %}
                                     <span class="badge bg-warning text-dark ms-1">{{ days }} дн.</span>
                                 {% endif %}
                             {% endif %}
@@ -305,9 +305,9 @@
                     <button class="btn btn-action btn-action--schedule" onclick="openScheduleModal({{ debt.id }}, '{{ debt.bank_name }} — {{ debt.product_name }}')" title="График платежей">
                         <i class="bi bi-table"></i>
                     </button>
-                    <button class="btn btn-action btn-action--archive" onclick="archiveDebt({{ debt.id }})" title="В архив">
+                    {% if archive_enabled %}<button class="btn btn-action btn-action--archive" onclick="archiveDebt({{ debt.id }})" title="В архив">
                         <i class="bi bi-archive"></i>
-                    </button>
+                    </button>{% endif %}
                 </div>
             </div>
         </div>

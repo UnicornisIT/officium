@@ -16,7 +16,7 @@ from app.services.telegram_auth_service import (
     verify_telegram_web_app_init_data,
 )
 from app.time_utils import utc_now
-from app.utils import client_ip, get_dictionary_values, get_setting, record_activity, telegram_feature_states
+from app.utils import client_ip, get_dictionary_values, get_setting, payment_thresholds, record_activity, setting_enabled, telegram_feature_states
 
 
 class AdminUser(UserMixin):
@@ -282,6 +282,8 @@ def init_app(app):
             dev_login_enabled=dev_login_enabled,
             is_impersonating=is_impersonating,
             impersonation_banner=impersonation_banner,
+            archive_enabled=setting_enabled('archive_enabled', True),
+            payment_days=payment_thresholds(),
             is_telegram_mini_app=is_telegram_mini_app,
             telegram_mini_app_enabled=mini_app_enabled,
             telegram_mini_app_short_name=mini_app_short_name,

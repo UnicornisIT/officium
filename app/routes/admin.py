@@ -141,44 +141,87 @@ def _write_csv_row(writer, values):
     writer.writerow([_csv_safe(value) for value in values])
 
 
+SETTINGS_GROUPS = (
+    {
+        'title': 'Доступ',
+        'kicker': 'Вход и регистрация',
+        'fields': (
+            {'key': 'telegram_login_enabled', 'type': 'bool', 'label': 'Вход через Telegram',
+             'help': 'Показывает кнопку входа через Telegram и открывает Mini App. Работает, только если в окружении заданы токен и имя бота.'},
+            {'key': 'registration_enabled', 'type': 'bool', 'label': 'Регистрация новых пользователей',
+             'help': 'Создаёт аккаунт при первом входе через Telegram или Google. Если выключено, войти могут только уже существующие пользователи.'},
+        ),
+    },
+    {
+        'title': 'Долги',
+        'kicker': 'Ограничения и архив',
+        'fields': (
+            {'key': 'debt_limit_per_user', 'type': 'int', 'min': 1, 'max': 1000, 'label': 'Лимит долгов на пользователя',
+             'help': 'Сколько активных долгов можно завести в приложении и через Telegram-бота.'},
+            {'key': 'archive_enabled', 'type': 'bool', 'label': 'Архив долгов',
+             'help': 'Показывает раздел «Архив» и кнопки «В архив». Если выключить, архивные долги остаются в базе, но раздел и кнопки скрыты.'},
+        ),
+    },
+    {
+        'title': 'Сроки и напоминания',
+        'kicker': 'Ближайшие платежи',
+        'fields': (
+            {'key': 'payment_warning_days', 'type': 'int', 'min': 0, 'max': 365, 'label': 'Предупреждать о платеже за, дней',
+             'help': 'Карточка долга подсвечивается жёлтым, и Telegram-бот присылает напоминание за это число дней до платежа.'},
+            {'key': 'urgent_payment_days', 'type': 'int', 'min': 0, 'max': 365, 'label': 'Считать платёж срочным за, дней',
+             'help': 'Карточка подсвечивается оранжевым и получает бейдж «N дн.». Не больше срока предупреждения.'},
+        ),
+    },
+    {
+        'title': 'Администрирование',
+        'kicker': 'Поддержка и аудит',
+        'fields': (
+            {'key': 'impersonation_timeout_minutes', 'type': 'int', 'min': 5, 'max': 120, 'label': 'Вход от имени пользователя, минут',
+             'help': 'Через сколько минут сеанс входа от имени пользователя завершится и вернёт вас в административную панель.'},
+            {'key': 'export_enabled', 'type': 'bool', 'label': 'Аудит-выгрузка',
+             'help': 'Разрешает супер-администраторам скачивать учётные записи и журнал действий в CSV.'},
+        ),
+    },
+    {
+        'title': 'Оформление',
+        'kicker': 'Интерфейс',
+        'fields': (
+            {'key': 'app_name', 'type': 'text', 'max': 80, 'label': 'Название приложения',
+             'help': 'Показывается рядом со знаком в шапке приложения и в Mini App.'},
+        ),
+    },
+)
+SETTINGS_FIELDS = {field['key']: field for group in SETTINGS_GROUPS for field in group['fields']}
+
+
+def _setting_default(key):
+    if key == 'telegram_login_enabled':
+        # Until the admin saves it, the effective value comes from the environment.
+        return 'true' if current_app.config.get('TELEGRAM_LOGIN_ENABLED') else 'false'
+    return DEFAULT_SETTINGS[key]
+
+
 def _validated_settings(form):
-    app_name = str(form.get('app_name', '')).strip()
-    if not app_name or len(app_name) > 80:
-        raise ValueError('Название приложения должно содержать от 1 до 80 символов.')
-
-    currency = str(form.get('default_currency', '')).strip().upper()
-    if len(currency) != 3 or not currency.isalpha() or not currency.isascii():
-        raise ValueError('Валюта должна быть трёхбуквенным кодом, например RUB.')
-
-    number_limits = {
-        'debt_limit_per_user': (1, 1000, 'Лимит долгов'),
-        'payment_warning_days': (0, 365, 'Срок предупреждения'),
-        'urgent_payment_days': (0, 365, 'Срок срочного платежа'),
-        'impersonation_timeout_minutes': (5, 120, 'Длительность входа от имени пользователя'),
-    }
-    values = {'app_name': app_name, 'default_currency': currency}
-    for key, (minimum, maximum, label) in number_limits.items():
-        try:
-            number = int(str(form.get(key, '')).strip())
-        except (TypeError, ValueError):
-            raise ValueError(f'{label} должен быть целым числом.')
-        if not minimum <= number <= maximum:
-            raise ValueError(f'{label} должен быть от {minimum} до {maximum}.')
-        values[key] = str(number)
+    values = {}
+    for key, field in SETTINGS_FIELDS.items():
+        raw = str(form.get(key, '')).strip()
+        if field['type'] == 'bool':
+            values[key] = 'true' if raw.lower() in ('on', '1', 'true', 'yes') else 'false'
+        elif field['type'] == 'int':
+            try:
+                number = int(raw)
+            except ValueError:
+                raise ValueError(f'«{field["label"]}»: значение должно быть целым числом.')
+            if not field['min'] <= number <= field['max']:
+                raise ValueError(f'«{field["label"]}»: значение должно быть от {field["min"]} до {field["max"]}.')
+            values[key] = str(number)
+        else:
+            if not raw or len(raw) > field['max']:
+                raise ValueError(f'«{field["label"]}»: от 1 до {field["max"]} символов.')
+            values[key] = raw
 
     if int(values['urgent_payment_days']) > int(values['payment_warning_days']):
         raise ValueError('Срок срочного платежа не может превышать срок предупреждения.')
-
-    for key in (
-        'registration_enabled',
-        'telegram_login_enabled',
-        'archive_enabled',
-        'export_enabled',
-        'overdue_after_date',
-    ):
-        raw_value = str(form.get(key, '')).strip().lower()
-        values[key] = 'true' if raw_value in ('on', '1', 'true', 'yes') else 'false'
-
     return values
 
 
@@ -423,10 +466,14 @@ def init_app(app):
         if request.method == 'POST':
             try:
                 values = _validated_settings(request.form)
+                changed = [key for key, value in values.items() if str(get_setting(key, _setting_default(key))) != value]
                 for key, value in values.items():
                     set_setting(key, value, commit=False)
                 db.session.commit()
-                record_activity('Изменил настройки приложения', current_user, description='Обновлены системные настройки')
+                record_activity(
+                    'Изменил настройки приложения', current_user, entity_type='setting',
+                    description='Изменены: ' + (', '.join(changed) if changed else 'без изменений'),
+                )
                 flash('Настройки сохранены.', 'success')
                 return redirect(url_for('admin_settings'))
             except ValueError as exc:
@@ -439,16 +486,15 @@ def init_app(app):
 
         if request.method == 'POST' and error_message:
             settings = {
-                key: ('true' if request.form.get(key) else 'false')
-                if key in ('registration_enabled', 'telegram_login_enabled', 'archive_enabled', 'export_enabled', 'overdue_after_date')
-                else request.form.get(key, DEFAULT_SETTINGS[key])
-                for key in DEFAULT_SETTINGS
+                key: ('true' if request.form.get(key) else 'false') if field['type'] == 'bool' else request.form.get(key, '')
+                for key, field in SETTINGS_FIELDS.items()
             }
         else:
-            settings = {key: get_setting(key, DEFAULT_SETTINGS[key]) for key in DEFAULT_SETTINGS}
+            settings = {key: str(get_setting(key, _setting_default(key))) for key in SETTINGS_FIELDS}
         return render_template(
             'admin_settings.html',
             settings=settings,
+            settings_groups=SETTINGS_GROUPS,
             contacts=load_contacts(),
             contact_types=CONTACT_TYPES,
             contact_icons=CONTACT_ICONS,
