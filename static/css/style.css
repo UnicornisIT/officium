@@ -1780,6 +1780,17 @@ body, .navbar, .modal-content, .dropdown-menu, .toast, .alert, .table, .table th
     filter: invert(1) grayscale(1);
 }
 
+/* The page declares `color-scheme: light dark`, so without an explicit scheme
+   and background the light theme would inherit a dark canvas from the OS. */
+html {
+    color-scheme: light;
+    background: var(--bg);
+}
+
+html body {
+    background: radial-gradient(circle at top left, rgba(96,165,250,0.15), transparent 25%), var(--bg);
+}
+
 html[data-theme="dark"] {
     color-scheme: dark;
 }
