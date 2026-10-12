@@ -35,9 +35,6 @@
                 <a href="{{ url_for('admin_users') }}" class="{% if request.endpoint in ('admin_users', 'admin_user_detail') %}active{% endif %}">
                     {{ icon('users') }}<span>Пользователи</span>
                 </a>
-                <a href="{{ url_for('admin_finance') }}" class="{% if request.endpoint == 'admin_finance' %}active{% endif %}">
-                    {{ icon('wallet') }}<span>Долги и платежи</span>
-                </a>
                 {% if current_user.is_superadmin %}
                 <a href="{{ url_for('admin_dictionaries') }}" class="{% if request.endpoint == 'admin_dictionaries' %}active{% endif %}">
                     {{ icon('book') }}<span>Справочники</span>

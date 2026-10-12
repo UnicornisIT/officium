@@ -65,15 +65,6 @@
     </div>
 
     <aside class="admin-detail-aside">
-        <section class="admin-panel" aria-labelledby="finance-summary-title">
-            <div class="admin-panel__header"><div><p class="admin-page-kicker">Финансы</p><h2 id="finance-summary-title">Сводка</h2></div></div>
-            <div class="admin-mini-stats">
-                <a href="{{ url_for('admin_finance', section='debts', status='active', q=user.telegram_id) }}"><span>Активные долги</span><strong>{{ active_debts }}</strong></a>
-                <a href="{{ url_for('admin_finance', section='debts', status='archived', q=user.telegram_id) }}"><span>Архивные долги</span><strong>{{ archived_debts }}</strong></a>
-                <a href="{{ url_for('admin_finance', section='payments', q=user.telegram_id) }}"><span>Платежи</span><strong>{{ payments }}</strong></a>
-            </div>
-        </section>
-
         <section class="admin-panel" aria-labelledby="management-title">
             <div class="admin-panel__header"><div><p class="admin-page-kicker">Доступ</p><h2 id="management-title">Управление</h2></div></div>
             <form method="post" class="admin-action-stack">

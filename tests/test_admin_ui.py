@@ -124,7 +124,6 @@ class AdminInterfaceTestCase(unittest.TestCase):
             ('/admin', 'Общая статистика'),
             ('/admin/users', 'Учетные записи'),
             ('/admin/logs', 'Журнал действий'),
-            ('/admin/finance', 'Долговые обязательства'),
             ('/admin/system', 'Состояние системы'),
             ('/admin/settings', 'Настройки приложения'),
             ('/admin/dictionaries', 'Справочники'),
@@ -190,16 +189,13 @@ class AdminInterfaceTestCase(unittest.TestCase):
         self.assertIn('Поле базы данных: ip_address', html)
         self.assertIn('Admin UI Test', html)
 
-    def test_finance_tabs_render_real_debt_and_payment_fields(self):
-        self.login(self.admin_id)
+    def test_cross_user_finance_view_is_removed(self):
+        self.login(self.superadmin_id)
 
-        debts = self.client.get('/admin/finance?q=Северный').get_data(as_text=True)
-        payments = self.client.get('/admin/finance?section=payments&q=Северный').get_data(as_text=True)
-
-        self.assertIn('Потребительский кредит', debts)
-        self.assertIn('90000.00 ₽', debts)
-        self.assertIn('10000.00 ₽', payments)
-        self.assertIn('Остаток после платежа', payments)
+        self.assertEqual(self.client.get('/admin/finance').status_code, 404)
+        detail = self.client.get(f'/admin/users/{self.blocked_id}').get_data(as_text=True)
+        self.assertNotIn('Активные долги', detail)
+        self.assertNotIn('Северный банк', detail)
 
     def test_test_impersonation_is_hidden_and_unavailable_in_production(self):
         self.login(self.superadmin_id)
@@ -246,7 +242,6 @@ class AdminInterfaceTestCase(unittest.TestCase):
         self.assertIn('.admin-content > .admin-panel + .admin-panel', css)
         self.assertNotIn('\n.admin-panel + .admin-panel {', css)
         self.assertIn('.admin-control.admin-control--search .admin-input-icon > input[type="search"] { padding-left: 46px; }', css)
-        self.assertIn('.admin-filter-grid--finance { grid-template-columns: repeat(2, minmax(220px, 1fr)) auto; }', css)
         self.assertIn('favicon.svg', base)
         self.assertIn('apple-touch-icon.png', base)
 
@@ -265,7 +260,7 @@ class AdminInterfaceTestCase(unittest.TestCase):
         self.assertIn('@media (max-width: 1599.98px)', admin_css)
         self.assertIn('content: none;', admin_css)
 
-        for template_name in ('admin_finance.html', 'admin_export.html', 'admin_dictionaries.html', 'admin_users.html'):
+        for template_name in ('admin_export.html', 'admin_dictionaries.html', 'admin_users.html'):
             template = (repository_root / 'templates' / template_name).read_text(encoding='utf-8')
             self.assertIn('class="admin-table__empty-row"', template)
 

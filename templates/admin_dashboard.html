@@ -39,12 +39,6 @@
         <a class="admin-stat-card admin-stat-card--red" href="{{ url_for('admin_users', status='blocked') }}">
             <span class="admin-stat-card__icon">{{ icon('ban', 22) }}</span><span class="admin-stat-card__label">Заблокированные</span><strong>{{ stats.blocked_users }}</strong><span class="admin-stat-card__footer">Проверить статусы {{ icon('chevron-right', 16) }}</span>
         </a>
-        <a class="admin-stat-card admin-stat-card--violet" href="{{ url_for('admin_finance', section='debts') }}">
-            <span class="admin-stat-card__icon">{{ icon('wallet', 22) }}</span><span class="admin-stat-card__label">Долги</span><strong>{{ stats.debts }}</strong><span class="admin-stat-card__footer">Финансовые записи {{ icon('chevron-right', 16) }}</span>
-        </a>
-        <a class="admin-stat-card admin-stat-card--cyan" href="{{ url_for('admin_finance', section='payments') }}">
-            <span class="admin-stat-card__icon">{{ icon('chart', 22) }}</span><span class="admin-stat-card__label">Платежи</span><strong>{{ stats.payments }}</strong><span class="admin-stat-card__footer">История платежей {{ icon('chevron-right', 16) }}</span>
-        </a>
         <a class="admin-stat-card admin-stat-card--amber" href="{{ url_for('admin_logs') }}">
             <span class="admin-stat-card__icon">{{ icon('activity', 22) }}</span><span class="admin-stat-card__label">События</span><strong>{{ stats.logs }}</strong><span class="admin-stat-card__footer">Открыть журнал {{ icon('chevron-right', 16) }}</span>
         </a>
@@ -86,7 +80,6 @@
         <div class="admin-quick-actions">
             <a href="{{ url_for('admin_users') }}">{{ icon('users', 20) }}<span><strong>Найти пользователя</strong><small>По имени или идентификатору</small></span>{{ icon('chevron-right', 16) }}</a>
             <a href="{{ url_for('admin_logs') }}">{{ icon('activity', 20) }}<span><strong>Проверить события</strong><small>Фильтры по типу и периоду</small></span>{{ icon('chevron-right', 16) }}</a>
-            <a href="{{ url_for('admin_finance') }}">{{ icon('wallet', 20) }}<span><strong>Долги и платежи</strong><small>Сводный финансовый список</small></span>{{ icon('chevron-right', 16) }}</a>
             {% if current_user.is_superadmin %}<a href="{{ url_for('admin_settings') }}">{{ icon('settings', 20) }}<span><strong>Настройки приложения</strong><small>Доступность функций</small></span>{{ icon('chevron-right', 16) }}</a>{% endif %}
         </div>
     </aside>

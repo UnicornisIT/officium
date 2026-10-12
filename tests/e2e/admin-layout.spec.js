@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 const adminRoutes = [
-  '/admin', '/admin/users', '/admin/finance', '/admin/dictionaries',
+  '/admin', '/admin/users', '/admin/dictionaries',
   '/admin/settings', '/admin/logs', '/admin/system', '/admin/export',
   '/admin/server-update',
 ];
@@ -181,7 +181,7 @@ test('server update readiness checks render as separate non-overlapping cards', 
   }
 });
 
-test('paired release cards and finance filters keep equal geometry', async ({ page }) => {
+test('paired release cards and search filters keep equal geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/server-update');
   const releaseCards = await page.locator('.admin-release-card').all();
@@ -204,20 +204,17 @@ test('paired release cards and finance filters keep equal geometry', async ({ pa
   expect(Math.abs(dictionaryRects[0].top - dictionaryRects[1].top)).toBeLessThanOrEqual(1);
   expect(Math.abs(dictionaryRects[0].bottom - dictionaryRects[1].bottom)).toBeLessThanOrEqual(1);
 
-  await page.goto('/admin/finance');
+  await page.goto('/admin/users');
   const filterGeometry = await page.evaluate(() => {
-    const controls = [...document.querySelectorAll('.admin-filter-grid--finance > .admin-control')];
     const searchInput = document.querySelector('.admin-input-icon input');
     const searchIcon = document.querySelector('.admin-input-icon .admin-icon');
     const inputRect = searchInput.getBoundingClientRect();
     const iconRect = searchIcon.getBoundingClientRect();
     return {
-      widths: controls.map(control => control.getBoundingClientRect().width),
       textStart: inputRect.left + Number(getComputedStyle(searchInput).paddingLeft.replace('px', '')),
       iconRight: iconRect.right,
     };
   });
-  expect(Math.abs(filterGeometry.widths[0] - filterGeometry.widths[1])).toBeLessThanOrEqual(1);
   expect(filterGeometry.textStart).toBeGreaterThanOrEqual(filterGeometry.iconRight + 8);
 });
 
@@ -281,7 +278,7 @@ test('browser zoom equivalents keep navigation single-line and login content rea
 test('responsive empty tables render one symmetric empty surface', async ({ page }) => {
   for (const viewport of [{ width: 1280, height: 800 }, { width: 1024, height: 768 }, { width: 960, height: 720 }]) {
     await page.setViewportSize(viewport);
-    await page.goto('/admin/finance?q=__definitely_missing__');
+    await page.goto('/admin/users?q=__definitely_missing__');
     const geometry = await page.evaluate(() => {
       const wrap = document.querySelector('.admin-table-wrap').getBoundingClientRect();
       const row = document.querySelector('.admin-table__empty-row');

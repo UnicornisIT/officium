@@ -141,8 +141,6 @@ def init_app(app):
             'users': '—',
             'active_users': '—',
             'blocked_users': '—',
-            'debts': '—',
-            'payments': '—',
             'logs': '—',
             'dictionary_entries': '—',
         }
@@ -152,8 +150,6 @@ def init_app(app):
                 'users': User.query.count(),
                 'active_users': User.query.filter_by(is_blocked=False).count(),
                 'blocked_users': User.query.filter_by(is_blocked=True).count(),
-                'debts': Debt.query.count(),
-                'payments': Payment.query.count(),
                 'logs': ActivityLog.query.count(),
                 'dictionary_entries': DictionaryEntry.query.count(),
             }
@@ -572,16 +568,13 @@ def init_app(app):
                 return redirect(url_for('admin_user_detail', user_id=user.id, success='Действие выполнено'))
             db.session.rollback()
 
-        active_debts = Debt.query.filter_by(user_id=user.id, status='active').count()
-        archived_debts = Debt.query.filter_by(user_id=user.id, status='archived').count()
-        payments = Payment.query.join(Debt).filter(Debt.user_id == user.id).count()
         recent_actions = ActivityLog.query.filter(
             or_(
                 ActivityLog.user_id == user.id,
                 and_(ActivityLog.entity_type == 'user', ActivityLog.entity_id == user.id),
             )
         ).order_by(ActivityLog.created_at.desc()).limit(20).all()
-        return render_template('admin_user_detail.html', user=user, active_debts=active_debts, archived_debts=archived_debts, payments=payments, recent_actions=recent_actions, success_message=request.args.get('success'))
+        return render_template('admin_user_detail.html', user=user, recent_actions=recent_actions, success_message=request.args.get('success'))
 
     @app.route('/admin/logs')
     @admin_required
@@ -626,56 +619,6 @@ def init_app(app):
             event_filter=event_filter,
             date_from=date_from_raw,
             date_to=date_to_raw,
-        )
-
-    @app.route('/admin/finance')
-    @admin_required
-    def admin_finance():
-        section = request.args.get('section', 'debts')
-        if section not in ('debts', 'payments'):
-            section = 'debts'
-        search_query = (request.args.get('q') or '').strip()
-        status_filter = request.args.get('status')
-
-        if section == 'payments':
-            rows_query = Payment.query.join(Debt).join(User, Debt.user_id == User.id)
-            if search_query:
-                rows_query = rows_query.filter(or_(
-                    Debt.bank_name.ilike(f'%{search_query}%'),
-                    Debt.product_name.ilike(f'%{search_query}%'),
-                    User.username.ilike(f'%{search_query}%'),
-                    User.first_name.ilike(f'%{search_query}%'),
-                    cast(User.telegram_id, db.String).ilike(f'%{search_query}%'),
-                    cast(Payment.id, db.String).ilike(f'%{search_query}%'),
-                ))
-            rows_query = rows_query.order_by(Payment.payment_date.desc(), Payment.id.desc())
-        else:
-            rows_query = Debt.query.join(User)
-            if status_filter in ('active', 'archived'):
-                rows_query = rows_query.filter(Debt.status == status_filter)
-            if search_query:
-                rows_query = rows_query.filter(or_(
-                    Debt.bank_name.ilike(f'%{search_query}%'),
-                    Debt.product_name.ilike(f'%{search_query}%'),
-                    User.username.ilike(f'%{search_query}%'),
-                    User.first_name.ilike(f'%{search_query}%'),
-                    cast(User.telegram_id, db.String).ilike(f'%{search_query}%'),
-                    cast(Debt.id, db.String).ilike(f'%{search_query}%'),
-                ))
-            rows_query = rows_query.order_by(Debt.created_at.desc(), Debt.id.desc())
-
-        pagination = rows_query.paginate(
-            page=_page_number(),
-            per_page=25,
-            error_out=False,
-        )
-        return render_template(
-            'admin_finance.html',
-            section=section,
-            rows=pagination.items,
-            pagination=pagination,
-            q=search_query,
-            status_filter=status_filter,
         )
 
     @app.route('/admin/system')
