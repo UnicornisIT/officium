@@ -4,9 +4,10 @@ from datetime import timedelta
 
 import click
 from flask import Flask, jsonify, render_template, request
-from flask_login import LoginManager
+from flask_login import LoginManager, current_user
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
+from sqlalchemy.exc import SQLAlchemyError
 from config import Config
 from extensions import db
 from app.models import AppSetting, ActivityLog, Debt, DictionaryEntry, EmergencyFundTransaction, Expense, FinancialGoal, FinancialGoalTransaction, FinancialPlanPreference, Income, Payment, SplitPurchase, TelegramConversationState, TelegramProcessedUpdate, User
@@ -99,6 +100,19 @@ def create_app(config_overrides=None):
     @app.errorhandler(404)
     def not_found(_error):
         return error_response(404)
+
+    @app.errorhandler(SQLAlchemyError)
+    def database_error(_error):
+        db.session.rollback()
+        app.logger.exception('Database error while handling the request')
+        try:
+            is_admin_page = request.path.startswith('/admin') and getattr(current_user, 'is_admin', False)
+        except SQLAlchemyError:
+            db.session.rollback()
+            is_admin_page = False
+        if is_admin_page:
+            return render_template('admin_db_error.html'), 503
+        return error_response(500)
 
     @app.errorhandler(500)
     def internal_error(_error):

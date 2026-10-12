@@ -2,8 +2,11 @@
 
 import re
 import unittest
+from unittest.mock import patch
 from html import unescape
 from urllib.parse import urldefrag
+
+from sqlalchemy.exc import OperationalError
 
 from app import create_app
 from app.models import ActivityLog, DictionaryEntry, User
@@ -98,6 +101,17 @@ class AdminNavigationTestCase(unittest.TestCase):
         html = self._client('superadmin').get('/admin').get_data(as_text=True)
 
         self.assertNotIn('Вернуться в приложение', html)
+
+
+    def test_database_failure_shows_admin_error_page(self):
+        failure = OperationalError('SELECT', {}, Exception('down'))
+        with patch('app.routes.admin._activity_log_query', side_effect=failure):
+            response = self._client('admin').get('/admin/logs')
+
+        self.assertEqual(response.status_code, 503)
+        html = response.get_data(as_text=True)
+        self.assertIn('База данных не ответила', html)
+        self.assertIn('admin-sidebar', html)
 
 
 if __name__ == '__main__':
