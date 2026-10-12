@@ -5199,7 +5199,7 @@ body.keyboard-open [contenteditable="true"] {
 
 .docs-plan-path {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 14px;
     margin: 28px 0;
     padding: 24px;
@@ -5227,7 +5227,21 @@ body.keyboard-open [contenteditable="true"] {
 
 .docs-plan-path strong { display: block; font-size: 0.88rem; }
 .docs-plan-path p { margin: 2px 0 0; color: var(--text-muted); font-size: 0.72rem; }
-.docs-plan-path__line { flex: 1 1 auto; height: 1px; background: var(--border); }
+.docs-plan-path__line { flex: 1 1 auto; height: 1px; background: var(--border); margin-top: 22px; }
+
+.docs-feature--wide {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    grid-column: 1 / -1;
+    background: var(--docs-soft);
+}
+
+.docs-feature--wide > i {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+    background: var(--bg-card);
+}
 
 .docs-telegram {
     display: grid;
