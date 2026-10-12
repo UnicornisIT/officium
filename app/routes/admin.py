@@ -70,15 +70,34 @@ def _activity_log_query(args):
     """Build the activity-log query shared by the journal page and its export."""
     filters = {
         'user': args.get('user', type=int),
+        'actor': (args.get('actor') or '').strip()[:100],
         'event': (args.get('event') or '').strip(),
+        'entity': (args.get('entity') or '').strip(),
         'date_from': (args.get('date_from') or '').strip(),
         'date_to': (args.get('date_to') or '').strip(),
+        'impersonation': args.get('impersonation') in ('1', 'on', 'true'),
     }
     query = ActivityLog.query
     if filters['user']:
         query = query.filter(ActivityLog.user_id == filters['user'])
+    if filters['actor']:
+        pattern = f"%{filters['actor']}%"
+        matching_users = db.session.query(User.id).filter(or_(
+            User.username.ilike(pattern),
+            User.first_name.ilike(pattern),
+            User.last_name.ilike(pattern),
+            cast(User.telegram_id, db.String).ilike(pattern),
+        ))
+        query = query.filter(or_(
+            ActivityLog.user_id.in_(matching_users),
+            ActivityLog.actor_label.ilike(pattern),
+        ))
     if filters['event']:
         query = query.filter(ActivityLog.action == filters['event'])
+    if filters['entity']:
+        query = query.filter(ActivityLog.entity_type == filters['entity'])
+    if filters['impersonation']:
+        query = query.filter(ActivityLog.impersonation_session_id.isnot(None))
     date_from = _filter_datetime(filters['date_from'])
     date_to = _filter_datetime(filters['date_to'], end=True)
     if date_from:
@@ -86,6 +105,10 @@ def _activity_log_query(args):
     if date_to:
         query = query.filter(ActivityLog.created_at < date_to)
     return query, filters
+
+
+def _distinct_log_values(column):
+    return [value for (value,) in db.session.query(column).filter(column.isnot(None)).distinct().order_by(column.asc()).all()]
 
 
 def _csv_response(header, rows, filename):
@@ -662,29 +685,21 @@ def init_app(app):
     def admin_logs():
         logs_query, filters = _activity_log_query(request.args)
 
-        pagination = logs_query.order_by(ActivityLog.created_at.desc()).paginate(
+        pagination = logs_query.order_by(ActivityLog.created_at.desc(), ActivityLog.id.desc()).paginate(
             page=_page_number(),
             per_page=30,
             error_out=False,
         )
-        filter_users = User.query.order_by(User.first_name.asc(), User.username.asc()).all()
-        event_values = [
-            item[0]
-            for item in db.session.query(ActivityLog.action)
-            .distinct()
-            .order_by(ActivityLog.action.asc())
-            .all()
-        ]
+        filtered_user = db.session.get(User, filters['user']) if filters['user'] else None
         return render_template(
             'admin_logs.html',
             logs=pagination.items,
             pagination=pagination,
-            filter_users=filter_users,
-            event_values=event_values,
-            user_filter=filters['user'],
-            event_filter=filters['event'],
-            date_from=filters['date_from'],
-            date_to=filters['date_to'],
+            event_values=_distinct_log_values(ActivityLog.action),
+            entity_values=_distinct_log_values(ActivityLog.entity_type),
+            filters=filters,
+            filtered_user=filtered_user,
+            has_filters=any(filters.values()),
         )
 
     @app.route('/admin/system')
@@ -724,10 +739,7 @@ def init_app(app):
                 'accounts': User.query.count(),
                 'events': ActivityLog.query.count(),
             }
-            event_values = [
-                item[0]
-                for item in db.session.query(ActivityLog.action).distinct().order_by(ActivityLog.action.asc()).all()
-            ]
+            event_values = _distinct_log_values(ActivityLog.action)
             error_message = None
         except SQLAlchemyError:
             db.session.rollback()

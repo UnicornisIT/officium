@@ -1,4 +1,4 @@
-/* officium administrative design system */
+﻿/* officium administrative design system */
 .admin-page,
 .admin-login-page {
     --admin-bg: #f3f6fb;
@@ -1840,7 +1840,7 @@ html[data-theme="dark"] .admin-login-page {
 .admin-filter-actions { display: flex; gap: 8px; align-items: center; }
 .admin-filter-actions .btn { min-height: 44px; }
 .admin-filter-grid > .admin-control { grid-template-rows: auto 44px; align-self: stretch; }
-.admin-filter-grid--logs { grid-template-columns: repeat(4, minmax(150px, 1fr)) auto; }
+.admin-filter-grid--logs { grid-template-columns: repeat(3, minmax(160px, 1fr)); }
 .admin-table-panel { margin-top: 18px; }
 .admin-table tbody tr[data-admin-row-href] { cursor: pointer; }
 .admin-table__actions { display: flex; justify-content: flex-end; gap: 7px; }
@@ -2344,3 +2344,5 @@ html[data-theme="dark"] .admin-login-page {
 .admin-danger-zone__form .btn { justify-self: start; }
 .admin-danger-zone > p { margin: 0; padding: 16px; color: var(--admin-text-soft); font-size: 0.8rem; line-height: 1.5; }
 .admin-danger-zone code { color: var(--admin-danger); }
+
+.admin-filter-check { display: flex; align-items: center; gap: 8px; margin: 0; align-self: end; min-height: 42px; font-size: 0.8rem; }

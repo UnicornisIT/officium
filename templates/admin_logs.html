@@ -10,19 +10,22 @@
 
 <section class="admin-panel admin-filter-panel" aria-label="Фильтры журнала">
     <form method="get" class="admin-filter-grid admin-filter-grid--logs">
-        <label class="admin-control"><span>Пользователь</span><select name="user">
-            <option value="">Все пользователи</option>
-            {% for user in filter_users %}<option value="{{ user.id }}" {% if user_filter == user.id %}selected{% endif %}>{{ [user.first_name, user.last_name]|select|join(' ') or user.username or ('Пользователь #' ~ user.id) }}</option>{% endfor %}
+        {% if filtered_user %}<input type="hidden" name="user" value="{{ filtered_user.id }}">{% endif %}
+        <label class="admin-control admin-control--search" for="logActor"><span>Пользователь</span><span class="admin-input-icon">{{ icon('search', 18) }}<input type="search" id="logActor" name="actor" value="{{ filters.actor }}" placeholder="{{ ('@' ~ filtered_user.username) if filtered_user and filtered_user.username else 'Имя, username или Telegram ID' }}"></span></label>
+        <label class="admin-control" for="logEvent"><span>Действие</span><select id="logEvent" name="event">
+            <option value="">Все действия</option>
+            {% for event in event_values %}<option value="{{ event }}" {% if filters.event == event %}selected{% endif %}>{{ event|admin_event }}</option>{% endfor %}
         </select></label>
-        <label class="admin-control"><span>Событие</span><select name="event">
-            <option value="">Все события</option>
-            {% for event in event_values %}<option value="{{ event }}" {% if event_filter == event %}selected{% endif %}>{{ event|admin_event }}</option>{% endfor %}
+        <label class="admin-control" for="logEntity"><span>Тип объекта</span><select id="logEntity" name="entity">
+            <option value="">Все типы</option>
+            {% for entity in entity_values %}<option value="{{ entity }}" {% if filters.entity == entity %}selected{% endif %}>{{ entity|admin_entity }}</option>{% endfor %}
         </select></label>
-        <label class="admin-control"><span>Дата от</span><input type="date" name="date_from" value="{{ date_from }}"></label>
-        <label class="admin-control"><span>Дата до</span><input type="date" name="date_to" value="{{ date_to }}"></label>
+        <label class="admin-control" for="logDateFrom"><span>Дата от</span><input type="date" id="logDateFrom" name="date_from" value="{{ filters.date_from }}"></label>
+        <label class="admin-control" for="logDateTo"><span>Дата до</span><input type="date" id="logDateTo" name="date_to" value="{{ filters.date_to }}"></label>
+        <label class="form-check admin-filter-check" for="logImpersonation"><input class="form-check-input" type="checkbox" id="logImpersonation" name="impersonation" value="1" {% if filters.impersonation %}checked{% endif %}><span class="form-check-label">Только вход от имени пользователя</span></label>
         <div class="admin-filter-actions">
             <button type="submit" class="btn btn-primary">{{ icon('filter', 17) }} Применить</button>
-            {% if user_filter or event_filter or date_from or date_to %}<a class="btn btn-outline-secondary" href="{{ url_for('admin_logs') }}">Сбросить</a>{% endif %}
+            {% if has_filters %}<a class="btn btn-outline-secondary" href="{{ url_for('admin_logs') }}">Сбросить</a>{% endif %}
         </div>
     </form>
 </section>
