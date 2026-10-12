@@ -2,18 +2,19 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from flask import jsonify, redirect, render_template, request, url_for, flash, session, abort, current_app
 from flask_login import UserMixin, current_user, login_user, logout_user
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import check_password_hash
 from authlib.integrations.flask_client import OAuth
 from extensions import db
 from app import login_manager
-from app.models import User
+from app.models import ActivityLog, User
 from app.services.contact_service import load_contacts
 from app.services.telegram_auth_service import (
     verify_telegram_login,
     verify_telegram_web_app_init_data,
 )
-from app.time_utils import as_utc, utc_now
+from app.time_utils import utc_now
 from app.utils import client_ip, get_dictionary_values, get_setting, record_activity, telegram_feature_states
 
 
@@ -60,6 +61,30 @@ class LocalTestUser(UserMixin):
 
     def get_id(self):
         return str(self.id)
+
+
+EMERGENCY_LOGIN_SUCCESS = 'Аварийный вход администратора'
+EMERGENCY_LOGIN_FAILURE = 'Неудачный аварийный вход'
+
+
+def _emergency_login_failures(ip_address, lockout_minutes):
+    """Count failed emergency logins from this address inside the lockout window.
+
+    The counter lives in the activity log, so clearing cookies does not reset it;
+    a successful login from the same address starts a new window.
+    """
+    window_start = (utc_now() - timedelta(minutes=lockout_minutes)).replace(tzinfo=None)
+    last_success = db.session.query(func.max(ActivityLog.created_at)).filter(
+        ActivityLog.action == EMERGENCY_LOGIN_SUCCESS,
+        ActivityLog.ip_address == ip_address,
+    ).scalar()
+    if last_success and last_success > window_start:
+        window_start = last_success
+    return ActivityLog.query.filter(
+        ActivityLog.action == EMERGENCY_LOGIN_FAILURE,
+        ActivityLog.ip_address == ip_address,
+        ActivityLog.created_at >= window_start,
+    ).count()
 
 
 def get_or_create_test_user(app):
@@ -539,39 +564,33 @@ def init_app(app):
         lockout_minutes = app.config.get('ADMIN_LOCKOUT_MINUTES', 15)
         error_message = None
 
-        lockout_until = session.get('admin_lockout_until')
-        if lockout_until:
+        locked_message = 'Слишком много неудачных попыток. Попробуйте через некоторое время.'
+        ip_address = client_ip()
+        user_agent = request.headers.get('User-Agent')
+
+        if request.method == 'POST':
             try:
-                lockout_until_dt = datetime.fromisoformat(lockout_until)
-            except ValueError:
-                lockout_until_dt = None
-            if lockout_until_dt and as_utc(lockout_until_dt) > utc_now():
-                error_message = 'Слишком много неудачных попыток. Попробуйте позже.'
+                failures = _emergency_login_failures(ip_address, lockout_minutes)
+            except SQLAlchemyError:
+                db.session.rollback()
+                current_app.logger.exception('Failed to read emergency login attempts')
+                failures = None
+                error_message = 'Вход временно недоступен: база данных не отвечает.'
 
-        if request.method == 'POST' and not error_message:
-            if not admin_login_enabled or not admin_password_hash:
+            if failures is not None and failures >= max_attempts:
+                error_message = locked_message
+            elif failures is not None and (not admin_login_enabled or not admin_password_hash):
                 error_message = 'Админ-вход отключён или пароль не настроен.'
-            else:
+            elif failures is not None:
                 password = request.form.get('password', '')
-                valid_password = check_password_hash(admin_password_hash, password)
-
-                if valid_password:
-                    session.pop('failed_admin_login_attempts', None)
-                    session.pop('admin_lockout_until', None)
+                if check_password_hash(admin_password_hash, password):
                     login_user(AdminUser())
-                    record_activity('Аварийный вход администратора', None, description='Успешный admin login', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
+                    record_activity(EMERGENCY_LOGIN_SUCCESS, None, entity_type='auth', description='Успешный вход', ip_address=ip_address, user_agent=user_agent)
                     return redirect(url_for('admin_dashboard'))
 
-                attempts = session.get('failed_admin_login_attempts', 0) + 1
-                session['failed_admin_login_attempts'] = attempts
-                if attempts >= max_attempts:
-                    lockout_time = utc_now() + timedelta(minutes=lockout_minutes)
-                    session['admin_lockout_until'] = lockout_time.replace(tzinfo=None).isoformat()
-                    error_message = 'Слишком много неудачных попыток. Попробуйте через некоторое время.'
-                else:
-                    error_message = 'Неверный пароль администратора.'
-
-                record_activity('Аварийный вход администратора', None, description=f'Неудачная попытка ({attempts}/{max_attempts})', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
+                attempt = failures + 1
+                record_activity(EMERGENCY_LOGIN_FAILURE, None, entity_type='auth', description=f'Неверный пароль ({attempt}/{max_attempts})', ip_address=ip_address, user_agent=user_agent)
+                error_message = locked_message if attempt >= max_attempts else 'Неверный пароль администратора.'
 
         return render_template('admin_login.html', admin_login_enabled=admin_login_enabled, error_message=error_message)
 
