@@ -166,7 +166,6 @@ class RuntimeSecurityTestCase(unittest.TestCase):
     def test_admin_settings_reject_invalid_numeric_values(self):
         form = {
             'app_name': 'officium',
-            'default_currency': 'RUB',
             'debt_limit_per_user': 'not-a-number',
             'payment_warning_days': '7',
             'urgent_payment_days': '3',
@@ -177,7 +176,6 @@ class RuntimeSecurityTestCase(unittest.TestCase):
     def test_admin_settings_require_urgent_window_within_warning_window(self):
         form = {
             'app_name': 'officium',
-            'default_currency': 'rub',
             'debt_limit_per_user': '50',
             'payment_warning_days': '3',
             'urgent_payment_days': '7',
