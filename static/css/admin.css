@@ -2358,3 +2358,7 @@ html[data-theme="dark"] .admin-login-page {
 .admin-forbidden h1 { margin: 0 0 8px; font-size: 1.35rem; }
 .admin-forbidden p:not(.admin-page-kicker) { margin: 0 0 18px; color: var(--admin-text-soft); }
 @media (max-width: 575.98px) { .admin-forbidden { grid-template-columns: 1fr; padding: 20px; } }
+
+@media (max-width: 1599.98px) {
+    .admin-table--responsive td.admin-table__cell--stack { grid-template-columns: minmax(0, 1fr); text-align: left; }
+}

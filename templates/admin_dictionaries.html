@@ -29,7 +29,7 @@
             <div class="admin-table-wrap"><table class="admin-table admin-table--responsive"><thead><tr><th>Значение</th><th>Статус</th><th><span class="visually-hidden">Действия</span></th></tr></thead><tbody>
                 {% for entry in grouped[key] %}
                 <tr class="{% if not entry.is_active %}admin-table__row--muted{% endif %}">
-                    <td data-label="Значение">
+                    <td data-label="Значение" class="admin-table__cell--stack">
                         <form method="post" action="{{ url_for('admin_update_dictionary_entry', entry_id=entry.id) }}" class="admin-inline-edit">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="rename">
                             <label class="visually-hidden" for="entry-{{ entry.id }}">Значение</label>
