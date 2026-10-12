@@ -1,0 +1,16 @@
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon %}
+{% block title %}Нет доступа — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Нет доступа{% endblock %}
+
+{% block admin_content %}
+<section class="admin-panel admin-forbidden" aria-labelledby="forbidden-title">
+    <span class="admin-forbidden__icon">{{ icon('lock', 30) }}</span>
+    <div>
+        <p class="admin-page-kicker">Ошибка 403</p>
+        <h1 id="forbidden-title">Раздел доступен только супер-администратору</h1>
+        <p>Ваша роль — администратор. Вы можете работать с обзором, пользователями и журналом действий. Если доступ нужен, попросите супер-администратора изменить вашу роль.</p>
+        <a class="btn btn-primary" href="{{ url_for('admin_dashboard') }}">{{ icon('dashboard', 17) }} Перейти к обзору</a>
+    </div>
+</section>
+{% endblock %}

@@ -19,59 +19,39 @@
             </button>
         </div>
 
-        <nav class="admin-nav">
+        <nav class="admin-nav" aria-label="Разделы">
             <div class="admin-nav__group">
-                <span class="admin-nav__eyebrow">Обзор</span>
-                <a href="{{ url_for('admin_dashboard') }}" class="{% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
-                    {{ icon('dashboard') }}<span>Главная страница</span>
+                <a href="{{ url_for('admin_dashboard') }}" class="{% if request.endpoint == 'admin_dashboard' %}active{% endif %}"{% if request.endpoint == 'admin_dashboard' %} aria-current="page"{% endif %}>
+                    {{ icon('dashboard') }}<span>Обзор</span>
                 </a>
-                <a href="{{ url_for('admin_dashboard') }}#statistics">
-                    {{ icon('chart') }}<span>Общая статистика</span>
-                </a>
-            </div>
-
-            <div class="admin-nav__group">
-                <span class="admin-nav__eyebrow">Управление</span>
-                <a href="{{ url_for('admin_users') }}" class="{% if request.endpoint in ('admin_users', 'admin_user_detail') %}active{% endif %}">
+                <a href="{{ url_for('admin_users') }}" class="{% if request.endpoint in ('admin_users', 'admin_user_detail') %}active{% endif %}"{% if request.endpoint in ('admin_users', 'admin_user_detail') %} aria-current="page"{% endif %}>
                     {{ icon('users') }}<span>Пользователи</span>
                 </a>
-                {% if current_user.is_superadmin %}
-                <a href="{{ url_for('admin_dictionaries') }}" class="{% if request.endpoint == 'admin_dictionaries' %}active{% endif %}">
-                    {{ icon('book') }}<span>Справочники</span>
-                </a>
-                <a href="{{ url_for('admin_settings') }}" class="{% if request.endpoint == 'admin_settings' %}active{% endif %}">
-                    {{ icon('settings') }}<span>Настройки приложения</span>
-                </a>
-                {% endif %}
-            </div>
-
-            <div class="admin-nav__group">
-                <span class="admin-nav__eyebrow">Мониторинг</span>
-                <a href="{{ url_for('admin_logs') }}" class="{% if request.endpoint == 'admin_logs' %}active{% endif %}">
+                <a href="{{ url_for('admin_logs') }}" class="{% if request.endpoint == 'admin_logs' %}active{% endif %}"{% if request.endpoint == 'admin_logs' %} aria-current="page"{% endif %}>
                     {{ icon('activity') }}<span>Журнал действий</span>
                 </a>
-                {% if current_user.is_superadmin %}
-                <a href="{{ url_for('admin_system') }}" class="{% if request.endpoint == 'admin_system' %}active{% endif %}">
-                    {{ icon('pulse') }}<span>Состояние системы</span>
-                </a>
-                {% endif %}
             </div>
 
             {% if current_user.is_superadmin %}
             <div class="admin-nav__group">
-                <span class="admin-nav__eyebrow">Обслуживание</span>
-                <a href="{{ url_for('admin_export') }}" class="{% if request.endpoint == 'admin_export' %}active{% endif %}">
-                    {{ icon('export') }}<span>Аудит-выгрузка</span>
+                <span class="admin-nav__eyebrow">Система</span>
+                {% for endpoint, icon_name, label in (
+                    ('admin_settings', 'settings', 'Настройки'),
+                    ('admin_dictionaries', 'book', 'Справочники'),
+                    ('admin_export', 'export', 'Аудит-выгрузка'),
+                    ('admin_system', 'pulse', 'Диагностика'),
+                    ('admin_server_update', 'update', 'Обновление сервера'),
+                ) %}
+                <a href="{{ url_for(endpoint) }}" class="{% if request.endpoint == endpoint %}active{% endif %}"{% if request.endpoint == endpoint %} aria-current="page"{% endif %}>
+                    {{ icon(icon_name) }}<span>{{ label }}</span>
                 </a>
-                <a href="{{ url_for('admin_server_update') }}" class="{% if request.endpoint == 'admin_server_update' %}active{% endif %}">
-                    {{ icon('update') }}<span>Обновление сервера</span>
-                </a>
+                {% endfor %}
             </div>
             {% endif %}
         </nav>
 
         <div class="admin-sidebar__footer">
-            <a href="{{ url_for('index') }}">{{ icon('home') }}<span>Вернуться в приложение</span></a>
+            {% if dev_login_enabled %}<a href="{{ url_for('index') }}">{{ icon('home') }}<span>Вернуться в приложение</span></a>{% endif %}
             <a href="{{ url_for('logout') }}">{{ icon('logout') }}<span>Выйти</span></a>
         </div>
     </aside>
@@ -92,7 +72,7 @@
                 <span class="admin-topbar__avatar" aria-hidden="true">{{ (current_user.first_name or current_user.username or 'A')[:1]|upper }}</span>
                 <span class="admin-topbar__identity">
                     <strong>{{ current_user.first_name or current_user.username or 'Администратор' }}</strong>
-                    {{ role_badge(current_user.role) }}
+                    {% if current_user.get_id() == 'admin' %}<span class="admin-badge admin-badge--warning" title="Вход по аварийному паролю">Аварийный вход</span>{% else %}{{ role_badge(current_user.role) }}{% endif %}
                 </span>
             </div>
         </header>

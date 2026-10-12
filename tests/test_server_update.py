@@ -276,7 +276,7 @@ class ServerUpdateRouteTestCase(unittest.TestCase):
 
     def test_ordinary_admin_cannot_open_server_update(self):
         self.login(self.admin_id)
-        self.assertEqual(self.client.get('/admin/server-update').status_code, 302)
+        self.assertEqual(self.client.get('/admin/server-update').status_code, 403)
 
     @patch('app.routes.admin.get_update_status', return_value=None)
     def test_status_response_is_not_cached(self, _status):

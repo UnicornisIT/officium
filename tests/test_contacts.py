@@ -87,7 +87,7 @@ class ContactAdminRouteTestCase(unittest.TestCase):
             'address': 'https://example.org', 'icon': 'globe2',
             'locations': ['footer'], 'order': '0',
         })
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 403)
         with self.app.app_context():
             self.assertEqual(load_contacts(), [])
 

@@ -362,9 +362,9 @@ def superadmin_required(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
         if not getattr(current_user, 'is_authenticated', False) or not getattr(current_user, 'is_superadmin', False):
-            flash('Недостаточно прав для доступа к этому разделу.', 'warning')
             if getattr(current_user, 'is_admin', False):
-                return redirect(url_for('admin_dashboard'))
+                # Admins stay inside the panel and see why the section is closed.
+                return render_template('admin_forbidden.html'), 403
             return redirect(url_for('login'))
         return view(*args, **kwargs)
     return wrapper

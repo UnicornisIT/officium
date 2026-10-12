@@ -2352,3 +2352,9 @@ html[data-theme="dark"] .admin-login-page {
 .admin-inline-edit { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .admin-inline-edit input { flex: 1 1 auto; min-width: 0; padding: 6px 10px; color: var(--admin-text); background: transparent; border: 1px solid var(--admin-border); border-radius: 9px; }
 .admin-table__row--muted td { opacity: 0.6; }
+
+.admin-forbidden { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; padding: 28px; max-width: 720px; }
+.admin-forbidden__icon { display: grid; place-items: center; width: 56px; height: 56px; color: var(--admin-danger); background: var(--admin-danger-soft); border-radius: 16px; }
+.admin-forbidden h1 { margin: 0 0 8px; font-size: 1.35rem; }
+.admin-forbidden p:not(.admin-page-kicker) { margin: 0 0 18px; color: var(--admin-text-soft); }
+@media (max-width: 575.98px) { .admin-forbidden { grid-template-columns: 1fr; padding: 20px; } }

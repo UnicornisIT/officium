@@ -163,7 +163,7 @@ class AdminPrivacyTestCase(unittest.TestCase):
 
         response = self.client.post('/admin/export/accounts.csv')
 
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 403)
         self.assertNotIn('text/csv', response.headers.get('Content-Type', ''))
 
 

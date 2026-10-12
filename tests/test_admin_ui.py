@@ -146,8 +146,11 @@ class AdminInterfaceTestCase(unittest.TestCase):
         self.assertIn('Журнал действий', dashboard)
         self.assertNotIn('href="/admin/settings"', dashboard)
         self.assertNotIn('href="/admin/system"', dashboard)
-        self.assertEqual(self.client.get('/admin/system').status_code, 302)
-        self.assertEqual(self.client.get('/admin/export').status_code, 302)
+        for path in ('/admin/system', '/admin/export', '/admin/settings', '/admin/dictionaries', '/admin/server-update'):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 403)
+                self.assertIn('Раздел доступен только супер-администратору', response.get_data(as_text=True))
 
     def test_users_support_search_sort_status_and_pagination(self):
         self.login(self.superadmin_id)
