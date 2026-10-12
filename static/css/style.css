@@ -2043,12 +2043,12 @@ html[data-theme="dark"] .navbar {
     background: transparent;
     border-radius: 0;
 }
-.brand-icon img,
-.telegram-app-bar__logo img {
+.brand-mark {
     display: block;
-    width: 100%;
-    height: 100%;
+    flex: 0 0 auto;
 }
+.brand-mark__ring { stroke: var(--text); }
+.brand-mark__close { stroke: var(--primary); }
 .brand-text {
     font-weight: 700;
     font-size: 1.15rem;
@@ -3946,10 +3946,10 @@ textarea.form-control {
     width: 34px;
     height: 34px;
     border-radius: 11px;
-    color: var(--tg-theme-button-text-color, #fff);
-    background: var(--tg-theme-button-color, var(--primary));
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 34%, transparent);
+    background: transparent;
 }
+.mini-app-auth__logo .brand-mark__ring { stroke: var(--tg-theme-text-color, var(--text)); }
+.mini-app-auth__logo .brand-mark__close { stroke: var(--tg-theme-button-color, var(--primary)); }
 
 .mini-app-auth__visual {
     position: relative;

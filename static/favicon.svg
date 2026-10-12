@@ -1,6 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="15" fill="#071426"/>
-  <path d="M46.6 12.4A24 24 0 1 0 54.9 28" fill="none" stroke="#60a5fa" stroke-width="7" stroke-linecap="round"/>
-  <path d="M17 39h13.5L47 18.5M17 25h20" fill="none" stroke="#22d3ee" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="47" cy="18.5" r="4.5" fill="#60a5fa"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><style>.ink{stroke:#0f172a}.accent{stroke:#2563eb}.word{fill:#0f172a}@media (prefers-color-scheme:dark){.ink{stroke:#e5ecf6}.accent{stroke:#60a5fa}.word{fill:#e5ecf6}}</style><g fill="none" stroke-width="4.5"><path class="ink" d="M26.34 12.24A11 11 0 1 1 14.09 5.17"/><path class="accent" d="M16 5A11 11 0 0 1 25.53 10.5"/></g></svg>

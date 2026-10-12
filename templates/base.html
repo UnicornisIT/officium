@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% from '_brand.html' import brand_mark %}<!DOCTYPE html>
 <html lang="ru" data-theme="dark" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
@@ -25,6 +25,8 @@
     <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}?v={{ config.APP_VERSION|urlencode }}" sizes="any">
     <link rel="icon" href="{{ url_for('static', filename='favicon-16x16.png') }}?v={{ config.APP_VERSION|urlencode }}" type="image/png" sizes="16x16">
     <link rel="icon" href="{{ url_for('static', filename='favicon-32x32.png') }}?v={{ config.APP_VERSION|urlencode }}" type="image/png" sizes="32x32">
+    <meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#08101c" media="(prefers-color-scheme: dark)">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v={{ config.APP_VERSION|urlencode }}" sizes="180x180">
     <link href="{{ url_for('static', filename='vendor/onest/onest.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
@@ -39,7 +41,7 @@
 {% if is_telegram_mini_app %}
 <header class="telegram-app-bar">
     <a class="telegram-app-bar__brand" href="{{ url_for('index') }}" aria-label="officium — дашборд">
-        <span class="telegram-app-bar__logo"><img src="{{ url_for('static', filename='images/brand/officium-mark.svg') }}" width="34" height="34" alt=""></span>
+        <span class="telegram-app-bar__logo">{{ brand_mark(34) }}</span>
         <span>
             <strong>{{ app_name }}</strong>
             <small>Ваш финансовый центр</small>
@@ -102,7 +104,7 @@
 <nav class="navbar navbar-expand-lg">
     <div class="container-fluid px-4">
         <a class="navbar-brand" href="/">
-            <span class="brand-icon"><img src="{{ url_for('static', filename='images/brand/officium-mark.svg') }}" width="32" height="32" alt=""></span>
+            <span class="brand-icon">{{ brand_mark(32) }}</span>
             <span class="brand-text">{{ app_name }}</span>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">

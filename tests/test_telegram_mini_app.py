@@ -105,6 +105,12 @@ class TelegramMiniAppRouteTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('Готовим ваш финансовый центр', response.get_data(as_text=True))
 
+    def test_entry_page_uses_brand_mark_instead_of_currency_placeholder(self):
+        html = self.client.get('/telegram-app').get_data(as_text=True)
+
+        self.assertIn('class="brand-mark', html)
+        self.assertNotIn('mini-app-auth__logo">₽', html)
+
     def test_login_works_with_production_csrf_protection(self):
         self.app.config['WTF_CSRF_ENABLED'] = True
         entry = self.client.get('/telegram-app')

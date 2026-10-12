@@ -125,7 +125,7 @@ html[data-theme="dark"] .admin-login-page {
     text-decoration: none;
 }
 
-.admin-sidebar__brand img {
+.admin-sidebar__brand .brand-mark {
     width: 40px;
     height: 40px;
 }
@@ -2041,7 +2041,10 @@ html[data-theme="dark"] .admin-login-page {
 .admin-login-shell { width: min(480px, 100%); }
 .admin-login-card { padding: clamp(28px, 6vw, 46px); color: var(--admin-text); background: var(--admin-surface); border: 1px solid var(--admin-border); border-radius: 26px; box-shadow: var(--admin-shadow); text-align: center; }
 .admin-login-card__brand { display: grid; justify-items: center; gap: 8px; margin-bottom: 34px; }
-.admin-login-card__brand img { max-width: 174px; height: auto; }
+.admin-login-card__brand .admin-login-card__logo { display: inline-flex; align-items: center; gap: 10px; font-size: 1.7rem; letter-spacing: -0.03em; color: var(--admin-text); }
+.admin-login-card__logo strong { font-weight: 600; }
+.admin-page .brand-mark__ring, .admin-login-page .brand-mark__ring { stroke: var(--admin-text); }
+.admin-page .brand-mark__close, .admin-login-page .brand-mark__close { stroke: var(--admin-primary); }
 .admin-login-card__brand span { color: var(--admin-text-soft); font-size: 0.7rem; }
 .admin-login-card__icon { display: grid; width: 52px; height: 52px; place-items: center; margin: 0 auto 18px; color: var(--admin-primary); background: var(--admin-primary-soft); border-radius: 16px; }
 .admin-login-card h1 { margin: 0; font-size: 1.55rem; letter-spacing: -0.04em; }

@@ -136,7 +136,7 @@ class AdminInterfaceTestCase(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertIn(heading, html)
                 self.assertIn('Административная панель', html)
-                self.assertIn('images/brand/officium-mark.svg', html)
+                self.assertIn('class="brand-mark', html)
                 self.assertIn('css/admin.css', html)
 
     def test_ordinary_admin_sees_only_allowed_sections(self):

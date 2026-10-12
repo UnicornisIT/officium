@@ -57,6 +57,10 @@ function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-bs-theme', theme);
     localStorage.setItem('officiumTheme', theme);
+    const themeColor = theme === 'dark' ? '#08101c' : '#f4f6fb';
+    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+        meta.setAttribute('content', themeColor);
+    });
 
     const btn = document.getElementById('themeToggleBtn');
     if (!btn) return;

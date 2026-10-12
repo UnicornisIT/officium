@@ -11,7 +11,7 @@
     <aside class="admin-sidebar" id="adminSidebar" aria-label="Навигация административной панели">
         <div class="admin-sidebar__brand">
             <a href="{{ url_for('admin_dashboard') }}" aria-label="Административная панель officium">
-                <img src="{{ url_for('static', filename='images/brand/officium-mark.svg') }}" width="38" height="38" alt="">
+                {% from '_brand.html' import brand_mark %}{{ brand_mark(38, 'admin-sidebar__mark') }}
                 <span><strong>officium</strong><small>Административная панель</small></span>
             </a>
             <button class="admin-sidebar__close" type="button" data-admin-sidebar-close aria-label="Закрыть меню">

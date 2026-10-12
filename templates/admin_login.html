@@ -4,7 +4,7 @@
 {% block content %}
 <main class="admin-login-shell">
     <section class="admin-login-card" aria-labelledby="admin-login-title">
-        <div class="admin-login-card__brand"><img src="{{ url_for('static', filename='images/brand/officium-logo.svg') }}" width="174" height="44" alt="officium"><span>Административная панель</span></div>
+        <div class="admin-login-card__brand">{% from '_brand.html' import brand_mark %}<span class="admin-login-card__logo">{{ brand_mark(40) }}<strong>officium</strong></span><span>Административная панель</span></div>
         <div class="admin-login-card__icon">{% from 'admin/_macros.html' import icon %}{{ icon('lock', 26) }}</div>
         <p class="admin-page-kicker">Защищенный доступ</p><h1 id="admin-login-title">Вход для администратора</h1><p>Введите пароль административной учетной записи.</p>
         {% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
