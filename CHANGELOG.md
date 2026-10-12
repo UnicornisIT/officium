@@ -3,7 +3,18 @@
 Все заметные пользовательские изменения проекта публикуются в этом файле.
 Формат основан на Keep a Changelog, версии следуют Semantic Versioning.
 
-## [v0.0.8-rc.1] - release candidate, not published
+## [Unreleased]
+
+## [0.0.8] - 2026-10-13
+
+### Не проверено перед выпуском
+
+Релиз выпущен решением владельца без staging-проверок из
+`docs/RELEASE_CHECKLIST.md`: установка на чистую Ubuntu VM, обновление по кнопке
+из админки через новый updater, failure injection и откат, таймер после
+перезагрузки, нагрузочный тест, реальный Telegram на iOS/Android. CI проверил
+unit/integration на Python 3.10 и 3.13, миграции и дамп/восстановление на MySQL 8,
+Playwright в Chromium, Firefox и WebKit и аудит зависимостей.
 
 ### Административная панель
 
