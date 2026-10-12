@@ -28,7 +28,7 @@ from app.services.server_update_service import (
     update_is_active,
 )
 from app.time_utils import utc_now
-from app.utils import admin_required, superadmin_required, DICTIONARY_TYPES, DEFAULT_SETTINGS, get_setting, record_activity, set_setting, telegram_feature_states
+from app.utils import client_ip, admin_required, superadmin_required, DICTIONARY_TYPES, DEFAULT_SETTINGS, get_setting, record_activity, set_setting, telegram_feature_states
 from extensions import db
 
 
@@ -262,7 +262,7 @@ def init_app(app):
                 current_user,
                 entity_type='server_update',
                 description=f'Запрошена установка релиза {release["tag"]}',
-                ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+                ip_address=client_ip(),
                 user_agent=request.headers.get('User-Agent'),
             )
         except SQLAlchemyError:
@@ -475,7 +475,7 @@ def init_app(app):
                 db.session.commit()
 
             session['original_admin_id'] = current_user.id
-            record_activity('Начал impersonate тестового пользователя', current_user, entity_type='user', entity_id=test_user.id, description=f'Имперсонализация в пользователя {test_user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+            record_activity('Начал impersonate тестового пользователя', current_user, entity_type='user', entity_id=test_user.id, description=f'Имперсонализация в пользователя {test_user.telegram_id}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
             logout_user()
             login_user(test_user)
             session['impersonated_user_id'] = str(test_user.get_id())
@@ -497,7 +497,7 @@ def init_app(app):
             return redirect(url_for('admin_users'))
 
         session['original_admin_id'] = current_user.id
-        record_activity('Начал impersonate пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Имперсонализация в пользователя {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+        record_activity('Начал impersonate пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Имперсонализация в пользователя {user.telegram_id}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
         logout_user()
         login_user(user)
         session['impersonated_user_id'] = str(user.get_id())
@@ -519,7 +519,7 @@ def init_app(app):
                     flash('Нельзя заблокировать последнего супер-администратора.', 'warning')
                 else:
                     user.is_blocked = True
-                    record_activity('Заблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+                    record_activity('Заблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
                     successful = True
             elif action == 'unblock':
                 if user.id == current_user.id:
@@ -528,7 +528,7 @@ def init_app(app):
                     flash('Нельзя разблокировать супер-администратора.', 'warning')
                 else:
                     user.is_blocked = False
-                    record_activity('Разблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+                    record_activity('Разблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
                     successful = True
             elif action in ('make_admin', 'make_superadmin', 'make_user'):
                 if not current_user.is_superadmin:
@@ -562,7 +562,7 @@ def init_app(app):
                 elif user.is_superadmin and _is_last_superadmin(user):
                     flash('Нельзя удалить последнего супер-администратора.', 'warning')
                 else:
-                    record_activity('Удалил пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+                    record_activity('Удалил пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
                     db.session.delete(user)
                     db.session.commit()
                     return redirect(url_for('admin_users'))

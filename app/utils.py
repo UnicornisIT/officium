@@ -248,6 +248,19 @@ def set_setting(key, value, description=None, commit=True):
     return setting
 
 
+CLIENT_IP_MAX_LENGTH = 100
+
+
+def client_ip():
+    """Return the client address for logs.
+
+    The proxy chain is resolved by the WSGI server (waitress ``--trusted-proxy``),
+    so ``remote_addr`` is trusted; raw ``X-Forwarded-For`` is client-controlled.
+    """
+    value = (request.remote_addr or '').strip()
+    return value[:CLIENT_IP_MAX_LENGTH] or None
+
+
 def record_activity(action, user=None, entity_type=None, entity_id=None, description=None, ip_address=None, user_agent=None):
     user_id = getattr(user, 'id', None) if user else None
     if not isinstance(user_id, int):

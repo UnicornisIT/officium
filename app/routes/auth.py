@@ -14,7 +14,7 @@ from app.services.telegram_auth_service import (
     verify_telegram_web_app_init_data,
 )
 from app.time_utils import as_utc, utc_now
-from app.utils import get_dictionary_values, get_setting, record_activity, telegram_feature_states
+from app.utils import client_ip, get_dictionary_values, get_setting, record_activity, telegram_feature_states
 
 
 class AdminUser(UserMixin):
@@ -239,7 +239,7 @@ def init_app(app):
         user.photo_url = _telegram_profile_value(profile, 'photo_url', 255)
         user.auth_date = auth_date
         user.login_count = (user.login_count or 0) + 1
-        user.last_login_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        user.last_login_ip = client_ip()
         user.last_user_agent = request.headers.get('User-Agent')
 
         db.session.commit()
@@ -247,7 +247,7 @@ def init_app(app):
             activity_name,
             user,
             description=f'Telegram ID={telegram_id}',
-            ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+            ip_address=client_ip(),
             user_agent=request.headers.get('User-Agent'),
         )
         login_user(user)
@@ -367,7 +367,7 @@ def init_app(app):
         user.last_name = dev_user_data['last_name']
         user.is_blocked = False
         user.login_count = (user.login_count or 0) + 1
-        user.last_login_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        user.last_login_ip = client_ip()
         user.last_user_agent = request.headers.get('User-Agent')
         db.session.commit()
 
@@ -375,7 +375,7 @@ def init_app(app):
             'Dev login',
             user,
             description=f'Вход в режиме разработки как {role}',
-            ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+            ip_address=client_ip(),
             user_agent=request.headers.get('User-Agent'),
         )
 
@@ -412,7 +412,7 @@ def init_app(app):
         try:
             test_user = get_or_create_test_user(app)
             test_user.login_count = (test_user.login_count or 0) + 1
-            test_user.last_login_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+            test_user.last_login_ip = client_ip()
             test_user.last_user_agent = request.headers.get('User-Agent')
             db.session.commit()
             login_user(test_user)
@@ -520,11 +520,11 @@ def init_app(app):
             return redirect(url_for('login'))
 
         user.login_count = (user.login_count or 0) + 1
-        user.last_login_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        user.last_login_ip = client_ip()
         user.last_user_agent = request.headers.get('User-Agent')
 
         db.session.commit()
-        record_activity('Вход через Google', user, description=f'Google ID={google_id}, email={email}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+        record_activity('Вход через Google', user, description=f'Google ID={google_id}, email={email}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
         login_user(user)
         return redirect(url_for('index'))
 
@@ -559,7 +559,7 @@ def init_app(app):
                     session.pop('failed_admin_login_attempts', None)
                     session.pop('admin_lockout_until', None)
                     login_user(AdminUser())
-                    record_activity('Аварийный вход администратора', None, description='Успешный admin login', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+                    record_activity('Аварийный вход администратора', None, description='Успешный admin login', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
                     return redirect(url_for('admin_dashboard'))
 
                 attempts = session.get('failed_admin_login_attempts', 0) + 1
@@ -571,7 +571,7 @@ def init_app(app):
                 else:
                     error_message = 'Неверный пароль администратора.'
 
-                record_activity('Аварийный вход администратора', None, description=f'Неудачная попытка ({attempts}/{max_attempts})', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+                record_activity('Аварийный вход администратора', None, description=f'Неудачная попытка ({attempts}/{max_attempts})', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
 
         return render_template('admin_login.html', admin_login_enabled=admin_login_enabled, error_message=error_message)
 
@@ -599,7 +599,7 @@ def init_app(app):
             admin_description = f'Restored session from original admin {original_admin.telegram_id}'
 
         login_user(original_admin)
-        record_activity('Завершил impersonate', original_admin, description=admin_description, ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
+        record_activity('Завершил impersonate', original_admin, description=admin_description, ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
         return redirect(url_for('admin_dashboard'))
 
     @app.route('/logout')
