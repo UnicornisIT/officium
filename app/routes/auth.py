@@ -150,6 +150,8 @@ def init_app(app):
 
         if getattr(current_user, 'is_authenticated', False) and getattr(current_user, 'is_blocked', False):
             logout_user()
+            session.pop('original_admin_id', None)
+            session.pop('impersonated_user_id', None)
             if request.path.startswith('/api/'):
                 return {'success': False, 'error': 'Учетная запись заблокирована'}, 403
             return render_template('login.html', error='Ваша учётная запись заблокирована.', bot_username=app.config.get('TELEGRAM_BOT_USERNAME', ''), telegram_allowed=False)
@@ -576,7 +578,13 @@ def init_app(app):
     @app.route('/admin/stop-impersonate', methods=['POST'])
     def stop_impersonate():
         original_admin_id = session.pop('original_admin_id', None)
-        if not original_admin_id:
+        impersonated_user_id = session.pop('impersonated_user_id', None)
+        # Restore the admin only from the very session that started impersonation.
+        if (
+            not original_admin_id
+            or not getattr(current_user, 'is_authenticated', False)
+            or impersonated_user_id != str(current_user.get_id())
+        ):
             return redirect(url_for('login'))
 
         if str(original_admin_id) == 'admin':
@@ -598,4 +606,6 @@ def init_app(app):
     def logout():
         logout_user()
         session.pop('telegram_mini_app', None)
+        session.pop('original_admin_id', None)
+        session.pop('impersonated_user_id', None)
         return redirect(url_for('login'))

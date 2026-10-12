@@ -197,10 +197,15 @@ class RuntimeSecurityTestCase(unittest.TestCase):
         client = app.test_client()
         with app.app_context():
             db.create_all()
+            impersonated = User(telegram_id=4242, username='impersonated', role='user')
+            db.session.add(impersonated)
+            db.session.commit()
+            impersonated_id = str(impersonated.id)
         with client.session_transaction() as session:
-            session['_user_id'] = '1'
+            session['_user_id'] = impersonated_id
             session['_fresh'] = True
             session['original_admin_id'] = 'admin'
+            session['impersonated_user_id'] = impersonated_id
 
         response = client.post('/admin/stop-impersonate')
 

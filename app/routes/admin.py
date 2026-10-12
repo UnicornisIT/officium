@@ -478,10 +478,13 @@ def init_app(app):
             record_activity('Начал impersonate тестового пользователя', current_user, entity_type='user', entity_id=test_user.id, description=f'Имперсонализация в пользователя {test_user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
             logout_user()
             login_user(test_user)
+            session['impersonated_user_id'] = str(test_user.get_id())
         except SQLAlchemyError:
             db.session.rollback()
             logout_user()
-            login_user(LocalTestUser())
+            local_test_user = LocalTestUser()
+            login_user(local_test_user)
+            session['impersonated_user_id'] = str(local_test_user.get_id())
 
         return redirect(url_for('index'))
 
@@ -497,6 +500,7 @@ def init_app(app):
         record_activity('Начал impersonate пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Имперсонализация в пользователя {user.telegram_id}', ip_address=request.headers.get('X-Forwarded-For', request.remote_addr), user_agent=request.headers.get('User-Agent'))
         logout_user()
         login_user(user)
+        session['impersonated_user_id'] = str(user.get_id())
         return redirect(url_for('index'))
 
     @app.route('/admin/users/<int:user_id>', methods=['GET', 'POST'])
