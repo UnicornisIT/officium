@@ -2336,3 +2336,6 @@ html[data-theme="dark"] .admin-login-page {
 .admin-impersonate-form textarea { resize: vertical; }
 .admin-impersonate-form__check { display: flex; gap: 10px; align-items: flex-start; margin: 0; }
 .admin-impersonate-form__check small { display: block; color: var(--admin-text-soft); font-size: 0.74rem; }
+
+.admin-flash-stack { display: grid; gap: 10px; margin-bottom: 20px; }
+.admin-flash-stack .alert { margin: 0; }

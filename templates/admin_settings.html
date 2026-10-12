@@ -5,7 +5,6 @@
 
 {% block admin_content %}
 <header class="admin-page-header"><div><p class="admin-page-kicker">Конфигурация</p><h1>Настройки приложения</h1><p>Управление общими параметрами и доступностью пользовательских функций.</p></div></header>
-{% if success_message %}<div class="alert alert-success" role="status">{{ success_message }}</div>{% endif %}
 {% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
 
 <form method="post" class="admin-settings-form" data-admin-confirm="Сохранить изменения настроек приложения?" data-confirm-tone="primary">

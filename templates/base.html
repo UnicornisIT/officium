@@ -224,6 +224,8 @@
 </div>
 {% endif %}
 
+{# Admin pages render flashes inside the admin shell (admin_base.html). #}
+{% if not request.path.startswith('/admin') or request.endpoint in ('admin_login', None) %}
 {% with messages = get_flashed_messages(with_categories=true) %}
 {% if messages %}
 <div class="container-fluid px-4 py-2 app-flash-stack">
@@ -236,6 +238,7 @@
 </div>
 {% endif %}
 {% endwith %}
+{% endif %}
 
 <!-- Основной контент -->
 <main class="app-main container-fluid px-4 py-4">

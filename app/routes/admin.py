@@ -312,7 +312,6 @@ def init_app(app):
     @app.route('/admin/settings', methods=['GET', 'POST'])
     @superadmin_required
     def admin_settings():
-        success_message = None
         error_message = None
 
         if request.method == 'POST':
@@ -322,7 +321,8 @@ def init_app(app):
                     set_setting(key, value, commit=False)
                 db.session.commit()
                 record_activity('Изменил настройки приложения', current_user, description='Обновлены системные настройки')
-                return redirect(url_for('admin_settings', success='Настройки сохранены'))
+                flash('Настройки сохранены.', 'success')
+                return redirect(url_for('admin_settings'))
             except ValueError as exc:
                 db.session.rollback()
                 error_message = str(exc)
@@ -347,7 +347,6 @@ def init_app(app):
             contact_types=CONTACT_TYPES,
             contact_icons=CONTACT_ICONS,
             contact_locations=CONTACT_LOCATIONS,
-            success_message=request.args.get('success'),
             error_message=error_message,
         )
 
@@ -379,7 +378,8 @@ def init_app(app):
                 entity_type='setting',
                 description='Обновлена публикация контактов и ссылок',
             )
-            return redirect(url_for('admin_settings', success='Контакты сохранены'))
+            flash('Контакты сохранены.', 'success')
+            return redirect(url_for('admin_settings'))
         except ContactValidationError as exc:
             db.session.rollback()
             flash(str(exc), 'danger')
@@ -394,8 +394,6 @@ def init_app(app):
     @superadmin_required
     def admin_dictionaries():
         error_message = None
-        success_message = request.args.get('success')
-
         if request.method == 'POST':
             dictionary_type = request.form.get('dictionary_type')
             value = str(request.form.get('value', '')).strip()
@@ -411,7 +409,8 @@ def init_app(app):
                     db.session.add(entry)
                     db.session.commit()
                     record_activity('Добавил элемент справочника', current_user, entity_type=dictionary_type, description=value)
-                    return redirect(url_for('admin_dictionaries', success='Элемент добавлен'))
+                    flash('Элемент справочника добавлен.', 'success')
+                    return redirect(url_for('admin_dictionaries'))
                 except Exception:
                     db.session.rollback()
                     current_app.logger.exception('Failed to save dictionary entry')
@@ -419,18 +418,27 @@ def init_app(app):
 
         entries = DictionaryEntry.query.order_by(DictionaryEntry.dictionary_type.asc(), DictionaryEntry.value.asc()).all()
         type_labels = {key: label for key, label in DICTIONARY_TYPES}
-        return render_template('admin_dictionaries.html', entries=entries, types=DICTIONARY_TYPES, type_labels=type_labels, error_message=error_message, success_message=success_message)
+        return render_template('admin_dictionaries.html', entries=entries, types=DICTIONARY_TYPES, type_labels=type_labels, error_message=error_message)
 
     @app.route('/admin/dictionaries/<int:entry_id>/delete', methods=['POST'])
     @superadmin_required
     def admin_delete_dictionary_entry(entry_id):
-        entry = DictionaryEntry.query.get(entry_id)
-        if entry:
+        entry = db.session.get(DictionaryEntry, entry_id)
+        if entry is None:
+            flash('Элемент справочника не найден: возможно, он уже удалён.', 'warning')
+            return redirect(url_for('admin_dictionaries'))
+        entry_type, entry_value = entry.dictionary_type, entry.value
+        try:
             db.session.delete(entry)
             db.session.commit()
-            record_activity('Удалил элемент справочника', current_user, entity_type=entry.dictionary_type, entity_id=entry.id, description=entry.value)
-            return redirect(url_for('admin_dictionaries', success='Элемент удалён'))
-        return redirect(url_for('admin_dictionaries', success='Элемент не найден'))
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception('Failed to delete dictionary entry')
+            flash('Не удалось удалить элемент справочника: база данных недоступна.', 'danger')
+            return redirect(url_for('admin_dictionaries'))
+        record_activity('Удалил элемент справочника', current_user, entity_type=entry_type, entity_id=entry_id, description=entry_value)
+        flash('Элемент справочника удалён.', 'success')
+        return redirect(url_for('admin_dictionaries'))
 
     @app.route('/admin/users')
     @admin_required
@@ -601,7 +609,8 @@ def init_app(app):
 
             if successful:
                 db.session.commit()
-                return redirect(url_for('admin_user_detail', user_id=user.id, success='Действие выполнено'))
+                flash('Изменения сохранены.', 'success')
+                return redirect(url_for('admin_user_detail', user_id=user.id))
             db.session.rollback()
 
         recent_actions = ActivityLog.query.filter(
@@ -610,7 +619,7 @@ def init_app(app):
                 and_(ActivityLog.entity_type == 'user', ActivityLog.entity_id == user.id),
             )
         ).order_by(ActivityLog.created_at.desc()).limit(20).all()
-        return render_template('admin_user_detail.html', user=user, recent_actions=recent_actions, impersonation_timeout=impersonation.timeout_minutes(), success_message=request.args.get('success'))
+        return render_template('admin_user_detail.html', user=user, recent_actions=recent_actions, impersonation_timeout=impersonation.timeout_minutes())
 
     @app.route('/admin/logs')
     @admin_required

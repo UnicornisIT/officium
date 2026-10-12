@@ -98,6 +98,18 @@
         </header>
 
         <div class="admin-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="admin-flash-stack">
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category in ['danger', 'error'] else 'warning' if category == 'warning' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="{{ 'alert' if category in ['danger', 'error', 'warning'] else 'status' }}">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
             {% block admin_content %}{% endblock %}
         </div>
     </section>
