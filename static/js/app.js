@@ -355,6 +355,18 @@ async function jsonFetch(url, options = {}) {
     return response;
 }
 
+function initCommentTemplates() {
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-comment-template]');
+        if (!button) return;
+        const field = document.getElementById(button.dataset.commentTarget);
+        if (!field) return;
+        const text = button.dataset.commentTemplate;
+        field.value = field.value.trim() ? `${field.value.trimEnd()}\n${text}` : text;
+        field.focus();
+    });
+}
+
 function initImpersonationBanner() {
     const banner = document.querySelector('.impersonation-banner[data-expires-at]');
     if (!banner) return;
@@ -1613,6 +1625,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initMobileViewport();
     initThemeToggle();
     initImpersonationBanner();
+    initCommentTemplates();
     initNavbarLayout();
     initOperationHistories();
 

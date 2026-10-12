@@ -553,7 +553,7 @@ class DictionaryEntry(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    dictionary_type = db.Column(db.Enum('bank', 'debt_type', 'debt_category', 'status', 'comment_template', 'interest_rate', 'product_type'), nullable=False)
+    dictionary_type = db.Column(db.Enum('bank', 'comment_template', 'interest_rate', 'product_type'), nullable=False)
     value = db.Column(db.String(150), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now)

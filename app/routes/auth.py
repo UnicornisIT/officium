@@ -16,7 +16,7 @@ from app.services.telegram_auth_service import (
     verify_telegram_web_app_init_data,
 )
 from app.time_utils import utc_now
-from app.utils import client_ip, get_dictionary_values, get_setting, payment_thresholds, record_activity, setting_enabled, telegram_feature_states
+from app.utils import client_ip, get_dictionary_groups, get_setting, payment_thresholds, record_activity, setting_enabled, telegram_feature_states
 
 
 class AdminUser(UserMixin):
@@ -250,7 +250,7 @@ def init_app(app):
     @app.context_processor
     def inject_user():
         app_name = get_setting('app_name', 'officium')
-        bank_options = get_dictionary_values('bank')
+        dictionary_groups = get_dictionary_groups()
         admin_login_enabled = app.config.get('ADMIN_LOGIN_ENABLED', False)
         test_login_enabled = app.config.get('TEST_USER_ENABLED', False)
         dev_login_enabled = app.config.get('DEV_LOGIN_ENABLED', False) and app.debug
@@ -276,7 +276,10 @@ def init_app(app):
         return dict(
             current_user=current_user,
             app_name=app_name,
-            bank_options=bank_options,
+            bank_options=dictionary_groups.get('bank', []),
+            product_options=dictionary_groups.get('product_type', []),
+            interest_rate_options=dictionary_groups.get('interest_rate', []),
+            comment_templates=dictionary_groups.get('comment_template', []),
             admin_login_enabled=admin_login_enabled,
             test_login_enabled=test_login_enabled,
             dev_login_enabled=dev_login_enabled,

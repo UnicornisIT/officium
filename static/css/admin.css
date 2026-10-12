@@ -2346,3 +2346,9 @@ html[data-theme="dark"] .admin-login-page {
 .admin-danger-zone code { color: var(--admin-danger); }
 
 .admin-filter-check { display: flex; align-items: center; gap: 8px; margin: 0; align-self: end; min-height: 42px; font-size: 0.8rem; }
+
+.admin-dictionary-groups { display: grid; gap: 16px; align-content: start; }
+.admin-dictionary-groups > .admin-section-heading__meta { margin: 0; }
+.admin-inline-edit { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.admin-inline-edit input { flex: 1 1 auto; min-width: 0; padding: 6px 10px; color: var(--admin-text); background: transparent; border: 1px solid var(--admin-border); border-radius: 9px; }
+.admin-table__row--muted td { opacity: 0.6; }

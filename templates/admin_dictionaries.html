@@ -4,25 +4,57 @@
 {% block admin_topbar_title %}Справочники{% endblock %}
 
 {% block admin_content %}
-<header class="admin-page-header"><div><p class="admin-page-kicker">Системные данные</p><h1>Справочники</h1><p>Управление списками банков, категорий и других значений приложения.</p></div></header>
+<header class="admin-page-header"><div><p class="admin-page-kicker">Системные данные</p><h1>Справочники</h1><p>Подсказки, которые пользователи видят в форме долга. Выключенный элемент сохраняется, но не предлагается в формах.</p></div></header>
 {% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
 
 <div class="admin-detail-grid admin-detail-grid--dictionary">
-    <section class="admin-panel admin-detail-aside">
-        <div class="admin-panel__header"><div><p class="admin-page-kicker">Новая запись</p><h2>Добавить элемент</h2></div></div>
+    <section class="admin-panel admin-detail-aside" aria-labelledby="dictionary-add-title">
+        <div class="admin-panel__header"><div><p class="admin-page-kicker">Новая запись</p><h2 id="dictionary-add-title">Добавить элемент</h2></div></div>
         <form method="post" class="admin-action-stack">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label class="admin-control"><span>Тип справочника</span><select name="dictionary_type" required><option value="">Выберите тип</option>{% for key, label in types %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label>
-            <label class="admin-control"><span>Значение</span><input type="text" name="value" maxlength="150" placeholder="Введите значение" required></label>
+            <label class="admin-control" for="dictionaryType"><span>Справочник</span><select id="dictionaryType" name="dictionary_type" required>
+                <option value="">Выберите справочник</option>
+                {% for key, label in types %}<option value="{{ key }}" {% if form_values.dictionary_type == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select></label>
+            <label class="admin-control" for="dictionaryValue"><span>Значение</span><input type="text" id="dictionaryValue" name="value" maxlength="150" placeholder="Например: Т-Банк или 18.5" value="{{ form_values.value }}" required></label>
             <button type="submit" class="btn btn-primary">{{ icon('check-circle', 17) }} Добавить</button>
         </form>
     </section>
-    <section class="admin-panel admin-detail-main">
-        <div class="admin-panel__header"><div><p class="admin-page-kicker">Текущие данные</p><h2>Элементы справочников</h2></div><span class="admin-section-heading__meta">Всего: {{ entries|length }}</span></div>
-        <div class="admin-table-wrap"><table class="admin-table admin-table--responsive"><thead><tr><th>Тип</th><th>Значение</th><th><span class="visually-hidden">Действия</span></th></tr></thead><tbody>
-            {% for entry in entries %}<tr><td data-label="Тип"><span class="admin-badge admin-badge--neutral">{{ type_labels.get(entry.dictionary_type, entry.dictionary_type) }}</span></td><td data-label="Значение"><strong>{{ entry.value }}</strong></td><td data-label="Действия" class="admin-table__actions"><form method="post" action="{{ url_for('admin_delete_dictionary_entry', entry_id=entry.id) }}" data-admin-confirm="Удалить элемент справочника «{{ entry.value }}»?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="admin-icon-button admin-icon-button--danger" aria-label="Удалить элемент">{{ icon('alert', 17) }}</button></form></td></tr>
-            {% else %}<tr class="admin-table__empty-row"><td colspan="3"><div class="admin-empty-state">{{ icon('book', 30) }}<p>Справочники пока пусты.</p></div></td></tr>{% endfor %}
-        </tbody></table></div>
-    </section>
+
+    <div class="admin-detail-main admin-dictionary-groups">
+        <p class="admin-section-heading__meta">Всего элементов: {{ total }}</p>
+        {% for key, label in types %}
+        <section class="admin-panel admin-table-panel" aria-labelledby="dictionary-{{ key }}">
+            <div class="admin-panel__header"><div><p class="admin-page-kicker">{{ type_help[key] }}</p><h2 id="dictionary-{{ key }}">{{ label }}</h2></div><span class="admin-section-heading__meta">{{ grouped[key]|length }}</span></div>
+            <div class="admin-table-wrap"><table class="admin-table admin-table--responsive"><thead><tr><th>Значение</th><th>Статус</th><th><span class="visually-hidden">Действия</span></th></tr></thead><tbody>
+                {% for entry in grouped[key] %}
+                <tr class="{% if not entry.is_active %}admin-table__row--muted{% endif %}">
+                    <td data-label="Значение">
+                        <form method="post" action="{{ url_for('admin_update_dictionary_entry', entry_id=entry.id) }}" class="admin-inline-edit">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="rename">
+                            <label class="visually-hidden" for="entry-{{ entry.id }}">Значение</label>
+                            <input type="text" id="entry-{{ entry.id }}" name="value" maxlength="150" value="{{ entry.value }}" required>
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">Сохранить</button>
+                        </form>
+                    </td>
+                    <td data-label="Статус"><span class="admin-badge admin-badge--{{ 'success' if entry.is_active else 'neutral' }}">{{ 'Предлагается' if entry.is_active else 'Выключен' }}</span></td>
+                    <td data-label="Действия" class="admin-table__actions">
+                        <form method="post" action="{{ url_for('admin_update_dictionary_entry', entry_id=entry.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">{{ 'Выключить' if entry.is_active else 'Включить' }}</button>
+                        </form>
+                        <form method="post" action="{{ url_for('admin_delete_dictionary_entry', entry_id=entry.id) }}" data-admin-confirm="Удалить элемент «{{ entry.value }}»? Уже сохранённые долги не изменятся.">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="admin-icon-button admin-icon-button--danger" aria-label="Удалить элемент «{{ entry.value }}»">{{ icon('alert', 17) }}</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr class="admin-table__empty-row"><td colspan="3"><div class="admin-empty-state">{{ icon('book', 30) }}<p>Пока пусто. Добавьте первый элемент в форме слева.</p></div></td></tr>
+                {% endfor %}
+            </tbody></table></div>
+        </section>
+        {% endfor %}
+    </div>
 </div>
 {% endblock %}

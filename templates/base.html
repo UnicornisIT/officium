@@ -333,7 +333,8 @@
                     </div>
                     <div class="col-12">
                         <label class="form-label"><span class="required-indicator">*</span>Название продукта/карты</label>
-                        <input type="text" required class="form-control" id="f_product_name" placeholder="Тинькофф Платинум, СберСплит...">
+                        <input type="text" required class="form-control" id="f_product_name" list="productOptions" placeholder="Тинькофф Платинум, СберСплит...">
+                        <datalist id="productOptions">{% for product in product_options %}<option value="{{ product }}"></option>{% endfor %}</datalist>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label"><span class="required-indicator">*</span>Сумма / лимит (₽)</label>
@@ -359,7 +360,8 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Процентная ставка (%/год)</label>
-                        <input type="number" class="form-control" id="f_interest_rate" min="0" max="200" step="0.1" placeholder="0.0">
+                        <input type="number" class="form-control" id="f_interest_rate" min="0" max="200" step="0.1" placeholder="0.0" list="interestRateOptions">
+                        <datalist id="interestRateOptions">{% for rate in interest_rate_options %}<option value="{{ rate }}"></option>{% endfor %}</datalist>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" id="next_payment_date_label">Дата следующего платежа</label>
@@ -470,6 +472,7 @@
                     <div class="col-12">
                         <label class="form-label">Комментарий</label>
                         <textarea class="form-control" id="f_comment" rows="2" placeholder="Заметки..."></textarea>
+                        {% if comment_templates %}<div class="comment-templates" aria-label="Шаблоны комментариев">{% for template in comment_templates %}<button type="button" class="btn btn-sm btn-outline-secondary" data-comment-template="{{ template }}" data-comment-target="f_comment">{{ template }}</button>{% endfor %}</div>{% endif %}
                     </div>
                 </div>
             </div>

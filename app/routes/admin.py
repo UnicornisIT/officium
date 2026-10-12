@@ -28,7 +28,7 @@ from app.services.server_update_service import (
     update_is_active,
 )
 from app.time_utils import utc_now
-from app.utils import client_ip, admin_required, superadmin_required, DICTIONARY_TYPES, DEFAULT_SETTINGS, get_setting, record_activity, set_setting, telegram_feature_states
+from app.utils import client_ip, admin_required, superadmin_required, DICTIONARY_HELP, DICTIONARY_TYPES, DEFAULT_SETTINGS, normalize_dictionary_value, get_setting, record_activity, set_setting, telegram_feature_states
 from extensions import db
 
 
@@ -308,6 +308,13 @@ def _deletion_confirmation(user):
     return user.username or str(user.telegram_id)
 
 
+def _dictionary_duplicate(dictionary_type, value):
+    # Compared in Python: SQLite's lower() only folds ASCII, not Cyrillic.
+    wanted = value.casefold()
+    existing = db.session.query(DictionaryEntry.value).filter(DictionaryEntry.dictionary_type == dictionary_type)
+    return any(item.casefold() == wanted for (item,) in existing)
+
+
 def init_app(app):
     @app.context_processor
     def inject_admin_navigation_helpers():
@@ -546,31 +553,85 @@ def init_app(app):
     @superadmin_required
     def admin_dictionaries():
         error_message = None
+        form_values = {'dictionary_type': '', 'value': ''}
         if request.method == 'POST':
-            dictionary_type = request.form.get('dictionary_type')
-            value = str(request.form.get('value', '')).strip()
-            if not dictionary_type or dictionary_type not in [item[0] for item in DICTIONARY_TYPES]:
-                error_message = 'Выберите тип справочника'
-            elif not value:
-                error_message = 'Значение не может быть пустым'
-            elif len(value) > 150:
-                error_message = 'Значение не должно превышать 150 символов'
-            else:
-                try:
-                    entry = DictionaryEntry(dictionary_type=dictionary_type, value=value)
-                    db.session.add(entry)
-                    db.session.commit()
-                    record_activity('Добавил элемент справочника', current_user, entity_type=dictionary_type, description=value)
-                    flash('Элемент справочника добавлен.', 'success')
-                    return redirect(url_for('admin_dictionaries'))
-                except Exception:
-                    db.session.rollback()
-                    current_app.logger.exception('Failed to save dictionary entry')
-                    error_message = 'Не удалось сохранить элемент справочника.'
+            form_values = {
+                'dictionary_type': request.form.get('dictionary_type', ''),
+                'value': request.form.get('value', ''),
+            }
+            try:
+                dictionary_type = form_values['dictionary_type']
+                value = normalize_dictionary_value(dictionary_type, form_values['value'])
+                if _dictionary_duplicate(dictionary_type, value):
+                    raise ValueError('Такое значение уже есть в этом справочнике.')
+                db.session.add(DictionaryEntry(dictionary_type=dictionary_type, value=value))
+                db.session.commit()
+                record_activity('Добавил элемент справочника', current_user, entity_type=dictionary_type, description=value)
+                flash('Элемент справочника добавлен.', 'success')
+                return redirect(url_for('admin_dictionaries'))
+            except ValueError as exc:
+                db.session.rollback()
+                error_message = str(exc)
+            except SQLAlchemyError:
+                db.session.rollback()
+                current_app.logger.exception('Failed to save dictionary entry')
+                error_message = 'Не удалось сохранить элемент справочника: база данных недоступна.'
 
-        entries = DictionaryEntry.query.order_by(DictionaryEntry.dictionary_type.asc(), DictionaryEntry.value.asc()).all()
-        type_labels = {key: label for key, label in DICTIONARY_TYPES}
-        return render_template('admin_dictionaries.html', entries=entries, types=DICTIONARY_TYPES, type_labels=type_labels, error_message=error_message)
+        try:
+            entries = DictionaryEntry.query.order_by(DictionaryEntry.dictionary_type.asc(), DictionaryEntry.value.asc()).all()
+        except SQLAlchemyError:
+            db.session.rollback()
+            entries = []
+            error_message = error_message or 'База данных недоступна, справочники временно не загружены.'
+        grouped = {key: [] for key, _ in DICTIONARY_TYPES}
+        for entry in entries:
+            grouped.setdefault(entry.dictionary_type, []).append(entry)
+        return render_template(
+            'admin_dictionaries.html',
+            types=DICTIONARY_TYPES,
+            type_help=DICTIONARY_HELP,
+            grouped=grouped,
+            total=len(entries),
+            form_values=form_values,
+            error_message=error_message,
+        )
+
+    @app.route('/admin/dictionaries/<int:entry_id>/update', methods=['POST'])
+    @superadmin_required
+    def admin_update_dictionary_entry(entry_id):
+        entry = db.session.get(DictionaryEntry, entry_id)
+        if entry is None:
+            flash('Элемент справочника не найден: возможно, он уже удалён.', 'warning')
+            return redirect(url_for('admin_dictionaries'))
+        action = request.form.get('action', 'rename')
+        try:
+            if action == 'toggle':
+                entry.is_active = not entry.is_active
+                message = 'Элемент включён.' if entry.is_active else 'Элемент выключен: он больше не предлагается в формах.'
+                log_action = 'Изменил элемент справочника'
+                description = f'{entry.value}: {"включён" if entry.is_active else "выключен"}'
+            else:
+                previous = entry.value
+                value = normalize_dictionary_value(entry.dictionary_type, request.form.get('value'))
+                if value != previous and _dictionary_duplicate(entry.dictionary_type, value):
+                    raise ValueError('Такое значение уже есть в этом справочнике.')
+                entry.value = value
+                message = 'Элемент справочника сохранён.'
+                log_action = 'Изменил элемент справочника'
+                description = f'{previous} → {value}'
+            db.session.commit()
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), 'warning')
+            return redirect(url_for('admin_dictionaries'))
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception('Failed to update dictionary entry')
+            flash('Не удалось сохранить элемент справочника: база данных недоступна.', 'danger')
+            return redirect(url_for('admin_dictionaries'))
+        record_activity(log_action, current_user, entity_type=entry.dictionary_type, entity_id=entry.id, description=description)
+        flash(message, 'success')
+        return redirect(url_for('admin_dictionaries'))
 
     @app.route('/admin/dictionaries/<int:entry_id>/delete', methods=['POST'])
     @superadmin_required

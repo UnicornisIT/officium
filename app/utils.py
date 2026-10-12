@@ -10,13 +10,17 @@ from app.models import AppSetting, DictionaryEntry, ActivityLog
 
 DICTIONARY_TYPES = [
     ('bank', 'Банки'),
-    ('debt_type', 'Типы долгов'),
-    ('debt_category', 'Категории долгов'),
-    ('status', 'Статусы'),
+    ('product_type', 'Названия продуктов'),
+    ('interest_rate', 'Процентные ставки'),
     ('comment_template', 'Шаблоны комментариев'),
-    ('interest_rate', 'Стандартные процентные ставки'),
-    ('product_type', 'Типы финансовых продуктов'),
 ]
+DICTIONARY_HELP = {
+    'bank': 'Подсказки в поле «Банк» формы долга.',
+    'product_type': 'Подсказки в поле «Продукт» формы долга.',
+    'interest_rate': 'Подсказки в поле «Ставка, %» формы долга. Только числа от 0 до 200.',
+    'comment_template': 'Кнопки быстрой вставки текста в комментарий к долгу.',
+}
+DICTIONARY_VALUE_MAX_LENGTH = 150
 
 INCOME_CATEGORIES = [
     ('salary', 'Зарплата'),
@@ -215,12 +219,36 @@ def payment_thresholds():
     return {'warning': warning, 'urgent': urgent}
 
 
-def get_dictionary_values(dictionary_type):
+def normalize_dictionary_value(dictionary_type, raw_value):
+    """Validate a dictionary value for its type; raises ValueError with a user message."""
+    if dictionary_type not in dict(DICTIONARY_TYPES):
+        raise ValueError('Выберите тип справочника.')
+    value = ' '.join(str(raw_value or '').split())
+    if not value:
+        raise ValueError('Значение не может быть пустым.')
+    if len(value) > DICTIONARY_VALUE_MAX_LENGTH:
+        raise ValueError(f'Значение не должно превышать {DICTIONARY_VALUE_MAX_LENGTH} символов.')
+    if dictionary_type == 'interest_rate':
+        try:
+            rate = Decimal(value.replace(',', '.').rstrip('%').strip())
+        except InvalidOperation:
+            raise ValueError('Ставка должна быть числом, например 18.5.')
+        if not rate.is_finite() or not Decimal('0') <= rate <= Decimal('200'):
+            raise ValueError('Ставка должна быть от 0 до 200.')
+        value = format(rate.normalize(), 'f')
+    return value
+
+
+def get_dictionary_groups():
+    """Active dictionary values grouped by type, loaded in one query."""
+    groups = {key: [] for key, _ in DICTIONARY_TYPES}
     try:
-        entries = DictionaryEntry.query.filter_by(dictionary_type=dictionary_type, is_active=True).order_by(DictionaryEntry.value.asc()).all()
-        return [entry.value for entry in entries]
+        entries = DictionaryEntry.query.filter_by(is_active=True).order_by(DictionaryEntry.value.asc()).all()
     except Exception:
-        return []
+        return groups
+    for entry in entries:
+        groups.setdefault(entry.dictionary_type, []).append(entry.value)
+    return groups
 
 
 def is_local_test_user(user=None):
