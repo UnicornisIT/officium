@@ -3,7 +3,7 @@ from collections import OrderedDict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
-from flask import request, redirect, url_for, render_template, jsonify, flash
+from flask import request, redirect, url_for, render_template, jsonify
 from flask_login import current_user
 from extensions import db
 from app.models import AppSetting, DictionaryEntry, ActivityLog

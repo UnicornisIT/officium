@@ -27,18 +27,8 @@ FIELD_LABELS = {
     'entity_type': 'Тип объекта',
     'entity_id': 'Идентификатор объекта',
     'ip_address': 'IP-адрес',
-    'debt_id': 'Идентификатор долга',
     'user_id': 'Идентификатор пользователя',
-    'bank_name': 'Банк',
-    'product_name': 'Финансовый продукт',
-    'debt_type': 'Тип долга',
-    'total_amount': 'Первоначальная сумма',
-    'remaining_amount': 'Остаток долга',
-    'remaining_after_payment': 'Остаток после платежа',
-    'next_payment_date': 'Дата следующего платежа',
     'status': 'Статус',
-    'payment_date': 'Дата платежа',
-    'amount': 'Сумма',
 }
 
 ROLE_LABELS = {

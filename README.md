@@ -324,9 +324,8 @@ migrations и dump/restore пользователем без `PROCESS`, blocking
 Playwright Chromium/Firefox/WebKit. JUnit, coverage, screenshots, traces и
 sanitized logs сохраняются как artifacts. Полный Ubuntu/systemd update gate
 вынесен в `staging-release-gate.yml` и требует отдельного disposable QA repo.
-Текущий проверочный статус и честно отмеченные блокировки опубликованы в
-[`docs/QA_REPORT.md`](docs/QA_REPORT.md); release criteria — в
-[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
+План проверок описан в [`docs/QA_TEST_PLAN.md`](docs/QA_TEST_PLAN.md), критерии
+выпуска — в [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
 
 ## Production
 
