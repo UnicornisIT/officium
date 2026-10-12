@@ -18,7 +18,10 @@ TIMEOUT_MIN_MINUTES = 5
 TIMEOUT_MAX_MINUTES = 120
 SESSION_KEYS = ('original_admin_id', 'impersonated_user_id', 'impersonation_session_id')
 
+SAFE_METHODS = ('GET', 'HEAD', 'OPTIONS')
+
 START_ACTION = 'Начал impersonate пользователя'
+CHANGE_ACTION = 'Действие от имени пользователя'
 START_TEST_ACTION = 'Начал impersonate тестового пользователя'
 END_ACTION = 'Завершил impersonate'
 
@@ -178,6 +181,25 @@ def finish(end_reason, *, restore, emergency_enabled):
         login_user(admin)
         return admin
     return None
+
+
+def record_change(record):
+    """Log a successful change request made while acting as the user.
+
+    Only the method and route are stored: request bodies may contain amounts.
+    """
+    admin = db.session.get(User, record.admin_user_id) if record.admin_user_id else None
+    record_activity(
+        CHANGE_ACTION,
+        admin,
+        entity_type='impersonation',
+        entity_id=record.target_user_id,
+        description=f'{request.method} {request.path} от имени {record.target_label}',
+        ip_address=client_ip(),
+        user_agent=request.headers.get('User-Agent'),
+        impersonation_session_id=record.id,
+        actor_label=record.actor_label,
+    )
 
 
 def active_count():

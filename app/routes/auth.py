@@ -1,6 +1,6 @@
 import hashlib
 from datetime import datetime, timedelta, timezone
-from flask import jsonify, redirect, render_template, request, url_for, flash, session, abort, current_app
+from flask import g, jsonify, redirect, render_template, request, url_for, flash, session, abort, current_app
 from flask_login import UserMixin, current_user, login_user, logout_user
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -219,7 +219,33 @@ def init_app(app):
                 'Время сеанса от имени пользователя истекло, вы вернулись в административную панель.',
                 'admin_dashboard' if admin else 'login',
             )
+        # Marks requests made inside an already running session (see log_changes_on_behalf).
+        g.acting_impersonation_id = record.id
+        if record.read_only and request.method not in impersonation.SAFE_METHODS:
+            message = 'Режим «только просмотр»: изменения от имени пользователя запрещены.'
+            if request.path.startswith('/api/') or request.is_json:
+                return jsonify({'success': False, 'error': message, 'code': 'impersonation_read_only'}), 403
+            flash(message, 'warning')
+            return redirect(request.referrer or url_for('index'), code=303)
         return None
+
+    @app.after_request
+    def log_changes_on_behalf(response):
+        if (
+            request.method in impersonation.SAFE_METHODS
+            or request.endpoint in ('stop_impersonate', 'logout', 'static')
+            or not g.get('acting_impersonation_id')
+            or response.status_code >= 400
+        ):
+            return response
+        record = impersonation.current_record()
+        if record is not None and record.ended_at is None and not record.read_only:
+            try:
+                impersonation.record_change(record)
+            except SQLAlchemyError:
+                db.session.rollback()
+                app.logger.exception('Failed to record a change made on behalf of a user')
+        return response
 
     @app.context_processor
     def inject_user():

@@ -2,8 +2,8 @@ import unittest
 from datetime import timedelta
 
 from app import create_app
-from app.models import ActivityLog, AppSetting, ImpersonationSession, User
-from app.services.impersonation_service import END_ACTION, START_ACTION, START_TEST_ACTION
+from app.models import ActivityLog, AppSetting, Debt, ImpersonationSession, User
+from app.services.impersonation_service import CHANGE_ACTION, END_ACTION, START_ACTION, START_TEST_ACTION
 from app.time_utils import utc_now
 from extensions import db
 
@@ -213,6 +213,51 @@ class ImpersonationLifecycleTestCase(unittest.TestCase):
             self.assertIsNone(record.reason)
             self.assertEqual(ActivityLog.query.filter_by(action=START_TEST_ACTION).count(), 1)
         self.assertIn('impersonation_session_id', self._session())
+
+
+    DEBT_PAYLOAD = {
+        'bank_name': 'Банк для проверки',
+        'debt_type': 'credit_card',
+        'product_name': 'Карта',
+        'total_amount': '73519',
+        'remaining_amount': '73519',
+        'next_payment_date': '2026-11-15',
+    }
+
+    def test_read_only_mode_blocks_changes(self):
+        self._login(self.ids['root'])
+        self._start()
+
+        api = self.client.post('/api/debts', json=self.DEBT_PAYLOAD)
+        form = self.client.post('/expenses', data={'amount': '100'})
+
+        self.assertEqual(api.status_code, 403)
+        self.assertEqual(api.get_json()['code'], 'impersonation_read_only')
+        self.assertEqual(form.status_code, 303)
+        with self.app.app_context():
+            self.assertEqual(Debt.query.count(), 0)
+            self.assertEqual(ActivityLog.query.filter_by(action=CHANGE_ACTION).count(), 0)
+        # Leaving the session is always allowed.
+        self.client.post('/admin/stop-impersonate')
+        self.assertEqual(self._session().get('_user_id'), str(self.ids['root']))
+
+    def test_changes_on_behalf_are_logged_without_amounts(self):
+        self._login(self.ids['root'])
+        self._start(allow_changes='on')
+
+        response = self.client.post('/api/debts', json=self.DEBT_PAYLOAD)
+
+        self.assertLess(response.status_code, 400, response.get_data(as_text=True))
+        with self.app.app_context():
+            debt = Debt.query.one()
+            self.assertEqual(debt.user_id, self.ids['member'])
+            entry = ActivityLog.query.filter_by(action=CHANGE_ACTION).one()
+            self.assertEqual(entry.user_id, self.ids['root'])
+            self.assertEqual(entry.entity_id, self.ids['member'])
+            self.assertIsNotNone(entry.impersonation_session_id)
+            self.assertIn('POST /api/debts', entry.description)
+            self.assertNotIn('73519', entry.description)
+            self.assertNotIn('73 519', entry.description)
 
 
 if __name__ == '__main__':
