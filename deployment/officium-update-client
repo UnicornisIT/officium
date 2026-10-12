@@ -1,0 +1,39 @@
+#!/usr/bin/python3
+"""Small diagnostic client for the fixed Officium updater IPC protocol."""
+
+import json
+import os
+import socket
+import sys
+
+
+ALLOWED_ACTIONS = {'check', 'integration_check', 'get_status'}
+
+
+def main(argv):
+    if len(argv) != 2 or argv[1] not in ALLOWED_ACTIONS:
+        print('Usage: officium-update-client check|integration_check|get_status', file=sys.stderr)
+        return 2
+    socket_path = os.environ.get('OFFICIUM_UPDATE_SOCKET', '/run/officium/updater.sock')
+    request = json.dumps(
+        {'protocol': 1, 'action': argv[1]}, separators=(',', ':')
+    ).encode('ascii') + b'\n'
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+        client.settimeout(15)
+        client.connect(socket_path)
+        client.sendall(request)
+        response = bytearray()
+        while b'\n' not in response:
+            chunk = client.recv(4096)
+            if not chunk:
+                break
+            response.extend(chunk)
+            if len(response) > 65536:
+                raise RuntimeError('Updater response is too large')
+    payload = json.loads(bytes(response).split(b'\n', 1)[0].decode('utf-8'))
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0 if payload.get('ok') else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main(sys.argv))

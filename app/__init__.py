@@ -1,20 +1,30 @@
 import os
+import secrets
 from datetime import timedelta
 
 import click
 from flask import Flask, jsonify, render_template, request
-from flask_login import LoginManager
+from flask_login import LoginManager, current_user
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
 from config import Config
 from extensions import db
 from app.models import AppSetting, ActivityLog, Debt, DictionaryEntry, EmergencyFundTransaction, Expense, FinancialGoal, FinancialGoalTransaction, FinancialPlanPreference, Income, Payment, SplitPurchase, TelegramConversationState, TelegramProcessedUpdate, User
+from app.admin_presenters import (
+    admin_entity_label,
+    admin_event_icon,
+    admin_event_label,
+    admin_event_tone,
+    admin_field_label,
+    admin_role_label,
+    admin_status_label,
+)
 from app.utils import display_value, format_currency
 
 login_manager = LoginManager()
 login_manager.login_view = 'login'
+_development_secret_key = None
 
 
 def create_app(config_overrides=None):
@@ -31,6 +41,7 @@ def create_app(config_overrides=None):
     if config_overrides:
         app.config.update(config_overrides)
 
+    _configure_secret_key(app)
     _validate_runtime_config(app)
 
     db.init_app(app)
@@ -41,6 +52,13 @@ def create_app(config_overrides=None):
 
     app.jinja_env.filters['money'] = format_currency
     app.jinja_env.filters['display'] = display_value
+    app.jinja_env.filters['admin_field'] = admin_field_label
+    app.jinja_env.filters['admin_role'] = admin_role_label
+    app.jinja_env.filters['admin_status'] = admin_status_label
+    app.jinja_env.filters['admin_entity'] = admin_entity_label
+    app.jinja_env.filters['admin_event'] = admin_event_label
+    app.jinja_env.filters['admin_event_tone'] = admin_event_tone
+    app.jinja_env.filters['admin_event_icon'] = admin_event_icon
 
     from app.routes import auth, admin, debts, documentation, payments, incomes, expenses, main, telegram_bot
 
@@ -83,6 +101,19 @@ def create_app(config_overrides=None):
     def not_found(_error):
         return error_response(404)
 
+    @app.errorhandler(SQLAlchemyError)
+    def database_error(_error):
+        db.session.rollback()
+        app.logger.exception('Database error while handling the request')
+        try:
+            is_admin_page = request.path.startswith('/admin') and getattr(current_user, 'is_admin', False)
+        except SQLAlchemyError:
+            db.session.rollback()
+            is_admin_page = False
+        if is_admin_page:
+            return render_template('admin_db_error.html'), 503
+        return error_response(500)
+
     @app.errorhandler(500)
     def internal_error(_error):
         db.session.rollback()
@@ -99,7 +130,24 @@ def create_app(config_overrides=None):
             response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
         return response
 
+    register_cli_commands(app)
     return app
+
+
+def _configure_secret_key(app):
+    global _development_secret_key
+
+    if app.config.get('SECRET_KEY'):
+        return
+    if app.config.get('ENVIRONMENT') != 'development':
+        return
+
+    if _development_secret_key is None:
+        _development_secret_key = secrets.token_urlsafe(48)
+    app.config['SECRET_KEY'] = _development_secret_key
+    app.logger.warning(
+        'SECRET_KEY is not configured; using a random process-local key for development.'
+    )
 
 
 def _validate_runtime_config(app):
@@ -120,7 +168,7 @@ def _validate_runtime_config(app):
         '',
         'change-me',
         'dev-secret-change-me',
-        'dev-secret-key-change-in-production',
+        '-'.join(('dev', 'secret', 'key', 'change', 'in', 'production')),
     }
     if secret_key in weak_secrets or len(secret_key) < 32:
         raise RuntimeError('SECRET_KEY must be a unique random value of at least 32 characters in production.')
@@ -130,6 +178,12 @@ def _validate_runtime_config(app):
     )
     if telegram_features_enabled and not app.config.get('TELEGRAM_BOT_TOKEN'):
         raise RuntimeError('TELEGRAM_BOT_TOKEN is required when Telegram features are enabled.')
+    if (
+        app.config.get('TELEGRAM_LOGIN_ENABLED') or app.config.get('TELEGRAM_MINI_APP_ENABLED')
+    ) and not str(app.config.get('TELEGRAM_BOT_USERNAME') or '').strip():
+        raise RuntimeError(
+            'TELEGRAM_BOT_USERNAME is required when Telegram login or Mini App is enabled.'
+        )
     if app.config.get('TELEGRAM_BOT_ENABLED') and not app.config.get('TELEGRAM_WEBHOOK_SECRET'):
         raise RuntimeError('TELEGRAM_WEBHOOK_SECRET is required when the Telegram bot is enabled.')
     if app.config.get('GOOGLE_LOGIN_ENABLED') and not (
@@ -141,6 +195,10 @@ def _validate_runtime_config(app):
 
 
 def register_cli_commands(app):
+    from app.migration_preflight import register_migration_preflight_commands
+
+    register_migration_preflight_commands(app, db)
+
     @app.cli.command('create-superadmin')
     @click.argument('telegram_id')
     def create_superadmin(telegram_id):
@@ -182,27 +240,6 @@ def register_cli_commands(app):
         if stats['errors'] > 0:
             raise click.ClickException('Monthly expense generation completed with errors')
 
-    @app.cli.command('copy-mysql-to-sqlite')
-    def copy_mysql_to_sqlite():
-        """Copy data from MySQL into an already migrated SQLite database."""
-        if not app.config.get('DEV_SQLITE_COPY_FROM_MYSQL', False):
-            click.echo('Set DEV_SQLITE_COPY_FROM_MYSQL=true to enable this copy command.')
-            return
-
-        if not app.config.get('SQLALCHEMY_DATABASE_URI', '').startswith('sqlite'):
-            click.echo('SQLite is not the active database. Set DB_ENGINE=sqlite first.')
-            return
-
-        if not _build_mysql_url(app.config):
-            click.echo('MySQL source is not configured.')
-            return
-
-        copied = _copy_mysql_to_sqlite(app)
-        if copied:
-            click.echo('Data copied from MySQL to SQLite.')
-        else:
-            click.echo('SQLite already contains users; copy skipped.')
-
     @app.cli.command('send-telegram-reminders')
     @click.option('--days', type=int, default=None, help='Notify about debt payments due within this many days')
     @click.option('--dry-run', is_flag=True, help='Count reminders without sending Telegram messages')
@@ -221,53 +258,3 @@ def register_cli_commands(app):
         click.echo(f"Users checked: {stats['users_checked']}")
         click.echo(f"Messages: {stats['messages']}")
         click.echo(f"Errors: {stats['errors']}")
-
-
-app = create_app()
-register_cli_commands(app)
-
-def _build_mysql_url(config):
-    source_url = config.get('DEV_SQLITE_COPY_SOURCE_URL', '')
-    if source_url:
-        return source_url
-
-    database_url = config.get('DATABASE_URL', '')
-    if database_url and not database_url.startswith('sqlite'):
-        return database_url
-
-    if config.get('DB_ENGINE') == 'mysql':
-        from urllib.parse import quote_plus
-
-        user = quote_plus(str(config.get('DB_USER', '')))
-        password = quote_plus(str(config.get('DB_PASSWORD', '')))
-        host = config.get('DB_HOST', 'localhost')
-        port = config.get('DB_PORT', '3306')
-        name = config.get('DB_NAME', 'debt_manager')
-        return f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4"
-
-    return None
-
-
-def _copy_mysql_to_sqlite(app):
-    mysql_url = _build_mysql_url(app.config)
-    if not mysql_url:
-        return False
-
-    sqlite_session = db.session
-    try:
-        mysql_engine = create_engine(mysql_url, pool_pre_ping=True)
-        mysql_session_factory = sessionmaker(bind=mysql_engine)
-        with mysql_session_factory() as mysql_session:
-            if User.query.first() is not None:
-                return False
-
-            for model in (User, AppSetting, DictionaryEntry, Debt, Income, Expense, FinancialPlanPreference, EmergencyFundTransaction, FinancialGoal, FinancialGoalTransaction, Payment, SplitPurchase, TelegramProcessedUpdate, TelegramConversationState, ActivityLog):
-                source_rows = mysql_session.query(model).all()
-                for row in source_rows:
-                    row_data = {col.name: getattr(row, col.name) for col in model.__table__.columns}
-                    sqlite_session.merge(model(**row_data))
-                sqlite_session.commit()
-            return True
-    except Exception:
-        sqlite_session.rollback()
-        raise

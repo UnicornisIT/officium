@@ -121,6 +121,11 @@
                         <p class="text-muted small mt-2 mb-0">Для доступа требуется админ-пароль</p>
                     </div>
                     {% endif %}
+                    {% if public_contacts_login %}
+                    <div class="public-contact-list public-contact-list--login" aria-label="Контакты администратора">
+                        {% for contact in public_contacts_login %}<a href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i>{{ contact.label }}</a>{% endfor %}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

@@ -10,6 +10,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from app.models import Expense
+from app.time_utils import as_utc
 from extensions import db
 
 
@@ -36,11 +37,13 @@ def _today():
         return date.fromisoformat(configured)
 
     try:
-        timezone_name = current_app.config.get('APP_TIMEZONE', 'Europe/Moscow')
+        timezone_name = current_app.config.get('APP_TIMEZONE', 'UTC')
     except RuntimeError:
-        timezone_name = 'Europe/Moscow'
-    # Europe/Moscow has stayed at UTC+03:00 since 2014. Keeping this explicit
-    # fallback also makes the default work on Windows hosts without IANA tzdata.
+        timezone_name = 'UTC'
+    # UTC and Europe/Moscow (UTC+03:00 since 2014) are resolved explicitly so
+    # they work on Windows hosts without IANA tzdata.
+    if timezone_name.upper() == 'UTC':
+        return datetime.now(timezone.utc).date()
     if timezone_name == 'Europe/Moscow':
         return datetime.now(timezone(timedelta(hours=3))).date()
     try:
@@ -147,7 +150,7 @@ def _pick_settings_expense(expenses):
     return max(
         configured,
         key=lambda expense: (
-            expense.monthly_settings_updated_at,
+            as_utc(expense.monthly_settings_updated_at),
             expense.expense_date,
             expense.id or 0,
         ),

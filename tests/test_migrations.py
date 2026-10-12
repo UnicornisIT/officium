@@ -2,6 +2,15 @@ import importlib.util
 from pathlib import Path
 import unittest
 
+from sqlalchemy import create_engine, text
+
+from app.migration_preflight import (
+    BASELINE_REVISION,
+    BASELINE_TABLES,
+    MigrationPreflightError,
+    inspect_migration_state,
+)
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS_DIR = PROJECT_ROOT / 'migrations' / 'versions'
@@ -61,6 +70,10 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20260824_combpay'], '20260823_firstpay')
         self.assertEqual(revisions['20260829_integrity'], '20260824_combpay')
         self.assertEqual(revisions['20261009_monthly_settings'], '20260829_integrity')
+        self.assertEqual(revisions['20261012_audit_log'], '20261009_monthly_settings')
+        self.assertEqual(revisions['20261012_impersonation'], '20261012_audit_log')
+        self.assertEqual(revisions['20261012_retire_settings'], '20261012_impersonation')
+        self.assertEqual(revisions['20261012_dictionary_types'], '20261012_retire_settings')
 
         referenced = set()
         for down_revision in revisions.values():
@@ -69,7 +82,7 @@ class MigrationContractTestCase(unittest.TestCase):
             elif down_revision:
                 referenced.add(down_revision)
         heads = set(revisions) - referenced
-        self.assertEqual(heads, {'20261009_monthly_settings'})
+        self.assertEqual(heads, {'20261012_dictionary_types'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))
@@ -86,19 +99,54 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertNotIn("sa.Text(), nullable=False, server_default", migration_text)
 
     def test_deploy_preflight_handles_migration_states(self):
-        deploy_text = (PROJECT_ROOT / 'deploy.sh').read_text(encoding='utf-8')
+        deploy_text = (PROJECT_ROOT / 'deployment' / 'deploy-release').read_text(encoding='utf-8')
+        preflight_text = (
+            PROJECT_ROOT / 'app' / 'migration_preflight.py'
+        ).read_text(encoding='utf-8')
 
-        self.assertIn('stamp_baseline', deploy_text)
-        self.assertIn('ADD COLUMN version_num', deploy_text)
+        self.assertIn('-m flask db-preflight', deploy_text)
+        self.assertIn('-m flask db-baseline-revision', deploy_text)
+        self.assertIn('ALTER TABLE {VERSION_TABLE} ADD COLUMN version_num', preflight_text)
         self.assertNotIn('stamp head', deploy_text)
+        self.assertNotIn("<<'PY'", deploy_text)
+
+    def test_db_preflight_classifies_empty_baseline_and_ready_schemas(self):
+        empty_engine = create_engine('sqlite:///:memory:')
+        self.assertEqual(inspect_migration_state(empty_engine)[0], 'empty')
+
+        baseline_engine = create_engine('sqlite:///:memory:')
+        with baseline_engine.begin() as connection:
+            for table_name in BASELINE_TABLES:
+                connection.execute(text(f'CREATE TABLE {table_name} (id INTEGER PRIMARY KEY)'))
+        self.assertEqual(inspect_migration_state(baseline_engine)[0], 'stamp_baseline')
+
+        ready_engine = create_engine('sqlite:///:memory:')
+        with ready_engine.begin() as connection:
+            connection.execute(text('CREATE TABLE users (id INTEGER PRIMARY KEY)'))
+            connection.execute(text('CREATE TABLE alembic_version (version_num VARCHAR(32))'))
+            connection.execute(
+                text('INSERT INTO alembic_version (version_num) VALUES (:revision)'),
+                {'revision': BASELINE_REVISION},
+            )
+        self.assertEqual(inspect_migration_state(ready_engine)[0], 'ready')
+
+    def test_db_preflight_rejects_partial_unversioned_schema(self):
+        engine = create_engine('sqlite:///:memory:')
+        with engine.begin() as connection:
+            connection.execute(text('CREATE TABLE users (id INTEGER PRIMARY KEY)'))
+
+        with self.assertRaises(MigrationPreflightError):
+            inspect_migration_state(engine)
 
     def test_release_deploy_requires_backup_and_exact_tag(self):
-        deploy_text = (PROJECT_ROOT / 'deploy.sh').read_text(encoding='utf-8')
+        deploy_text = (PROJECT_ROOT / 'scripts' / 'deploy.sh').read_text(encoding='utf-8')
 
-        self.assertIn('OFFICIUM_BACKUP_CONFIRMED', deploy_text)
-        self.assertIn('refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG', deploy_text)
-        self.assertIn('git checkout --detach', deploy_text)
-        self.assertIn('Tracked local changes found', deploy_text)
+        self.assertIn('Deployment requires --release <tag>.', deploy_text)
+        self.assertIn('set -euo pipefail', deploy_text)
+        self.assertIn('officium-update-runner --start "$RELEASE_TAG"', deploy_text)
+        self.assertNotIn('git pull', deploy_text)
+        self.assertNotIn('git checkout', deploy_text)
+        self.assertNotIn('sudo ', deploy_text)
 
     def test_monthly_expense_timer_is_persistent_and_has_daily_recovery(self):
         timer_text = (
@@ -108,7 +156,18 @@ class MigrationContractTestCase(unittest.TestCase):
             PROJECT_ROOT / 'deployment' / 'officium-monthly-expenses.service'
         ).read_text(encoding='utf-8')
 
-        self.assertIn('OnCalendar=*-*-* 00:05:00 Europe/Moscow', timer_text)
+        self.assertIn('OnCalendar=*-*-* 00:05:00 @@APP_TIMEZONE@@', timer_text)
         self.assertIn('Persistent=true', timer_text)
+        self.assertIn('@@APP_ROOT@@/current', service_text)
+        self.assertIn('EnvironmentFile=@@APP_ROOT@@/shared/.env', service_text)
         self.assertIn('generate-monthly-expenses', service_text)
         self.assertNotIn('gunicorn', service_text.lower())
+
+    def test_windows_start_script_uses_local_safe_defaults(self):
+        start_text = (PROJECT_ROOT / 'scripts' / 'start.bat').read_text(encoding='utf-8')
+
+        self.assertIn('cd /d "%~dp0.."', start_text)
+        self.assertIn('OFFICIUM_ENV=development', start_text)
+        self.assertIn('DB_ENGINE=sqlite', start_text)
+        self.assertIn('DEV_LOGIN_ENABLED=true', start_text)
+        self.assertNotIn('pip install --upgrade pip', start_text)

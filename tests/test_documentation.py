@@ -8,6 +8,7 @@ class DocumentationTestCase(unittest.TestCase):
     def setUp(self):
         self.app = create_app({
             'TESTING': True,
+            'SECRET_KEY': 'documentation-test-secret',
             'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
             'SQLALCHEMY_ENGINE_OPTIONS': {},
             'WTF_CSRF_ENABLED': False,
@@ -45,7 +46,8 @@ class DocumentationTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('href="/documentation"', html)
         self.assertIn('Документация', html)
-        self.assertLess(html.index('site-footer__docs-button'), html.index('bi-github'))
+        self.assertNotIn('mailto:', html)
+        self.assertNotIn('github.com/', html)
         self.assertNotIn('site-footer__primary-link', html)
 
 

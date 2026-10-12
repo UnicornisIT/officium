@@ -1,115 +1,139 @@
-{% extends 'base.html' %}
-{% block title %}Пользователь {{ user.id }} — Админка{% endblock %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon, field_label, role_badge, status_badge %}
+{% block title %}Профиль пользователя — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Профиль пользователя{% endblock %}
 
-{% block content %}
-<div class="d-flex justify-content-between align-items-start mb-4">
-    <div>
-        <h1 class="h3">Пользователь #{{ user.id }}</h1>
-        <p class="text-muted">Профиль, долги, статистика и административные действия.</p>
+{% block admin_content %}
+<nav class="admin-breadcrumbs" aria-label="Хлебные крошки"><a href="{{ url_for('admin_users') }}">Пользователи</a>{{ icon('chevron-right', 14) }}<span>#{{ user.id }}</span></nav>
+
+<header class="admin-user-hero">
+    <span class="admin-user-hero__avatar">{{ (user.first_name or user.username or 'П')[:1]|upper }}</span>
+    <div class="admin-user-hero__identity">
+        <p class="admin-page-kicker">Учетная запись #{{ user.id }}</p>
+        <h1>{{ [user.first_name, user.last_name]|select|join(' ') or user.username or 'Пользователь без имени' }}</h1>
+        <div class="admin-user-hero__badges">{{ role_badge(user.role) }}{{ status_badge('blocked' if user.is_blocked else 'active') }}</div>
+    </div>
+    <div class="admin-user-hero__actions">
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin_users') }}">Назад к списку</a>
+        {% if current_user.is_superadmin and not user.is_blocked and not user.is_superadmin %}
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#impersonateModal">{{ icon('user', 17) }} Войти как пользователь</button>
+        {% endif %}
+    </div>
+</header>
+
+{% if current_user.is_superadmin and not user.is_blocked and not user.is_superadmin %}
+<div class="modal fade" id="impersonateModal" tabindex="-1" aria-labelledby="impersonateModalTitle" aria-hidden="true" data-admin-open-on-hash="impersonate">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" action="{{ url_for('admin_impersonate_user', user_id=user.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="impersonateModalTitle">Войти как {{ [user.first_name, user.last_name]|select|join(' ') or user.username or ('пользователь #' ~ user.id) }}</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body admin-impersonate-form">
+                <p>Вы увидите приложение так, как его видит пользователь, включая его финансовые данные. Начало и окончание сеанса записываются в журнал.</p>
+                <label class="admin-control" for="impersonateReason"><span>Причина входа</span>
+                    <textarea id="impersonateReason" name="reason" rows="3" minlength="5" maxlength="200" required placeholder="Например: проверка ошибки в расчёте графика по обращению пользователя"></textarea>
+                    <small>От 5 до 200 символов. Причина сохраняется в журнале.</small>
+                </label>
+                <label class="form-check admin-impersonate-form__check" for="impersonateAllowChanges">
+                    <input class="form-check-input" type="checkbox" id="impersonateAllowChanges" name="allow_changes" value="on">
+                    <span class="form-check-label">Разрешить изменения<small>Без отметки действует режим «только просмотр». Каждое изменение записывается в журнал от вашего имени.</small></span>
+                </label>
+                <p class="admin-help-text">Сеанс завершится автоматически через {{ impersonation_timeout }} мин.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="submit" class="btn btn-primary">{{ icon('user', 17) }} Войти</button>
+            </div>
+        </form>
     </div>
 </div>
-
-{% if success_message %}
-<div class="alert alert-success">{{ success_message }}</div>
 {% endif %}
 
-<div class="row g-4">
-    <div class="col-lg-6">
-        <div class="card p-4">
-            <h5 class="mb-3">Профиль</h5>
-            <dl class="row">
-                <dt class="col-5">Telegram ID</dt>
-                <dd class="col-7">{{ user.telegram_id }}</dd>
-                <dt class="col-5">Username</dt>
-                <dd class="col-7">{{ user.username or '—' }}</dd>
-                <dt class="col-5">Имя</dt>
-                <dd class="col-7">{{ user.first_name or '—' }}</dd>
-                <dt class="col-5">Роль</dt>
-                <dd class="col-7">{{ user.role }}</dd>
-                <dt class="col-5">Статус</dt>
-                <dd class="col-7">{% if user.is_blocked %}<span class="badge bg-danger">Заблокирован</span>{% else %}<span class="badge bg-success">Активен</span>{% endif %}</dd>
-                <dt class="col-5">Последний вход</dt>
-                <dd class="col-7">{{ user.auth_date.strftime('%Y-%m-%d %H:%M:%S') if user.auth_date else '—' }}</dd>
-                <dt class="col-5">IP</dt>
-                <dd class="col-7">{{ user.last_login_ip or '—' }}</dd>
-                <dt class="col-5">User Agent</dt>
-                <dd class="col-7">{{ user.last_user_agent or '—' }}</dd>
-                <dt class="col-5">Входов</dt>
-                <dd class="col-7">{{ user.login_count }}</dd>
-                <dt class="col-5">Зарегистрирован</dt>
-                <dd class="col-7">{{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else '—' }}</dd>
-            </dl>
-        </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card p-4">
-            <h5 class="mb-3">Статистика</h5>
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Активных долгов
-                    <span class="badge bg-primary rounded-pill">{{ active_debts }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Архивных долгов
-                    <span class="badge bg-secondary rounded-pill">{{ archived_debts }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Платежей
-                    <span class="badge bg-success rounded-pill">{{ payments }}</span>
-                </li>
-            </ul>
-        </div>
-    </div>
-</div>
 
-<div class="row g-4 mt-3">
-    <div class="col-lg-8">
-        <div class="card p-4">
-            <h5 class="mb-3">Последние действия</h5>
-            <div class="table-responsive">
-                <table class="table table-sm table-striped align-middle">
-                    <thead>
-                        <tr>
-                            <th>Дата</th>
-                            <th>Действие</th>
-                            <th>Описание</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for action in recent_actions %}
-                        <tr>
-                            <td>{{ action.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                            <td>{{ action.action }}</td>
-                            <td>{{ action.description or '—' }}</td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="3" class="text-center text-muted">Нет действий.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+<div class="admin-detail-grid">
+    <div class="admin-detail-main">
+        <section class="admin-panel" aria-labelledby="profile-title">
+            <div class="admin-panel__header"><div><p class="admin-page-kicker">Профиль</p><h2 id="profile-title">Основная информация</h2></div></div>
+            <dl class="admin-definition-grid">
+                <div><dt>{{ field_label('telegram_id') }}</dt><dd class="admin-mono">{{ user.telegram_id }}</dd></div>
+                <div><dt>{{ field_label('username') }}</dt><dd>{{ '@' ~ user.username if user.username else '—' }}</dd></div>
+                <div><dt>{{ field_label('email') }}</dt><dd>{{ user.email or '—' }}</dd></div>
+                <div><dt>{{ field_label('auth_date') }}</dt><dd>{{ user.auth_date.strftime('%d.%m.%Y %H:%M') if user.auth_date else '—' }}</dd></div>
+                <div><dt>{{ field_label('created_at') }}</dt><dd>{{ user.created_at.strftime('%d.%m.%Y %H:%M') if user.created_at else '—' }}</dd></div>
+                <div><dt>{{ field_label('login_count') }}</dt><dd>{{ user.login_count }}</dd></div>
+            </dl>
+            {% if current_user.is_superadmin %}
+            <details class="admin-technical-details">
+                <summary>{{ icon('database', 17) }} Технические сведения</summary>
+                <dl class="admin-definition-grid admin-definition-grid--technical">
+                    <div><dt>{{ field_label('last_login_ip') }}</dt><dd class="admin-mono">{{ user.last_login_ip or '—' }}</dd></div>
+                    <div><dt>{{ field_label('google_id') }}</dt><dd class="admin-mono">{{ user.google_id or '—' }}</dd></div>
+                    <div class="admin-definition-grid__wide"><dt>{{ field_label('last_user_agent') }}</dt><dd class="admin-break-word">{{ user.last_user_agent or '—' }}</dd></div>
+                </dl>
+            </details>
+            {% endif %}
+        </section>
+
+        <section class="admin-panel" aria-labelledby="history-title">
+            <div class="admin-panel__header"><div><p class="admin-page-kicker">Активность</p><h2 id="history-title">История действий</h2></div><a href="{{ url_for('admin_logs', user=user.id) }}">Весь журнал {{ icon('chevron-right', 16) }}</a></div>
+            <div class="admin-event-list">
+                {% for action in recent_actions %}
+                <article class="admin-event">
+                    <span class="admin-event__icon admin-event__icon--{{ action.action|admin_event_tone }}">{{ icon(action.action|admin_event_icon, 18) }}</span>
+                    <div class="admin-event__content"><strong>{{ action.action|admin_event }}</strong><span>{{ action.description or 'Без дополнительного описания' }}</span></div>
+                    <time datetime="{{ action.created_at.isoformat() if action.created_at else '' }}">{{ action.created_at.strftime('%d.%m.%Y %H:%M') if action.created_at else '—' }}</time>
+                </article>
+                {% else %}<div class="admin-empty-state">{{ icon('activity', 30) }}<p>История действий пуста.</p></div>{% endfor %}
             </div>
-        </div>
+        </section>
     </div>
-    <div class="col-lg-4">
-        <div class="card p-4">
-            <h5 class="mb-3">Действия администратора</h5>
-            <form method="post" class="d-grid gap-2">
+
+    <aside class="admin-detail-aside">
+        <section class="admin-panel" aria-labelledby="management-title">
+            <div class="admin-panel__header"><div><p class="admin-page-kicker">Доступ</p><h2 id="management-title">Управление</h2></div></div>
+            {% if can_manage_access %}
+            <form method="post" class="admin-action-stack" aria-label="Блокировка">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if user.is_blocked %}
-                <button type="submit" name="action" value="unblock" class="btn btn-success">Разблокировать</button>
+                <button type="submit" name="action" value="unblock" class="btn btn-success" data-admin-confirm="Разблокировать пользователя? Он снова сможет входить в приложение." data-confirm-tone="primary">{{ icon('check-circle', 17) }} Разблокировать</button>
                 {% else %}
-                <button type="submit" name="action" value="block" class="btn btn-danger">Заблокировать</button>
-                {% endif %}
-                {% if current_user.is_superadmin %}
-                <button type="submit" name="action" value="make_admin" class="btn btn-outline-primary">Сделать администратором</button>
-                <button type="submit" name="action" value="make_superadmin" class="btn btn-outline-warning">Сделать супер-админом</button>
-                <button type="submit" name="action" value="make_user" class="btn btn-outline-secondary">Снять права администратора</button>
-                <button type="submit" name="action" value="delete" class="btn btn-outline-danger">Удалить пользователя</button>
+                <button type="submit" name="action" value="block" class="btn btn-outline-danger" data-admin-confirm="Заблокировать пользователя? Он потеряет доступ к приложению и боту.">{{ icon('ban', 17) }} Заблокировать</button>
                 {% endif %}
             </form>
-        </div>
-    </div>
+            {% else %}
+            <p class="admin-help-text">{% if user.id|string == current_user.get_id()|string %}Свою учётную запись нельзя заблокировать или удалить.{% else %}Управлять администраторами может только супер-администратор.{% endif %}</p>
+            {% endif %}
+
+            {% if current_user.is_superadmin and user.id|string != current_user.get_id()|string %}
+            <form method="post" class="admin-role-form" data-admin-confirm="Изменить роль пользователя? Права доступа изменятся сразу." data-confirm-tone="primary">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="set_role">
+                <label class="admin-control" for="userRole"><span>Роль</span>
+                    <select id="userRole" name="role">
+                        {% for value, label in role_labels.items() %}<option value="{{ value }}" {% if user.role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </label>
+                <button type="submit" class="btn btn-outline-primary">Сохранить роль</button>
+            </form>
+            {% endif %}
+        </section>
+
+        {% if current_user.is_superadmin and user.id|string != current_user.get_id()|string %}
+        <section class="admin-panel admin-danger-zone" aria-labelledby="danger-title">
+            <div class="admin-panel__header"><div><p class="admin-page-kicker">Опасная зона</p><h2 id="danger-title">Удаление учётной записи</h2></div></div>
+            <p>Удаляются учётная запись и все её финансовые данные. Записи журнала о действиях пользователя сохраняются. Отменить удаление нельзя.</p>
+            <form method="post" class="admin-danger-zone__form" data-admin-confirm="Удалить пользователя безвозвратно?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="delete">
+                <label class="admin-control" for="confirmUsername"><span>Введите <code>{{ delete_confirmation }}</code> для подтверждения</span>
+                    <input type="text" id="confirmUsername" name="confirm_username" autocomplete="off" required data-admin-confirm-match="{{ delete_confirmation }}">
+                </label>
+                <button type="submit" class="btn btn-danger" data-admin-delete-submit disabled>{{ icon('alert', 17) }} Удалить пользователя</button>
+            </form>
+        </section>
+        {% endif %}
+    </aside>
 </div>
 {% endblock %}

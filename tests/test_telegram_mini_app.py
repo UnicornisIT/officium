@@ -79,11 +79,13 @@ class TelegramMiniAppRouteTestCase(unittest.TestCase):
     def setUp(self):
         self.app = create_app({
             'TESTING': True,
+            'SECRET_KEY': 'telegram-mini-app-test-secret',
             'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
             'SQLALCHEMY_ENGINE_OPTIONS': {},
             'WTF_CSRF_ENABLED': False,
             'TELEGRAM_BOT_TOKEN': BOT_TOKEN,
             'TELEGRAM_BOT_USERNAME': 'officium_test_bot',
+            'TELEGRAM_LOGIN_ENABLED': True,
             'TELEGRAM_MINI_APP_ENABLED': True,
         })
         self.client = self.app.test_client()
@@ -102,6 +104,12 @@ class TelegramMiniAppRouteTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('Готовим ваш финансовый центр', response.get_data(as_text=True))
+
+    def test_entry_page_uses_brand_mark_instead_of_currency_placeholder(self):
+        html = self.client.get('/telegram-app').get_data(as_text=True)
+
+        self.assertIn('class="brand-mark', html)
+        self.assertNotIn('mini-app-auth__logo">₽', html)
 
     def test_login_works_with_production_csrf_protection(self):
         self.app.config['WTF_CSRF_ENABLED'] = True

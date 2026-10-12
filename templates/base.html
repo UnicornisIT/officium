@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% from '_brand.html' import brand_mark %}<!DOCTYPE html>
 <html lang="ru" data-theme="dark" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
@@ -10,26 +10,38 @@
     <script>
         (function () {
             const webApp = window.Telegram && window.Telegram.WebApp;
-            const savedTheme = localStorage.getItem('debtManagerTheme');
+            const savedTheme = localStorage.getItem('officiumTheme') || localStorage.getItem('debtManagerTheme');
+            if (savedTheme && !localStorage.getItem('officiumTheme')) {
+                localStorage.setItem('officiumTheme', savedTheme);
+                localStorage.removeItem('debtManagerTheme');
+            }
             const theme = webApp && webApp.colorScheme ? webApp.colorScheme : (savedTheme || 'dark');
             document.documentElement.setAttribute('data-theme', theme);
             document.documentElement.setAttribute('data-bs-theme', theme);
         })();
     </script>
     <title>{% block title %}officium{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}?v={{ config.APP_VERSION|urlencode }}" type="image/svg+xml">
+    <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}?v={{ config.APP_VERSION|urlencode }}" sizes="any">
+    <link rel="icon" href="{{ url_for('static', filename='favicon-16x16.png') }}?v={{ config.APP_VERSION|urlencode }}" type="image/png" sizes="16x16">
+    <link rel="icon" href="{{ url_for('static', filename='favicon-32x32.png') }}?v={{ config.APP_VERSION|urlencode }}" type="image/png" sizes="32x32">
+    <meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#08101c" media="(prefers-color-scheme: dark)">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v={{ config.APP_VERSION|urlencode }}" sizes="180x180">
     <link href="{{ url_for('static', filename='vendor/onest/onest.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=20261009-mobile-keyboard" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=2" rel="stylesheet">
+    {% block extra_css %}{% endblock %}
 </head>
-<body{% if is_telegram_mini_app %} class="telegram-mini-app"{% elif current_user.is_authenticated and not request.path.startswith('/admin') %} class="has-mobile-app-nav"{% endif %}>
+<body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
 
 <!-- Навигация -->
 {% if is_telegram_mini_app %}
 <header class="telegram-app-bar">
-    <a class="telegram-app-bar__brand" href="{{ url_for('index') }}" aria-label="Officium — дашборд">
-        <span class="telegram-app-bar__logo">₽</span>
+    <a class="telegram-app-bar__brand" href="{{ url_for('index') }}" aria-label="officium — дашборд">
+        <span class="telegram-app-bar__logo">{{ brand_mark(34) }}</span>
         <span>
             <strong>{{ app_name }}</strong>
             <small>Ваш финансовый центр</small>
@@ -63,15 +75,15 @@
             <a href="{{ url_for('mortgages') }}" class="{% if request.path == '/mortgages' %}active{% endif %}">
                 <i class="bi bi-bank"></i><span>Ипотека</span>
             </a>
-            <a href="{{ url_for('archive') }}" class="{% if request.path == '/archive' %}active{% endif %}">
+            {% if archive_enabled %}<a href="{{ url_for('archive') }}" class="{% if request.path == '/archive' %}active{% endif %}">
                 <i class="bi bi-archive"></i><span>Архив</span>
-            </a>
+            </a>{% endif %}
             <a href="{{ url_for('documentation') }}">
                 <i class="bi bi-journal-text"></i><span>Помощь</span>
             </a>
             {% if current_user.is_admin %}
-            <a href="{{ url_for('admin_dashboard') }}">
-                <i class="bi bi-shield-lock"></i><span>Админка</span>
+            <a href="{{ url_for('admin_dashboard') }}" aria-label="Административная панель">
+                <i class="bi bi-shield-lock"></i><span>Административная панель</span>
             </a>
             {% endif %}
             <a href="{{ url_for('logout') }}" class="telegram-more-menu__logout">
@@ -85,13 +97,14 @@
                 <small>Вход выполнен через Telegram</small>
             </span>
         </div>
+        {% if public_contacts_mini_app %}<div class="public-contact-list public-contact-list--mini">{% for contact in public_contacts_mini_app %}<a href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i>{{ contact.label }}</a>{% endfor %}</div>{% endif %}
     </div>
 </div>
-{% else %}
+{% elif not request.path.startswith('/admin') %}
 <nav class="navbar navbar-expand-lg">
     <div class="container-fluid px-4">
         <a class="navbar-brand" href="/">
-            <span class="brand-icon">₽</span>
+            <span class="brand-icon">{{ brand_mark(32) }}</span>
             <span class="brand-text">{{ app_name }}</span>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -137,18 +150,20 @@
                         <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-signpost-split"></i>Финансовый план</span>
                     </a>
                 </li>
+                {% if archive_enabled %}
                 <li class="nav-item">
-                    <a class="nav-link nav-expand {% if request.path == '/archive' %}active{% endif %}" href="/archive">
+                    <a class="nav-link nav-expand {% if request.path == '/archive' %}active{% endif %}" href="{{ url_for('archive') }}">
                         <span class="nav-expand__compact"><i class="bi bi-archive me-1"></i>Архив</span>
                         <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-archive"></i>Архив</span>
                     </a>
                 </li>
                 {% endif %}
+                {% endif %}
                 {% if current_user.is_authenticated and current_user.is_admin %}
                 <li class="nav-item">
                     <a class="nav-link nav-expand {% if request.path.startswith('/admin') %}active{% endif %}" href="{{ url_for('admin_dashboard') }}">
-                        <span class="nav-expand__compact"><i class="bi bi-shield-lock me-1"></i>Админка</span>
-                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock"></i>Админка</span>
+                        <span class="nav-expand__compact"><i class="bi bi-shield-lock me-1"></i>Административная панель</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock"></i>Административная панель</span>
                     </a>
                 </li>
                 {% endif %}
@@ -163,8 +178,8 @@
                 {% if not current_user.is_authenticated and admin_login_enabled %}
                 <li class="nav-item ms-2">
                     <a class="btn btn-outline-primary btn-sm nav-expand" href="{{ url_for('admin_login') }}">
-                        <span class="nav-expand__compact"><i class="bi bi-shield-lock-fill me-1"></i>Админ-панель</span>
-                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock-fill"></i>Админ-панель</span>
+                        <span class="nav-expand__compact"><i class="bi bi-shield-lock-fill me-1"></i>Административная панель</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock-fill"></i>Административная панель</span>
                     </a>
                 </li>
                 {% endif %}
@@ -173,7 +188,7 @@
                 </li>
                 <li class="nav-item ms-2">
                     {% if current_user.is_authenticated %}
-                    <span class="nav-link disabled pe-0">{{ current_user.first_name or current_user.username or 'Пользователь' }}</span>
+                    <span class="nav-link disabled pe-0 nav-identity">{{ current_user.first_name or current_user.username or 'Пользователь' }}</span>
                     {% endif %}
                 </li>
                 <li class="nav-item ms-2">
@@ -196,20 +211,26 @@
 {% endif %}
 
 {% if is_impersonating %}
-<div class="container-fluid px-4 py-3">
-    <div class="alert alert-warning mb-4">
-        <strong>Вы просматриваете сайт как пользователь.</strong>
-        <form method="post" action="{{ url_for('stop_impersonate') }}" class="d-inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-link alert-link p-0 align-baseline">Вернуться в админку</button>
-        </form>
+<div class="impersonation-banner" role="status" aria-live="polite"{% if impersonation_banner %} data-expires-at="{{ impersonation_banner.expires_at }}"{% endif %}>
+    <div class="impersonation-banner__text">
+        <i class="bi bi-person-badge" aria-hidden="true"></i>
+        <span>Вы вошли как <strong>{{ impersonation_banner.display_name if impersonation_banner else 'пользователь' }}</strong></span>
+        {% if impersonation_banner %}
+        <span class="impersonation-banner__meta">осталось <span data-impersonation-minutes>{{ impersonation_banner.minutes_left }}</span> мин · {{ 'только просмотр' if impersonation_banner.read_only else 'изменения разрешены' }}</span>
+        {% endif %}
     </div>
+    <form method="post" action="{{ url_for('stop_impersonate') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-sm btn-dark impersonation-banner__exit"><i class="bi bi-box-arrow-left" aria-hidden="true"></i> Выйти</button>
+    </form>
 </div>
 {% endif %}
 
+{# Admin pages render flashes inside the admin shell (admin_base.html). #}
+{% if not request.path.startswith('/admin') or request.endpoint in ('admin_login', None) %}
 {% with messages = get_flashed_messages(with_categories=true) %}
 {% if messages %}
-<div class="container-fluid px-4 py-2">
+<div class="container-fluid px-4 py-2 app-flash-stack">
     {% for category, message in messages %}
     <div class="alert alert-{{ 'danger' if category in ['danger', 'error'] else 'warning' if category == 'warning' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="alert">
         {{ message }}
@@ -219,6 +240,7 @@
 </div>
 {% endif %}
 {% endwith %}
+{% endif %}
 
 <!-- Основной контент -->
 <main class="app-main container-fluid px-4 py-4">
@@ -250,32 +272,23 @@
 </nav>
 {% endif %}
 
-{% if not is_telegram_mini_app %}
+{% if not is_telegram_mini_app and not request.path.startswith('/admin') %}
 <footer class="site-footer container-fluid px-4 py-4 mt-4 border-top">
     <div class="container d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
         <div>
-            <p class="mb-1 text-muted small">Разработано UnicornisIT</p>
-            <p class="mb-0 text-muted small">Связь и пожелания: <a href="mailto:dev-eva@outlook.com" class="link-secondary">dev-eva@outlook.com</a></p>
+            <p class="mb-1 text-muted small">officium — личный финансовый помощник</p>
+            {% if public_contacts_footer %}<div class="public-contact-list">{% for contact in public_contacts_footer %}<a href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i>{{ contact.label }}</a>{% endfor %}</div>{% else %}<p class="mb-0 text-muted small">Контакты этого экземпляра пока не опубликованы. Обратитесь к его администратору.</p>{% endif %}
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <a href="{{ url_for('documentation') }}" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 site-footer__docs-button">
                 <i class="bi bi-journal-text" aria-hidden="true"></i> Документация
-            </a>
-            <span class="site-footer__divider" aria-hidden="true"></span>
-            <a href="https://github.com/UnicornisIT/officium" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1">
-                <i class="bi bi-github"></i> GitHub
-            </a>
-            <a href="https://t.me/unicornis_pulse" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1">
-                <i class="bi bi-telegram"></i> Telegram
-            </a>
-            <a href="mailto:dev-eva@outlook.com" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1">
-                <i class="bi bi-envelope"></i> Написать
             </a>
         </div>
     </div>
 </footer>
 {% endif %}
 
+{% if not request.path.startswith('/admin') %}
 <!-- Toast уведомления -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999">
     <div id="mainToast" class="toast align-items-center border-0" role="alert">
@@ -320,7 +333,8 @@
                     </div>
                     <div class="col-12">
                         <label class="form-label"><span class="required-indicator">*</span>Название продукта/карты</label>
-                        <input type="text" required class="form-control" id="f_product_name" placeholder="Тинькофф Платинум, СберСплит...">
+                        <input type="text" required class="form-control" id="f_product_name" list="productOptions" placeholder="Тинькофф Платинум, СберСплит...">
+                        <datalist id="productOptions">{% for product in product_options %}<option value="{{ product }}"></option>{% endfor %}</datalist>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label"><span class="required-indicator">*</span>Сумма / лимит (₽)</label>
@@ -346,7 +360,8 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Процентная ставка (%/год)</label>
-                        <input type="number" class="form-control" id="f_interest_rate" min="0" max="200" step="0.1" placeholder="0.0">
+                        <input type="number" class="form-control" id="f_interest_rate" min="0" max="200" step="0.1" placeholder="0.0" list="interestRateOptions">
+                        <datalist id="interestRateOptions">{% for rate in interest_rate_options %}<option value="{{ rate }}"></option>{% endfor %}</datalist>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" id="next_payment_date_label">Дата следующего платежа</label>
@@ -457,6 +472,7 @@
                     <div class="col-12">
                         <label class="form-label">Комментарий</label>
                         <textarea class="form-control" id="f_comment" rows="2" placeholder="Заметки..."></textarea>
+                        {% if comment_templates %}<div class="comment-templates" aria-label="Шаблоны комментариев">{% for template in comment_templates %}<button type="button" class="btn btn-sm btn-outline-secondary" data-comment-template="{{ template }}" data-comment-target="f_comment">{{ template }}</button>{% endfor %}</div>{% endif %}
                     </div>
                 </div>
             </div>
@@ -709,8 +725,9 @@
     </div>
 </div>
 
+{% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=20261009-mobile-keyboard"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=3"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const params = new URLSearchParams(window.location.search);

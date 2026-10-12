@@ -24,7 +24,7 @@
         <section class="mini-app-auth__card" aria-live="polite">
             <div class="mini-app-auth__glow" aria-hidden="true"></div>
             <div class="mini-app-auth__brand">
-                <span class="mini-app-auth__logo">₽</span>
+                <span class="mini-app-auth__logo">{% from '_brand.html' import brand_mark %}{{ brand_mark(34) }}</span>
                 <span>officium</span>
             </div>
             <div class="mini-app-auth__visual" aria-hidden="true">
@@ -52,7 +52,7 @@
             </a>
             {% endif %}
         </section>
-        <p class="mini-app-auth__privacy"><i class="bi bi-lock-fill"></i> Данные входа проверяются на сервере Officium</p>
+        <p class="mini-app-auth__privacy"><i class="bi bi-lock-fill"></i> Данные входа проверяются на сервере officium</p>
     </main>
 
     <script>

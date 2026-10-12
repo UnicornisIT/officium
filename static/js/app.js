@@ -23,13 +23,13 @@ const scheduleModalEl = document.getElementById('scheduleModal');
 const splitPurchaseModalEl = document.getElementById('splitPurchaseModal');
 const archiveConfirmEl = document.getElementById('archiveConfirmModal');
 
-const debtModal       = new bootstrap.Modal(debtModalEl);
-const paymentModal    = new bootstrap.Modal(paymentModalEl);
-const editPaymentModal = new bootstrap.Modal(editPaymentModalEl);
-const historyModal    = new bootstrap.Modal(historyModalEl);
-const scheduleModal   = new bootstrap.Modal(scheduleModalEl);
-const splitPurchaseModal = new bootstrap.Modal(splitPurchaseModalEl);
-const archiveConfirmModal = new bootstrap.Modal(archiveConfirmEl);
+const debtModal       = debtModalEl ? new bootstrap.Modal(debtModalEl) : null;
+const paymentModal    = paymentModalEl ? new bootstrap.Modal(paymentModalEl) : null;
+const editPaymentModal = editPaymentModalEl ? new bootstrap.Modal(editPaymentModalEl) : null;
+const historyModal    = historyModalEl ? new bootstrap.Modal(historyModalEl) : null;
+const scheduleModal   = scheduleModalEl ? new bootstrap.Modal(scheduleModalEl) : null;
+const splitPurchaseModal = splitPurchaseModalEl ? new bootstrap.Modal(splitPurchaseModalEl) : null;
+const archiveConfirmModal = archiveConfirmEl ? new bootstrap.Modal(archiveConfirmEl) : null;
 
 // ══════════════════════════════════════════════════════════
 // УТИЛИТЫ
@@ -56,7 +56,11 @@ function showToast(message, type = 'success') {
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-bs-theme', theme);
-    localStorage.setItem('debtManagerTheme', theme);
+    localStorage.setItem('officiumTheme', theme);
+    const themeColor = theme === 'dark' ? '#08101c' : '#f4f6fb';
+    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+        meta.setAttribute('content', themeColor);
+    });
 
     const btn = document.getElementById('themeToggleBtn');
     if (!btn) return;
@@ -321,7 +325,7 @@ function initThemeToggle() {
         if (telegramThemeButton) telegramThemeButton.hidden = true;
         return;
     }
-    const storedTheme = localStorage.getItem('debtManagerTheme') || 'dark';
+    const storedTheme = localStorage.getItem('officiumTheme') || 'dark';
     applyTheme(storedTheme);
 
     const btn = document.getElementById('themeToggleBtn');
@@ -343,7 +347,43 @@ async function jsonFetch(url, options = {}) {
     if (token && !headers['X-CSRFToken'] && !headers['X-CSRF-Token']) {
         headers['X-CSRFToken'] = token;
     }
-    return fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401 && document.querySelector('.impersonation-banner')) {
+        // The impersonation session ended (time limit); the server already restored the admin.
+        window.location.assign('/admin');
+    }
+    return response;
+}
+
+function initCommentTemplates() {
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-comment-template]');
+        if (!button) return;
+        const field = document.getElementById(button.dataset.commentTarget);
+        if (!field) return;
+        const text = button.dataset.commentTemplate;
+        field.value = field.value.trim() ? `${field.value.trimEnd()}\n${text}` : text;
+        field.focus();
+    });
+}
+
+function initImpersonationBanner() {
+    const banner = document.querySelector('.impersonation-banner[data-expires-at]');
+    if (!banner) return;
+    const expiresAt = Date.parse(banner.dataset.expiresAt);
+    const minutesNode = banner.querySelector('[data-impersonation-minutes]');
+    if (Number.isNaN(expiresAt)) return;
+    const tick = () => {
+        const remaining = expiresAt - Date.now();
+        if (remaining <= 0) {
+            // A fresh request lets the server end the session and return to the admin panel.
+            window.location.reload();
+            return;
+        }
+        if (minutesNode) minutesNode.textContent = String(Math.ceil(remaining / 60000));
+    };
+    tick();
+    window.setInterval(tick, 15000);
 }
 
 function formatMoney(n) {
@@ -366,13 +406,38 @@ function initNavbarLayout() {
         navbar.classList.remove('navbar--compact');
         if (window.innerWidth < 992) return;
 
-        const labels = navbar.querySelectorAll('.nav-expand__compact');
-        const hasWrappedLabel = Array.from(labels).some(label => {
-            const style = window.getComputedStyle(label);
-            const lineHeight = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.3;
-            return label.getBoundingClientRect().height > lineHeight * 1.45;
-        });
-        navbar.classList.toggle('navbar--compact', hasWrappedLabel);
+        const container = navbar.querySelector('.container-fluid');
+        const brand = navbar.querySelector('.navbar-brand');
+        const nav = navbar.querySelector('.navbar-nav');
+        if (!container || !brand || !nav) return;
+
+        const outerWidth = element => {
+            const style = window.getComputedStyle(element);
+            return element.getBoundingClientRect().width
+                + (Number.parseFloat(style.marginLeft) || 0)
+                + (Number.parseFloat(style.marginRight) || 0);
+        };
+        const containerStyle = window.getComputedStyle(container);
+        const navStyle = window.getComputedStyle(nav);
+        const containerGap = Number.parseFloat(containerStyle.columnGap)
+            || Number.parseFloat(containerStyle.gap)
+            || 0;
+        const navGap = Number.parseFloat(navStyle.columnGap)
+            || Number.parseFloat(navStyle.gap)
+            || 0;
+        const items = Array.from(nav.children)
+            .filter(item => window.getComputedStyle(item).display !== 'none');
+        const requiredWidth = items.reduce((total, item) => total + outerWidth(item), 0)
+            + Math.max(0, items.length - 1) * navGap;
+        const availableWidth = container.clientWidth - outerWidth(brand) - containerGap;
+        // 1920px desktop viewports become ~1745 CSS px at browser zoom 110%.
+        // Switch before that boundary so labels never reach a wrapped/clipped
+        // intermediate state while the browser is recalculating its viewport.
+        const needsZoomSafeCompact = window.innerWidth <= 1850;
+        const hasOverflow = needsZoomSafeCompact
+            || requiredWidth > availableWidth - 2
+            || document.documentElement.scrollWidth > window.innerWidth + 1;
+        navbar.classList.toggle('navbar--compact', hasOverflow);
     };
 
     let resizeTimer = null;
@@ -381,6 +446,16 @@ function initNavbarLayout() {
         window.clearTimeout(resizeTimer);
         resizeTimer = window.setTimeout(updateLayout, 80);
     });
+    if (document.fonts?.ready) {
+        document.fonts.ready.then(updateLayout);
+    }
+    if ('ResizeObserver' in window) {
+        const observer = new ResizeObserver(() => {
+            window.clearTimeout(resizeTimer);
+            resizeTimer = window.setTimeout(updateLayout, 40);
+        });
+        observer.observe(navbar);
+    }
 }
 
 function initOperationHistories() {
@@ -1078,18 +1153,23 @@ async function submitPayment() {
 }
 
 // Обработчик кнопки подтверждения архивации
-document.getElementById('confirmArchiveBtn').addEventListener('click', async () => {
-    if (!pendingArchiveId) return;
-    archiveConfirmModal.hide();
-    await archiveDebt(pendingArchiveId);
-    pendingArchiveId = null;
-});
+const confirmArchiveButton = document.getElementById('confirmArchiveBtn');
+if (confirmArchiveButton) {
+    confirmArchiveButton.addEventListener('click', async () => {
+        if (!pendingArchiveId) return;
+        archiveConfirmModal?.hide();
+        await archiveDebt(pendingArchiveId);
+        pendingArchiveId = null;
+    });
+}
 
 // Если пользователь закрыл модалку без архивации — перезагружаем страницу
-archiveConfirmEl.addEventListener('hidden.bs.modal', () => {
-    if (!pendingArchiveId) return;
-    setTimeout(() => location.reload(), 100);
-});
+if (archiveConfirmEl) {
+    archiveConfirmEl.addEventListener('hidden.bs.modal', () => {
+        if (!pendingArchiveId) return;
+        setTimeout(() => location.reload(), 100);
+    });
+}
 
 // ══════════════════════════════════════════════════════════
 // АРХИВИРОВАНИЕ
@@ -1524,7 +1604,7 @@ function getNextDay(dateStr) {
 
 document.addEventListener('DOMContentLoaded', () => {
     // Сбросить форму при закрытии модалки долга
-    debtModalEl.addEventListener('hidden.bs.modal', clearDebtForm);
+    debtModalEl?.addEventListener('hidden.bs.modal', clearDebtForm);
 
     // Enter в поле суммы платежа — отправить
     const pmAmount = document.getElementById('pm_amount');
@@ -1544,6 +1624,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initTelegramMiniApp();
     initMobileViewport();
     initThemeToggle();
+    initImpersonationBanner();
+    initCommentTemplates();
     initNavbarLayout();
     initOperationHistories();
 

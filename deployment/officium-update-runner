@@ -2,6 +2,7 @@
 """Root-owned systemd runner for a release update requested by officium."""
 
 import fcntl
+import grp
 import hashlib
 import json
 import os
@@ -9,7 +10,10 @@ import pwd
 import re
 import signal
 import shutil
+import socket
 import sqlite3
+import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -23,21 +27,32 @@ from urllib.request import Request, urlopen
 
 CONFIG_PATH = Path('/etc/officium/updater.env')
 LOCK_PATH = Path('/run/lock/officium-update.lock')
+REQUEST_LOCK_PATH = Path('/run/lock/officium-update-request.lock')
 TAG_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$')
 REPOSITORY_RE = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 USER_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
 NAME_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,127}$')
 ALLOWED_CONFIG_KEYS = {
     'APP_DIR',
+    'APP_GROUP',
     'APP_USER',
     'BACKUP_DIR',
-    'GITHUB_TOKEN_FILE',
+    'DEPLOY_SCRIPT',
     'GIT_REMOTE',
     'HEALTHCHECK_URL',
     'REPOSITORY',
+    'RELEASES_DIR',
     'SERVICE_NAME',
     'STATUS_FILE',
+    'STALE_MINUTES',
+    'VENV_NAME',
 }
+ACTIVE_STATES = {
+    'queued', 'checking', 'preparing', 'backing_up', 'installing',
+    'dependencies', 'migrating', 'restarting', 'verifying',
+}
+OPERATION_ID_RE = re.compile(r'^upd-[0-9a-f]{12}$')
+MAX_REQUEST_BYTES = 4096
 RESULT_PREFIX = 'OFFICIUM_UPDATE_RESULT='
 PUBLIC_MESSAGES = {
     'authorization_failed': 'Недостаточно прав для запуска серверного помощника.',
@@ -48,8 +63,10 @@ PUBLIC_MESSAGES = {
     'github_unavailable': 'Серверный помощник не смог проверить релиз на GitHub.',
     'healthcheck_failed': 'Новая версия запущена, но не прошла проверку работоспособности.',
     'migration_failed': 'Не удалось выполнить миграции базы данных.',
+    'protocol_error': 'Локальная служба отклонила некорректный запрос.',
     'release_rejected': 'Серверный помощник отклонил выбранный релиз.',
     'restart_failed': 'Не удалось перезапустить службу приложения.',
+    'rollback_failed': 'Не удалось автоматически восстановить предыдущую версию.',
     'scheduling_failed': 'Systemd не смог запланировать задачу обновления.',
     'update_busy': 'Другое обновление уже выполняется.',
     'unexpected_failure': 'Серверный помощник завершился с внутренней ошибкой.',
@@ -114,31 +131,51 @@ def parse_key_value_file(path, allowed_keys=None):
 def load_runner_config():
     configured = parse_key_value_file(CONFIG_PATH, ALLOWED_CONFIG_KEYS)
     values = {
-        'APP_DIR': configured.get('APP_DIR', '/var/www/debt_manager'),
-        'APP_USER': configured.get('APP_USER', 'officium'),
+        'APP_DIR': configured.get('APP_DIR', '/opt/officium/current'),
+        'APP_GROUP': configured.get('APP_GROUP', configured.get('APP_USER', '')),
+        'APP_USER': configured.get('APP_USER', ''),
         'BACKUP_DIR': configured.get('BACKUP_DIR', '/var/backups/officium'),
-        'GITHUB_TOKEN_FILE': configured.get('GITHUB_TOKEN_FILE', ''),
+        'DEPLOY_SCRIPT': configured.get(
+            'DEPLOY_SCRIPT', '/usr/local/lib/officium/deploy-release'
+        ),
         'GIT_REMOTE': configured.get('GIT_REMOTE', 'origin'),
         'HEALTHCHECK_URL': configured.get('HEALTHCHECK_URL', ''),
-        'REPOSITORY': configured.get('REPOSITORY', 'UnicornisIT/officium'),
-        'SERVICE_NAME': configured.get('SERVICE_NAME', 'debt_manager'),
+        'REPOSITORY': configured.get('REPOSITORY', ''),
+        'RELEASES_DIR': configured.get('RELEASES_DIR', '/opt/officium/releases'),
+        'SERVICE_NAME': configured.get('SERVICE_NAME', 'officium'),
         'STATUS_FILE': configured.get('STATUS_FILE', '/var/lib/officium/server-update-status.json'),
+        'STALE_MINUTES': configured.get('STALE_MINUTES', '120'),
+        'VENV_NAME': configured.get('VENV_NAME', 'venv'),
     }
-    for key in ('APP_DIR', 'BACKUP_DIR', 'STATUS_FILE'):
+    for key in ('APP_DIR', 'BACKUP_DIR', 'DEPLOY_SCRIPT', 'RELEASES_DIR', 'STATUS_FILE'):
         if not Path(values[key]).is_absolute():
             raise UpdateFailure(f'{key} must be an absolute path.')
     if not USER_RE.fullmatch(values['APP_USER']):
         raise UpdateFailure('APP_USER is invalid.')
+    if not USER_RE.fullmatch(values['APP_GROUP']):
+        raise UpdateFailure('APP_GROUP is invalid.')
     if not NAME_RE.fullmatch(values['SERVICE_NAME']):
         raise UpdateFailure('SERVICE_NAME is invalid.')
     if not NAME_RE.fullmatch(values['GIT_REMOTE']):
         raise UpdateFailure('GIT_REMOTE is invalid.')
+    if values['VENV_NAME'] not in ('venv', '.venv'):
+        raise UpdateFailure('VENV_NAME must be venv or .venv.')
+    try:
+        values['STALE_MINUTES'] = int(values['STALE_MINUTES'])
+    except ValueError as exc:
+        raise UpdateFailure('STALE_MINUTES must be an integer.') from exc
+    if not 10 <= values['STALE_MINUTES'] <= 1440:
+        raise UpdateFailure('STALE_MINUTES must be between 10 and 1440.')
     if not REPOSITORY_RE.fullmatch(values['REPOSITORY']):
         raise UpdateFailure('REPOSITORY is invalid.')
     try:
         pwd.getpwnam(values['APP_USER'])
     except KeyError as exc:
         raise UpdateFailure('APP_USER does not exist.') from exc
+    try:
+        grp.getgrnam(values['APP_GROUP'])
+    except KeyError as exc:
+        raise UpdateFailure('APP_GROUP does not exist.') from exc
     return values
 
 
@@ -154,8 +191,17 @@ def read_status(status_path):
 
 def write_status(config, state, tag, message, **fields):
     status_path = Path(config['STATUS_FILE'])
-    status_path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
-    payload = read_status(status_path)
+    status_path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
+    group = grp.getgrnam(config['APP_GROUP'])
+    try:
+        os.chown(status_path.parent, 0, group.gr_gid)
+        status_path.parent.chmod(0o750)
+    except OSError as exc:
+        raise UpdateFailure('Cannot secure STATUS_FILE directory.') from exc
+    payload = {} if state == 'queued' else read_status(status_path)
+    if state == 'success':
+        for stale_key in ('error_code', 'rollback_performed', 'previous_release'):
+            payload.pop(stale_key, None)
     payload.update({
         'state': state,
         'tag': tag,
@@ -169,7 +215,8 @@ def write_status(config, state, tag, message, **fields):
             json.dumps(payload, ensure_ascii=False, separators=(',', ':')),
             encoding='utf-8',
         )
-        temporary.chmod(0o644)
+        os.chown(temporary, 0, group.gr_gid)
+        temporary.chmod(0o640)
         os.replace(temporary, status_path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -182,17 +229,6 @@ def latest_release_tag(config):
         'X-GitHub-Api-Version': '2022-11-28',
         'User-Agent': 'officium-server-updater',
     }
-    token_file = config.get('GITHUB_TOKEN_FILE')
-    if token_file:
-        token_path = Path(token_file)
-        if not token_path.is_absolute():
-            raise UpdateFailure('GITHUB_TOKEN_FILE must be an absolute path.')
-        try:
-            token = token_path.read_text(encoding='utf-8').strip()
-        except OSError as exc:
-            raise UpdateFailure('Cannot read GITHUB_TOKEN_FILE.') from exc
-        if token:
-            headers['Authorization'] = f'Bearer {token}'
     request = Request(
         f'https://api.github.com/repos/{repository}/releases/latest',
         headers=headers,
@@ -265,7 +301,7 @@ def database_settings(app_dir):
         if parsed.scheme == 'mysql':
             return {
                 'engine': 'mysql',
-                'host': parsed.hostname or '127.0.0.1',
+                'host': parsed.hostname or 'localhost',
                 'port': parsed.port or 3306,
                 'user': unquote(parsed.username or ''),
                 'password': unquote(parsed.password or ''),
@@ -289,12 +325,75 @@ def database_settings(app_dir):
         raise UpdateFailure('DB_PORT is outside the valid range.')
     return {
         'engine': 'mysql',
-        'host': values.get('DB_HOST', '127.0.0.1'),
+        'host': values.get('DB_HOST', 'localhost'),
         'port': port,
         'user': values.get('DB_USER', ''),
         'password': values.get('DB_PASSWORD', ''),
         'database': values.get('DB_NAME', ''),
     }
+
+
+def mysql_option_value(value):
+    value = str(value or '')
+    if '\x00' in value or '\n' in value or '\r' in value:
+        raise UpdateFailure('MySQL credentials contain unsupported control characters.')
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+
+def verify_database_backup_access(config, settings):
+    """Exercise the real backup path without retaining data or exposing secrets."""
+    if settings['engine'] == 'sqlite':
+        source = settings['path']
+        if not source.is_file():
+            raise UpdateFailure('SQLite database file does not exist.', 'backup_failed')
+        try:
+            with sqlite3.connect(f'{source.as_uri()}?mode=ro', uri=True) as source_db, \
+                    sqlite3.connect(':memory:') as probe_db:
+                source_db.backup(probe_db)
+        except sqlite3.Error as exc:
+            raise UpdateFailure('SQLite backup preflight failed.', 'backup_failed') from exc
+        return
+
+    database_name = settings['database']
+    if not re.fullmatch(r'[A-Za-z0-9_$][A-Za-z0-9_$-]{0,63}', database_name or ''):
+        raise UpdateFailure('MySQL database name is invalid.', 'configuration_invalid')
+    mysqldump = shutil.which('mysqldump')
+    runuser = shutil.which('runuser')
+    if not mysqldump or not runuser:
+        raise UpdateFailure('mysqldump or runuser is not installed.', 'configuration_invalid')
+    credentials_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='w', encoding='utf-8', prefix='officium-mysql-preflight-',
+            suffix='.cnf', dir=str(Path(config['STATUS_FILE']).parent), delete=False,
+        ) as credentials:
+            credentials_path = Path(credentials.name)
+            credentials.write('[client]\n')
+            credentials.write(f'user={mysql_option_value(settings["user"])}\n')
+            credentials.write(f'password={mysql_option_value(settings["password"])}\n')
+            credentials.write(f'host={mysql_option_value(settings["host"])}\n')
+            credentials.write(f'port={settings["port"]}\n')
+        account = pwd.getpwnam(config['APP_USER'])
+        os.chown(credentials_path, account.pw_uid, account.pw_gid)
+        credentials_path.chmod(0o600)
+        result = subprocess.run(
+            [
+                runuser, '-u', config['APP_USER'], '--', mysqldump,
+                f'--defaults-extra-file={credentials_path}', '--no-data',
+                '--single-transaction', '--quick', '--no-tablespaces',
+                '--routines', '--triggers', '--events', '--hex-blob',
+                '--default-character-set=utf8mb4', database_name,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=60,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise UpdateFailure('MySQL backup preflight failed.', 'backup_failed')
+    finally:
+        if credentials_path:
+            credentials_path.unlink(missing_ok=True)
 
 
 def backup_database(config, tag):
@@ -329,33 +428,57 @@ def backup_database(config, tag):
         raise UpdateFailure('mysqldump or runuser is not installed.')
     destination = backup_dir / f'officium-{safe_tag}-{timestamp}.sql'
     temporary = destination.with_suffix('.partial')
-    env = os.environ.copy()
-    env['MYSQL_PWD'] = settings['password']
-    command = [
-        runuser,
-        '-u',
-        config['APP_USER'],
-        '--',
-        mysqldump,
-        '--single-transaction',
-        '--routines',
-        '--triggers',
-        '--hex-blob',
-        '--default-character-set=utf8mb4',
-        f'--host={settings["host"]}',
-        f'--port={settings["port"]}',
-        f'--user={settings["user"]}',
-        database_name,
-    ]
+    credentials_path = None
     try:
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            encoding='utf-8',
+            prefix='officium-mysql-',
+            suffix='.cnf',
+            dir=str(Path(config['STATUS_FILE']).parent),
+            delete=False,
+        ) as credentials:
+            credentials_path = Path(credentials.name)
+            credentials.write('[client]\n')
+            credentials.write(f'user={mysql_option_value(settings["user"])}\n')
+            credentials.write(f'password={mysql_option_value(settings["password"])}\n')
+            credentials.write(f'host={mysql_option_value(settings["host"])}\n')
+            credentials.write(f'port={settings["port"]}\n')
+        account = pwd.getpwnam(config['APP_USER'])
+        os.chown(credentials_path, account.pw_uid, account.pw_gid)
+        credentials_path.chmod(0o600)
+        command = [
+            runuser,
+            '-u',
+            config['APP_USER'],
+            '--',
+            mysqldump,
+            f'--defaults-extra-file={credentials_path}',
+            '--single-transaction',
+            '--quick',
+            '--no-tablespaces',
+            '--routines',
+            '--triggers',
+            '--events',
+            '--hex-blob',
+            '--default-character-set=utf8mb4',
+            database_name,
+        ]
         with temporary.open('wb') as output:
             temporary.chmod(0o600)
-            result = subprocess.run(command, stdout=output, env=env, timeout=180, check=False)
+            result = subprocess.run(
+                command,
+                stdout=output,
+                stderr=subprocess.PIPE,
+                timeout=180,
+                check=False,
+            )
         if result.returncode != 0 or temporary.stat().st_size == 0:
             raise UpdateFailure('MySQL backup failed or produced an empty file.')
         os.replace(temporary, destination)
     finally:
-        env.pop('MYSQL_PWD', None)
+        if credentials_path:
+            credentials_path.unlink(missing_ok=True)
         temporary.unlink(missing_ok=True)
     return destination
 
@@ -404,46 +527,56 @@ def create_backups(config, tag):
 
 def run_deployment(config, tag):
     app_dir = Path(config['APP_DIR'])
-    deploy_source = app_dir / 'deploy.sh'
+    deploy_source = Path(config['DEPLOY_SCRIPT'])
     if not deploy_source.is_file():
-        raise UpdateFailure('deploy.sh is missing from APP_DIR.')
+        raise UpdateFailure('Root-owned deployment script is missing.')
+    deploy_stat = deploy_source.stat()
+    if deploy_stat.st_uid != 0 or deploy_stat.st_mode & 0o022:
+        raise UpdateFailure('Deployment script ownership or permissions are unsafe.')
     runuser = shutil.which('runuser')
     if not runuser:
         raise UpdateFailure('runuser is not installed.')
 
-    temporary_path = None
     stage_path = None
+    result_path = None
+    build_root = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode='wb', prefix='officium-deploy-', suffix='.sh', delete=False
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-            with deploy_source.open('rb') as source:
-                shutil.copyfileobj(source, temporary)
-        temporary_path.chmod(0o755)
         with tempfile.NamedTemporaryFile(
             mode='w', prefix='officium-deploy-stage-', delete=False
         ) as stage_file:
             stage_path = Path(stage_file.name)
             stage_file.write('preparing\n')
         account = pwd.getpwnam(config['APP_USER'])
+        group_id = grp.getgrnam(config['APP_GROUP']).gr_gid
+        releases_dir = Path(config['RELEASES_DIR']).resolve(strict=True)
+        releases_info = releases_dir.stat()
+        if releases_info.st_uid != 0 or releases_info.st_mode & 0o022:
+            raise UpdateFailure('RELEASES_DIR must be root-owned and not writable.', 'configuration_invalid')
+        build_root = Path(tempfile.mkdtemp(prefix=f'.build-{tag[:24]}-', dir=releases_dir))
+        os.chown(build_root, account.pw_uid, group_id)
+        build_root.chmod(0o750)
         os.chown(stage_path, account.pw_uid, account.pw_gid)
         stage_path.chmod(0o600)
+        with tempfile.NamedTemporaryFile(
+            mode='w', prefix='officium-deploy-result-', delete=False
+        ) as result_file:
+            result_path = Path(result_file.name)
+        os.chown(result_path, account.pw_uid, account.pw_gid)
+        result_path.chmod(0o600)
         command = [
             runuser,
             '-u',
             config['APP_USER'],
             '--',
-            '/usr/bin/env',
-            f'APP_DIR={app_dir}',
-            f'DEPLOY_REMOTE={config["GIT_REMOTE"]}',
-            f'OFFICIUM_DEPLOY_STAGE_FILE={stage_path}',
-            'OFFICIUM_BACKUP_CONFIRMED=true',
-            '/bin/bash',
-            str(temporary_path),
-            '--release',
-            tag,
-            '--skip-restart',
+            str(deploy_source),
+            '--release', tag,
+            '--repository', config['REPOSITORY'],
+            '--releases-dir', str(build_root),
+            '--current-link', str(app_dir),
+            '--environment-file', str(app_dir / '.env'),
+            '--stage-file', str(stage_path),
+            '--result-file', str(result_path),
+            '--venv-name', config['VENV_NAME'],
         ]
         process = subprocess.Popen(command, start_new_session=True)
         deadline = time.monotonic() + 900
@@ -451,7 +584,7 @@ def run_deployment(config, tag):
         stage_messages = {
             'preparing': ('preparing', 'Подготовка сервера к установке релиза.'),
             'installing': ('installing', 'Установка кода проверенного релиза.'),
-            'dependencies': ('installing', 'Установка зависимостей приложения.'),
+            'dependencies': ('dependencies', 'Установка зависимостей приложения.'),
             'migrating': ('migrating', 'Выполнение миграций базы данных.'),
         }
         while process.poll() is None:
@@ -488,11 +621,123 @@ def run_deployment(config, tag):
                 'Release deployment failed. See the system journal for details.',
                 code,
             )
+        try:
+            result_lines = result_path.read_text(encoding='utf-8').splitlines()
+        except OSError as exc:
+            raise UpdateFailure('Deployment did not return a release path.', 'deployment_failed') from exc
+        if len(result_lines) != 2:
+            raise UpdateFailure('Deployment returned an invalid result.', 'deployment_failed')
+        raw_release_path = Path(result_lines[0])
+        if raw_release_path.is_symlink():
+            raise UpdateFailure('Deployment returned a symlink release.', 'deployment_failed')
+        release_path = raw_release_path.resolve()
+        if release_path.parent != build_root.resolve() or not release_path.is_dir():
+            raise UpdateFailure('Deployment returned an unsafe release path.', 'deployment_failed')
+        if not re.fullmatch(r'[0-9a-f]{40,64}', result_lines[1]):
+            raise UpdateFailure('Deployment returned an invalid commit.', 'deployment_failed')
+        destination = releases_dir / release_path.name
+        if os.path.lexists(destination):
+            destination_info = destination.lstat()
+            marker = (destination / '.officium-release-ready').read_text(encoding='utf-8').strip()
+            if not stat.S_ISDIR(destination_info.st_mode) or destination.is_symlink() \
+                    or destination_info.st_uid != 0 or destination_info.st_mode & 0o222 \
+                    or marker != result_lines[1]:
+                raise UpdateFailure('Existing release directory is unsafe.', 'deployment_failed')
+        else:
+            os.replace(release_path, destination)
+        return destination, result_lines[1]
     finally:
-        if temporary_path:
-            temporary_path.unlink(missing_ok=True)
         if stage_path:
             stage_path.unlink(missing_ok=True)
+        if result_path:
+            result_path.unlink(missing_ok=True)
+        if build_root:
+            shutil.rmtree(build_root, ignore_errors=True)
+
+
+def seal_and_verify_release(config, release_path, tag, release_commit):
+    """Make the candidate immutable and verify tracked files against remote tag."""
+    releases_dir = Path(config['RELEASES_DIR']).resolve(strict=True)
+    raw_candidate = Path(release_path)
+    if raw_candidate.is_symlink():
+        raise UpdateFailure('Candidate release cannot be a symlink.', 'deployment_failed')
+    candidate = raw_candidate.resolve(strict=True)
+    if candidate.parent != releases_dir:
+        raise UpdateFailure('Candidate release escaped RELEASES_DIR.', 'deployment_failed')
+    marker = (candidate / '.officium-release-ready').read_text(encoding='utf-8').strip()
+    if marker != release_commit or not re.fullmatch(r'[0-9a-f]{40,64}', release_commit):
+        raise UpdateFailure('Candidate release commit marker is invalid.', 'deployment_failed')
+
+    group_id = grp.getgrnam(config['APP_GROUP']).gr_gid
+    for directory, dirnames, filenames in os.walk(candidate, followlinks=False):
+        for name in [*dirnames, *filenames]:
+            path = Path(directory) / name
+            if path.is_symlink():
+                os.lchown(path, 0, group_id)
+                continue
+            info = path.stat()
+            os.chown(path, 0, group_id)
+            path.chmod(stat.S_IMODE(info.st_mode) & ~0o222)
+    root_info = candidate.stat()
+    os.chown(candidate, 0, group_id)
+    candidate.chmod(stat.S_IMODE(root_info.st_mode) & ~0o222)
+
+    git = shutil.which('git')
+    if not git:
+        raise UpdateFailure('git is not installed.', 'configuration_invalid')
+    remote = subprocess.run(
+        [
+            git, 'ls-remote', '--exit-code',
+            f'https://github.com/{config["REPOSITORY"]}.git',
+            f'refs/tags/{tag}^{{}}', f'refs/tags/{tag}',
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    remote_commit = ''
+    direct_commit = ''
+    if remote.returncode == 0:
+        for line in remote.stdout.splitlines():
+            try:
+                commit, ref = line.split(None, 1)
+            except ValueError:
+                continue
+            if ref.endswith('^{}'):
+                remote_commit = commit
+            elif not direct_commit:
+                direct_commit = commit
+    remote_commit = remote_commit or direct_commit
+    if remote_commit != release_commit:
+        raise UpdateFailure('Candidate commit no longer matches the remote tag.', 'release_rejected')
+
+    git_prefix = [
+        git, '--no-replace-objects', '-c', f'safe.directory={candidate}',
+        '-c', 'core.hooksPath=/dev/null', '-C', str(candidate),
+    ]
+    commit_check = subprocess.run(
+        [*git_prefix, 'rev-parse', '--verify', f'{release_commit}^{{commit}}'],
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+    tree_check = subprocess.run(
+        [*git_prefix, 'diff', '--no-ext-diff', '--quiet', release_commit, '--'],
+        timeout=30, check=False,
+    )
+    if commit_check.returncode != 0 or commit_check.stdout.strip() != release_commit \
+            or tree_check.returncode != 0:
+        raise UpdateFailure('Tracked release files differ from the verified commit.', 'deployment_failed')
+
+    for relative in (
+        'deployment/officium-update-runner',
+        'deployment/officium-update-client',
+        'deployment/deploy-release',
+    ):
+        source = candidate / relative
+        source_info = source.lstat()
+        if not stat.S_ISREG(source_info.st_mode) or source.is_symlink() \
+                or source_info.st_uid != 0 or source_info.st_mode & 0o222:
+            raise UpdateFailure('Privileged bundle source is not immutable.', 'deployment_failed')
 
 
 def verify_service_health(config):
@@ -537,17 +782,211 @@ def verify_service_health(config):
     raise UpdateFailure('Application HTTP health check failed.', 'healthcheck_failed')
 
 
-def check_readiness():
+def install_privileged_bundle(config, release_path):
+    """Atomically refresh fixed root-owned components from the verified release."""
+    components = (
+        ('deployment/officium-update-runner', Path('/usr/local/sbin/officium-update-runner'), 'python'),
+        ('deployment/officium-update-client', Path('/usr/local/bin/officium-update-client'), 'python'),
+        ('deployment/deploy-release', Path('/usr/local/lib/officium/deploy-release'), 'shell'),
+    )
+    release_path = Path(release_path).resolve(strict=True)
+    for relative, _target, component_type in components:
+        source = release_path / relative
+        try:
+            source_stat = source.lstat()
+        except OSError as exc:
+            raise UpdateFailure('Privileged component bundle is incomplete.', 'deployment_failed') from exc
+        if not stat.S_ISREG(source_stat.st_mode) or source.is_symlink() \
+                or source_stat.st_uid != 0 or source_stat.st_mode & 0o222:
+            raise UpdateFailure('Privileged component bundle contains an unsafe file.', 'deployment_failed')
+        if component_type == 'python':
+            try:
+                compile(source.read_text(encoding='utf-8'), str(source), 'exec')
+            except (OSError, SyntaxError, UnicodeError) as exc:
+                raise UpdateFailure('Privileged Python component is invalid.', 'deployment_failed') from exc
+        else:
+            syntax = subprocess.run(
+                ['/bin/bash', '-n', str(source)],
+                timeout=10,
+                check=False,
+            )
+            if syntax.returncode != 0:
+                raise UpdateFailure('Privileged shell component is invalid.', 'deployment_failed')
+
+    status_directory = Path(config['STATUS_FILE']).parent
+    backup_directory = Path(tempfile.mkdtemp(prefix='.privileged-backup-', dir=status_directory))
+    installed = []
+    try:
+        for relative, target, _component_type in components:
+            target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+            backup = backup_directory / target.name
+            if target.exists():
+                shutil.copy2(target, backup, follow_symlinks=False)
+            temporary = target.with_name(f'.{target.name}.next-{os.getpid()}')
+            try:
+                shutil.copyfile(release_path / relative, temporary, follow_symlinks=False)
+                os.chown(temporary, 0, 0)
+                temporary.chmod(0o755)
+                os.replace(temporary, target)
+                installed.append((target, backup if backup.exists() else None))
+            finally:
+                temporary.unlink(missing_ok=True)
+
+        systemctl = shutil.which('systemctl')
+        runuser = shutil.which('runuser')
+        if not systemctl or not runuser:
+            raise UpdateFailure('Cannot validate the refreshed updater service.', 'deployment_failed')
+        restart = subprocess.run(
+            [systemctl, 'restart', 'officium-updater.service'],
+            timeout=30,
+            check=False,
+        )
+        integration = subprocess.run(
+            [runuser, '-u', config['APP_USER'], '--',
+             '/usr/local/bin/officium-update-client', 'integration_check'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+            check=False,
+        )
+        if restart.returncode != 0 or integration.returncode != 0:
+            raise UpdateFailure('Refreshed updater failed its IPC self-test.', 'deployment_failed')
+    except (OSError, subprocess.SubprocessError, UpdateFailure) as exc:
+        for target, backup in reversed(installed):
+            if backup is None:
+                target.unlink(missing_ok=True)
+            else:
+                restore = target.with_name(f'.{target.name}.restore-{os.getpid()}')
+                shutil.copy2(backup, restore, follow_symlinks=False)
+                os.chown(restore, 0, 0)
+                restore.chmod(0o755)
+                os.replace(restore, target)
+        systemctl = shutil.which('systemctl')
+        if systemctl:
+            subprocess.run(
+                [systemctl, 'restart', 'officium-updater.service'],
+                timeout=30,
+                check=False,
+            )
+        if isinstance(exc, UpdateFailure):
+            raise
+        raise UpdateFailure('Could not install the privileged component bundle.', 'deployment_failed') from exc
+    finally:
+        shutil.rmtree(backup_directory, ignore_errors=True)
+
+
+def atomic_switch_release(config, release_path):
+    current_link = Path(config['APP_DIR'])
+    if not current_link.is_symlink():
+        raise UpdateFailure(
+            'APP_DIR must be the managed current-release symlink.',
+            'configuration_invalid',
+        )
+    previous_release = current_link.resolve(strict=True)
+    releases_dir = Path(config['RELEASES_DIR']).resolve(strict=True)
+    candidate = Path(release_path).resolve(strict=True)
+    if candidate.parent != releases_dir:
+        raise UpdateFailure('Candidate release is outside RELEASES_DIR.', 'deployment_failed')
+    temporary_link = current_link.with_name(f'.{current_link.name}.next-{os.getpid()}')
+    try:
+        temporary_link.symlink_to(candidate, target_is_directory=True)
+        os.replace(temporary_link, current_link)
+    finally:
+        temporary_link.unlink(missing_ok=True)
+    return previous_release
+
+
+def restore_release_link(config, previous_release):
+    current_link = Path(config['APP_DIR'])
+    temporary_link = current_link.with_name(f'.{current_link.name}.rollback-{os.getpid()}')
+    try:
+        temporary_link.symlink_to(previous_release, target_is_directory=True)
+        os.replace(temporary_link, current_link)
+    finally:
+        temporary_link.unlink(missing_ok=True)
+
+
+def check_readiness(*, emit=True):
     config = load_runner_config()
     verify_git_remote(config)
     for command in ('git', 'runuser', 'systemctl', 'systemd-run'):
         if not shutil.which(command):
             raise UpdateFailure(f'{command} is not installed.', 'configuration_invalid')
+    deploy_script = Path(config['DEPLOY_SCRIPT'])
+    if not deploy_script.is_file():
+        raise UpdateFailure('DEPLOY_SCRIPT is missing.', 'configuration_invalid')
+    deploy_stat = deploy_script.stat()
+    if deploy_stat.st_uid != 0 or deploy_stat.st_mode & 0o022:
+        raise UpdateFailure('DEPLOY_SCRIPT must be root-owned and not writable by its group.')
+    current_link = Path(config['APP_DIR'])
+    if not current_link.is_symlink():
+        raise UpdateFailure('APP_DIR is not a managed release symlink.')
+    releases_dir = Path(config['RELEASES_DIR'])
+    releases_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
+    releases_info = releases_dir.stat()
+    if releases_info.st_uid != 0 or releases_info.st_mode & 0o022:
+        raise UpdateFailure('RELEASES_DIR must be root-owned and not writable.', 'configuration_invalid')
+    account = pwd.getpwnam(config['APP_USER'])
+    group_id = grp.getgrnam(config['APP_GROUP']).gr_gid
+    probe_root = Path(tempfile.mkdtemp(prefix='.permission-check-', dir=releases_dir))
+    probe_dir = probe_root / 'nested'
+    try:
+        os.chown(probe_root, account.pw_uid, group_id)
+        probe_root.chmod(0o750)
+        probe = subprocess.run(
+            [
+                shutil.which('runuser'), '-u', config['APP_USER'], '--',
+                '/bin/mkdir', str(probe_dir),
+            ],
+            timeout=10,
+            check=False,
+        )
+    finally:
+        shutil.rmtree(probe_root, ignore_errors=True)
+    if probe.returncode != 0:
+        raise UpdateFailure('APP_USER cannot create a nested release directory.')
+    env_values = parse_key_value_file(current_link / '.env')
+    if not env_values.get('APP_TIMEZONE', '').strip():
+        raise UpdateFailure('APP_TIMEZONE must be explicit before updates are enabled.')
+    db_settings = database_settings(current_link)
+    if db_settings['engine'] == 'mysql' and not shutil.which('mysqldump'):
+        raise UpdateFailure('mysqldump is not installed.', 'configuration_invalid')
+    if db_settings['engine'] == 'sqlite':
+        shared_dir = (current_link.parent / 'shared').resolve()
+        try:
+            db_settings['path'].resolve().relative_to(shared_dir)
+        except ValueError as exc:
+            raise UpdateFailure(
+                'SQLite database must be stored under the managed shared directory.',
+                'configuration_invalid',
+            ) from exc
+    verify_database_backup_access(config, db_settings)
     backup_dir = Path(config['BACKUP_DIR'])
     backup_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
     if not os.access(backup_dir, os.W_OK):
         raise UpdateFailure('BACKUP_DIR is not writable.', 'configuration_invalid')
-    emit_result(True, code='ready')
+    service_security = subprocess.run(
+        [
+            shutil.which('systemctl'), 'show', config['SERVICE_NAME'],
+            '--property=NoNewPrivileges', '--value',
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    if service_security.returncode != 0 or service_security.stdout.strip().lower() != 'yes':
+        raise UpdateFailure('Application service must keep NoNewPrivileges=true.')
+    result = {
+        'code': 'ready',
+        'checks': [
+            'repository', 'release_directory', 'timezone', 'database_backup_access',
+            'backup_directory', 'no_new_privileges',
+        ],
+    }
+    if emit:
+        emit_result(True, **result)
+    return result
 
 
 def perform_update(tag):
@@ -572,22 +1011,54 @@ def perform_update(tag):
             write_status(config, 'backing_up', tag, 'Создание резервной копии базы данных.')
             backup_path, config_backup_path = create_backups(config, tag)
 
-            run_deployment(config, tag)
+            release_path, release_commit = run_deployment(config, tag)
+            seal_and_verify_release(config, release_path, tag, release_commit)
 
-            write_status(config, 'restarting', tag, 'Перезапуск службы приложения.')
-            systemctl = shutil.which('systemctl')
-            if not systemctl:
-                raise UpdateFailure('systemctl is not installed.', 'restart_failed')
-            result = subprocess.run(
-                [systemctl, 'restart', config['SERVICE_NAME']],
-                timeout=60,
-                check=False,
-            )
-            if result.returncode != 0:
-                raise UpdateFailure('Application service restart failed.', 'restart_failed')
+            previous_release = atomic_switch_release(config, release_path)
 
-            write_status(config, 'verifying', tag, 'Проверка работоспособности новой версии.')
-            verify_service_health(config)
+            try:
+                write_status(config, 'restarting', tag, 'Перезапуск службы приложения.')
+                systemctl = shutil.which('systemctl')
+                if not systemctl:
+                    raise UpdateFailure('systemctl is not installed.', 'restart_failed')
+                result = subprocess.run(
+                    [systemctl, 'restart', config['SERVICE_NAME']],
+                    timeout=60,
+                    check=False,
+                )
+                if result.returncode != 0:
+                    raise UpdateFailure('Application service restart failed.', 'restart_failed')
+
+                write_status(config, 'verifying', tag, 'Проверка работоспособности новой версии.')
+                verify_service_health(config)
+                install_privileged_bundle(config, release_path)
+            except Exception as exc:
+                failure = exc if isinstance(exc, UpdateFailure) else UpdateFailure(
+                    'Post-switch update stage failed unexpectedly.', 'unexpected_failure'
+                )
+                rollback_performed = False
+                try:
+                    restore_release_link(config, previous_release)
+                    rollback_result = subprocess.run(
+                        [shutil.which('systemctl') or '/bin/false', 'restart', config['SERVICE_NAME']],
+                        timeout=60,
+                        check=False,
+                    )
+                    rollback_performed = rollback_result.returncode == 0
+                    if not rollback_performed:
+                        failure = UpdateFailure('Previous release restart failed.', 'rollback_failed')
+                except Exception:
+                    failure = UpdateFailure('Automatic release rollback failed.', 'rollback_failed')
+                write_status(
+                    config,
+                    'failed',
+                    tag,
+                    PUBLIC_MESSAGES.get(failure.code, PUBLIC_MESSAGES['unexpected_failure']),
+                    error_code=failure.code,
+                    rollback_performed=rollback_performed,
+                    previous_release=str(previous_release),
+                )
+                raise failure from exc
 
             write_status(
                 config,
@@ -595,6 +1066,7 @@ def perform_update(tag):
                 tag,
                 'Обновление завершено. '
                 f'Копии: {backup_path.name}, {config_backup_path.name}',
+                release_commit=release_commit,
             )
         except UpdateFailure as exc:
             write_status(
@@ -616,7 +1088,33 @@ def perform_update(tag):
             raise UpdateFailure('Unexpected update failure.', 'unexpected_failure') from exc
 
 
-def request_background_update(tag):
+def backup_only(label):
+    """Manual/installer recovery primitive; never performs checkout or restart."""
+    config = load_runner_config()
+    backup_path, config_backup_path = create_backups(config, validate_tag(label))
+    emit_result(
+        True,
+        code='backup_complete',
+        backup=backup_path.name,
+        configuration_backup=config_backup_path.name,
+    )
+
+
+def status_is_active(status, stale_minutes=120):
+    if str(status.get('state') or '') not in ACTIVE_STATES:
+        return False
+    try:
+        updated_at = datetime.fromisoformat(
+            str(status.get('updated_at') or '').replace('Z', '+00:00')
+        )
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return True
+    return (utc_now() - updated_at).total_seconds() < stale_minutes * 60
+
+
+def request_background_update(tag, *, operation_id=None, requested_by='manual', emit=True):
     config = load_runner_config()
     # Fail before scheduling if the release or repository cannot be verified.
     if latest_release_tag(config) != tag:
@@ -629,58 +1127,196 @@ def request_background_update(tag):
     systemd_run = shutil.which('systemd-run')
     if not systemd_run:
         raise UpdateFailure('systemd-run is not installed.', 'scheduling_failed')
-    unit_suffix = hashlib.sha256(f'{tag}:{os.getpid()}:{iso_now()}'.encode()).hexdigest()[:16]
-    unit_name = f'officium-update-{unit_suffix}'
-    status = read_status(Path(config['STATUS_FILE']))
-    operation_id = str(status.get('operation_id') or f'upd-{unit_suffix[:12]}')
-    if not status.get('operation_id'):
+    REQUEST_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with REQUEST_LOCK_PATH.open('w', encoding='utf-8') as request_lock:
+        try:
+            fcntl.flock(request_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise UpdateFailure('Another update request is being scheduled.', 'update_busy') from exc
+        status = read_status(Path(config['STATUS_FILE']))
+        if status_is_active(status, config['STALE_MINUTES']):
+            raise UpdateFailure('Another server update is already active.', 'update_busy')
+        unit_suffix = hashlib.sha256(f'{tag}:{os.getpid()}:{iso_now()}'.encode()).hexdigest()[:16]
+        unit_name = f'officium-update-{unit_suffix}'
+        operation_id = str(operation_id or f'upd-{unit_suffix[:12]}')
+        if not OPERATION_ID_RE.fullmatch(operation_id):
+            raise UpdateFailure('Operation id is invalid.', 'protocol_error')
         write_status(
             config,
-            str(status.get('state') or 'queued'),
+            'queued',
             tag,
-            str(status.get('message') or 'Запрос принят серверным помощником.'),
+            'Запрос принят привилегированной службой и ожидает запуска.',
             operation_id=operation_id,
+            requested_by=str(requested_by)[:64],
+            requested_at=iso_now(),
         )
-    result = subprocess.run(
-        [
-            systemd_run,
-            '--quiet',
-            '--collect',
-            f'--unit={unit_name}',
-            '--property=Type=exec',
-            str(Path(__file__).resolve()),
-            '--perform',
-            tag,
-        ],
-        timeout=15,
-        check=False,
+        result = subprocess.run(
+            [
+                systemd_run,
+                '--quiet',
+                '--collect',
+                f'--unit={unit_name}',
+                '--property=Type=exec',
+                str(Path(__file__).resolve()),
+                '--perform',
+                tag,
+            ],
+            timeout=15,
+            check=False,
+        )
+        if result.returncode != 0:
+            write_status(
+                config,
+                'failed',
+                tag,
+                PUBLIC_MESSAGES['scheduling_failed'],
+                operation_id=operation_id,
+                error_code='scheduling_failed',
+            )
+            raise UpdateFailure('systemd could not schedule the update task.', 'scheduling_failed')
+    payload = {
+        'code': 'scheduled',
+        'operation_id': operation_id,
+        'unit': unit_name,
+    }
+    if emit:
+        emit_result(True, **payload)
+    return payload
+
+
+def peer_is_authorized(connection, config):
+    if not hasattr(socket, 'SO_PEERCRED'):
+        return False
+    raw_credentials = connection.getsockopt(
+        socket.SOL_SOCKET,
+        socket.SO_PEERCRED,
+        struct.calcsize('3i'),
     )
-    if result.returncode != 0:
-        raise UpdateFailure('systemd could not schedule the update task.', 'scheduling_failed')
-    emit_result(
-        True,
-        code='scheduled',
+    _pid, uid, _gid = struct.unpack('3i', raw_credentials)
+    app_uid = pwd.getpwnam(config['APP_USER']).pw_uid
+    return uid in (0, app_uid)
+
+
+def receive_request(connection):
+    payload = bytearray()
+    while b'\n' not in payload:
+        chunk = connection.recv(1024)
+        if not chunk:
+            break
+        payload.extend(chunk)
+        if len(payload) > MAX_REQUEST_BYTES:
+            raise UpdateFailure('IPC request is too large.', 'protocol_error')
+    try:
+        request_payload = json.loads(bytes(payload).split(b'\n', 1)[0].decode('utf-8'))
+    except (UnicodeDecodeError, ValueError, TypeError) as exc:
+        raise UpdateFailure('IPC request is not valid JSON.', 'protocol_error') from exc
+    if not isinstance(request_payload, dict) or request_payload.get('protocol') != 1:
+        raise UpdateFailure('IPC protocol version is unsupported.', 'protocol_error')
+    return request_payload
+
+
+def handle_ipc_request(request_payload):
+    action = request_payload.get('action')
+    schemas = {
+        'check': {'protocol', 'action'},
+        'integration_check': {'protocol', 'action'},
+        'get_status': {'protocol', 'action'},
+        'start_latest_update': {
+            'protocol', 'action', 'tag', 'operation_id', 'requested_by',
+        },
+    }
+    if action not in schemas or set(request_payload) != schemas[action]:
+        raise UpdateFailure('IPC operation or fields are not allowed.', 'protocol_error')
+    if action in ('check', 'integration_check'):
+        result = check_readiness(emit=False)
+        result['integration'] = action == 'integration_check'
+        return result
+    config = load_runner_config()
+    if action == 'get_status':
+        return {'code': 'status', 'status': read_status(Path(config['STATUS_FILE']))}
+
+    requested_tag = validate_tag(str(request_payload.get('tag') or ''))
+    operation_id = str(request_payload.get('operation_id') or '')
+    requested_by = str(request_payload.get('requested_by') or '')
+    if not OPERATION_ID_RE.fullmatch(operation_id) or not requested_by.isdigit():
+        raise UpdateFailure('Update request identity is invalid.', 'protocol_error')
+    # The browser-supplied tag is only a confirmation. The privileged service
+    # independently resolves the current stable GitHub release.
+    if latest_release_tag(config) != requested_tag:
+        raise UpdateFailure('Requested tag is not the latest stable release.', 'release_rejected')
+    return request_background_update(
+        requested_tag,
         operation_id=operation_id,
-        unit=unit_name,
+        requested_by=requested_by,
+        emit=False,
     )
+
+
+def send_ipc_response(connection, payload):
+    encoded = json.dumps(payload, ensure_ascii=True, separators=(',', ':')).encode('ascii')
+    connection.sendall(encoded + b'\n')
+
+
+def serve_socket():
+    config = load_runner_config()
+    listen_pid = int(os.environ.get('LISTEN_PID', '0') or '0')
+    listen_fds = int(os.environ.get('LISTEN_FDS', '0') or '0')
+    if listen_pid != os.getpid() or listen_fds != 1:
+        raise UpdateFailure('Updater must be started by its systemd socket.')
+    server = socket.fromfd(3, socket.AF_UNIX, socket.SOCK_STREAM)
+    while True:
+        connection, _address = server.accept()
+        with connection:
+            operation_id = ''
+            try:
+                if not peer_is_authorized(connection, config):
+                    raise UpdateFailure('IPC peer is not the application user.', 'authorization_failed')
+                request_payload = receive_request(connection)
+                operation_id = str(request_payload.get('operation_id') or '')
+                result = handle_ipc_request(request_payload)
+                send_ipc_response(connection, {'ok': True, **result})
+            except UpdateFailure as exc:
+                send_ipc_response(connection, {
+                    'ok': False,
+                    'code': exc.code,
+                    'operation_id': operation_id if OPERATION_ID_RE.fullmatch(operation_id) else '',
+                })
+            except Exception:
+                send_ipc_response(connection, {
+                    'ok': False,
+                    'code': 'unexpected_failure',
+                    'operation_id': operation_id if OPERATION_ID_RE.fullmatch(operation_id) else '',
+                })
 
 
 def main(argv):
     if os.geteuid() != 0:
         raise UpdateFailure(
-            'This updater must run as root through the configured sudo rule.',
+            'This updater is a root-owned system service; use the Unix socket from the web app.',
             'authorization_failed',
         )
+    if len(argv) == 2 and argv[1] == '--serve':
+        serve_socket()
+        return 0
     if len(argv) == 2 and argv[1] == '--check':
         check_readiness()
         return 0
-    if len(argv) == 2:
-        request_background_update(validate_tag(argv[1]))
+    if len(argv) == 2 and argv[1] == '--start-latest':
+        config = load_runner_config()
+        request_background_update(latest_release_tag(config))
+        return 0
+    if len(argv) == 3 and argv[1] == '--start':
+        request_background_update(validate_tag(argv[2]))
         return 0
     if len(argv) == 3 and argv[1] == '--perform':
         perform_update(validate_tag(argv[2]))
         return 0
-    raise UpdateFailure('Usage: officium-update-runner RELEASE_TAG')
+    if len(argv) == 3 and argv[1] == '--backup-only':
+        backup_only(validate_tag(argv[2]))
+        return 0
+    raise UpdateFailure(
+        'Usage: officium-update-runner --serve|--check|--start-latest|--start TAG|--perform TAG|--backup-only LABEL'
+    )
 
 
 if __name__ == '__main__':

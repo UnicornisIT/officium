@@ -31,6 +31,25 @@ class RuntimeSecurityTestCase(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'SECRET_KEY'):
             create_app(self._production_config(SECRET_KEY='change-me'))
 
+    def test_production_rejects_missing_secret(self):
+        with self.assertRaisesRegex(RuntimeError, 'SECRET_KEY'):
+            create_app(self._production_config(SECRET_KEY=''))
+
+    def test_development_generates_one_process_local_secret(self):
+        config = {
+            'ENVIRONMENT': 'development',
+            'SECRET_KEY': '',
+            'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+            'SQLALCHEMY_ENGINE_OPTIONS': {},
+        }
+
+        with self.assertLogs('app', level='WARNING'):
+            first_app = create_app(config)
+            second_app = create_app(config)
+
+        self.assertGreaterEqual(len(first_app.config['SECRET_KEY']), 48)
+        self.assertEqual(first_app.config['SECRET_KEY'], second_app.config['SECRET_KEY'])
+
     def test_production_requires_webhook_secret_for_enabled_bot(self):
         with self.assertRaisesRegex(RuntimeError, 'TELEGRAM_WEBHOOK_SECRET'):
             create_app(self._production_config(
@@ -59,7 +78,6 @@ class RuntimeSecurityTestCase(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'password hash'):
             create_app(self._production_config(
                 ADMIN_LOGIN_ENABLED=True,
-                ADMIN_PASSWORD='plaintext-is-not-accepted-in-production',
                 ADMIN_PASSWORD_HASH='',
             ))
 
@@ -148,7 +166,6 @@ class RuntimeSecurityTestCase(unittest.TestCase):
     def test_admin_settings_reject_invalid_numeric_values(self):
         form = {
             'app_name': 'officium',
-            'default_currency': 'RUB',
             'debt_limit_per_user': 'not-a-number',
             'payment_warning_days': '7',
             'urgent_payment_days': '3',
@@ -159,10 +176,10 @@ class RuntimeSecurityTestCase(unittest.TestCase):
     def test_admin_settings_require_urgent_window_within_warning_window(self):
         form = {
             'app_name': 'officium',
-            'default_currency': 'rub',
             'debt_limit_per_user': '50',
             'payment_warning_days': '3',
             'urgent_payment_days': '7',
+            'impersonation_timeout_minutes': '30',
         }
         with self.assertRaisesRegex(ValueError, 'не может превышать'):
             _validated_settings(form)
@@ -179,10 +196,15 @@ class RuntimeSecurityTestCase(unittest.TestCase):
         client = app.test_client()
         with app.app_context():
             db.create_all()
+            impersonated = User(telegram_id=4242, username='impersonated', role='user')
+            db.session.add(impersonated)
+            db.session.commit()
+            impersonated_id = str(impersonated.id)
         with client.session_transaction() as session:
-            session['_user_id'] = '1'
+            session['_user_id'] = impersonated_id
             session['_fresh'] = True
             session['original_admin_id'] = 'admin'
+            session['impersonated_user_id'] = impersonated_id
 
         response = client.post('/admin/stop-impersonate')
 

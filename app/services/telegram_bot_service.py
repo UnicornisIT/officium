@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models import Debt, Expense, Income, TelegramConversationState, TelegramProcessedUpdate, User
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import add_payment
+from app.time_utils import as_utc, utc_now
 from app.utils import get_setting
 from extensions import db
 
@@ -237,7 +238,7 @@ HELP_TEXT = (
 
 PRIVACY_TEXT = (
     'Приватность Telegram-бота:\n'
-    '- работаю только с уже существующим аккаунтом Officium по Telegram ID;\n'
+    '- работаю только с уже существующим аккаунтом officium по Telegram ID;\n'
     '- по умолчанию принимаю команды только в личном чате;\n'
     '- не сохраняю текст Telegram-сообщений в журнал действий;\n'
     '- для защиты от повторов храню только технический update_id и время обработки;\n'
@@ -307,7 +308,7 @@ def handle_telegram_update(update):
     if not user:
         return TelegramBotResult(
             chat_id=chat_id,
-            reply_text='Я не нашел ваш аккаунт в Officium. Сначала войдите в приложение через Telegram.',
+            reply_text='Я не нашел ваш аккаунт в officium. Сначала войдите в приложение через Telegram.',
             callback_query_id=callback_query_id,
         )
     if user.is_blocked:
@@ -495,7 +496,8 @@ def answer_telegram_callback_query(callback_query_id, text=None, bot_token=None)
 
 def send_debt_reminders(days=None, dry_run=False, sender=send_telegram_message):
     if days is None:
-        days = current_app.config.get('TELEGRAM_REMINDER_DAYS', 7)
+        # The admin setting wins; TELEGRAM_REMINDER_DAYS is the fallback until it is saved.
+        days = get_setting('payment_warning_days', current_app.config.get('TELEGRAM_REMINDER_DAYS', 7))
     days = int(days)
     today = date.today()
     stats = {'users_checked': 0, 'messages': 0, 'errors': 0}
@@ -1200,8 +1202,8 @@ def _save_state(user, chat_id, flow, step, data, state=None):
     state.flow = flow
     state.step = step
     state.data = json.dumps(data, ensure_ascii=False, sort_keys=True)
-    state.expires_at = datetime.utcnow() + timedelta(minutes=_conversation_ttl_minutes())
-    state.updated_at = datetime.utcnow()
+    state.expires_at = utc_now() + timedelta(minutes=_conversation_ttl_minutes())
+    state.updated_at = utc_now()
     db.session.flush()
     return state
 
@@ -1211,7 +1213,7 @@ def _get_active_state(user):
     state = TelegramConversationState.query.filter_by(telegram_id=user.telegram_id).first()
     if not state:
         return None
-    if state.expires_at <= datetime.utcnow():
+    if as_utc(state.expires_at) <= utc_now():
         db.session.delete(state)
         db.session.flush()
         return None
@@ -1234,8 +1236,10 @@ def _conversation_ttl_minutes():
 
 
 def _cleanup_expired_conversation_states():
-    threshold = datetime.utcnow()
-    TelegramConversationState.query.filter(TelegramConversationState.expires_at <= threshold).delete()
+    threshold = utc_now()
+    TelegramConversationState.query.filter(
+        TelegramConversationState.expires_at <= threshold
+    ).delete(synchronize_session=False)
 
 
 def _cleanup_processed_updates():
@@ -1245,8 +1249,10 @@ def _cleanup_processed_updates():
         retention_days = 30
     if retention_days <= 0:
         return
-    threshold = datetime.utcnow() - timedelta(days=retention_days)
-    TelegramProcessedUpdate.query.filter(TelegramProcessedUpdate.created_at < threshold).delete()
+    threshold = utc_now() - timedelta(days=retention_days)
+    TelegramProcessedUpdate.query.filter(
+        TelegramProcessedUpdate.created_at < threshold
+    ).delete(synchronize_session=False)
 
 
 def _result(chat_id, text, reply_markup=None, callback_answer_text=None):

@@ -1,0 +1,16 @@
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon %}
+{% block title %}База данных недоступна — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}База данных недоступна{% endblock %}
+
+{% block admin_content %}
+<section class="admin-panel admin-forbidden" aria-labelledby="db-error-title">
+    <span class="admin-forbidden__icon">{{ icon('database', 30) }}</span>
+    <div>
+        <p class="admin-page-kicker">Ошибка 503</p>
+        <h1 id="db-error-title">База данных не ответила</h1>
+        <p>Страницу не удалось загрузить, изменения не сохранены. Повторите попытку через минуту; если ошибка повторяется, проверьте состояние базы данных на сервере.</p>
+        <a class="btn btn-primary" href="{{ request.path }}">{{ icon('update', 17) }} Повторить</a>
+    </div>
+</section>
+{% endblock %}

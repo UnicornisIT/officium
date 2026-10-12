@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% from 'admin/_macros.html' import icon, role_badge %}
+
+{% block extra_css %}
+<link href="{{ url_for('static', filename='css/admin.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=12" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="admin-shell" data-admin-shell>
+    <div class="admin-sidebar-backdrop" data-admin-sidebar-close></div>
+    <aside class="admin-sidebar" id="adminSidebar" aria-label="Навигация административной панели">
+        <div class="admin-sidebar__brand">
+            <a href="{{ url_for('admin_dashboard') }}" aria-label="Административная панель officium">
+                {% from '_brand.html' import brand_mark %}{{ brand_mark(38, 'admin-sidebar__mark') }}
+                <span><strong>officium</strong><small>Административная панель</small></span>
+            </a>
+            <button class="admin-sidebar__close" type="button" data-admin-sidebar-close aria-label="Закрыть меню">
+                <span aria-hidden="true">×</span>
+            </button>
+        </div>
+
+        <nav class="admin-nav" aria-label="Разделы">
+            <div class="admin-nav__group">
+                <a href="{{ url_for('admin_dashboard') }}" class="{% if request.endpoint == 'admin_dashboard' %}active{% endif %}"{% if request.endpoint == 'admin_dashboard' %} aria-current="page"{% endif %}>
+                    {{ icon('dashboard') }}<span>Обзор</span>
+                </a>
+                <a href="{{ url_for('admin_users') }}" class="{% if request.endpoint in ('admin_users', 'admin_user_detail') %}active{% endif %}"{% if request.endpoint in ('admin_users', 'admin_user_detail') %} aria-current="page"{% endif %}>
+                    {{ icon('users') }}<span>Пользователи</span>
+                </a>
+                <a href="{{ url_for('admin_logs') }}" class="{% if request.endpoint == 'admin_logs' %}active{% endif %}"{% if request.endpoint == 'admin_logs' %} aria-current="page"{% endif %}>
+                    {{ icon('activity') }}<span>Журнал действий</span>
+                </a>
+            </div>
+
+            {% if current_user.is_superadmin %}
+            <div class="admin-nav__group">
+                <span class="admin-nav__eyebrow">Система</span>
+                {% for endpoint, icon_name, label in (
+                    ('admin_settings', 'settings', 'Настройки'),
+                    ('admin_dictionaries', 'book', 'Справочники'),
+                    ('admin_export', 'export', 'Аудит-выгрузка'),
+                    ('admin_system', 'pulse', 'Диагностика'),
+                    ('admin_server_update', 'update', 'Обновление сервера'),
+                ) %}
+                <a href="{{ url_for(endpoint) }}" class="{% if request.endpoint == endpoint %}active{% endif %}"{% if request.endpoint == endpoint %} aria-current="page"{% endif %}>
+                    {{ icon(icon_name) }}<span>{{ label }}</span>
+                </a>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </nav>
+
+        <div class="admin-sidebar__footer">
+            {% if dev_login_enabled %}<a href="{{ url_for('index') }}">{{ icon('home') }}<span>Вернуться в приложение</span></a>{% endif %}
+            <a href="{{ url_for('logout') }}">{{ icon('logout') }}<span>Выйти</span></a>
+        </div>
+    </aside>
+
+    <section class="admin-stage">
+        <header class="admin-topbar">
+            <button class="admin-topbar__menu" type="button" data-admin-sidebar-open
+                    aria-controls="adminSidebar" aria-expanded="false" aria-label="Открыть меню административной панели">
+                {{ icon('menu', 22) }}
+            </button>
+            <div class="admin-topbar__context">
+                <span class="admin-topbar__eyebrow">Административная панель</span>
+                <strong>{% block admin_topbar_title %}Обзор{% endblock %}</strong>
+            </div>
+            <div class="admin-topbar__actions">
+                <button id="themeToggleBtn" class="admin-icon-button" type="button" aria-label="Переключить тему"></button>
+                <span class="admin-topbar__divider" aria-hidden="true"></span>
+                <span class="admin-topbar__avatar" aria-hidden="true">{{ (current_user.first_name or current_user.username or 'A')[:1]|upper }}</span>
+                <span class="admin-topbar__identity">
+                    <strong>{{ current_user.first_name or current_user.username or 'Администратор' }}</strong>
+                    {% if current_user.get_id() == 'admin' %}<span class="admin-badge admin-badge--warning" title="Вход по аварийному паролю">Аварийный вход</span>{% else %}{{ role_badge(current_user.role) }}{% endif %}
+                </span>
+            </div>
+        </header>
+
+        <div class="admin-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="admin-flash-stack">
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category in ['danger', 'error'] else 'warning' if category == 'warning' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="{{ 'alert' if category in ['danger', 'error', 'warning'] else 'status' }}">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+            {% block admin_content %}{% endblock %}
+        </div>
+    </section>
+</div>
+
+<div class="modal fade" id="adminConfirmModal" tabindex="-1" aria-labelledby="adminConfirmTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content admin-confirm-modal">
+            <div class="modal-body">
+                <span class="admin-confirm-modal__icon">{{ icon('alert', 26) }}</span>
+                <p class="admin-page-kicker mb-2">Подтверждение действия</p>
+                <h2 class="h4" id="adminConfirmTitle">Продолжить?</h2>
+                <p class="text-muted" id="adminConfirmMessage">Проверьте действие перед продолжением.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="adminConfirmSubmit">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/admin.js') }}?v={{ config.APP_VERSION|urlencode }}"></script>
+{% block admin_extra_js %}{% endblock %}
+{% endblock %}

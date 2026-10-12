@@ -1,0 +1,5 @@
+{# Фирменный знак officium: кольцо обязательства, которое замыкает последний платёж.
+   Цвета берутся из CSS-переменных темы (.brand-mark__ring / .brand-mark__close). #}
+{% macro brand_mark(size=32, class_name='') -%}
+<svg class="brand-mark{% if class_name %} {{ class_name }}{% endif %}" width="{{ size }}" height="{{ size }}" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><g fill="none" stroke-width="4.5"><path class="brand-mark__ring" d="M26.34 12.24A11 11 0 1 1 14.09 5.17"/><path class="brand-mark__close" d="M16 5A11 11 0 0 1 25.53 10.5"/></g></svg>
+{%- endmacro %}

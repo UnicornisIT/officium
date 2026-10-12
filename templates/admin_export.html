@@ -1,123 +1,46 @@
-{% extends 'base.html' %}
-{% block title %}Экспорт данных — Админка{% endblock %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon %}
+{% block title %}Аудит-выгрузка — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Аудит-выгрузка{% endblock %}
 
-{% block content %}
-<div class="mb-4">
-    <h1 class="h3">Экспорт данных</h1>
-    <p class="text-muted">Выгрузка CSV-отчетов по пользователям, долгам и платежам.</p>
+{% block admin_content %}
+<header class="admin-page-header"><div><p class="admin-page-kicker">Система</p><h1>Аудит-выгрузка</h1><p>CSV-файлы для проверки доступа: кто имеет учётную запись и какие действия выполнялись. Финансовых данных пользователей в выгрузках нет.</p></div></header>
+
+{% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
+
+<div class="admin-export-grid">
+    <section class="admin-panel admin-export-card" aria-labelledby="export-accounts-title">
+        <span class="admin-export-card__icon">{{ icon('users', 24) }}</span>
+        <div>
+            <h2 id="export-accounts-title">Учётные записи</h2>
+            <p>Все аккаунты: идентификатор, Telegram ID, имя, роль, статус блокировки, число входов и дата создания. IP-адреса и данные браузера не включаются.</p>
+            <p class="admin-export-card__meta">Записей: {{ counts.accounts }}</p>
+        </div>
+        <form method="post" action="{{ url_for('admin_export_accounts') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary" {% if error_message %}disabled{% endif %}>{{ icon('export', 17) }} Скачать accounts.csv</button>
+        </form>
+    </section>
+
+    <section class="admin-panel admin-export-card" aria-labelledby="export-log-title">
+        <span class="admin-export-card__icon">{{ icon('activity', 24) }}</span>
+        <div>
+            <h2 id="export-log-title">Журнал действий</h2>
+            <p>События журнала с теми же фильтрами, что и на странице журнала: время, пользователь, действие, объект, описание и IP-адрес.</p>
+            <p class="admin-export-card__meta">Событий всего: {{ counts.events }}</p>
+        </div>
+        <form method="post" action="{{ url_for('admin_export_activity_log') }}" class="admin-export-card__filters">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="admin-control"><span>Событие</span><select name="event">
+                <option value="">Все события</option>
+                {% for event in event_values %}<option value="{{ event }}" {% if filters.event == event %}selected{% endif %}>{{ event|admin_event }}</option>{% endfor %}
+            </select></label>
+            <label class="admin-control"><span>Дата от</span><input type="date" name="date_from" value="{{ filters.date_from }}"></label>
+            <label class="admin-control"><span>Дата до</span><input type="date" name="date_to" value="{{ filters.date_to }}"></label>
+            <button type="submit" class="btn btn-primary" {% if error_message %}disabled{% endif %}>{{ icon('export', 17) }} Скачать activity_log.csv</button>
+        </form>
+    </section>
 </div>
 
-<div class="row g-4">
-    <div class="col-md-4">
-        <div class="card p-4 h-100">
-            <h5>Пользователи</h5>
-            <p class="text-muted">Выгрузить всех зарегистрированных пользователей.</p>
-            <form method="post" action="{{ url_for('admin_export_csv', export_type='users') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-primary">Скачать CSV</button>
-            </form>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card p-4 h-100">
-            <h5>Долги</h5>
-            <p class="text-muted">Выгрузить все карточки долгов.</p>
-            <form method="post" action="{{ url_for('admin_export_csv', export_type='debts') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-primary">Скачать CSV</button>
-            </form>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card p-4 h-100">
-            <h5>Платежи</h5>
-            <p class="text-muted">Выгрузить историю всех платежей.</p>
-            <form method="post" action="{{ url_for('admin_export_csv', export_type='payments') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-primary">Скачать CSV</button>
-            </form>
-        </div>
-    </div>
-</div>
-
-<div class="row g-4 mt-4">
-    <div class="col-12">
-        <div class="card p-4">
-            <h5 class="mb-3">Последние долги</h5>
-            {% if debts %}
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Пользователь</th>
-                            <th>Банк</th>
-                            <th>Продукт</th>
-                            <th>Остаток</th>
-                            <th>Статус</th>
-                            <th>Дата</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for debt in debts %}
-                        <tr>
-                            <td>{{ debt.id }}</td>
-                            <td>{{ debt.user_id }}</td>
-                            <td>{{ debt.bank_name }}</td>
-                            <td>{{ debt.product_name }}</td>
-                            <td>{{ debt.remaining_amount|money }}</td>
-                            <td>{{ debt.status }}</td>
-                            <td>{{ debt.created_at.strftime('%d.%m.%Y') if debt.created_at else '—' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <p class="text-muted">Нет долгов для отображения.</p>
-            {% endif %}
-        </div>
-    </div>
-    <div class="col-12">
-        <div class="card p-4">
-            <h5 class="mb-3">Последние платежи</h5>
-            {% if payments %}
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Долг ID</th>
-                            <th>Сумма</th>
-                            <th>Основной долг</th>
-                            <th>Проценты</th>
-                            <th>Комиссии</th>
-                            <th>Дата</th>
-                            <th>Остаток банка</th>
-                            <th>Комментарий</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for payment in payments %}
-                        <tr>
-                            <td>{{ payment.id }}</td>
-                            <td>{{ payment.debt_id }}</td>
-                            <td>{{ payment.amount|money }}</td>
-                            <td>{{ payment.principal_amount|money }}</td>
-                            <td>{{ payment.interest_amount|money }}</td>
-                            <td>{{ payment.fee_amount|money }}</td>
-                            <td>{{ payment.payment_date.strftime('%d.%m.%Y') if payment.payment_date else '—' }}</td>
-                            <td>{{ payment.bank_remaining_after_payment|money if payment.bank_remaining_after_payment is not none else '—' }}</td>
-                            <td>{{ payment.comment or '—' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <p class="text-muted">Нет платежей для отображения.</p>
-            {% endif %}
-        </div>
-    </div>
-</div>
+<p class="admin-help-text">Каждая выгрузка записывается в журнал действий. Выгрузку можно отключить в настройках («Аудит-выгрузка»).</p>
 {% endblock %}

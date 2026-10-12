@@ -1,0 +1,27 @@
+[Unit]
+Description=Officium restricted privileged updater service
+Documentation=file:@@APP_ROOT@@/current/docs/DEPLOYMENT.md
+Requires=officium-updater.socket
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/sbin/officium-update-runner --serve
+Restart=on-failure
+RestartSec=2s
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=read-only
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+UMask=0027
+ReadWritePaths=@@APP_ROOT@@ @@STATE_DIR@@ @@BACKUP_DIR@@ /run/lock
+
+[Install]
+WantedBy=multi-user.target

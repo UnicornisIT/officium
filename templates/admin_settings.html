@@ -1,73 +1,172 @@
-{% extends 'base.html' %}
-{% block title %}Настройки приложения — Админка{% endblock %}
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon %}
+{% block title %}Настройки приложения — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Настройки приложения{% endblock %}
 
-{% block content %}
-<div class="mb-4">
-    <h1 class="h3">Настройки приложения</h1>
-    <p class="text-muted">Здесь можно включать или отключать ключевые функции и управлять системными параметрами.</p>
-</div>
+{% block admin_content %}
+<header class="admin-page-header"><div><p class="admin-page-kicker">Конфигурация</p><h1>Настройки приложения</h1><p>Управление общими параметрами и доступностью пользовательских функций.</p></div></header>
+{% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
 
-{% if success_message %}
-<div class="alert alert-success">{{ success_message }}</div>
-{% endif %}
-{% if error_message %}
-<div class="alert alert-danger" role="alert">{{ error_message }}</div>
-{% endif %}
-
-<form method="post" class="row g-3">
+<form method="post" class="admin-settings-form" data-admin-confirm="Сохранить изменения настроек приложения?" data-confirm-tone="primary">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="col-md-6">
-        <label class="form-label">Название приложения</label>
-        <input type="text" name="app_name" class="form-control" maxlength="80" required value="{{ settings.app_name }}">
-    </div>
-    <div class="col-md-6">
-        <label class="form-label">Валюта по умолчанию</label>
-        <input type="text" name="default_currency" class="form-control" maxlength="3" pattern="[A-Za-z]{3}" required value="{{ settings.default_currency }}">
-    </div>
-    <div class="col-md-6">
-        <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" id="telegram_login_enabled" name="telegram_login_enabled" {% if settings.telegram_login_enabled == 'true' %}checked{% endif %}>
-            <label class="form-check-label" for="telegram_login_enabled">Включить вход через Telegram</label>
+    {% for group in settings_groups %}
+    <section class="admin-panel" aria-labelledby="settings-group-{{ loop.index }}">
+        <div class="admin-panel__header"><div><p class="admin-page-kicker">{{ group.kicker }}</p><h2 id="settings-group-{{ loop.index }}">{{ group.title }}</h2></div></div>
+        {% set inputs = group.fields|rejectattr('type', 'equalto', 'bool')|list %}
+        {% set switches = group.fields|selectattr('type', 'equalto', 'bool')|list %}
+        {% if inputs %}
+        <div class="admin-form-grid">
+            {% for field in inputs %}
+            <label class="admin-control" for="setting-{{ field.key }}"><span>{{ field.label }}</span>
+                {% if field.type == 'int' %}
+                <input type="number" id="setting-{{ field.key }}" name="{{ field.key }}" min="{{ field.min }}" max="{{ field.max }}" required value="{{ settings[field.key] }}">
+                {% else %}
+                <input type="text" id="setting-{{ field.key }}" name="{{ field.key }}" maxlength="{{ field.max }}" required value="{{ settings[field.key] }}">
+                {% endif %}
+                <small>{{ field.help }}</small>
+            </label>
+            {% endfor %}
         </div>
-    </div>
-    <div class="col-md-6">
-        <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" id="registration_enabled" name="registration_enabled" {% if settings.registration_enabled == 'true' %}checked{% endif %}>
-            <label class="form-check-label" for="registration_enabled">Включить регистрацию новых пользователей</label>
+        {% endif %}
+        {% if switches %}
+        <div class="admin-switch-list">
+            {% for field in switches %}
+            <label><span><strong>{{ field.label }}</strong><small>{{ field.help }}</small></span><input type="checkbox" id="{{ field.key }}" name="{{ field.key }}" {% if settings[field.key] == 'true' %}checked{% endif %}><i aria-hidden="true"></i></label>
+            {% endfor %}
         </div>
-    </div>
-    <div class="col-md-6">
-        <label class="form-label">Лимит долгов на пользователя</label>
-        <input type="number" name="debt_limit_per_user" class="form-control" min="1" max="1000" required value="{{ settings.debt_limit_per_user }}">
-    </div>
-    <div class="col-md-6">
-        <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" id="archive_enabled" name="archive_enabled" {% if settings.archive_enabled == 'true' %}checked{% endif %}>
-            <label class="form-check-label" for="archive_enabled">Включить архив</label>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" id="export_enabled" name="export_enabled" {% if settings.export_enabled == 'true' %}checked{% endif %}>
-            <label class="form-check-label" for="export_enabled">Включить экспорт</label>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <label class="form-label">Предупреждать о платеже за (дней)</label>
-        <input type="number" name="payment_warning_days" class="form-control" min="0" max="365" required value="{{ settings.payment_warning_days }}">
-    </div>
-    <div class="col-md-6">
-        <label class="form-label">Считать платёж срочным за (дней)</label>
-        <input type="number" name="urgent_payment_days" class="form-control" min="0" max="365" required value="{{ settings.urgent_payment_days }}">
-    </div>
-    <div class="col-md-6">
-        <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" id="overdue_after_date" name="overdue_after_date" {% if settings.overdue_after_date == 'true' %}checked{% endif %}>
-            <label class="form-check-label" for="overdue_after_date">Считать просрочку после даты платежа</label>
-        </div>
-    </div>
-    <div class="col-12 mt-4">
-        <button type="submit" class="btn btn-primary">Сохранить настройки</button>
-    </div>
+        {% endif %}
+    </section>
+    {% endfor %}
+    <div class="admin-sticky-actions"><span>{{ icon('info', 17) }} Изменения применяются сразу после сохранения.</span><button type="submit" class="btn btn-primary">{{ icon('check-circle', 17) }} Сохранить настройки</button></div>
 </form>
+
+<section class="admin-panel admin-contacts" aria-labelledby="contacts-title">
+    <div class="admin-panel__header">
+        <div><p class="admin-page-kicker">Публикация</p><h2 id="contacts-title">Контакты и ссылки</h2><p>Ссылки проходят серверную проверку и появляются сразу после сохранения.</p></div>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#contactModal" data-contact-new>{{ icon('plus', 17) }} Добавить</button>
+    </div>
+    {% if contacts %}
+    <div class="admin-contact-grid">
+        {% for contact in contacts %}
+        <article class="admin-contact-card">
+            <span class="admin-contact-card__icon"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i></span>
+            <div><strong>{{ contact.label }}</strong><small>{{ contact.address }}</small><small>{{ contact.locations|join(', ') }} · порядок {{ contact.order }}</small></div>
+            <span class="admin-badge admin-badge--{{ 'success' if contact.published else 'secondary' }}">{{ 'Опубликован' if contact.published else 'Скрыт' }}</span>
+            <div class="admin-contact-card__actions">
+                <a class="btn btn-outline-secondary btn-sm" href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow">Предпросмотр</a>
+                <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#contactModal" data-contact='{{ contact|tojson|forceescape }}'>Изменить</button>
+                <form method="post" action="{{ url_for('admin_settings_contacts') }}" data-admin-confirm="Удалить контакт {{ contact.label }}?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete"><input type="hidden" name="contact_id" value="{{ contact.id }}">
+                    <button class="btn btn-outline-danger btn-sm" type="submit">Удалить</button>
+                </form>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="admin-empty-state admin-empty-state--compact"><p>Контакты пока не опубликованы. Пользователи увидят нейтральную подсказку обратиться к администратору экземпляра.</p></div>
+    {% endif %}
+</section>
+
+<div class="modal fade" id="contactModal" tabindex="-1" aria-labelledby="contactModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable admin-contact-modal"><div class="modal-content">
+        <form method="post" action="{{ url_for('admin_settings_contacts') }}" id="contactForm">
+            <div class="modal-header">
+                <div><p class="admin-page-kicker">Контакты и ссылки</p><h2 class="modal-title" id="contactModalTitle">Контакт</h2></div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body admin-form-grid">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save"><input type="hidden" name="contact_id" value="">
+                <label class="admin-control"><span>Тип</span><select name="type" required>{% for value, label in contact_types.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label>
+                <label class="admin-control"><span>Название</span><input name="label" maxlength="80" required></label>
+                <label class="admin-control admin-control--wide"><span>Адрес</span><input name="address" maxlength="500" required placeholder="https://example.org или contact@example.org"><small>Произвольные схемы, credentials, локальные адреса и небезопасные URI отклоняются.</small></label>
+                <div class="admin-control">
+                    <span id="contactIconLabel">Иконка</span>
+                    <select class="visually-hidden" id="contactIconSelect" name="icon" required aria-labelledby="contactIconLabel">
+                        {% for icon_name, icon_label in contact_icons.items() %}<option value="{{ icon_name }}">{{ icon_label }}</option>{% endfor %}
+                    </select>
+                    <div class="dropdown admin-icon-picker" data-icon-picker>
+                        <button class="admin-icon-picker__toggle dropdown-toggle" id="contactIconPicker" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="listbox" aria-labelledby="contactIconLabel contactIconPickerValue">
+                            <span class="admin-icon-picker__value" id="contactIconPickerValue"><i class="bi bi-envelope" data-icon-picker-preview aria-hidden="true"></i><span data-icon-picker-label>Конверт</span></span>
+                        </button>
+                        <ul class="dropdown-menu admin-icon-picker__menu" role="listbox" aria-labelledby="contactIconLabel">
+                            {% for icon_name, icon_label in contact_icons.items() %}
+                            <li><button class="dropdown-item admin-icon-picker__option" type="button" role="option" data-icon-picker-option data-icon-value="{{ icon_name }}" data-icon-label="{{ icon_label }}" aria-selected="false"><i class="bi bi-{{ icon_name }}" aria-hidden="true"></i><span><strong>{{ icon_label }}</strong><small>{{ icon_name }}</small></span><i class="bi bi-check-lg admin-icon-picker__check" aria-hidden="true"></i></button></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+                <label class="admin-control"><span>Порядок</span><input type="number" name="order" min="0" max="9999" value="0" required></label>
+                <fieldset class="admin-control admin-control--wide admin-choice-fieldset">
+                    <legend>Расположение</legend>
+                    <small>Выберите страницы, на которых будет показан контакт.</small>
+                    <div class="admin-location-grid">
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="footer"><i aria-hidden="true"></i><span>Footer</span></label>
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="login"><i aria-hidden="true"></i><span>Login</span></label>
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="help"><i aria-hidden="true"></i><span>Помощь</span></label>
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="mini_app"><i aria-hidden="true"></i><span>Telegram Mini App</span></label>
+                    </div>
+                </fieldset>
+                <label class="admin-publish-toggle admin-control--wide">
+                    <input type="checkbox" name="published" value="1" aria-label="Опубликовано">
+                    <span><strong>Опубликовано</strong><small>Контакт будет доступен пользователям в выбранных разделах.</small></span>
+                    <i aria-hidden="true"></i>
+                </label>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button><button type="submit" class="btn btn-primary">Сохранить</button></div>
+        </form>
+    </div></div>
+</div>
+{% endblock %}
+
+{% block admin_extra_js %}
+<script>
+(() => {
+    const modal = document.getElementById('contactModal');
+    const form = document.getElementById('contactForm');
+    if (!modal || !form) return;
+    const iconSelect = form.elements.icon;
+    const iconPicker = form.querySelector('[data-icon-picker]');
+    const iconToggle = iconPicker?.querySelector('.admin-icon-picker__toggle');
+    const iconPreview = iconPicker?.querySelector('[data-icon-picker-preview]');
+    const iconLabel = iconPicker?.querySelector('[data-icon-picker-label]');
+    const iconOptions = [...(iconPicker?.querySelectorAll('[data-icon-picker-option]') || [])];
+
+    const syncIconPicker = () => {
+        if (!iconSelect || !iconPreview || !iconLabel) return;
+        const selected = iconOptions.find(option => option.dataset.iconValue === iconSelect.value) || iconOptions[0];
+        if (!selected) return;
+        if (iconSelect.value !== selected.dataset.iconValue) iconSelect.value = selected.dataset.iconValue;
+        iconPreview.className = `bi bi-${selected.dataset.iconValue}`;
+        iconLabel.textContent = selected.dataset.iconLabel;
+        for (const option of iconOptions) option.setAttribute('aria-selected', String(option === selected));
+    };
+
+    for (const option of iconOptions) {
+        option.addEventListener('click', () => {
+            iconSelect.value = option.dataset.iconValue;
+            iconSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            iconToggle?.focus();
+        });
+    }
+    iconSelect?.addEventListener('change', syncIconPicker);
+    syncIconPicker();
+
+    modal.addEventListener('show.bs.modal', event => {
+        form.reset();
+        form.elements.contact_id.value = '';
+        const raw = event.relatedTarget?.dataset.contact;
+        if (raw) {
+            const contact = JSON.parse(raw);
+            for (const field of ['contact_id', 'type', 'label', 'address', 'icon', 'order']) {
+                const source = field === 'contact_id' ? contact.id : contact[field];
+                if (form.elements[field]) form.elements[field].value = source ?? '';
+            }
+            form.elements.published.checked = Boolean(contact.published);
+            for (const checkbox of form.querySelectorAll('input[name="locations"]')) checkbox.checked = contact.locations.includes(checkbox.value);
+        }
+        syncIconPicker();
+    });
+})();
+</script>
 {% endblock %}

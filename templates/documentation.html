@@ -359,8 +359,7 @@
 
                 <div class="docs-help-card">
                     <div class="docs-help-card__icon"><i class="bi bi-chat-heart"></i></div>
-                    <div><h3>Не нашли ответ?</h3><p>Опишите сценарий или предложите улучшение — обратная связь помогает сделать officium понятнее.</p></div>
-                    <a href="mailto:dev-eva@outlook.com" class="btn btn-primary">Написать разработчику</a>
+                    <div><h3>Не нашли ответ?</h3>{% if public_contacts_help %}<div class="public-contact-list">{% for contact in public_contacts_help %}<a href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i>{{ contact.label }}</a>{% endfor %}</div>{% else %}<p>Контакты этого экземпляра пока не опубликованы. Обратитесь к его администратору.</p>{% endif %}</div>
                 </div>
             </section>
 
