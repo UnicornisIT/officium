@@ -181,6 +181,7 @@ class RuntimeSecurityTestCase(unittest.TestCase):
             'debt_limit_per_user': '50',
             'payment_warning_days': '3',
             'urgent_payment_days': '7',
+            'impersonation_timeout_minutes': '30',
         }
         with self.assertRaisesRegex(ValueError, 'не может превышать'):
             _validated_settings(form)

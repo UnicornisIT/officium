@@ -43,6 +43,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    document.querySelectorAll('[data-admin-open-on-hash]').forEach(modalElement => {
+        if (window.location.hash === `#${modalElement.dataset.adminOpenOnHash}`) {
+            bootstrap.Modal.getOrCreateInstance(modalElement).show();
+        }
+    });
+
     const confirmElement = document.getElementById('adminConfirmModal');
     const confirmButton = document.getElementById('adminConfirmSubmit');
     const confirmMessage = document.getElementById('adminConfirmMessage');

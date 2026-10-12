@@ -71,6 +71,7 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20260829_integrity'], '20260824_combpay')
         self.assertEqual(revisions['20261009_monthly_settings'], '20260829_integrity')
         self.assertEqual(revisions['20261012_audit_log'], '20261009_monthly_settings')
+        self.assertEqual(revisions['20261012_impersonation'], '20261012_audit_log')
 
         referenced = set()
         for down_revision in revisions.values():
@@ -79,7 +80,7 @@ class MigrationContractTestCase(unittest.TestCase):
             elif down_revision:
                 referenced.add(down_revision)
         heads = set(revisions) - referenced
-        self.assertEqual(heads, {'20261012_audit_log'})
+        self.assertEqual(heads, {'20261012_impersonation'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))

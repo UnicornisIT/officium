@@ -207,21 +207,25 @@ class AdminInterfaceTestCase(unittest.TestCase):
         self.assertNotIn('Тестовый пользователь', dashboard)
         self.assertEqual(response.status_code, 404)
 
-    def test_test_impersonation_is_explicitly_enabled_only_for_development(self):
+    def test_test_impersonation_follows_the_explicit_test_user_flag(self):
         self.login(self.superadmin_id)
-        self.app.config.update(ENVIRONMENT='staging', TEST_USER_ENABLED=True)
+        self.app.config.update(ENVIRONMENT='staging', TEST_USER_ENABLED=False)
 
-        staging_dashboard = self.client.get('/admin').get_data(as_text=True)
-        staging_response = self.client.post('/admin/impersonate/test')
+        hidden_dashboard = self.client.get('/admin').get_data(as_text=True)
+        hidden_response = self.client.post('/admin/impersonate/test')
 
-        self.assertNotIn('Тестовый пользователь', staging_dashboard)
-        self.assertEqual(staging_response.status_code, 404)
+        self.assertNotIn('Тестовый пользователь', hidden_dashboard)
+        self.assertEqual(hidden_response.status_code, 404)
 
-        self.app.config.update(ENVIRONMENT='development', TEST_USER_ENABLED=True)
+        self.app.config.update(TEST_USER_ENABLED=True)
 
         dashboard = self.client.get('/admin').get_data(as_text=True)
+        response = self.client.post('/admin/impersonate/test')
 
         self.assertIn('Тестовый пользователь', dashboard)
+        self.assertEqual(response.status_code, 302)
+        with self.client.session_transaction() as session:
+            self.assertIsNotNone(session.get('impersonation_session_id'))
 
     def test_presenters_translate_known_values_and_preserve_unknown_values(self):
         self.assertEqual(admin_field_label('telegram_id'), 'Идентификатор Telegram')

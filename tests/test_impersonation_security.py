@@ -41,7 +41,10 @@ class ImpersonationSessionSecurityTestCase(unittest.TestCase):
 
     def _start_impersonation(self):
         self._login(self.admin_id)
-        response = self.client.post(f'/admin/impersonate/{self.target_id}')
+        response = self.client.post(
+            f'/admin/impersonate/{self.target_id}',
+            data={'reason': 'Проверка обращения пользователя'},
+        )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self._session_user(), str(self.target_id))
 

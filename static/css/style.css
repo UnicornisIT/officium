@@ -6596,3 +6596,25 @@ html[data-theme="dark"] .toast {
 @media (max-width: 991.98px) {
     .telegram-bottom-nav.browser-bottom-nav { display: grid; }
 }
+
+/* Impersonation banner: always visible while an admin acts as a user. */
+.impersonation-banner {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 1040;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    padding: 10px 16px;
+    color: #1f1300;
+    background: #fbbf24;
+    border-bottom: 1px solid #d97706;
+    font-size: 0.9rem;
+}
+.impersonation-banner__text { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.impersonation-banner__text strong { overflow-wrap: anywhere; }
+.impersonation-banner__meta { opacity: 0.85; font-variant-numeric: tabular-nums; }
+.impersonation-banner form { margin: 0; }
+.impersonation-banner__exit { white-space: nowrap; }

@@ -18,6 +18,7 @@
             <label class="admin-control"><span>Лимит долгов на пользователя</span><input type="number" name="debt_limit_per_user" min="1" max="1000" required value="{{ settings.debt_limit_per_user }}"></label>
             <label class="admin-control"><span>Предупреждать о платеже за, дней</span><input type="number" name="payment_warning_days" min="0" max="365" required value="{{ settings.payment_warning_days }}"></label>
             <label class="admin-control"><span>Считать платеж срочным за, дней</span><input type="number" name="urgent_payment_days" min="0" max="365" required value="{{ settings.urgent_payment_days }}"></label>
+            <label class="admin-control"><span>Вход от имени пользователя, минут</span><input type="number" name="impersonation_timeout_minutes" min="5" max="120" required value="{{ settings.impersonation_timeout_minutes }}"><small>По истечении сеанс автоматически возвращается в административную панель.</small></label>
         </div>
     </section>
     <section class="admin-panel">

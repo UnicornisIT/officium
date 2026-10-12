@@ -577,11 +577,50 @@ class ActivityLog(db.Model):
     created_at = db.Column(db.DateTime, default=utc_now)
     # Snapshot of who acted, kept even after the account is deleted.
     actor_label = db.Column(db.String(64), nullable=True)
+    # Set when an administrator acted on a user's behalf.
+    impersonation_session_id = db.Column(
+        db.Integer,
+        db.ForeignKey('impersonation_sessions.id', ondelete='SET NULL'),
+        nullable=True,
+    )
 
     user = db.relationship('User', back_populates='activity_logs')
 
     def __repr__(self):
         return f'<ActivityLog {self.action}>'
+
+
+class ImpersonationSession(db.Model):
+    """One administrator session spent inside another user's account."""
+
+    __tablename__ = 'impersonation_sessions'
+
+    END_REASONS = ('manual', 'timeout', 'logout', 'blocked', 'invalid')
+
+    id = db.Column(db.Integer, primary_key=True)
+    admin_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    actor_label = db.Column(db.String(64), nullable=False)
+    target_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    target_label = db.Column(db.String(64), nullable=False)
+    reason = db.Column(db.String(200), nullable=True)
+    read_only = db.Column(db.Boolean, nullable=False, default=True)
+    started_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    ended_at = db.Column(db.DateTime, nullable=True)
+    end_reason = db.Column(db.String(20), nullable=True)
+    ip_start = db.Column(db.String(100), nullable=True)
+    ip_end = db.Column(db.String(100), nullable=True)
+
+    __table_args__ = (
+        db.Index('ix_impersonation_sessions_active', 'ended_at', 'expires_at'),
+    )
+
+    @property
+    def is_active(self):
+        return self.ended_at is None
+
+    def __repr__(self):
+        return f'<ImpersonationSession {self.id} {self.actor_label}->{self.target_label}>'
 
 
 class TelegramProcessedUpdate(db.Model):

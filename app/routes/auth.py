@@ -9,6 +9,7 @@ from authlib.integrations.flask_client import OAuth
 from extensions import db
 from app import login_manager
 from app.models import ActivityLog, User
+from app.services import impersonation_service as impersonation
 from app.services.contact_service import load_contacts
 from app.services.telegram_auth_service import (
     verify_telegram_login,
@@ -166,6 +167,11 @@ def init_app(app):
             'dev_logout',
             'stop_impersonate',
         }
+        if session.get('original_admin_id') and request.endpoint not in ('static', 'stop_impersonate', 'logout'):
+            response = _enforce_impersonation()
+            if response is not None:
+                return response
+
         if request.endpoint in allowed_endpoints:
             return
 
@@ -174,15 +180,46 @@ def init_app(app):
                 return redirect(url_for('admin_dashboard'))
 
         if getattr(current_user, 'is_authenticated', False) and getattr(current_user, 'is_blocked', False):
+            if session.get('original_admin_id'):
+                admin = impersonation.finish('blocked', restore=True, emergency_enabled=_emergency_enabled())
+                flash('Пользователь заблокирован, сеанс входа от его имени завершён.', 'warning')
+                return redirect(url_for('admin_dashboard' if admin else 'login'))
             logout_user()
-            session.pop('original_admin_id', None)
-            session.pop('impersonated_user_id', None)
             if request.path.startswith('/api/'):
                 return {'success': False, 'error': 'Учетная запись заблокирована'}, 403
             return render_template('login.html', error='Ваша учётная запись заблокирована.', bot_username=app.config.get('TELEGRAM_BOT_USERNAME', ''), telegram_allowed=False)
 
         if not getattr(current_user, 'is_authenticated', False):
             return unauthorized()
+
+    def _emergency_enabled():
+        return bool(app.config.get('ADMIN_LOGIN_ENABLED', False))
+
+    def _impersonation_reply(message, target_endpoint):
+        if request.path.startswith('/api/'):
+            return jsonify({'success': False, 'error': message, 'code': 'impersonation_ended'}), 401
+        flash(message, 'info')
+        return redirect(url_for(target_endpoint))
+
+    def _enforce_impersonation():
+        """End an impersonation session that is invalid or past its time limit."""
+        record = impersonation.current_record()
+        valid = (
+            record is not None
+            and record.ended_at is None
+            and getattr(current_user, 'is_authenticated', False)
+            and session.get('impersonated_user_id') == str(current_user.get_id())
+        )
+        if not valid:
+            impersonation.finish('invalid', restore=False, emergency_enabled=_emergency_enabled())
+            return _impersonation_reply('Сеанс входа от имени пользователя недействителен. Войдите снова.', 'login')
+        if impersonation.is_expired(record):
+            admin = impersonation.finish('timeout', restore=True, emergency_enabled=_emergency_enabled())
+            return _impersonation_reply(
+                'Время сеанса от имени пользователя истекло, вы вернулись в административную панель.',
+                'admin_dashboard' if admin else 'login',
+            )
+        return None
 
     @app.context_processor
     def inject_user():
@@ -192,6 +229,21 @@ def init_app(app):
         test_login_enabled = app.config.get('TEST_USER_ENABLED', False)
         dev_login_enabled = app.config.get('DEV_LOGIN_ENABLED', False) and app.debug
         is_impersonating = session.get('original_admin_id') is not None
+        impersonation_banner = None
+        if is_impersonating and getattr(current_user, 'is_authenticated', False):
+            record = impersonation.current_record()
+            if record is not None and record.ended_at is None:
+                impersonation_banner = {
+                    'name': record.target_label,
+                    'display_name': (
+                        ' '.join(filter(None, [getattr(current_user, 'first_name', None), getattr(current_user, 'last_name', None)]))
+                        or getattr(current_user, 'username', None)
+                        or record.target_label
+                    ),
+                    'minutes_left': impersonation.minutes_left(record),
+                    'read_only': record.read_only,
+                    'expires_at': record.expires_at.isoformat() + 'Z',
+                }
         is_telegram_mini_app = bool(session.get('telegram_mini_app'))
         mini_app_short_name = app.config.get('TELEGRAM_MINI_APP_SHORT_NAME', '')
         mini_app_enabled = telegram_feature_states(app.config)['mini_app']['effective']
@@ -203,6 +255,7 @@ def init_app(app):
             test_login_enabled=test_login_enabled,
             dev_login_enabled=dev_login_enabled,
             is_impersonating=is_impersonating,
+            impersonation_banner=impersonation_banner,
             is_telegram_mini_app=is_telegram_mini_app,
             telegram_mini_app_enabled=mini_app_enabled,
             telegram_mini_app_short_name=mini_app_short_name,
@@ -596,35 +649,23 @@ def init_app(app):
 
     @app.route('/admin/stop-impersonate', methods=['POST'])
     def stop_impersonate():
-        original_admin_id = session.pop('original_admin_id', None)
-        impersonated_user_id = session.pop('impersonated_user_id', None)
         # Restore the admin only from the very session that started impersonation.
         if (
-            not original_admin_id
+            not session.get('original_admin_id')
             or not getattr(current_user, 'is_authenticated', False)
-            or impersonated_user_id != str(current_user.get_id())
+            or session.get('impersonated_user_id') != str(current_user.get_id())
         ):
+            impersonation.clear_session()
             return redirect(url_for('login'))
 
-        if str(original_admin_id) == 'admin':
-            if not app.config.get('ADMIN_LOGIN_ENABLED', False):
-                return redirect(url_for('login'))
-            original_admin = AdminUser()
-            admin_description = 'Restored emergency admin session'
-        else:
-            original_admin = db.session.get(User, original_admin_id)
-            if not original_admin or not original_admin.is_superadmin or original_admin.is_blocked:
-                return redirect(url_for('login'))
-            admin_description = f'Restored session from original admin {original_admin.telegram_id}'
-
-        login_user(original_admin)
-        record_activity('Завершил impersonate', original_admin, description=admin_description, ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
-        return redirect(url_for('admin_dashboard'))
+        admin = impersonation.finish('manual', restore=True, emergency_enabled=_emergency_enabled())
+        return redirect(url_for('admin_dashboard' if admin else 'login'))
 
     @app.route('/logout')
     def logout():
+        if session.get('original_admin_id'):
+            impersonation.finish('logout', restore=False, emergency_enabled=_emergency_enabled())
         logout_user()
         session.pop('telegram_mini_app', None)
-        session.pop('original_admin_id', None)
-        session.pop('impersonated_user_id', None)
+        impersonation.clear_session()
         return redirect(url_for('login'))

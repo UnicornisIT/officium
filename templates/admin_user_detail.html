@@ -16,13 +16,40 @@
     <div class="admin-user-hero__actions">
         <a class="btn btn-outline-secondary" href="{{ url_for('admin_users') }}">Назад к списку</a>
         {% if current_user.is_superadmin and not user.is_blocked and not user.is_superadmin %}
-        <form method="post" action="{{ url_for('admin_impersonate_user', user_id=user.id) }}" data-admin-confirm="Открыть приложение от имени этого пользователя?">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-primary">{{ icon('user', 17) }} Открыть как пользователь</button>
-        </form>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#impersonateModal">{{ icon('user', 17) }} Войти как пользователь</button>
         {% endif %}
     </div>
 </header>
+
+{% if current_user.is_superadmin and not user.is_blocked and not user.is_superadmin %}
+<div class="modal fade" id="impersonateModal" tabindex="-1" aria-labelledby="impersonateModalTitle" aria-hidden="true" data-admin-open-on-hash="impersonate">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" action="{{ url_for('admin_impersonate_user', user_id=user.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="impersonateModalTitle">Войти как {{ [user.first_name, user.last_name]|select|join(' ') or user.username or ('пользователь #' ~ user.id) }}</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body admin-impersonate-form">
+                <p>Вы увидите приложение так, как его видит пользователь, включая его финансовые данные. Начало и окончание сеанса записываются в журнал.</p>
+                <label class="admin-control" for="impersonateReason"><span>Причина входа</span>
+                    <textarea id="impersonateReason" name="reason" rows="3" minlength="5" maxlength="200" required placeholder="Например: проверка ошибки в расчёте графика по обращению пользователя"></textarea>
+                    <small>От 5 до 200 символов. Причина сохраняется в журнале.</small>
+                </label>
+                <label class="form-check admin-impersonate-form__check" for="impersonateAllowChanges">
+                    <input class="form-check-input" type="checkbox" id="impersonateAllowChanges" name="allow_changes" value="on">
+                    <span class="form-check-label">Разрешить изменения<small>Без отметки действует режим «только просмотр». Каждое изменение записывается в журнал от вашего имени.</small></span>
+                </label>
+                <p class="admin-help-text">Сеанс завершится автоматически через {{ impersonation_timeout }} мин.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="submit" class="btn btn-primary">{{ icon('user', 17) }} Войти</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
 
 {% if success_message %}<div class="alert alert-success" role="status">{{ success_message }}</div>{% endif %}
 

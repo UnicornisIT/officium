@@ -2330,3 +2330,9 @@ html[data-theme="dark"] .admin-login-page {
     outline: 3px solid color-mix(in srgb, var(--admin-primary) 55%, transparent);
     outline-offset: 2px;
 }
+
+.admin-impersonate-form { display: grid; gap: 14px; }
+.admin-impersonate-form p { margin: 0; color: var(--admin-text-soft); font-size: 0.82rem; }
+.admin-impersonate-form textarea { resize: vertical; }
+.admin-impersonate-form__check { display: flex; gap: 10px; align-items: flex-start; margin: 0; }
+.admin-impersonate-form__check small { display: block; color: var(--admin-text-soft); font-size: 0.74rem; }

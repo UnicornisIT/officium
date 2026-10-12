@@ -347,7 +347,31 @@ async function jsonFetch(url, options = {}) {
     if (token && !headers['X-CSRFToken'] && !headers['X-CSRF-Token']) {
         headers['X-CSRFToken'] = token;
     }
-    return fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401 && document.querySelector('.impersonation-banner')) {
+        // The impersonation session ended (time limit); the server already restored the admin.
+        window.location.assign('/admin');
+    }
+    return response;
+}
+
+function initImpersonationBanner() {
+    const banner = document.querySelector('.impersonation-banner[data-expires-at]');
+    if (!banner) return;
+    const expiresAt = Date.parse(banner.dataset.expiresAt);
+    const minutesNode = banner.querySelector('[data-impersonation-minutes]');
+    if (Number.isNaN(expiresAt)) return;
+    const tick = () => {
+        const remaining = expiresAt - Date.now();
+        if (remaining <= 0) {
+            // A fresh request lets the server end the session and return to the admin panel.
+            window.location.reload();
+            return;
+        }
+        if (minutesNode) minutesNode.textContent = String(Math.ceil(remaining / 60000));
+    };
+    tick();
+    window.setInterval(tick, 15000);
 }
 
 function formatMoney(n) {
@@ -1588,6 +1612,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTelegramMiniApp();
     initMobileViewport();
     initThemeToggle();
+    initImpersonationBanner();
     initNavbarLayout();
     initOperationHistories();
 

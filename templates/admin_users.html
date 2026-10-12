@@ -72,10 +72,7 @@
                 <td class="admin-table__actions" data-label="Действия">
                     <a href="{{ url_for('admin_user_detail', user_id=user.id) }}" class="admin-icon-button" aria-label="Открыть профиль пользователя">{{ icon('chevron-right', 18) }}</a>
                     {% if current_user.is_superadmin and not user.is_blocked and not user.is_superadmin %}
-                    <form method="post" action="{{ url_for('admin_impersonate_user', user_id=user.id) }}" data-admin-confirm="Открыть приложение от имени выбранного пользователя?">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="admin-icon-button" aria-label="Открыть приложение от имени пользователя">{{ icon('user', 18) }}</button>
-                    </form>
+                    <a href="{{ url_for('admin_user_detail', user_id=user.id) }}#impersonate" class="admin-icon-button" aria-label="Войти как пользователь">{{ icon('user', 18) }}</a>
                     {% endif %}
                 </td>
             </tr>

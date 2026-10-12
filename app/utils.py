@@ -84,6 +84,7 @@ DEFAULT_SETTINGS = {
     'payment_warning_days': '7',
     'urgent_payment_days': '3',
     'overdue_after_date': 'true',
+    'impersonation_timeout_minutes': '30',
 }
 
 
@@ -277,7 +278,7 @@ def actor_label_for(user):
     return label[:ACTOR_LABEL_MAX_LENGTH]
 
 
-def record_activity(action, user=None, entity_type=None, entity_id=None, description=None, ip_address=None, user_agent=None):
+def record_activity(action, user=None, entity_type=None, entity_id=None, description=None, ip_address=None, user_agent=None, impersonation_session_id=None, actor_label=None):
     user_id = getattr(user, 'id', None) if user else None
     if not isinstance(user_id, int):
         try:
@@ -293,7 +294,8 @@ def record_activity(action, user=None, entity_type=None, entity_id=None, descrip
         description=description,
         ip_address=ip_address,
         user_agent=user_agent,
-        actor_label=actor_label_for(user),
+        actor_label=actor_label or actor_label_for(user),
+        impersonation_session_id=impersonation_session_id,
     )
     db.session.add(log)
     db.session.commit()

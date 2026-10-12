@@ -2,11 +2,11 @@ import csv
 from datetime import datetime, timedelta
 from io import StringIO
 from flask import abort, current_app, jsonify, redirect, render_template, request, url_for, Response, flash, session
-from flask_login import current_user, login_user, logout_user
+from flask_login import current_user
 from sqlalchemy import and_, cast, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from app.models import ActivityLog, DictionaryEntry, User, AppSetting
-from app.routes.auth import LocalTestUser
+from app.services import impersonation_service as impersonation
 from app.services.contact_service import (
     CONTACT_ICONS,
     CONTACT_LOCATIONS,
@@ -48,10 +48,8 @@ def _setting_enabled(key, default=True):
 
 
 def _test_impersonation_enabled():
-    return (
-        str(current_app.config.get('ENVIRONMENT', '')).strip().lower() == 'development'
-        and bool(current_app.config.get('TEST_USER_ENABLED'))
-    )
+    # TEST_USER_ENABLED is rejected in production by the runtime config check.
+    return bool(current_app.config.get('TEST_USER_ENABLED'))
 
 
 def _page_number():
@@ -133,6 +131,7 @@ def _validated_settings(form):
         'debt_limit_per_user': (1, 1000, 'Лимит долгов'),
         'payment_warning_days': (0, 365, 'Срок предупреждения'),
         'urgent_payment_days': (0, 365, 'Срок срочного платежа'),
+        'impersonation_timeout_minutes': (5, 120, 'Длительность входа от имени пользователя'),
     }
     values = {'app_name': app_name, 'default_currency': currency}
     for key, (minimum, maximum, label) in number_limits.items():
@@ -503,38 +502,37 @@ def init_app(app):
                 )
                 db.session.add(test_user)
                 db.session.commit()
-
             if test_user.is_blocked:
                 test_user.is_blocked = False
                 db.session.commit()
-
-            session['original_admin_id'] = current_user.id
-            record_activity('Начал impersonate тестового пользователя', current_user, entity_type='user', entity_id=test_user.id, description=f'Имперсонализация в пользователя {test_user.telegram_id}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
-            logout_user()
-            login_user(test_user)
-            session['impersonated_user_id'] = str(test_user.get_id())
+            # The test account needs no reason and allows changes, but it goes
+            # through the same audited, time-limited session as any other user.
+            impersonation.start(current_user, test_user, read_only=False, test_user=True)
         except SQLAlchemyError:
             db.session.rollback()
-            logout_user()
-            local_test_user = LocalTestUser()
-            login_user(local_test_user)
-            session['impersonated_user_id'] = str(local_test_user.get_id())
-
+            current_app.logger.exception('Failed to start test-user impersonation')
+            flash('Не удалось начать сеанс тестового пользователя: база данных недоступна.', 'danger')
+            return redirect(url_for('admin_dashboard'))
         return redirect(url_for('index'))
 
     @app.route('/admin/impersonate/<int:user_id>', methods=['POST'])
     @superadmin_required
     def admin_impersonate_user(user_id):
-        user = User.query.get_or_404(user_id)
-        if user.is_blocked or user.is_superadmin:
-            flash('Нельзя открыть интерфейс от имени этого пользователя.', 'warning')
-            return redirect(url_for('admin_users'))
-
-        session['original_admin_id'] = current_user.id
-        record_activity('Начал impersonate пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Имперсонализация в пользователя {user.telegram_id}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
-        logout_user()
-        login_user(user)
-        session['impersonated_user_id'] = str(user.get_id())
+        user = db.session.get(User, user_id) or abort(404)
+        try:
+            impersonation.ensure_can_impersonate(current_user, user)
+            reason = impersonation.validate_reason(request.form.get('reason'))
+        except impersonation.ImpersonationError as exc:
+            flash(str(exc), 'warning')
+            return redirect(url_for('admin_user_detail', user_id=user.id))
+        read_only = request.form.get('allow_changes') not in ('on', '1', 'true', 'yes')
+        try:
+            impersonation.start(current_user, user, reason=reason, read_only=read_only)
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception('Failed to start impersonation')
+            flash('Не удалось начать сеанс: база данных недоступна.', 'danger')
+            return redirect(url_for('admin_user_detail', user_id=user.id))
         return redirect(url_for('index'))
 
     @app.route('/admin/users/<int:user_id>', methods=['GET', 'POST'])
@@ -612,7 +610,7 @@ def init_app(app):
                 and_(ActivityLog.entity_type == 'user', ActivityLog.entity_id == user.id),
             )
         ).order_by(ActivityLog.created_at.desc()).limit(20).all()
-        return render_template('admin_user_detail.html', user=user, recent_actions=recent_actions, success_message=request.args.get('success'))
+        return render_template('admin_user_detail.html', user=user, recent_actions=recent_actions, impersonation_timeout=impersonation.timeout_minutes(), success_message=request.args.get('success'))
 
     @app.route('/admin/logs')
     @admin_required
