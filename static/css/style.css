@@ -5158,7 +5158,8 @@ body.keyboard-open [contenteditable="true"] {
 }
 
 .docs-plan-path > div:not(.docs-plan-path__line) {
-    flex: 0 0 190px;
+    flex: 0 1 190px;
+    min-width: 0;
     text-align: center;
 }
 
