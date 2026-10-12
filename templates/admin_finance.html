@@ -32,7 +32,7 @@
                 <td data-label="Сумма"><strong>{{ '%.2f'|format(payment.amount) }} ₽</strong>{% if payment.is_early_repayment %}<small class="admin-table__subline">Досрочное погашение</small>{% endif %}</td>
                 <td data-label="Дата платежа">{{ payment.payment_date.strftime('%d.%m.%Y') if payment.payment_date else '—' }}</td>
                 <td data-label="Остаток после платежа">{{ '%.2f'|format(payment.remaining_after_payment) }} ₽</td>
-            </tr>{% else %}<tr><td colspan="6"><div class="admin-empty-state">{{ icon('search', 30) }}<p>Платежи не найдены.</p></div></td></tr>{% endfor %}
+            </tr>{% else %}<tr class="admin-table__empty-row"><td colspan="6"><div class="admin-empty-state">{{ icon('search', 30) }}<p>Платежи не найдены.</p></div></td></tr>{% endfor %}
         </tbody></table>
         {% else %}
         <table class="admin-table admin-table--responsive"><thead><tr><th>{{ field_label('id') }}</th><th>Пользователь</th><th>Банк и продукт</th><th>{{ field_label('total_amount') }}</th><th>{{ field_label('remaining_amount') }}</th><th>{{ field_label('next_payment_date') }}</th><th>{{ field_label('status') }}</th></tr></thead><tbody>
@@ -44,7 +44,7 @@
                 <td data-label="Текущий остаток"><strong>{{ '%.2f'|format(debt.remaining_amount) }} ₽</strong></td>
                 <td data-label="Следующий платеж">{{ debt.next_payment_date.strftime('%d.%m.%Y') if debt.next_payment_date else '—' }}</td>
                 <td data-label="Статус">{{ status_badge(debt.status) }}</td>
-            </tr>{% else %}<tr><td colspan="7"><div class="admin-empty-state">{{ icon('search', 30) }}<p>Долговые обязательства не найдены.</p></div></td></tr>{% endfor %}
+            </tr>{% else %}<tr class="admin-table__empty-row"><td colspan="7"><div class="admin-empty-state">{{ icon('search', 30) }}<p>Долговые обязательства не найдены.</p></div></td></tr>{% endfor %}
         </tbody></table>
         {% endif %}
     </div>

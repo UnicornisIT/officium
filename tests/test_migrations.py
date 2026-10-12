@@ -95,13 +95,13 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertNotIn("sa.Text(), nullable=False, server_default", migration_text)
 
     def test_deploy_preflight_handles_migration_states(self):
-        deploy_text = (PROJECT_ROOT / 'scripts' / 'deploy.sh').read_text(encoding='utf-8')
+        deploy_text = (PROJECT_ROOT / 'deployment' / 'deploy-release').read_text(encoding='utf-8')
         preflight_text = (
             PROJECT_ROOT / 'app' / 'migration_preflight.py'
         ).read_text(encoding='utf-8')
 
-        self.assertIn('flask db-preflight', deploy_text)
-        self.assertIn('flask db-baseline-revision', deploy_text)
+        self.assertIn('-m flask db-preflight', deploy_text)
+        self.assertIn('-m flask db-baseline-revision', deploy_text)
         self.assertIn('ALTER TABLE {VERSION_TABLE} ADD COLUMN version_num', preflight_text)
         self.assertNotIn('stamp head', deploy_text)
         self.assertNotIn("<<'PY'", deploy_text)
@@ -137,14 +137,12 @@ class MigrationContractTestCase(unittest.TestCase):
     def test_release_deploy_requires_backup_and_exact_tag(self):
         deploy_text = (PROJECT_ROOT / 'scripts' / 'deploy.sh').read_text(encoding='utf-8')
 
-        self.assertIn('OFFICIUM_BACKUP_CONFIRMED', deploy_text)
-        self.assertIn('refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG', deploy_text)
-        self.assertIn('git checkout --detach', deploy_text)
-        self.assertIn('Tracked local changes found', deploy_text)
         self.assertIn('Deployment requires --release <tag>.', deploy_text)
         self.assertIn('set -euo pipefail', deploy_text)
+        self.assertIn('officium-update-runner --start "$RELEASE_TAG"', deploy_text)
         self.assertNotIn('git pull', deploy_text)
-        self.assertNotIn('python3 -m venv', deploy_text)
+        self.assertNotIn('git checkout', deploy_text)
+        self.assertNotIn('sudo ', deploy_text)
 
     def test_monthly_expense_timer_is_persistent_and_has_daily_recovery(self):
         timer_text = (
@@ -154,8 +152,10 @@ class MigrationContractTestCase(unittest.TestCase):
             PROJECT_ROOT / 'deployment' / 'officium-monthly-expenses.service'
         ).read_text(encoding='utf-8')
 
-        self.assertIn('OnCalendar=*-*-* 00:05:00 Europe/Moscow', timer_text)
+        self.assertIn('OnCalendar=*-*-* 00:05:00 @@APP_TIMEZONE@@', timer_text)
         self.assertIn('Persistent=true', timer_text)
+        self.assertIn('@@APP_ROOT@@/current', service_text)
+        self.assertIn('EnvironmentFile=@@APP_ROOT@@/shared/.env', service_text)
         self.assertIn('generate-monthly-expenses', service_text)
         self.assertNotIn('gunicorn', service_text.lower())
 

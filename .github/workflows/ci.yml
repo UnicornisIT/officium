@@ -2,78 +2,187 @@ name: CI
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
   pull_request:
-    branches:
-      - master
+    branches: [master]
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Python ${{ matrix.python-version }}
+  unit-integration:
+    name: Python ${{ matrix.python-version }} unit/integration
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        python-version:
-          - "3.10"
-          - "3.13"
+        python-version: ['3.10', '3.13']
     env:
       FLASK_APP: run.py
       OFFICIUM_ENV: development
       DB_ENGINE: sqlite
+      APP_TIMEZONE: Europe/Moscow
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: requirements.txt
-
-      - name: Install dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements.txt
-
+      - name: Install dependencies, coverage and JUnit runner
+        run: >-
+          python -m pip install --disable-pip-version-check
+          -r requirements.txt coverage unittest-xml-reporting==3.2.0
       - name: Compile Python sources
-        run: python -m compileall -q app tests config.py run.py
-
-      - name: Run unit tests
-        run: python -m unittest discover -v
-
+        run: python -m compileall -q app tests config.py run.py deployment/officium-update-runner deployment/officium-update-client
+      - name: Run unit and SQLite integration tests
+        run: |
+          mkdir -p test-results
+          python -m coverage run --branch -m xmlrunner discover \
+            -s tests -p 'test_*.py' -o test-results/junit
+      - name: Produce coverage reports
+        run: |
+          # Application-only baseline is 67%; .coveragerc enforces 65% and
+          # the floor is ratcheted upward as route coverage grows.
+          python -m coverage report
+          python -m coverage xml -o test-results/coverage.xml
       - name: Verify migrations on temporary SQLite
-        shell: bash
         run: |
           export DATABASE_URL="sqlite:///${RUNNER_TEMP}/officium-ci-${{ matrix.python-version }}.sqlite"
           python -m flask db upgrade
           python -m flask db heads
           python -m flask db check
-
-  dependency-audit:
-    name: Dependency audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    continue-on-error: true
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Upload Python evidence
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          python-version: "3.13"
+          name: python-${{ matrix.python-version }}-evidence
+          path: |
+            test-results/
+            .coverage
+
+  mysql-backup-restore:
+    name: MySQL migrations and backup restore without PROCESS
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root-test-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot-test-password"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      FLASK_APP: run.py
+      OFFICIUM_ENV: staging
+      SECRET_KEY: mysql-ci-only-secret-over-32-characters
+      SESSION_COOKIE_SECURE: 'true'
+      DB_ENGINE: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: officium_ci
+      DB_PASSWORD: officium-ci-password
+      DB_NAME: officium_ci
+      APP_TIMEZONE: Europe/Moscow
+      OFFICIUM_MYSQL_HOST: 127.0.0.1
+      OFFICIUM_MYSQL_PORT: '3306'
+      OFFICIUM_MYSQL_USER: officium_ci
+      OFFICIUM_MYSQL_PASSWORD: officium-ci-password
+      OFFICIUM_MYSQL_DATABASE: officium_ci
+      OFFICIUM_MYSQL_RESTORE_DATABASE: officium_restore_ci
+      OFFICIUM_APP_USER: runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
           cache: pip
           cache-dependency-path: requirements.txt
-
-      - name: Install application and audit dependencies
+      - name: Install app and MySQL client
         run: |
           python -m pip install --disable-pip-version-check -r requirements.txt
-          python -m pip install --disable-pip-version-check pip-audit
+          sudo apt-get update
+          sudo apt-get install -y mysql-client
+      - name: Provision restricted databases
+        run: |
+          mysql -h127.0.0.1 -uroot -proot-test-password <<'SQL'
+          CREATE DATABASE officium_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE DATABASE officium_restore_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE USER 'officium_ci'@'%' IDENTIFIED BY 'officium-ci-password';
+          GRANT ALL PRIVILEGES ON officium_ci.* TO 'officium_ci'@'%';
+          GRANT ALL PRIVILEGES ON officium_restore_ci.* TO 'officium_ci'@'%';
+          FLUSH PRIVILEGES;
+          SQL
+      - name: Apply real MySQL migrations
+        run: |
+          python -m flask db upgrade
+          python -m flask db heads
+          python -m flask db check
+      - name: Dump without PROCESS and restore into empty database
+        run: |
+          mkdir -p test-results
+          PYTHON_BIN="$(command -v python)"
+          sudo --preserve-env=OFFICIUM_MYSQL_HOST,OFFICIUM_MYSQL_PORT,OFFICIUM_MYSQL_USER,OFFICIUM_MYSQL_PASSWORD,OFFICIUM_MYSQL_DATABASE,OFFICIUM_MYSQL_RESTORE_DATABASE,OFFICIUM_APP_USER "$PYTHON_BIN" tests/integration/mysql_backup_restore.py | tee test-results/mysql-backup-restore.log
+      - name: Upload sanitized MySQL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mysql-backup-restore-evidence
+          path: test-results/mysql-backup-restore.log
 
-      - name: Audit dependencies
-        run: python -m pip_audit
+  browser-e2e:
+    name: Playwright Chromium Firefox WebKit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Install pinned Playwright and browsers
+        run: |
+          npm install --ignore-scripts
+          npx playwright install --with-deps chromium firefox webkit
+      - name: Run browser geometry, accessibility, console and network checks
+        run: npm run test:e2e
+      - name: Upload Playwright evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-evidence
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+  dependency-audit:
+    name: Dependency audit (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: python -m pip install --disable-pip-version-check -r requirements.txt pip-audit
+      - run: |
+          mkdir -p test-results
+          python -m pip_audit -r requirements.txt --format json --output test-results/pip-audit-runtime.json
+          python -m pip_audit -r requirements-build.txt --format json --output test-results/pip-audit-build.json
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-evidence
+          path: test-results/pip-audit-*.json

@@ -1,0 +1,167 @@
+name: Staging release gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Trusted disposable QA repository (owner/name)
+        required: true
+        type: string
+      base_tag:
+        description: Fixed updater release installed first
+        required: true
+        type: string
+      target_tag:
+        description: Newer latest stable QA release installed by the button
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  real-update:
+    name: Ubuntu systemd MySQL admin-button update
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: staging
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root-staging-password
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot-staging-password"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate inputs are not the production repository
+        env:
+          QA_REPOSITORY: ${{ inputs.repository }}
+        run: |
+          test "$QA_REPOSITORY" != 'UnicornisIT/officium'
+          printf '%s' "$QA_REPOSITORY" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+      - name: Install Ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client python3-venv nginx openssl
+          python -m pip install --disable-pip-version-check -r requirements.txt
+          npm install --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Provision restricted MySQL and app account
+        run: |
+          sudo groupadd --system officium
+          sudo useradd --system --gid officium --home /opt/officium --shell /usr/sbin/nologin officium
+          mysql -h127.0.0.1 -uroot -proot-staging-password <<'SQL'
+          CREATE DATABASE officium CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE USER 'officium'@'%' IDENTIFIED BY 'officium-staging-password';
+          GRANT ALL PRIVILEGES ON officium.* TO 'officium'@'%';
+          FLUSH PRIVILEGES;
+          SQL
+      - name: Create synthetic staging configuration
+        env:
+          QA_REPOSITORY: ${{ inputs.repository }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/officium-config"
+          PASSWORD_HASH=$(python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('staging-admin-password'))")
+          cat >"$RUNNER_TEMP/officium-config/app.env" <<EOF
+          OFFICIUM_ENV=staging
+          SECRET_KEY=staging-only-secret-that-is-longer-than-thirty-two-characters
+          SESSION_COOKIE_SECURE=true
+          APP_TIMEZONE=Europe/Moscow
+          DB_ENGINE=mysql
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_USER=officium
+          DB_PASSWORD=officium-staging-password
+          DB_NAME=officium
+          ADMIN_LOGIN_ENABLED=true
+          ADMIN_PASSWORD_HASH=$PASSWORD_HASH
+          SERVER_UPDATE_ENABLED=true
+          SERVER_UPDATE_REPOSITORY=$QA_REPOSITORY
+          SERVER_UPDATE_SOCKET=/run/officium/updater.sock
+          SERVER_UPDATE_APP_DIR=/opt/officium/current
+          SERVER_UPDATE_STATUS_PATH=/var/lib/officium/server-update-status.json
+          EOF
+      - name: Install base release with generated systemd units
+        env:
+          RELEASE_TAG: ${{ inputs.base_tag }}
+          REPOSITORY: ${{ inputs.repository }}
+          ENV_FILE_SOURCE: ${{ runner.temp }}/officium-config/app.env
+          APP_DIR: /opt/officium
+          APP_USER: officium
+          APP_GROUP: officium
+          SERVICE_NAME: officium
+          HOST: 127.0.0.1
+          PORT: '5000'
+          TRUSTED_PROXY: 127.0.0.1
+          APP_TIMEZONE: Europe/Moscow
+          DB_ENGINE: mysql
+          DB_NAME: officium
+          ENABLE_NGINX: 'true'
+          SERVER_NAME: localhost
+        run: sudo --preserve-env=RELEASE_TAG,REPOSITORY,ENV_FILE_SOURCE,APP_DIR,APP_USER,APP_GROUP,SERVICE_NAME,HOST,PORT,TRUSTED_PROXY,APP_TIMEZONE,DB_ENGINE,DB_NAME,ENABLE_NGINX,SERVER_NAME bash deployment/install-officium.sh install
+      - name: Enable disposable self-signed HTTPS reverse proxy
+        run: |
+          sudo openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj '/CN=localhost' -keyout /etc/ssl/private/officium-staging.key \
+            -out /etc/ssl/certs/officium-staging.crt
+          sudo cp deployment/nginx-officium-tls-staging.conf /etc/nginx/sites-available/officium-staging-tls
+          sudo ln -s /etc/nginx/sites-available/officium-staging-tls /etc/nginx/sites-enabled/officium-staging-tls
+          sudo nginx -t
+          sudo systemctl restart nginx
+          curl --fail --insecure --header 'Host: localhost' https://127.0.0.1/login >/dev/null
+      - name: Assert sandboxing and restricted database grants
+        run: |
+          test "$(systemctl show officium.service -p NoNewPrivileges --value)" = yes
+          test "$(stat -c '%U:%G' /opt/officium/releases)" = root:officium
+          if sudo -u officium touch /opt/officium/releases/should-not-exist; then
+            echo 'APP_USER can write RELEASES_DIR' >&2
+            exit 1
+          fi
+          if sudo -u officium sh -c 'printf tamper >>/opt/officium/current/run.py'; then
+            echo 'APP_USER can modify the sealed active release' >&2
+            exit 1
+          fi
+          test "$(stat -c '%u' /usr/local/sbin/officium-update-runner)" = 0
+          test $((8#$(stat -c '%a' /usr/local/sbin/officium-update-runner) & 8#022)) -eq 0
+          mysql -h127.0.0.1 -uofficium -pofficium-staging-password -Nse 'SHOW GRANTS FOR CURRENT_USER' | tee "$RUNNER_TEMP/mysql-grants.txt"
+          ! grep -qi PROCESS "$RUNNER_TEMP/mysql-grants.txt"
+      - name: Reject wrong peer and malformed direct IPC
+        run: |
+          if sudo -u nobody /usr/local/bin/officium-update-client check; then
+            echo 'wrong Unix peer was accepted' >&2
+            exit 1
+          fi
+          response=$(sudo -u officium python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/run/officium/updater.sock'); s.sendall(b'{\"protocol\":1,\"action\":\"shell\",\"command\":\"id\"}\\n'); print(s.recv(4096).decode())")
+          printf '%s' "$response" | grep -q '"code":"protocol_error"'
+      - name: Execute real admin-panel button update
+        env:
+          STAGING_UPDATE_URL: https://127.0.0.1
+          STAGING_ALLOW_SELF_SIGNED: 'true'
+          STAGING_ADMIN_PASSWORD: staging-admin-password
+          STAGING_TARGET_TAG: ${{ inputs.target_tag }}
+        run: npx playwright test tests/e2e/staging-update.spec.js --project=chromium
+      - name: Run read-only post-deploy smoke and collect evidence
+        if: always()
+        run: |
+          sudo bash deployment/post-deploy-smoke.sh --service officium --app-dir /opt/officium/current --url http://127.0.0.1:5000/login --timer officium-monthly-expenses.timer | tee "$RUNNER_TEMP/post-deploy-smoke.log"
+          sudo journalctl -u officium.service -u officium-updater.service --no-pager --output=short-iso | sed -E 's/(password|token|secret)=[^ ]+/\1=[REDACTED]/Ig' >"$RUNNER_TEMP/staging-journal.log"
+      - name: Upload staging evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-release-gate-evidence
+          path: |
+            ${{ runner.temp }}/post-deploy-smoke.log
+            ${{ runner.temp }}/staging-journal.log
+            test-results/
+            playwright-report/
+          retention-days: 30

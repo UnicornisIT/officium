@@ -32,4 +32,134 @@
     </section>
     <div class="admin-sticky-actions"><span>{{ icon('info', 17) }} Изменения применяются сразу после сохранения.</span><button type="submit" class="btn btn-primary">{{ icon('check-circle', 17) }} Сохранить настройки</button></div>
 </form>
+
+<section class="admin-panel admin-contacts" aria-labelledby="contacts-title">
+    <div class="admin-panel__header">
+        <div><p class="admin-page-kicker">Публикация</p><h2 id="contacts-title">Контакты и ссылки</h2><p>Ссылки проходят серверную проверку и появляются сразу после сохранения.</p></div>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#contactModal" data-contact-new>{{ icon('plus', 17) }} Добавить</button>
+    </div>
+    {% if contacts %}
+    <div class="admin-contact-grid">
+        {% for contact in contacts %}
+        <article class="admin-contact-card">
+            <span class="admin-contact-card__icon"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i></span>
+            <div><strong>{{ contact.label }}</strong><small>{{ contact.address }}</small><small>{{ contact.locations|join(', ') }} · порядок {{ contact.order }}</small></div>
+            <span class="admin-badge admin-badge--{{ 'success' if contact.published else 'secondary' }}">{{ 'Опубликован' if contact.published else 'Скрыт' }}</span>
+            <div class="admin-contact-card__actions">
+                <a class="btn btn-outline-secondary btn-sm" href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow">Предпросмотр</a>
+                <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#contactModal" data-contact='{{ contact|tojson|forceescape }}'>Изменить</button>
+                <form method="post" action="{{ url_for('admin_settings_contacts') }}" data-admin-confirm="Удалить контакт {{ contact.label }}?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete"><input type="hidden" name="contact_id" value="{{ contact.id }}">
+                    <button class="btn btn-outline-danger btn-sm" type="submit">Удалить</button>
+                </form>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="admin-empty-state admin-empty-state--compact"><p>Контакты пока не опубликованы. Пользователи увидят нейтральную подсказку обратиться к администратору экземпляра.</p></div>
+    {% endif %}
+</section>
+
+<div class="modal fade" id="contactModal" tabindex="-1" aria-labelledby="contactModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable admin-contact-modal"><div class="modal-content">
+        <form method="post" action="{{ url_for('admin_settings_contacts') }}" id="contactForm">
+            <div class="modal-header">
+                <div><p class="admin-page-kicker">Контакты и ссылки</p><h2 class="modal-title" id="contactModalTitle">Контакт</h2></div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body admin-form-grid">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save"><input type="hidden" name="contact_id" value="">
+                <label class="admin-control"><span>Тип</span><select name="type" required>{% for value, label in contact_types.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label>
+                <label class="admin-control"><span>Название</span><input name="label" maxlength="80" required></label>
+                <label class="admin-control admin-control--wide"><span>Адрес</span><input name="address" maxlength="500" required placeholder="https://example.org или contact@example.org"><small>Произвольные схемы, credentials, локальные адреса и небезопасные URI отклоняются.</small></label>
+                <div class="admin-control">
+                    <span id="contactIconLabel">Иконка</span>
+                    <select class="visually-hidden" id="contactIconSelect" name="icon" required aria-labelledby="contactIconLabel">
+                        {% for icon_name, icon_label in contact_icons.items() %}<option value="{{ icon_name }}">{{ icon_label }}</option>{% endfor %}
+                    </select>
+                    <div class="dropdown admin-icon-picker" data-icon-picker>
+                        <button class="admin-icon-picker__toggle dropdown-toggle" id="contactIconPicker" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="listbox" aria-labelledby="contactIconLabel contactIconPickerValue">
+                            <span class="admin-icon-picker__value" id="contactIconPickerValue"><i class="bi bi-envelope" data-icon-picker-preview aria-hidden="true"></i><span data-icon-picker-label>Конверт</span></span>
+                        </button>
+                        <ul class="dropdown-menu admin-icon-picker__menu" role="listbox" aria-labelledby="contactIconLabel">
+                            {% for icon_name, icon_label in contact_icons.items() %}
+                            <li><button class="dropdown-item admin-icon-picker__option" type="button" role="option" data-icon-picker-option data-icon-value="{{ icon_name }}" data-icon-label="{{ icon_label }}" aria-selected="false"><i class="bi bi-{{ icon_name }}" aria-hidden="true"></i><span><strong>{{ icon_label }}</strong><small>{{ icon_name }}</small></span><i class="bi bi-check-lg admin-icon-picker__check" aria-hidden="true"></i></button></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+                <label class="admin-control"><span>Порядок</span><input type="number" name="order" min="0" max="9999" value="0" required></label>
+                <fieldset class="admin-control admin-control--wide admin-choice-fieldset">
+                    <legend>Расположение</legend>
+                    <small>Выберите страницы, на которых будет показан контакт.</small>
+                    <div class="admin-location-grid">
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="footer"><i aria-hidden="true"></i><span>Footer</span></label>
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="login"><i aria-hidden="true"></i><span>Login</span></label>
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="help"><i aria-hidden="true"></i><span>Помощь</span></label>
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="mini_app"><i aria-hidden="true"></i><span>Telegram Mini App</span></label>
+                    </div>
+                </fieldset>
+                <label class="admin-publish-toggle admin-control--wide">
+                    <input type="checkbox" name="published" value="1" aria-label="Опубликовано">
+                    <span><strong>Опубликовано</strong><small>Контакт будет доступен пользователям в выбранных разделах.</small></span>
+                    <i aria-hidden="true"></i>
+                </label>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button><button type="submit" class="btn btn-primary">Сохранить</button></div>
+        </form>
+    </div></div>
+</div>
+{% endblock %}
+
+{% block admin_extra_js %}
+<script>
+(() => {
+    const modal = document.getElementById('contactModal');
+    const form = document.getElementById('contactForm');
+    if (!modal || !form) return;
+    const iconSelect = form.elements.icon;
+    const iconPicker = form.querySelector('[data-icon-picker]');
+    const iconToggle = iconPicker?.querySelector('.admin-icon-picker__toggle');
+    const iconPreview = iconPicker?.querySelector('[data-icon-picker-preview]');
+    const iconLabel = iconPicker?.querySelector('[data-icon-picker-label]');
+    const iconOptions = [...(iconPicker?.querySelectorAll('[data-icon-picker-option]') || [])];
+
+    const syncIconPicker = () => {
+        if (!iconSelect || !iconPreview || !iconLabel) return;
+        const selected = iconOptions.find(option => option.dataset.iconValue === iconSelect.value) || iconOptions[0];
+        if (!selected) return;
+        if (iconSelect.value !== selected.dataset.iconValue) iconSelect.value = selected.dataset.iconValue;
+        iconPreview.className = `bi bi-${selected.dataset.iconValue}`;
+        iconLabel.textContent = selected.dataset.iconLabel;
+        for (const option of iconOptions) option.setAttribute('aria-selected', String(option === selected));
+    };
+
+    for (const option of iconOptions) {
+        option.addEventListener('click', () => {
+            iconSelect.value = option.dataset.iconValue;
+            iconSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            iconToggle?.focus();
+        });
+    }
+    iconSelect?.addEventListener('change', syncIconPicker);
+    syncIconPicker();
+
+    modal.addEventListener('show.bs.modal', event => {
+        form.reset();
+        form.elements.contact_id.value = '';
+        const raw = event.relatedTarget?.dataset.contact;
+        if (raw) {
+            const contact = JSON.parse(raw);
+            for (const field of ['contact_id', 'type', 'label', 'address', 'icon', 'order']) {
+                const source = field === 'contact_id' ? contact.id : contact[field];
+                if (form.elements[field]) form.elements[field].value = source ?? '';
+            }
+            form.elements.published.checked = Boolean(contact.published);
+            for (const checkbox of form.querySelectorAll('input[name="locations"]')) checkbox.checked = contact.locations.includes(checkbox.value);
+        }
+        syncIconPicker();
+    });
+})();
+</script>
 {% endblock %}

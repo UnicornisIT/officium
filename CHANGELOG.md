@@ -3,7 +3,52 @@
 Все заметные пользовательские изменения проекта публикуются в этом файле.
 Формат основан на Keep a Changelog, версии следуют Semantic Versioning.
 
-## [Unreleased]
+## [v0.0.8-rc.1] - release candidate, not published
+
+- Обновлены Werkzeug до 3.1.9 и pypdf до 6.19.0 для устранения девяти
+  уязвимостей, подтверждённых блокирующим `pip-audit`.
+- Build-time pip/setuptools закреплены отдельно и обновляются до проверенных
+  версий до установки runtime-зависимостей нового релиза.
+
+### Added
+
+- Добавлены управляемый Ubuntu installer, версионированные release-каталоги,
+  атомарное переключение `current`, read-only post-deploy smoke и recovery.
+- Добавлены socket-activated privileged updater, MySQL backup/restore gate,
+  Playwright Chromium/Firefox/WebKit и отдельный staging release gate.
+- Добавлена настройка публичных контактов и ссылок через superadmin UI.
+
+### Fixed
+
+- Flask больше не запускает `sudo`; обновление совместимо с
+  `NoNewPrivileges=true` и использует credential-checked Unix socket.
+- Waitress запускается через `run:app`, а список trusted proxy headers передаётся
+  одним systemd-аргументом.
+- MySQL dump больше не требует глобальный `PROCESS` для tablespaces.
+- Обновление не выполняет checkout поверх активного дерева и не оставляет
+  partial release при ошибке зависимостей или миграции.
+- Legacy migration устанавливает unit/updater/smoke только из проверенного target
+  release и не зависит от executable bit исходных `.sh` файлов.
+- Candidate release перед активацией становится root-owned/read-only и повторно
+  сверяется с remote tag/commit и tracked Git tree.
+- Любая ошибка или timeout после переключения `current` запускает rollback;
+  неуспешный restart старой версии получает отдельный recovery status.
+- Readiness проверяет реальную доступность SQLite backup API или MySQL schema
+  dump без `PROCESS`, прежде чем разрешить обновление.
+- Системный экран показывает effective Telegram state с учётом DB и `.env`.
+- Удалена неполная настройка private-repository token; текущий updater явно
+  поддерживает только публичный GitHub repository.
+- Исправлены размеры и выравнивание полей, расположений и переключателя
+  публикации в форме контакта на desktop и mobile; выбор иконки теперь показывает
+  сам значок, понятное название и техническое имя каждого варианта.
+- Исправлено сжатие всей страницы обновления при inline alert, переполнение
+  таблицы пользователей на laptop viewport и наложение readiness-статусов.
+- Парные панели и поля фильтров теперь имеют симметричную геометрию; иконки
+  поиска больше не перекрывают первые буквы введённого текста и placeholder.
+- Навигация больше не переносит подписи при browser zoom: до переполнения она
+  переключается в компактные кнопки-иконки. Карточка входа больше не обрезает
+  dev-действия, а пустые responsive-таблицы не превращаются во вложенные
+  перекошенные карточки.
 
 ## [0.0.7] - 2026-10-10
 

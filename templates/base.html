@@ -21,16 +21,16 @@
         })();
     </script>
     <title>{% block title %}officium{% endblock %}</title>
-    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}?v=0.0.7" type="image/svg+xml">
-    <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}?v=0.0.7" sizes="any">
-    <link rel="icon" href="{{ url_for('static', filename='favicon-16x16.png') }}?v=0.0.7" type="image/png" sizes="16x16">
-    <link rel="icon" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=0.0.7" type="image/png" sizes="32x32">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v=0.0.7" sizes="180x180">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}?v={{ config.APP_VERSION|urlencode }}" type="image/svg+xml">
+    <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}?v={{ config.APP_VERSION|urlencode }}" sizes="any">
+    <link rel="icon" href="{{ url_for('static', filename='favicon-16x16.png') }}?v={{ config.APP_VERSION|urlencode }}" type="image/png" sizes="16x16">
+    <link rel="icon" href="{{ url_for('static', filename='favicon-32x32.png') }}?v={{ config.APP_VERSION|urlencode }}" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v={{ config.APP_VERSION|urlencode }}" sizes="180x180">
     <link href="{{ url_for('static', filename='vendor/onest/onest.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=0.0.7" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=2" rel="stylesheet">
     {% block extra_css %}{% endblock %}
 </head>
 <body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
@@ -95,6 +95,7 @@
                 <small>Вход выполнен через Telegram</small>
             </span>
         </div>
+        {% if public_contacts_mini_app %}<div class="public-contact-list public-contact-list--mini">{% for contact in public_contacts_mini_app %}<a href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i>{{ contact.label }}</a>{% endfor %}</div>{% endif %}
     </div>
 </div>
 {% elif not request.path.startswith('/admin') %}
@@ -183,7 +184,7 @@
                 </li>
                 <li class="nav-item ms-2">
                     {% if current_user.is_authenticated %}
-                    <span class="nav-link disabled pe-0">{{ current_user.first_name or current_user.username or 'Пользователь' }}</span>
+                    <span class="nav-link disabled pe-0 nav-identity">{{ current_user.first_name or current_user.username or 'Пользователь' }}</span>
                     {% endif %}
                 </li>
                 <li class="nav-item ms-2">
@@ -219,7 +220,7 @@
 
 {% with messages = get_flashed_messages(with_categories=true) %}
 {% if messages %}
-<div class="container-fluid px-4 py-2">
+<div class="container-fluid px-4 py-2 app-flash-stack">
     {% for category, message in messages %}
     <div class="alert alert-{{ 'danger' if category in ['danger', 'error'] else 'warning' if category == 'warning' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="alert">
         {{ message }}
@@ -265,7 +266,7 @@
     <div class="container d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
         <div>
             <p class="mb-1 text-muted small">officium — личный финансовый помощник</p>
-            <p class="mb-0 text-muted small">Контакт для конкретного экземпляра предоставляет его администратор.</p>
+            {% if public_contacts_footer %}<div class="public-contact-list">{% for contact in public_contacts_footer %}<a href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i>{{ contact.label }}</a>{% endfor %}</div>{% else %}<p class="mb-0 text-muted small">Контакты этого экземпляра пока не опубликованы. Обратитесь к его администратору.</p>{% endif %}
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <a href="{{ url_for('documentation') }}" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 site-footer__docs-button">
@@ -712,7 +713,7 @@
 
 {% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=0.0.7"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=3"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const params = new URLSearchParams(window.location.search);

@@ -1,0 +1,14 @@
+[Unit]
+Description=Officium privileged updater IPC socket
+Documentation=file:@@APP_ROOT@@/current/docs/DEPLOYMENT.md
+
+[Socket]
+ListenStream=@@UPDATE_SOCKET@@
+SocketUser=root
+SocketGroup=@@APP_GROUP@@
+SocketMode=0660
+DirectoryMode=0750
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

@@ -1,342 +1,274 @@
-# Развёртывание officium
+# Установка, обновление и восстановление Officium
 
-Эта инструкция предназначена для релизного окружения с MySQL/MariaDB, HTTPS и
-запуском Flask через Waitress за reverse proxy. SQLite оставлен для локальной
-разработки и автоматических тестов.
+Документ описывает управляемую схему Ubuntu для публичного GitHub repository:
+версионированные каталоги релизов,
+атомарную ссылку `current`, Waitress только на loopback, MySQL/SQLite backup,
+ежедневный timer и обновление через локальный Unix socket. Production нельзя
+обновлять командами из этого документа без отдельного решения владельца.
 
-## 1. Подготовка
+## 1. Схема файлов и привилегий
 
-Требуются Python 3.10+, MySQL 8+/MariaDB 10.6+, домен и HTTPS-сертификат.
-Перед первым запуском создайте отдельного пользователя БД с правами только на
-базу officium. Не используйте `root` для приложения.
+Пример с `APP_DIR=/opt/officium`:
 
-Сгенерируйте секреты локально:
-
-```powershell
-python -c "import secrets; print(secrets.token_urlsafe(48))"
+```text
+/opt/officium/
+  current -> /opt/officium/releases/vX.Y.Z-<commit>
+  releases/                 # root:officium; только одноразовый .build-* app-owned
+  shared/.env               # root:officium 0640
+  shared/instance/          # данные приложения, если они нужны локально
+/etc/officium/updater.env   # root:root 0600
+/usr/local/sbin/officium-update-runner       # root:root 0755
+/usr/local/lib/officium/deploy-release       # root:root 0755
+/run/officium/updater.sock  # root:officium 0660
+/var/lib/officium/          # root:officium 0750, status операции
+/var/backups/officium/      # root:root 0750
 ```
 
-Скопируйте `.env.example` в `.env` и обязательно задайте:
+Flask работает от `APP_USER`, с `NoNewPrivileges=true`, не запускает `sudo` и
+не получает root-команды. `officium-updater.socket` принимает только локальные
+соединения, а runner проверяет Linux `SO_PEERCRED`: разрешены UID root и ровно
+настроенный `APP_USER`. JSON-протокол допускает только `check`,
+`integration_check`, `get_status`, `start_latest_update`; лишние поля,
+произвольные команды и пути отклоняются.
 
-```env
+Root-служба сама повторно проверяет GitHub repository, последний stable release,
+точный tag/commit и блокировку конкурентной операции. Привилегированный runner и
+deploy script обновляются только из того exact-tag checkout, чей commit уже
+сверен с GitHub. Перед атомарной заменой фиксированных root-owned путей служба
+проверяет тип файлов и синтаксис; затем перезапускает updater и выполняет IPC
+self-test от `APP_USER`. При ошибке старый bundle восстанавливается, а код
+приложения возвращается на предыдущую release-ссылку. Браузер не может передать
+произвольный путь или содержимое bundle.
+
+После завершения непривилегированной сборки root снимает write bits, меняет
+владельца всего candidate на `root:APP_GROUP`, повторно сверяет commit с remote
+tag и проверяет tracked tree с отключёнными Git replace refs/external diff.
+Только после этого candidate может стать `current` и источником privileged
+bundle. Сам `releases/` не writable для `APP_USER`: builder получает отдельный
+одноразовый `.build-*`, который root перемещает и удаляет после завершения.
+
+Граница доверия остаётся явной: процесс с UID `APP_USER` может запросить только
+проверку, статус или установку последнего stable release, поэтому компрометация
+веб-процесса может вызвать отказ в обслуживании через повторные допустимые
+запросы, но не передать root-службе команду, URL или путь. Root-конфигурация
+фиксирует GitHub repository; контроль этого repository и его stable releases —
+trust anchor. Отдельной криптографической подписи release manifest пока нет,
+поэтому защита GitHub-организации, branch/tag policy и release approvals входят
+в обязательную операционную модель.
+
+Private repository сейчас намеренно не поддерживается: release metadata и Git
+clone должны работать без передачи GitHub token веб-процессу или `APP_USER`.
+Для private source нужна отдельная read-only credential architecture и новый
+release gate; добавление token только в `.env` не считается поддержкой.
+
+## 2. Подготовка `.env`
+
+Скопируйте `.env.example` во внешний временный файл и заполните его до запуска
+установщика. Обязательны уникальный `SECRET_KEY`, явный `APP_TIMEZONE`, база и
+настройки production. Для примера Москвы:
+
+```dotenv
 OFFICIUM_ENV=production
-APP_TIMEZONE=Europe/Moscow
-SECRET_KEY=<уникальный секрет не короче 32 символов>
-FLASK_DEBUG=false
+SECRET_KEY=<случайное значение не короче 32 символов>
 SESSION_COOKIE_SECURE=true
-DEV_LOGIN_ENABLED=false
-TEST_USER_ENABLED=false
-TELEGRAM_LOGIN_ENABLED=false
-TELEGRAM_MINI_APP_ENABLED=false
-TELEGRAM_BOT_ENABLED=false
-
+APP_TIMEZONE=Europe/Moscow
 DB_ENGINE=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_USER=officium
 DB_PASSWORD=<пароль>
-DB_NAME=debt_manager
-```
-
-Если включена любая Telegram-функция, задайте `TELEGRAM_BOT_TOKEN`; для webhook
-бота дополнительно задайте отдельный длинный `TELEGRAM_WEBHOOK_SECRET`. Если
-включён Google OAuth, задайте client ID, client secret и точный HTTPS callback
-URL. Для аварийного админ-входа используйте только `ADMIN_PASSWORD_HASH`,
-созданный командой ниже. Строгая проверка
-production-конфигурации останавливает запуск при небезопасных development-флагах,
-cookie или пропущенных обязательных секретах.
-
-```bash
-python -c "from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass()))"
-```
-
-`APP_TIMEZONE` по умолчанию равен `UTC`. Для сохранения прежнего календарного
-поведения существующий production должен явно задавать `Europe/Moscow`.
-
-## 2. Резервная копия
-
-Перед каждым обновлением:
-
-```bash
-mysqldump --single-transaction --routines --triggers -u officium -p debt_manager > officium-before-release.sql
-```
-
-Проверьте, что файл не пуст, хранится вне публичной директории и доступ к нему
-ограничен. Периодически проверяйте восстановление копии на отдельной базе.
-
-Для локальной SQLite сначала остановите приложение, затем скопируйте файл БД:
-
-```powershell
-Copy-Item dev.db dev.backup.db
-```
-
-## 3. Установка и миграции
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-$env:FLASK_APP = 'run.py'
-.\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\python.exe -m unittest discover -v
-.\.venv\Scripts\python.exe -m flask db upgrade
-.\.venv\Scripts\python.exe -m flask db current
-.\.venv\Scripts\python.exe -m flask db heads
-.\.venv\Scripts\python.exe -m flask db check
-```
-
-Ожидается одна голова миграций, `current` на этой голове и сообщение
-`No new upgrade operations detected`. `scripts/init_db.sql` можно использовать только
-для создания пустой MySQL-базы; схему создаёт исключительно Alembic.
-
-Production-скрипт не создаёт виртуальное окружение автоматически: до деплоя в
-корне должен существовать `venv` или `.venv` с рабочим Python.
-
-Для воспроизводимых поставок рекомендуется отдельно подготовить файл зависимостей
-с хешами и проверить его до включения в релизный процесс:
-
-```bash
-pip-compile --generate-hashes --output-file=requirements-hashed.txt requirements.txt
-python -m pip install --require-hashes -r requirements-hashed.txt
-```
-
-Это рекомендация для подготовки релиза; текущий `requirements.txt` автоматически
-не преобразуется и версии зависимостей этим изменением не обновляются.
-
-## 4. Запуск
-
-`run.py` запускает Waitress. На сервере оформите его как системную службу с
-автоматическим перезапуском и отдельным непривилегированным пользователем.
-Перед Waitress поставьте Nginx/Caddy/IIS, завершайте TLS на reverse proxy и
-передавайте исходные заголовки только от доверенного proxy.
-
-```powershell
-$env:HOST = '127.0.0.1'
-$env:PORT = '5000'
-.\.venv\Scripts\python.exe run.py
-```
-
-Не выставляйте внутренний порт Waitress напрямую в интернет. Разрешите наружу
-только HTTPS. Ограничьте доступ к `.env`, журналам, БД и резервным копиям.
-
-## 5. Проверка после выкладки
-
-- `/login` открывается по HTTPS, `/admin/login` доступен только если аварийный вход включён;
-- неавторизованный запрос к `/api/debts` получает 401;
-- миграции находятся на единственной голове;
-- создание расхода, дохода, долга и платежа работает в тестовом аккаунте;
-- быстрые команды Telegram ничего не записывают до подтверждения;
-- повтор одного Telegram `update_id` не создаёт дубликат;
-- импорт тестовой CSV/XLSX/PDF-выписки показывает предпросмотр до сохранения;
-- Google callback URL в консоли Google в точности совпадает с `GOOGLE_REDIRECT_URI`;
-- в production отключены debug-, dev- и test-входы.
-
-## 6. Обновление сервера из админки
-
-Раздел «Админка → Обновление сервера» доступен только пользователю с ролью
-`superadmin`. Он получает последний опубликованный полноценный GitHub Release,
-сверяет тег и передаёт установку отдельной фоновой задаче systemd. Веб-процесс
-не выполняет команды из формы и не обновляет сам себя напрямую.
-
-Функция намеренно выключена по умолчанию. Для её первой настройки на Linux-сервере:
-
-Сам скрипт допускает только установку точного тега после подтверждённой резервной
-копии. Голый запуск и обновление ветки запрещены:
-
-```bash
-OFFICIUM_BACKUP_CONFIRMED=true ./scripts/deploy.sh --release '<release-tag>'
-```
-
-1. Установите проверенный помощник как файл, принадлежащий `root`. Установщик
-сохраняет существующий `/etc/officium/updater.env`, проверяет sudoers через
-`visudo` и принимает имя пользователя веб-процесса первым аргументом:
-
-```bash
-cd /var/www/debt_manager
-sudo sh deployment/install-officium-updater.sh '<service-user>'
-sudo editor /etc/officium/updater.env
-```
-
-В `/etc/officium/updater.env` обязательно проверьте `APP_DIR`, имя
-непривилегированного пользователя приложения `APP_USER`, имя systemd-службы
-`SERVICE_NAME` и репозиторий. Пользователь приложения должен владеть Git checkout
-и виртуальным окружением, но не файлом `/usr/local/sbin/officium-update-runner`.
-
-Если автоматический установщик не используется, подготовьте каталоги состояния и
-резервных копий вручную, подставив пользователя приложения:
-
-```bash
-sudo install -d -o root -g '<service-user>' -m 2775 /var/lib/officium
-sudo install -d -o root -g root -m 0750 /var/backups/officium
-```
-
-Установите узкое правило sudo. Сначала проверьте имя пользователя в файле:
-
-```bash
-sudo editor deployment/officium-updater.sudoers
-sudo visudo -cf deployment/officium-updater.sudoers
-sudo install -o root -g root -m 0440 deployment/officium-updater.sudoers /etc/sudoers.d/officium-updater
-sudo visudo -cf /etc/sudoers.d/officium-updater
-```
-
-Помощник принимает только безопасный тег, сам повторно проверяет его через GitHub
-API и умеет запустить только фиксированный сценарий обновления. Не заменяйте это
-правило разрешением на произвольные `systemctl`, shell или `scripts/deploy.sh` от root.
-
-2. Добавьте в `.env` приложения:
-
-```env
+DB_NAME=officium
 SERVER_UPDATE_ENABLED=true
-SERVER_UPDATE_REPOSITORY=<repository-owner>/officium
-SERVER_UPDATE_HELPER=/usr/local/sbin/officium-update-runner
-SERVER_UPDATE_USE_SUDO=true
-SERVER_UPDATE_SUDO_PATH=/usr/bin/sudo
-SERVER_UPDATE_APP_DIR=/var/www/debt_manager
+SERVER_UPDATE_REPOSITORY=UnicornisIT/officium
+SERVER_UPDATE_SOCKET=/run/officium/updater.sock
+SERVER_UPDATE_APP_DIR=/opt/officium/current
 SERVER_UPDATE_STATUS_PATH=/var/lib/officium/server-update-status.json
-SERVER_UPDATE_REQUIRE_ROOT_OWNED_HELPER=true
 ```
 
-В `/etc/officium/updater.env` можно дополнительно задать локальную HTTP-проверку,
-соответствующую реальному адресу Waitress/Gunicorn:
+Пароль БД не передаётся в argv. Backup создаёт временный mode `0600` MySQL
+option-file, запускает `mysqldump --single-transaction --quick
+--no-tablespaces --routines --triggers --events`, проверяет exit code и
+ненулевой размер, затем удаляет option-file. Пользователю БД не нужен глобальный
+`PROCESS`; права на routines/events должны быть выданы только в базе приложения.
 
-```env
-HEALTHCHECK_URL=https://<your-domain>/login
-```
+Для SQLite updater использует `sqlite3.Connection.backup()`, что согласовано с
+активным WAL и безопаснее копирования файла.
 
-Если порт приложения доступен только через reverse proxy, оставьте переменную
-пустой: обязательная проверка `systemctl is-active` всё равно выполняется.
+## 3. Preflight без изменений
 
-Для публичного репозитория токен не нужен. Для приватного репозитория задайте
-`SERVER_UPDATE_GITHUB_TOKEN` в `.env`, а путь к отдельному root-owned файлу с тем
-же токеном — в `GITHUB_TOKEN_FILE` файла `/etc/officium/updater.env`.
-
-3. Перезапустите приложение и откройте новый раздел админки. Перед первой
-реальной установкой выполните безопасную проверку конфигурации: она не скачивает
-релиз, не изменяет checkout и не перезапускает службу.
+Создайте системного пользователя заранее и подготовьте пустую MySQL database с
+ограниченным пользователем. Установщик не принимает root-пароль MySQL и не
+расширяет grants.
 
 ```bash
-sudo -u '<service-user>' sudo -n /usr/local/sbin/officium-update-runner --check
+sudo groupadd --system officium
+sudo useradd --system --gid officium --home /opt/officium --shell /usr/sbin/nologin officium
+
+sudo env \
+  RELEASE_TAG=<точный-проверенный-tag> \
+  ENV_FILE_SOURCE=/root/officium.env \
+  APP_DIR=/opt/officium \
+  APP_USER=officium APP_GROUP=officium \
+  VENV_DIR=/opt/officium/current/venv \
+  SERVICE_NAME=officium \
+  HOST=127.0.0.1 PORT=5000 \
+  TRUSTED_PROXY=127.0.0.1 \
+  APP_TIMEZONE=Europe/Moscow \
+  DB_ENGINE=mysql DB_NAME=officium \
+  BACKUP_DIR=/var/backups/officium \
+  bash deployment/install-officium.sh preflight
 ```
 
-Команда должна вернуть `OFFICIUM_UPDATE_RESULT={"ok":true,"code":"ready"}` и не
-запрашивать пароль. Реальное обновление запускайте кнопкой только после публикации
-GitHub Release. Поддерживаются теги до 128 символов без `/`, пробелов и shell-знаков.
+Preflight проверяет Ubuntu, команды и `python3-venv`, exact remote tag, минимум
+1 GiB, имена/пути, loopback bind/proxy, явный timezone, `.env`, MySQL client и
+членство пользователя в группе. В режиме `preflight` файловые изменения не
+выполняются.
 
-При обновлении помощник:
+## 4. Чистая установка
 
-- независимо подтверждает, что тег является последним опубликованным релизом;
-- сверяет `origin` с разрешённым репозиторием и отказывается работать при локальных
-  изменениях отслеживаемых файлов;
-- создаёт согласованную SQLite-копию либо дамп MySQL через `mysqldump`, а также
-  root-only копии `.env` и `/etc/officium/updater.env`;
-- устанавливает точный commit тега в detached HEAD, зависимости и миграции;
-- перезапускает только настроенную службу, проверяет её активность и, если задан,
-  `HEALTHCHECK_URL`, затем записывает итог в
-  `/var/lib/officium/server-update-status.json`.
-
-Логи фоновой операции доступны через `journalctl -u 'officium-update-*'`. Статус,
-этап, безопасный код ошибки и идентификатор операции переживают перезапуск Flask,
-поскольку хранятся в `/var/lib/officium`, а не в памяти веб-процесса. Сам
-root-owned помощник не обновляется из Git checkout намеренно: если его версия
-изменилась в новом релизе, повторите команду `install` после проверки файла.
-
-### Диагностика отказа помощника
-
-Помощник не является HTTP-сервисом: у него нет адреса, порта или отдельного секрета.
-Flask запускает фиксированный root-owned файл через `sudo -n`, а тот создаёт
-transient-unit `officium-update-*` через `systemd-run`. Поэтому сообщение об
-авторизации относится к sudo/systemd, а не к Telegram или CSRF.
-
-Для существующего сервера сначала определите пользователя веб-службы и сравните
-его с первым полем `/etc/sudoers.d/officium-updater`:
+После PASS повторите ту же команду с `install`. Не используйте тег, который не
+прошёл release gate.
 
 ```bash
-systemctl show debt_manager --property=User --value
-sudo visudo -cf /etc/sudoers.d/officium-updater
-sudo -l -U '<service-user>'
-sudo -u '<service-user>' sudo -n /usr/local/sbin/officium-update-runner --check
-sudo cat /var/lib/officium/server-update-status.json
-sudo journalctl -u 'officium-update-*' -n 200 --no-pager
-sudo journalctl -u debt_manager -n 100 --no-pager
+sudo env <те же переменные> bash deployment/install-officium.sh install
 ```
 
-Если первая команда выводит другого пользователя, переустановите sudoers, передав
-фактического пользователя установщику. После обновления файлов выполните:
+Установщик:
+
+1. создаёт только нужные каталоги с минимальными правами;
+2. клонирует exact tag в `.staging-*`, сверяет remote commit;
+3. создаёт отдельный `venv` или `.venv`, ставит зависимости;
+4. выполняет `db-preflight`, migrations и импорт `run:app` до активации;
+5. атомарно создаёт `current`;
+6. генерирует и проверяет app/timer/updater units через
+   `systemd-analyze verify`;
+7. запускает Waitress и timer;
+8. вызывает `integration_check` через тот же socket от `APP_USER`;
+9. запускает read-only `post-deploy-smoke.sh`.
+
+Waitress unit формирует один аргумент proxy headers:
+
+```ini
+ExecStart=/opt/officium/current/venv/bin/waitress-serve \
+  --listen=127.0.0.1:5000 --threads=4 --trusted-proxy=127.0.0.1 \
+  "--trusted-proxy-headers=x-forwarded-for x-forwarded-host x-forwarded-proto x-forwarded-port" \
+  run:app
+```
+
+Фактический unit — одна строка; переносы выше только для чтения. `app:app` не
+используется. Forwarded-заголовки принимаются только от явно заданного proxy.
+
+## 5. Обновление managed-установки
+
+Панель superadmin автоматически показывает GitHub release и выполняет две
+проверки: статический preflight и интеграционный IPC. Кнопка доступна только при
+успехе обеих. После подтверждения состояние проходит реальные этапы:
+
+`preflight → backup → checkout → dependencies → migrations → restart → healthcheck`.
+
+`operation_id`, status и диагностический код живут в `/var/lib/officium`, поэтому
+рестарт Flask не теряет операцию. Повторный POST и конкурентный update
+блокируются в root-службе.
+
+CLI-эквивалент для аварийной процедуры (не из Flask):
 
 ```bash
-cd /var/www/debt_manager
-sudo sh deployment/install-officium-updater.sh "$(systemctl show debt_manager --property=User --value)"
-sudo editor /etc/officium/updater.env
-sudo -u "$(systemctl show debt_manager --property=User --value)" sudo -n /usr/local/sbin/officium-update-runner --check
-sudo systemctl restart debt_manager
+sudo /usr/local/sbin/officium-update-runner --check
+sudo -u officium /usr/local/bin/officium-update-client integration_check
+sudo /usr/local/sbin/officium-update-runner --start-latest
+sudo journalctl -fu officium-update-*.service
 ```
 
-Если сломанная кнопка не позволяет получить релиз с исправлением, сначала обновите
-только root-owned помощник из заранее проверенного тега, не переключая рабочий
-checkout и не трогая базу. Замените `<FIX_RELEASE_TAG>` опубликованным тегом:
+`scripts/deploy.sh --release <tag>` — совместимая root-only оболочка. Она не
+делает checkout текущего дерева.
+
+## 6. Миграция старого `/opt/officium` или `/var/www/...` checkout
+
+Укажите фактический legacy path в `APP_DIR` и вызовите `upgrade` из проверенной
+копии нового installer:
 
 ```bash
-cd /var/www/debt_manager
-app_user="$(systemctl show debt_manager --property=User --value)"
-fix_tag='<FIX_RELEASE_TAG>'
-sudo -u "$app_user" git fetch origin "refs/tags/$fix_tag:refs/tags/$fix_tag"
-helper_temp="$(mktemp)"
-sudo -u "$app_user" git show "$fix_tag:deployment/officium-update-runner" > "$helper_temp"
-sudo install -o root -g root -m 0755 "$helper_temp" /usr/local/sbin/officium-update-runner
-rm -f "$helper_temp"
-sudo -u "$app_user" sudo -n /usr/local/sbin/officium-update-runner --check
+sudo env \
+  RELEASE_TAG=<проверенный-новый-tag> \
+  APP_DIR=/opt/officium APP_USER=officium APP_GROUP=officium \
+  VENV_DIR=/opt/officium/current/venv SERVICE_NAME=officium \
+  HOST=127.0.0.1 PORT=5000 TRUSTED_PROXY=127.0.0.1 \
+  APP_TIMEZONE=Europe/Moscow DB_ENGINE=mysql DB_NAME=officium \
+  REPOSITORY=UnicornisIT/officium \
+  bash deployment/install-officium.sh upgrade
 ```
 
-После успешного `--check` можно устанавливать этот же тег кнопкой. После завершения
-повторно запустите `install-officium-updater.sh` уже из обновлённого checkout.
+Если `APP_DIR` — Git checkout без `current`, installer автоматически:
 
-## 7. Автоматические ежемесячные расходы
+- отказывается продолжать при tracked/staged local changes, но ничего не
+  удаляет и не вызывает `stash`, `reset --hard` или `clean`;
+- делает database/config backup через новый runner;
+- собирает release в соседнем `$APP_DIR.managed.*`;
+- останавливает старую службу только после успешной сборки/migrations;
+- переименовывает старый каталог в `$APP_DIR.legacy.<timestamp>` и активирует
+  managed tree;
+- при неуспешном restart возвращает старый каталог и unit.
 
-Генератор запускается отдельным systemd timer, а не внутри Flask/Waitress worker.
-Штатное расписание — ежедневно в 00:05 по `Europe/Moscow`: первого числа записи
-появляются в первые минуты месяца, а ежедневный повтор автоматически восстанавливает
-пропуски после недоступности приложения или БД. Команда идемпотентна, а уникальный
-индекс БД защищает от параллельных запусков.
+Untracked пользовательские файлы остаются в сохранённом legacy-каталоге и не
+подмешиваются в release. Проверите их вручную до удаления каталога.
 
-После обновления кода и `flask db upgrade` установите units. Если каталог,
-виртуальное окружение, пользователь или группа отличаются от примера, сначала
-отредактируйте копию `officium-monthly-expenses.service`:
+## 7. Nginx, HTTPS, cookies и Telegram
+
+`ENABLE_NGINX=true SERVER_NAME=finance.example.org` создаёт server block из
+`deployment/nginx-officium.conf.in` и выполняет `nginx -t`. Waitress остаётся на
+loopback. Получите сертификат обычным контролируемым способом, затем включите
+redirect HTTP→HTTPS и оставьте `SESSION_COOKIE_SECURE=true`.
+
+Reverse proxy обязан передавать Host, X-Forwarded-For/Host/Proto/Port. Не
+доверяйте `0.0.0.0/0` и внешнему адресу proxy. Маршруты `/login`,
+`/telegram-app`, `/auth/telegram-mini-app` и Telegram callback должны указывать
+на публичный HTTPS hostname. Login, Mini App и bot имеют отдельные настройки и
+отдельные индикаторы «включено / конфигурация корректна / проверено».
+
+## 8. Ежемесячные расходы
+
+Сгенерированный timer выполняется ежедневно в `00:05 APP_TIMEZONE`, имеет
+`Persistent=true` и запускает CLI из venv текущего release. Повторный запуск
+идемпотентен; уникальный индекс блокирует параллельный duplicate. Production
+smoke не вызывает генератор и не создаёт финансовые записи.
 
 ```bash
-cd /var/www/debt_manager
-sudo install -o root -g root -m 0644 deployment/officium-monthly-expenses.service /etc/systemd/system/officium-monthly-expenses.service
-sudo install -o root -g root -m 0644 deployment/officium-monthly-expenses.timer /etc/systemd/system/officium-monthly-expenses.timer
-sudo systemctl daemon-reload
-sudo systemctl enable --now officium-monthly-expenses.timer
-sudo systemctl start officium-monthly-expenses.service
-systemctl status officium-monthly-expenses.timer --no-pager
-systemctl list-timers officium-monthly-expenses.timer --no-pager
-journalctl -u officium-monthly-expenses.service -n 100 --no-pager
+systemctl list-timers officium-monthly-expenses.timer
+journalctl -u officium-monthly-expenses.service --since today
 ```
 
-Для проверки без ожидания нового месяца задайте целевой месяц явно. Повторите
-команду дважды: во втором результате `Generated` должен быть `0`, а записи должны
-перейти в `Skipped`.
+## 9. Recovery и ограничения rollback
+
+Код можно переключить на завершённый release:
 
 ```bash
-cd /var/www/debt_manager
-target_month=$(TZ=Europe/Moscow date +%Y-%m)
-sudo -u '<service-user>' venv/bin/python -m flask --app run.py generate-monthly-expenses --month "$target_month"
+sudo env APP_DIR=/opt/officium SERVICE_NAME=officium \
+  ROLLBACK_RELEASE=/opt/officium/releases/<release-dir> \
+  bash deployment/install-officium.sh recover
 ```
 
-Указывайте только текущий или уже наступивший месяц при production-проверке:
-CLI технически принимает явный месяц для тестов и аварийного восстановления.
+Healthcheck failure сразу после update автоматически возвращает прежнюю ссылку
+и перезапускает службу. Это **не** обещает rollback MySQL DDL: MySQL DDL не
+всегда транзакционен. При несовместимой миграции остановите запись, сохраните
+проблемную БД/журналы, восстановите предрелизный dump в новую пустую БД,
+сверьте таблицы/суммы, затем переключите `.env`. Не выполняйте без плана
+`flask db downgrade`.
 
-## 8. Откат
+Если IPC неисправен: сохраните `operation_id`, выполните root `--check`,
+проверьте `systemctl status officium-updater.socket`, права socket/config и
+запустите только `--start-latest`. Не включайте sudoers и не отключайте
+`NoNewPrivileges` у Flask.
 
-Миграции проекта намеренно не полагаются на автоматический downgrade для
-операций с пользовательскими финансами. При проблеме:
+## 10. Read-only post-deploy smoke
 
-1. остановите запись в приложение;
-2. сохраните отдельную копию проблемной БД и журналов;
-3. верните предыдущий проверенный релиз кода;
-4. восстановите предрелизный дамп в новую пустую базу;
-5. переключите приложение на восстановленную базу;
-6. повторите smoke-проверки до открытия доступа.
+```bash
+sudo bash deployment/post-deploy-smoke.sh \
+  --service officium \
+  --app-dir /opt/officium/current \
+  --url http://127.0.0.1:5000/login \
+  --timer officium-monthly-expenses.timer
+```
 
-Не откатывайте production командой `db downgrade` без отдельного проверенного
-плана: часть старых миграций запрещает downgrade, чтобы не терять данные.
+Скрипт не пишет финансовые данные: проверяет version/commit, active units,
+`NoNewPrivileges`, импорт `run:app`, read-only Alembic state, локальный HTTP,
+статику и число critical journal events. Секреты не печатаются.

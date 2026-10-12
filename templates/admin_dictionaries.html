@@ -22,7 +22,7 @@
         <div class="admin-panel__header"><div><p class="admin-page-kicker">Текущие данные</p><h2>Элементы справочников</h2></div><span class="admin-section-heading__meta">Всего: {{ entries|length }}</span></div>
         <div class="admin-table-wrap"><table class="admin-table admin-table--responsive"><thead><tr><th>Тип</th><th>Значение</th><th><span class="visually-hidden">Действия</span></th></tr></thead><tbody>
             {% for entry in entries %}<tr><td data-label="Тип"><span class="admin-badge admin-badge--neutral">{{ type_labels.get(entry.dictionary_type, entry.dictionary_type) }}</span></td><td data-label="Значение"><strong>{{ entry.value }}</strong></td><td data-label="Действия" class="admin-table__actions"><form method="post" action="{{ url_for('admin_delete_dictionary_entry', entry_id=entry.id) }}" data-admin-confirm="Удалить элемент справочника «{{ entry.value }}»?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="admin-icon-button admin-icon-button--danger" aria-label="Удалить элемент">{{ icon('alert', 17) }}</button></form></td></tr>
-            {% else %}<tr><td colspan="3"><div class="admin-empty-state">{{ icon('book', 30) }}<p>Справочники пока пусты.</p></div></td></tr>{% endfor %}
+            {% else %}<tr class="admin-table__empty-row"><td colspan="3"><div class="admin-empty-state">{{ icon('book', 30) }}<p>Справочники пока пусты.</p></div></td></tr>{% endfor %}
         </tbody></table></div>
     </section>
 </div>

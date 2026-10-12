@@ -8,12 +8,13 @@ from authlib.integrations.flask_client import OAuth
 from extensions import db
 from app import login_manager
 from app.models import User
+from app.services.contact_service import load_contacts
 from app.services.telegram_auth_service import (
     verify_telegram_login,
     verify_telegram_web_app_init_data,
 )
 from app.time_utils import as_utc, utc_now
-from app.utils import get_dictionary_values, get_setting, record_activity
+from app.utils import get_dictionary_values, get_setting, record_activity, telegram_feature_states
 
 
 class AdminUser(UserMixin):
@@ -130,6 +131,8 @@ def init_app(app):
             'telegram_mini_app',
             'telegram_mini_app_login',
             'telegram_webhook',
+            'google_login',
+            'google_callback',
             'logout',
             'admin_login',
             'test_login',
@@ -164,7 +167,7 @@ def init_app(app):
         is_impersonating = session.get('original_admin_id') is not None
         is_telegram_mini_app = bool(session.get('telegram_mini_app'))
         mini_app_short_name = app.config.get('TELEGRAM_MINI_APP_SHORT_NAME', '')
-        mini_app_enabled = app.config.get('TELEGRAM_MINI_APP_ENABLED', False)
+        mini_app_enabled = telegram_feature_states(app.config)['mini_app']['effective']
         return dict(
             current_user=current_user,
             app_name=app_name,
@@ -176,6 +179,10 @@ def init_app(app):
             is_telegram_mini_app=is_telegram_mini_app,
             telegram_mini_app_enabled=mini_app_enabled,
             telegram_mini_app_short_name=mini_app_short_name,
+            public_contacts_footer=load_contacts(published_only=True, location='footer'),
+            public_contacts_login=load_contacts(published_only=True, location='login'),
+            public_contacts_help=load_contacts(published_only=True, location='help'),
+            public_contacts_mini_app=load_contacts(published_only=True, location='mini_app'),
         )
 
     def _telegram_profile_value(profile, key, max_length):
@@ -248,9 +255,7 @@ def init_app(app):
     def login():
         if current_user.is_authenticated:
             return redirect(url_for('index'))
-        telegram_allowed = get_setting('telegram_login_enabled', app.config.get('TELEGRAM_LOGIN_ENABLED', 'false'))
-        if isinstance(telegram_allowed, str):
-            telegram_allowed = telegram_allowed.lower() in ('1', 'true', 'yes', 'on')
+        telegram_allowed = telegram_feature_states(app.config)['login']['effective']
         return render_template(
             'login.html',
             bot_username=app.config.get('TELEGRAM_BOT_USERNAME', ''),
@@ -262,7 +267,7 @@ def init_app(app):
 
     @app.route('/telegram-app')
     def telegram_mini_app():
-        if not app.config.get('TELEGRAM_MINI_APP_ENABLED', False):
+        if not telegram_feature_states(app.config)['mini_app']['effective']:
             abort(404)
         if current_user.is_authenticated:
             session['telegram_mini_app'] = True
@@ -275,12 +280,10 @@ def init_app(app):
 
     @app.route('/auth/telegram-mini-app', methods=['POST'])
     def telegram_mini_app_login():
-        if not app.config.get('TELEGRAM_MINI_APP_ENABLED', False):
+        if not telegram_feature_states(app.config)['mini_app']['effective']:
             return jsonify({'success': False, 'error': 'Telegram Mini App отключён.'}), 404
 
-        telegram_allowed = get_setting('telegram_login_enabled', app.config.get('TELEGRAM_LOGIN_ENABLED', 'false'))
-        if isinstance(telegram_allowed, str):
-            telegram_allowed = telegram_allowed.lower() in ('1', 'true', 'yes', 'on')
+        telegram_allowed = telegram_feature_states(app.config)['login']['effective']
         if not telegram_allowed:
             return jsonify({'success': False, 'error': 'Вход через Telegram временно отключён.'}), 403
 
@@ -421,9 +424,7 @@ def init_app(app):
         data = request.args.to_dict()
         bot_username = app.config.get('TELEGRAM_BOT_USERNAME', '')
 
-        telegram_allowed = get_setting('telegram_login_enabled', app.config.get('TELEGRAM_LOGIN_ENABLED', 'false'))
-        if isinstance(telegram_allowed, str):
-            telegram_allowed = telegram_allowed.lower() in ('1', 'true', 'yes', 'on')
+        telegram_allowed = telegram_feature_states(app.config)['login']['effective']
         if not telegram_allowed:
             return render_template('login.html', error='Вход через Telegram временно отключён администратором.', bot_username=bot_username, telegram_allowed=False, admin_login_enabled=app.config.get('ADMIN_LOGIN_ENABLED', False))
 

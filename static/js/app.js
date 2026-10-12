@@ -366,13 +366,38 @@ function initNavbarLayout() {
         navbar.classList.remove('navbar--compact');
         if (window.innerWidth < 992) return;
 
-        const labels = navbar.querySelectorAll('.nav-expand__compact');
-        const hasWrappedLabel = Array.from(labels).some(label => {
-            const style = window.getComputedStyle(label);
-            const lineHeight = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.3;
-            return label.getBoundingClientRect().height > lineHeight * 1.45;
-        });
-        navbar.classList.toggle('navbar--compact', hasWrappedLabel);
+        const container = navbar.querySelector('.container-fluid');
+        const brand = navbar.querySelector('.navbar-brand');
+        const nav = navbar.querySelector('.navbar-nav');
+        if (!container || !brand || !nav) return;
+
+        const outerWidth = element => {
+            const style = window.getComputedStyle(element);
+            return element.getBoundingClientRect().width
+                + (Number.parseFloat(style.marginLeft) || 0)
+                + (Number.parseFloat(style.marginRight) || 0);
+        };
+        const containerStyle = window.getComputedStyle(container);
+        const navStyle = window.getComputedStyle(nav);
+        const containerGap = Number.parseFloat(containerStyle.columnGap)
+            || Number.parseFloat(containerStyle.gap)
+            || 0;
+        const navGap = Number.parseFloat(navStyle.columnGap)
+            || Number.parseFloat(navStyle.gap)
+            || 0;
+        const items = Array.from(nav.children)
+            .filter(item => window.getComputedStyle(item).display !== 'none');
+        const requiredWidth = items.reduce((total, item) => total + outerWidth(item), 0)
+            + Math.max(0, items.length - 1) * navGap;
+        const availableWidth = container.clientWidth - outerWidth(brand) - containerGap;
+        // 1920px desktop viewports become ~1745 CSS px at browser zoom 110%.
+        // Switch before that boundary so labels never reach a wrapped/clipped
+        // intermediate state while the browser is recalculating its viewport.
+        const needsZoomSafeCompact = window.innerWidth <= 1850;
+        const hasOverflow = needsZoomSafeCompact
+            || requiredWidth > availableWidth - 2
+            || document.documentElement.scrollWidth > window.innerWidth + 1;
+        navbar.classList.toggle('navbar--compact', hasOverflow);
     };
 
     let resizeTimer = null;
@@ -381,6 +406,16 @@ function initNavbarLayout() {
         window.clearTimeout(resizeTimer);
         resizeTimer = window.setTimeout(updateLayout, 80);
     });
+    if (document.fonts?.ready) {
+        document.fonts.ready.then(updateLayout);
+    }
+    if ('ResizeObserver' in window) {
+        const observer = new ResizeObserver(() => {
+            window.clearTimeout(resizeTimer);
+            resizeTimer = window.setTimeout(updateLayout, 40);
+        });
+        observer.observe(navbar);
+    }
 }
 
 function initOperationHistories() {

@@ -1,14 +1,14 @@
 [Unit]
 Description=Run officium monthly-expense recovery every day
-Documentation=file:/var/www/debt_manager/docs/MONTHLY_EXPENSES_GUIDE.md
+Documentation=file:@@APP_ROOT@@/current/docs/MONTHLY_EXPENSES_GUIDE.md
 
 [Timer]
 # Daily execution makes the first run happen just after a new month starts and
 # provides automatic retries if the application or database was unavailable.
-OnCalendar=*-*-* 00:05:00 Europe/Moscow
+OnCalendar=*-*-* 00:05:00 @@APP_TIMEZONE@@
 Persistent=true
 AccuracySec=1min
-Unit=officium-monthly-expenses.service
+Unit=@@MONTHLY_SERVICE@@.service
 
 [Install]
 WantedBy=timers.target

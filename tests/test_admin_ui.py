@@ -243,8 +243,31 @@ class AdminInterfaceTestCase(unittest.TestCase):
         self.assertIn('@media (max-width: 767.98px)', css)
         self.assertIn('@media (prefers-reduced-motion: reduce)', css)
         self.assertIn(':focus-visible', css)
+        self.assertIn('.admin-content > .admin-panel + .admin-panel', css)
+        self.assertNotIn('\n.admin-panel + .admin-panel {', css)
+        self.assertIn('.admin-control.admin-control--search .admin-input-icon > input[type="search"] { padding-left: 46px; }', css)
+        self.assertIn('.admin-filter-grid--finance { grid-template-columns: repeat(2, minmax(220px, 1fr)) auto; }', css)
         self.assertIn('favicon.svg', base)
         self.assertIn('apple-touch-icon.png', base)
+
+    def test_zoom_layout_contract_prevents_wrapping_clipping_and_nested_empty_cards(self):
+        repository_root = Path(__file__).resolve().parents[1]
+        css = (repository_root / 'static' / 'css' / 'style.css').read_text(encoding='utf-8')
+        admin_css = (repository_root / 'static' / 'css' / 'admin.css').read_text(encoding='utf-8')
+        app_js = (repository_root / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+
+        self.assertIn('white-space: nowrap;', css)
+        self.assertNotIn('max-height: calc(100vh - 120px);', css)
+        self.assertIn('const requiredWidth = items.reduce', app_js)
+        self.assertIn('document.documentElement.scrollWidth > window.innerWidth + 1', app_js)
+        self.assertIn("document.fonts.ready.then(updateLayout)", app_js)
+        self.assertIn('.admin-table--responsive tr.admin-table__empty-row', admin_css)
+        self.assertIn('@media (max-width: 1599.98px)', admin_css)
+        self.assertIn('content: none;', admin_css)
+
+        for template_name in ('admin_finance.html', 'admin_export.html', 'admin_dictionaries.html', 'admin_users.html'):
+            template = (repository_root / 'templates' / template_name).read_text(encoding='utf-8')
+            self.assertIn('class="admin-table__empty-row"', template)
 
 
 if __name__ == '__main__':

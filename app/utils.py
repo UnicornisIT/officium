@@ -151,6 +151,49 @@ def get_setting(key, default=None):
         return default
 
 
+def value_is_enabled(value):
+    if isinstance(value, bool):
+        return value
+    return str(value or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def telegram_feature_states(config):
+    """Return configured, valid and effective Telegram states separately."""
+    login_setting = value_is_enabled(
+        get_setting('telegram_login_enabled', config.get('TELEGRAM_LOGIN_ENABLED', False))
+    )
+    token_ready = bool(str(config.get('TELEGRAM_BOT_TOKEN') or '').strip())
+    username_ready = bool(str(config.get('TELEGRAM_BOT_USERNAME') or '').strip())
+    login_valid = token_ready and username_ready
+    login_effective = login_setting and login_valid
+    mini_setting = value_is_enabled(config.get('TELEGRAM_MINI_APP_ENABLED', False))
+    bot_setting = value_is_enabled(config.get('TELEGRAM_BOT_ENABLED', False))
+    webhook_ready = bool(str(config.get('TELEGRAM_WEBHOOK_SECRET') or '').strip())
+    return {
+        'login': {
+            'label': 'Вход через Telegram',
+            'enabled_in_settings': login_setting,
+            'configuration_valid': login_valid,
+            'effective': login_effective,
+            'verified': None,
+        },
+        'mini_app': {
+            'label': 'Telegram Mini App',
+            'enabled_in_settings': mini_setting,
+            'configuration_valid': token_ready and username_ready,
+            'effective': mini_setting and login_effective,
+            'verified': None,
+        },
+        'bot': {
+            'label': 'Telegram-бот',
+            'enabled_in_settings': bot_setting,
+            'configuration_valid': token_ready and webhook_ready,
+            'effective': bot_setting and token_ready and webhook_ready,
+            'verified': None,
+        },
+    }
+
+
 def get_dictionary_values(dictionary_type):
     try:
         entries = DictionaryEntry.query.filter_by(dictionary_type=dictionary_type, is_active=True).order_by(DictionaryEntry.value.asc()).all()

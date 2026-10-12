@@ -164,6 +164,12 @@ def _validate_runtime_config(app):
     )
     if telegram_features_enabled and not app.config.get('TELEGRAM_BOT_TOKEN'):
         raise RuntimeError('TELEGRAM_BOT_TOKEN is required when Telegram features are enabled.')
+    if (
+        app.config.get('TELEGRAM_LOGIN_ENABLED') or app.config.get('TELEGRAM_MINI_APP_ENABLED')
+    ) and not str(app.config.get('TELEGRAM_BOT_USERNAME') or '').strip():
+        raise RuntimeError(
+            'TELEGRAM_BOT_USERNAME is required when Telegram login or Mini App is enabled.'
+        )
     if app.config.get('TELEGRAM_BOT_ENABLED') and not app.config.get('TELEGRAM_WEBHOOK_SECRET'):
         raise RuntimeError('TELEGRAM_WEBHOOK_SECRET is required when the Telegram bot is enabled.')
     if app.config.get('GOOGLE_LOGIN_ENABLED') and not (

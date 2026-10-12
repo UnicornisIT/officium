@@ -295,10 +295,14 @@ $env:FLASK_APP = 'run.py'
 .\.venv\Scripts\python.exe -m unittest tests.test_migrations tests.test_schema_contract -v
 ```
 
-Workflow `.github/workflows/ci.yml` повторяет compileall, unittest и проверку
-миграций на временной SQLite для Python 3.10 и 3.13 при push и pull request в
-`master`. `pip-audit` запускается отдельной неблокирующей job и не входит в
-runtime-зависимости приложения.
+Workflow `.github/workflows/ci.yml` запускает Python/SQLite, реальные MySQL
+migrations и dump/restore пользователем без `PROCESS`, blocking `pip-audit` и
+Playwright Chromium/Firefox/WebKit. JUnit, coverage, screenshots, traces и
+sanitized logs сохраняются как artifacts. Полный Ubuntu/systemd update gate
+вынесен в `staging-release-gate.yml` и требует отдельного disposable QA repo.
+Текущий проверочный статус и честно отмеченные блокировки опубликованы в
+[`docs/QA_REPORT.md`](docs/QA_REPORT.md); release criteria — в
+[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
 
 ## Production
 
@@ -328,19 +332,19 @@ flask db heads
 flask db check
 ```
 
-Резервная копия MySQL:
+Ручная резервная копия MySQL без глобального `PROCESS` (штатный updater также
+скрывает пароль во временном option-file):
 
 ```bash
-mysqldump -u officium -p debt_manager > backup.sql
+mysqldump --single-transaction --quick --no-tablespaces \
+  --routines --triggers --events -u officium -p officium > backup.sql
 ```
 
-Резервная копия SQLite:
-
-```powershell
-Copy-Item dev.db dev.backup.db
-```
+Для активной SQLite используйте API backup (например, Python `sqlite3.backup`),
+а не обычное копирование `.db` при включённом WAL.
 
 Суперадминистратор может проверить и установить последний опубликованный GitHub
 Release через раздел «Обновление сервера». Функция выключена по умолчанию и
-требует один раз установить root-owned серверный помощник; полный порядок и
-автоматическое резервное копирование описаны в [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#6-обновление-сервера-из-админки).
+требует один раз установить root-owned socket-activated updater; Flask не
+использует `sudo`, поэтому `NoNewPrivileges=true` остаётся включённым. Полный
+порядок описан в [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#5-обновление-managed-установки).

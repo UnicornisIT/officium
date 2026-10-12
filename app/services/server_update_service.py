@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import socket
 import subprocess
 import uuid
 from datetime import datetime, timezone
@@ -31,8 +32,7 @@ _ACTIVE_STATES = {
     'restarting',
     'verifying',
 }
-_HELPER_RESULT_PREFIX = 'OFFICIUM_UPDATE_RESULT='
-_HELPER_ERROR_MESSAGES = {
+_IPC_ERROR_MESSAGES = {
     'authorization_failed': 'Недостаточно прав для запуска серверного помощника.',
     'backup_failed': 'Не удалось создать резервную копию. Обновление не начато.',
     'configuration_invalid': 'Конфигурация серверного помощника некорректна.',
@@ -43,10 +43,15 @@ _HELPER_ERROR_MESSAGES = {
     'migration_failed': 'Не удалось выполнить миграции базы данных.',
     'release_rejected': 'Серверный помощник отклонил выбранный релиз.',
     'restart_failed': 'Не удалось перезапустить службу приложения.',
+    'rollback_failed': 'Автоматический возврат предыдущей версии не завершён; требуется recovery.',
     'scheduling_failed': 'Systemd не смог запланировать задачу обновления.',
     'update_busy': 'Другое обновление уже выполняется.',
-    'unexpected_failure': 'Серверный помощник завершился с внутренней ошибкой.',
+    'ipc_unavailable': 'Служба безопасного обновления недоступна.',
+    'ipc_timeout': 'Служба безопасного обновления не ответила вовремя.',
+    'protocol_error': 'Служба обновления вернула некорректный ответ.',
+    'unexpected_failure': 'Служба обновления завершила запрос с внутренней ошибкой.',
 }
+_MAX_IPC_RESPONSE_BYTES = 64 * 1024
 
 
 def _utc_now():
@@ -85,10 +90,6 @@ def fetch_latest_release(config):
         'X-GitHub-Api-Version': '2022-11-28',
         'User-Agent': 'officium-server-updater',
     }
-    token = str(config.get('SERVER_UPDATE_GITHUB_TOKEN') or '').strip()
-    if token:
-        headers['Authorization'] = f'Bearer {token}'
-
     try:
         response = requests.get(
             f'https://api.github.com/repos/{repository}/releases/latest',
@@ -108,9 +109,11 @@ def fetch_latest_release(config):
     tag = validate_release_tag(payload.get('tag_name'))
     release_name = str(payload.get('name') or tag).strip()[:160]
     published_at = str(payload.get('published_at') or '').strip()[:40]
+    release_notes = ' '.join(str(payload.get('body') or '').split())[:500]
     return {
         'tag': tag,
         'name': release_name,
+        'notes': release_notes,
         'published_at': published_at,
         'url': f'https://github.com/{repository}/releases/tag/{quote(tag, safe="")}',
     }
@@ -130,7 +133,10 @@ def get_current_release(config):
     def run_git(*args):
         try:
             result = subprocess.run(
-                ['git', '-C', str(app_dir), *args],
+                [
+                    'git', '--no-replace-objects', '-c', f'safe.directory={app_dir}',
+                    '-C', str(app_dir), *args,
+                ],
                 capture_output=True,
                 text=True,
                 timeout=3,
@@ -163,6 +169,42 @@ def current_release_has_tag(current_release, tag):
     return current_release.get('tag') == tag
 
 
+def _release_order(value):
+    """Return a conservative comparable key for ordinary SemVer-like tags."""
+    match = re.fullmatch(
+        r'v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?',
+        str(value or '').strip(),
+    )
+    if not match:
+        return None
+    major, minor, patch, prerelease = match.groups()
+    return (int(major), int(minor), int(patch), prerelease is None)
+
+
+def reconcile_update_status(status, current_release):
+    """Do not let a failed older operation mask a successfully installed release."""
+    if not isinstance(status, dict) or status.get('state') != 'failed':
+        return status
+    failed_order = _release_order(status.get('tag'))
+    current_tags = current_release.get('tags')
+    if not isinstance(current_tags, list):
+        current_tags = [current_release.get('tag')]
+    newer_tags = [tag for tag in current_tags if _release_order(tag)]
+    if failed_order is None or not any(_release_order(tag) > failed_order for tag in newer_tags):
+        return status
+    reconciled = dict(status)
+    reconciled.update({
+        'state': 'success',
+        'tag': str(current_release.get('label') or newer_tags[0]),
+        'message': (
+            'Установлена более новая версия; ошибка предыдущей операции сохранена '
+            'только в журнале обновления.'
+        ),
+        'superseded': True,
+    })
+    return reconciled
+
+
 def _status_path(config):
     value = str(config.get('SERVER_UPDATE_STATUS_PATH') or '').strip()
     if not value:
@@ -185,25 +227,6 @@ def read_update_status(config):
     return payload if isinstance(payload, dict) else None
 
 
-def _write_update_status(config, payload):
-    path = _status_path(config)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
-    data = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
-    try:
-        temporary.write_text(data, encoding='utf-8')
-        try:
-            temporary.chmod(0o600)
-        except OSError:
-            pass
-        os.replace(temporary, path)
-    finally:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-
 def _status_is_active(status, stale_minutes):
     if not status or status.get('state') not in _ACTIVE_STATES:
         return False
@@ -217,46 +240,67 @@ def _status_is_active(status, stale_minutes):
     return (_utc_now() - updated_at).total_seconds() < stale_minutes * 60
 
 
-def _parse_helper_result(stdout, stderr):
-    """Read the last bounded, machine-readable response emitted by the root helper."""
-    combined = f'{stdout or ""}\n{stderr or ""}'[-16 * 1024:]
-    for raw_line in reversed(combined.splitlines()):
-        line = raw_line.strip()
-        if not line.startswith(_HELPER_RESULT_PREFIX):
-            continue
-        try:
-            payload = json.loads(line[len(_HELPER_RESULT_PREFIX):])
-        except (TypeError, ValueError):
-            return None
-        return payload if isinstance(payload, dict) else None
-    return None
+def _ipc_socket_path(config):
+    raw_path = str(config.get('SERVER_UPDATE_SOCKET') or '').strip()
+    if not raw_path:
+        raw_path = '/run/officium/updater.sock'
+    path = Path(raw_path)
+    if os.name != 'nt' and not path.is_absolute():
+        raise ServerUpdateError('Путь к сокету обновления должен быть абсолютным.')
+    return raw_path
 
 
-def _redact_helper_output(config, value):
-    """Bound diagnostic output and remove configured credentials before logging it."""
-    output = str(value or '')[-4096:]
-    token = str(config.get('SERVER_UPDATE_GITHUB_TOKEN') or '')
-    if token:
-        output = output.replace(token, '[REDACTED]')
-    output = re.sub(
-        r'(?i)(authorization\s*[:=]\s*(?:bearer\s+)?)[^\s]+',
-        r'\1[REDACTED]',
-        output,
-    )
-    output = re.sub(r'(?i)(password|token|secret)=([^\s]+)', r'\1=[REDACTED]', output)
-    return output
+def _ipc_request(config, action, **fields):
+    """Call the fixed local updater protocol without spawning a privileged process."""
+    timeout = max(1, min(int(config.get('SERVER_UPDATE_IPC_TIMEOUT_SECONDS', 8)), 30))
+    request_payload = {
+        'protocol': 1,
+        'action': str(action),
+        **fields,
+    }
+    encoded = json.dumps(
+        request_payload,
+        ensure_ascii=True,
+        separators=(',', ':'),
+    ).encode('ascii') + b'\n'
+    if len(encoded) > 4096:
+        raise ServerUpdateError('Запрос обновления превышает допустимый размер.')
 
+    response = bytearray()
+    if not hasattr(socket, 'AF_UNIX'):
+        raise ServerUpdateError(_IPC_ERROR_MESSAGES['ipc_unavailable'])
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(timeout)
+            client.connect(_ipc_socket_path(config))
+            client.sendall(encoded)
+            while b'\n' not in response:
+                chunk = client.recv(4096)
+                if not chunk:
+                    break
+                response.extend(chunk)
+                if len(response) > _MAX_IPC_RESPONSE_BYTES:
+                    raise ServerUpdateError(_IPC_ERROR_MESSAGES['protocol_error'])
+    except socket.timeout as exc:
+        raise ServerUpdateError(_IPC_ERROR_MESSAGES['ipc_timeout']) from exc
+    except (OSError, ValueError) as exc:
+        logger.warning('Updater IPC unavailable: %s', type(exc).__name__)
+        raise ServerUpdateError(_IPC_ERROR_MESSAGES['ipc_unavailable']) from exc
 
-def _helper_failure_message(result, payload):
-    if payload:
-        code = str(payload.get('code') or '')
-        if code in _HELPER_ERROR_MESSAGES:
-            return code, _HELPER_ERROR_MESSAGES[code]
-
-    diagnostic = f'{result.stderr or ""}\n{result.stdout or ""}'.lower()
-    if 'password is required' in diagnostic or 'not allowed to execute' in diagnostic:
-        return 'authorization_failed', _HELPER_ERROR_MESSAGES['authorization_failed']
-    return 'unexpected_failure', _HELPER_ERROR_MESSAGES['unexpected_failure']
+    try:
+        raw_line = bytes(response).split(b'\n', 1)[0]
+        payload = json.loads(raw_line.decode('utf-8'))
+    except (UnicodeDecodeError, ValueError, TypeError) as exc:
+        raise ServerUpdateError(_IPC_ERROR_MESSAGES['protocol_error']) from exc
+    if not isinstance(payload, dict) or not isinstance(payload.get('ok'), bool):
+        raise ServerUpdateError(_IPC_ERROR_MESSAGES['protocol_error'])
+    if not payload['ok']:
+        code = str(payload.get('code') or 'unexpected_failure')
+        message = _IPC_ERROR_MESSAGES.get(code, _IPC_ERROR_MESSAGES['unexpected_failure'])
+        operation_id = str(payload.get('operation_id') or '')
+        suffix = f' Код операции: {operation_id}.' if operation_id else ''
+        raise ServerUpdateError(f'{message}{suffix}')
+    return payload
 
 
 def update_is_active(config, status=None):
@@ -264,30 +308,21 @@ def update_is_active(config, status=None):
     return _status_is_active(status if status is not None else read_update_status(config), stale_minutes)
 
 
-def _validated_helper_command(config):
-    helper_value = str(config.get('SERVER_UPDATE_HELPER') or '').strip()
-    helper = Path(helper_value)
-    if not helper_value or not helper.is_absolute() or not helper.is_file():
-        raise ServerUpdateError('Серверный помощник обновления не установлен или не настроен.')
+def check_update_readiness(config, *, integration=False):
+    action = 'integration_check' if integration else 'check'
+    return _ipc_request(config, action)
 
-    if os.name != 'nt':
-        if not os.access(helper, os.X_OK):
-            raise ServerUpdateError('Серверный помощник обновления не является исполняемым.')
-        stat = helper.stat()
-        require_root_owner = bool(config.get('SERVER_UPDATE_REQUIRE_ROOT_OWNED_HELPER', True))
-        if require_root_owner and stat.st_uid != 0:
-            raise ServerUpdateError('Серверный помощник обновления должен принадлежать root.')
-        if stat.st_mode & 0o022:
-            raise ServerUpdateError('Серверный помощник обновления доступен для небезопасной записи.')
 
-    command = [str(helper)]
-    if config.get('SERVER_UPDATE_USE_SUDO'):
-        sudo_value = str(config.get('SERVER_UPDATE_SUDO_PATH') or '/usr/bin/sudo').strip()
-        sudo = Path(sudo_value)
-        if not sudo.is_absolute() or not sudo.is_file():
-            raise ServerUpdateError('Для запуска обновления не найден sudo.')
-        command = [str(sudo), '-n', str(helper)]
-    return command
+def get_update_status(config):
+    """Read status through the authenticated IPC path, with a read-only file fallback."""
+    if not config.get('SERVER_UPDATE_ENABLED'):
+        return read_update_status(config)
+    try:
+        payload = _ipc_request(config, 'get_status')
+    except ServerUpdateError:
+        return read_update_status(config)
+    status = payload.get('status')
+    return status if isinstance(status, dict) else None
 
 
 def request_server_update(config, requested_tag, requested_by):
@@ -305,109 +340,13 @@ def request_server_update(config, requested_tag, requested_by):
     if current_release_has_tag(current, tag):
         raise ServerUpdateError('На сервере уже установлена эта версия.')
 
-    command = _validated_helper_command(config)
-    status_path = _status_path(config)
-    lock_path = status_path.with_name(f'{status_path.name}.request.lock')
-    status_path.parent.mkdir(parents=True, exist_ok=True)
-    stale_minutes = max(10, min(int(config.get('SERVER_UPDATE_STALE_MINUTES', 120)), 1440))
-    lock_fd = None
-    for attempt in range(2):
-        try:
-            lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            break
-        except FileExistsError as exc:
-            try:
-                lock_age_seconds = _utc_now().timestamp() - lock_path.stat().st_mtime
-            except OSError:
-                lock_age_seconds = 0
-            if attempt == 0 and lock_age_seconds >= stale_minutes * 60:
-                try:
-                    lock_path.unlink()
-                    continue
-                except OSError:
-                    pass
-            raise ServerUpdateError('Другой запрос обновления уже обрабатывается.') from exc
-
-    if lock_fd is None:
-        raise ServerUpdateError('Не удалось заблокировать параллельный запуск обновления.')
-
-    try:
-        with os.fdopen(lock_fd, 'w', encoding='utf-8') as lock_file:
-            lock_file.write(_iso_now())
-
-        existing_status = read_update_status(config)
-        if update_is_active(config, existing_status):
-            raise ServerUpdateError('Обновление уже запущено. Дождитесь его завершения.')
-
-        operation_id = f'upd-{uuid.uuid4().hex[:12]}'
-        queued_status = {
-            'state': 'queued',
-            'tag': tag,
-            'message': 'Запрос принят сервером и ожидает запуска.',
-            'operation_id': operation_id,
-            'requested_by': str(requested_by),
-            'requested_at': _iso_now(),
-            'updated_at': _iso_now(),
-        }
-        _write_update_status(config, queued_status)
-
-        timeout = max(3, min(int(config.get('SERVER_UPDATE_COMMAND_TIMEOUT_SECONDS', 15)), 60))
-        try:
-            result = subprocess.run(
-                [*command, tag],
-                cwd=str(Path(config.get('SERVER_UPDATE_APP_DIR') or '.').resolve()),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            failed_status = dict(queued_status)
-            failed_status.update({
-                'state': 'failed',
-                'error_code': 'helper_timeout',
-                'message': 'Серверный помощник не ответил вовремя.',
-                'updated_at': _iso_now(),
-            })
-            _write_update_status(config, failed_status)
-            logger.exception('Server update helper timed out; operation_id=%s', operation_id)
-            raise ServerUpdateError(failed_status['message']) from exc
-        except (OSError, subprocess.SubprocessError) as exc:
-            failed_status = dict(queued_status)
-            failed_status.update({
-                'state': 'failed',
-                'error_code': 'helper_unavailable',
-                'message': 'Серверный помощник недоступен или не может быть запущен.',
-                'updated_at': _iso_now(),
-            })
-            _write_update_status(config, failed_status)
-            logger.exception('Server update helper unavailable; operation_id=%s', operation_id)
-            raise ServerUpdateError(failed_status['message']) from exc
-
-        helper_payload = _parse_helper_result(result.stdout, result.stderr)
-        if result.returncode != 0:
-            error_code, message = _helper_failure_message(result, helper_payload)
-            failed_status = dict(queued_status)
-            failed_status.update({
-                'state': 'failed',
-                'error_code': error_code,
-                'message': message,
-                'updated_at': _iso_now(),
-            })
-            _write_update_status(config, failed_status)
-            logger.error(
-                'Server update helper rejected request; operation_id=%s code=%s '
-                'returncode=%s output=%s',
-                operation_id,
-                error_code,
-                result.returncode,
-                _redact_helper_output(config, f'{result.stdout}\n{result.stderr}'),
-            )
-            raise ServerUpdateError(f'{message} Код операции: {operation_id}.')
-    finally:
-        try:
-            lock_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-
+    operation_id = f'upd-{uuid.uuid4().hex[:12]}'
+    payload = _ipc_request(
+        config,
+        'start_latest_update',
+        tag=tag,
+        operation_id=operation_id,
+        requested_by=str(requested_by),
+    )
+    latest['operation_id'] = str(payload.get('operation_id') or operation_id)
     return latest

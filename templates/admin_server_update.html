@@ -6,6 +6,7 @@
     'queued': ('В очереди', 'info'), 'checking': ('Проверка обновления', 'primary'),
     'preparing': ('Подготовка', 'primary'), 'running': ('Запущено', 'primary'),
     'backing_up': ('Резервная копия', 'primary'), 'installing': ('Установка', 'primary'),
+    'dependencies': ('Зависимости', 'primary'),
     'migrating': ('Миграции', 'primary'), 'restarting': ('Перезапуск', 'warning'),
     'verifying': ('Проверка работоспособности', 'primary'),
     'success': ('Завершено', 'success'), 'failed': ('Ошибка', 'danger')
@@ -15,11 +16,26 @@
 <header class="admin-page-header"><div><p class="admin-page-kicker">Обслуживание</p><h1>Обновление сервера</h1><p>Установка последнего опубликованного релиза officium с резервной копией и проверкой.</p></div><a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">Вернуться к обзору</a></header>
 {% if not enabled %}<div class="alert alert-warning" role="alert"><strong>Обновление отключено.</strong> Установите серверный помощник и включите <code>SERVER_UPDATE_ENABLED</code> по инструкции развертывания.</div>{% endif %}
 {% if release_error %}<div class="alert alert-danger" role="alert">{{ release_error }}</div>{% endif %}
+{% if readiness.error %}<div class="alert alert-danger" role="alert"><strong>Предварительная проверка не пройдена.</strong> {{ readiness.error }}</div>{% endif %}
 
 <div class="admin-release-grid">
     <section class="admin-panel admin-release-card"><span class="admin-release-card__icon">{{ icon('server', 23) }}</span><div><p class="admin-page-kicker">На сервере</p><h2>Установленная версия</h2><strong>{{ current_release.label }}</strong>{% if current_release.commit %}<small>Коммит: <span class="admin-mono">{{ current_release.commit }}</span></small>{% endif %}</div></section>
-    <section class="admin-panel admin-release-card"><span class="admin-release-card__icon">{{ icon('update', 23) }}</span><div><p class="admin-page-kicker">GitHub Releases</p><h2>Последний релиз</h2>{% if latest_release %}<strong>{{ latest_release.tag }}</strong>{% if is_current %}{{ status_badge('success') }}{% endif %}<small>{{ latest_release.name }}</small>{% if latest_release.published_at %}<small>Опубликован: {{ latest_release.published_at }}</small>{% endif %}<a href="{{ latest_release.url }}" target="_blank" rel="noopener noreferrer">Открыть релиз на GitHub</a>{% elif enabled and not release_error %}<span>Сведения о релизе пока недоступны.</span>{% else %}<span>Проверка начнется после включения обновлений.</span>{% endif %}</div></section>
+    <section class="admin-panel admin-release-card"><span class="admin-release-card__icon">{{ icon('update', 23) }}</span><div><p class="admin-page-kicker">GitHub Releases</p><h2>Последний релиз</h2>{% if latest_release %}<strong>{{ latest_release.tag }}</strong>{% if is_current %}{{ status_badge('success') }}{% endif %}<small>{{ latest_release.name }}</small>{% if latest_release.notes %}<p>{{ latest_release.notes }}</p>{% endif %}{% if latest_release.published_at %}<small>Опубликован: {{ latest_release.published_at }}</small>{% endif %}<a href="{{ latest_release.url }}" target="_blank" rel="noopener noreferrer">Открыть релиз на GitHub</a>{% elif enabled and not release_error %}<span>Сведения о релизе пока недоступны.</span>{% else %}<span>Проверка начнется после включения обновлений.</span>{% endif %}</div></section>
 </div>
+
+<section class="admin-panel admin-update-readiness" aria-labelledby="update-readiness-title">
+    <div class="admin-panel__header"><div><p class="admin-page-kicker">Готовность</p><h2 id="update-readiness-title">Проверка механизма обновления</h2></div></div>
+    <div class="admin-readiness-grid">
+        <article class="admin-readiness-card">
+            <span class="admin-readiness-card__icon admin-readiness-card__icon--{{ 'success' if readiness.static else 'warning' }}">{{ icon('check-circle' if readiness.static else 'alert', 20) }}</span>
+            <div><span>Статический preflight</span><strong class="admin-readiness-card__status admin-readiness-card__status--{{ 'success' if readiness.static else 'warning' }}">{{ 'Готов' if readiness.static else 'Не подтверждён' }}</strong><small>Пути, права, база, backup, systemd и NoNewPrivileges.</small></div>
+        </article>
+        <article class="admin-readiness-card">
+            <span class="admin-readiness-card__icon admin-readiness-card__icon--{{ 'success' if readiness.integration else 'warning' }}">{{ icon('check-circle' if readiness.integration else 'alert', 20) }}</span>
+            <div><span>IPC из Flask</span><strong class="admin-readiness-card__status admin-readiness-card__status--{{ 'success' if readiness.integration else 'warning' }}">{{ 'Готов' if readiness.integration else 'Не подтверждён' }}</strong><small>Тот же Unix-сокет и peer credentials, которые использует кнопка.</small></div>
+        </article>
+    </div>
+</section>
 
 <section class="admin-panel admin-update-status">
     <div class="admin-panel__header"><div><p class="admin-page-kicker">Текущая операция</p><h2>Состояние обновления</h2></div><a href="{{ url_for('admin_server_update') }}" class="btn btn-outline-secondary btn-sm">Обновить сведения</a></div>
@@ -37,11 +53,12 @@
 
 <section class="admin-panel admin-update-plan">
     <div class="admin-panel__header"><div><p class="admin-page-kicker">Безопасный сценарий</p><h2>Что произойдет</h2></div></div>
-    <ol><li><span>1</span><div><strong>Проверка релиза</strong><p>Сервер подтвердит, что выбран последний опубликованный GitHub-релиз.</p></div></li><li><span>2</span><div><strong>Резервная копия</strong><p>Будут сохранены база данных и локальная конфигурация.</p></div></li><li><span>3</span><div><strong>Установка</strong><p>Будут установлены код точного тега, зависимости и миграции.</p></div></li><li><span>4</span><div><strong>Проверка</strong><p>Служба перезапустится, пройдет проверку работоспособности и запишет результат.</p></div></li></ol>
-    {% if enabled and latest_release and not is_current and not is_active %}
+    <ol><li><span>1</span><div><strong>Preflight</strong><p>Служба подтвердит релиз, пути, права, диск, базу и systemd.</p></div></li><li><span>2</span><div><strong>Резервная копия</strong><p>Будут сохранены база данных и локальная конфигурация.</p></div></li><li><span>3</span><div><strong>Checkout</strong><p>Точный тег будет собран в новом версионированном каталоге.</p></div></li><li><span>4</span><div><strong>Зависимости</strong><p>Отдельное окружение релиза будет подготовлено до переключения.</p></div></li><li><span>5</span><div><strong>Миграции</strong><p>Миграции выполнятся после проверенного backup; ограничения отката задокументированы.</p></div></li><li><span>6</span><div><strong>Restart</strong><p>Ссылка current переключится атомарно, затем служба перезапустится.</p></div></li><li><span>7</span><div><strong>Healthcheck</strong><p>Проверятся systemd, HTTP и функциональная доступность.</p></div></li></ol>
+    {% if enabled and latest_release and not is_current and not is_active and readiness.static and readiness.integration %}
     <form method="post" action="{{ url_for('admin_server_update_apply') }}" data-admin-confirm="Начать обновление сервера до {{ latest_release.tag }}? Во время перезапуска панель может быть кратковременно недоступна.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="tag" value="{{ latest_release.tag }}">
         <button type="submit" class="btn btn-primary">{{ icon('update', 17) }} Обновить до {{ latest_release.tag }}</button>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">Напомнить позже</a>
     </form>
     {% elif is_current %}<div class="alert alert-success mb-0">Уже установлена последняя версия.</div>
     {% elif is_active %}<div class="alert alert-info mb-0">Обновление выполняется. Повторный запуск временно заблокирован.</div>
@@ -56,7 +73,7 @@
     const terminalStates = new Set(['success', 'failed']);
     const labels = {
         queued: 'В очереди', checking: 'Проверка обновления', preparing: 'Подготовка', running: 'Запущено',
-        backing_up: 'Резервная копия', installing: 'Установка', migrating: 'Миграции', restarting: 'Перезапуск',
+        backing_up: 'Резервная копия', installing: 'Установка', dependencies: 'Зависимости', migrating: 'Миграции', restarting: 'Перезапуск',
         verifying: 'Проверка работоспособности', success: 'Завершено', failed: 'Ошибка'
     };
     const poll = async () => {

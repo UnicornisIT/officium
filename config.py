@@ -40,21 +40,20 @@ class Config:
     APP_TIMEZONE = os.environ.get('APP_TIMEZONE', 'UTC').strip() or 'UTC'
     SERVER_UPDATE_ENABLED = os.environ.get('SERVER_UPDATE_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     SERVER_UPDATE_REPOSITORY = os.environ.get('SERVER_UPDATE_REPOSITORY', '').strip()
-    SERVER_UPDATE_GITHUB_TOKEN = os.environ.get('SERVER_UPDATE_GITHUB_TOKEN', '')
-    SERVER_UPDATE_HELPER = os.environ.get('SERVER_UPDATE_HELPER', '')
-    SERVER_UPDATE_USE_SUDO = os.environ.get('SERVER_UPDATE_USE_SUDO', 'true').lower() in ('1', 'true', 'yes', 'on')
-    SERVER_UPDATE_SUDO_PATH = os.environ.get('SERVER_UPDATE_SUDO_PATH', '/usr/bin/sudo')
+    # The web process talks to a root-owned updater through a credential-checked
+    # Unix socket.  It must never invoke sudo: production units intentionally use
+    # NoNewPrivileges=true.
+    SERVER_UPDATE_SOCKET = os.environ.get(
+        'SERVER_UPDATE_SOCKET', '/run/officium/updater.sock'
+    ).strip()
     SERVER_UPDATE_APP_DIR = os.environ.get('SERVER_UPDATE_APP_DIR', basedir)
     SERVER_UPDATE_STATUS_PATH = os.environ.get(
         'SERVER_UPDATE_STATUS_PATH',
         os.path.join(basedir, 'instance', 'server-update-status.json'),
     )
     SERVER_UPDATE_HTTP_TIMEOUT_SECONDS = int(os.environ.get('SERVER_UPDATE_HTTP_TIMEOUT_SECONDS', '8'))
-    SERVER_UPDATE_COMMAND_TIMEOUT_SECONDS = int(os.environ.get('SERVER_UPDATE_COMMAND_TIMEOUT_SECONDS', '15'))
+    SERVER_UPDATE_IPC_TIMEOUT_SECONDS = int(os.environ.get('SERVER_UPDATE_IPC_TIMEOUT_SECONDS', '8'))
     SERVER_UPDATE_STALE_MINUTES = int(os.environ.get('SERVER_UPDATE_STALE_MINUTES', '120'))
-    SERVER_UPDATE_REQUIRE_ROOT_OWNED_HELPER = os.environ.get(
-        'SERVER_UPDATE_REQUIRE_ROOT_OWNED_HELPER', 'true'
-    ).lower() in ('1', 'true', 'yes', 'on')
     DEV_LOGIN_ENABLED = os.environ.get('DEV_LOGIN_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     DEBUG = os.environ.get('FLASK_DEBUG', 'false').lower() in ('1', 'true', 'yes', 'on')
     SESSION_COOKIE_HTTPONLY = True

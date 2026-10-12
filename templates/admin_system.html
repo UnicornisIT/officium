@@ -25,6 +25,9 @@
     <section class="admin-panel" aria-labelledby="features-title">
         <div class="admin-panel__header"><div><p class="admin-page-kicker">Конфигурация</p><h2 id="features-title">Доступность функций</h2></div></div>
         <div class="admin-feature-list">
+            {% for feature in telegram_states.values() %}
+            <div class="admin-feature-detail"><span>{{ feature.label }}</span><span>{{ status_badge('enabled' if feature.effective else 'disabled') }}</span><small>Включено в настройках: {{ 'да' if feature.enabled_in_settings else 'нет' }} · конфигурация корректна: {{ 'да' if feature.configuration_valid else 'нет' }} · проверено в Telegram: не проверено</small></div>
+            {% endfor %}
             {% for label, enabled in feature_states %}<div><span>{{ label }}</span>{{ status_badge('enabled' if enabled else 'disabled') }}</div>{% endfor %}
         </div>
     </section>

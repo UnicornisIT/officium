@@ -7,17 +7,28 @@ from sqlalchemy import and_, cast, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from app.models import ActivityLog, Debt, DictionaryEntry, Payment, User, AppSetting
 from app.routes.auth import LocalTestUser
+from app.services.contact_service import (
+    CONTACT_ICONS,
+    CONTACT_LOCATIONS,
+    CONTACT_TYPES,
+    ContactValidationError,
+    delete_contact,
+    load_contacts,
+    save_contact,
+)
 from app.services.server_update_service import (
     ServerUpdateError,
+    check_update_readiness,
     current_release_has_tag,
     fetch_latest_release,
     get_current_release,
-    read_update_status,
+    get_update_status,
+    reconcile_update_status,
     request_server_update,
     update_is_active,
 )
 from app.time_utils import utc_now
-from app.utils import admin_required, superadmin_required, DICTIONARY_TYPES, DEFAULT_SETTINGS, get_setting, record_activity, set_setting
+from app.utils import admin_required, superadmin_required, DICTIONARY_TYPES, DEFAULT_SETTINGS, get_setting, record_activity, set_setting, telegram_feature_states
 from extensions import db
 
 
@@ -170,14 +181,24 @@ def init_app(app):
         enabled = bool(current_app.config.get('SERVER_UPDATE_ENABLED'))
         latest_release = None
         release_error = None
+        readiness = {'static': None, 'integration': None, 'error': None}
         if enabled:
             try:
                 latest_release = fetch_latest_release(current_app.config)
             except ServerUpdateError as exc:
                 release_error = str(exc)
+            try:
+                readiness['static'] = check_update_readiness(current_app.config)
+                readiness['integration'] = check_update_readiness(
+                    current_app.config, integration=True
+                )
+            except ServerUpdateError as exc:
+                readiness['error'] = str(exc)
 
         current_release = get_current_release(current_app.config)
-        update_status = read_update_status(current_app.config)
+        update_status = reconcile_update_status(
+            get_update_status(current_app.config), current_release
+        )
         is_active = update_is_active(current_app.config, update_status)
         is_current = bool(
             latest_release
@@ -193,12 +214,16 @@ def init_app(app):
             update_status=update_status,
             is_active=is_active,
             is_current=is_current,
+            readiness=readiness,
         )
 
     @app.route('/admin/server-update/status')
     @superadmin_required
     def admin_server_update_status():
-        status = read_update_status(current_app.config) or {
+        current_release = get_current_release(current_app.config)
+        status = reconcile_update_status(
+            get_update_status(current_app.config), current_release
+        ) or {
             'state': 'idle',
             'message': 'Обновление ещё не запускалось.',
         }
@@ -285,9 +310,52 @@ def init_app(app):
         return render_template(
             'admin_settings.html',
             settings=settings,
+            contacts=load_contacts(),
+            contact_types=CONTACT_TYPES,
+            contact_icons=CONTACT_ICONS,
+            contact_locations=CONTACT_LOCATIONS,
             success_message=request.args.get('success'),
             error_message=error_message,
         )
+
+    @app.route('/admin/settings/contacts', methods=['POST'])
+    @superadmin_required
+    def admin_settings_contacts():
+        action = str(request.form.get('action') or 'save')
+        contact_id = str(request.form.get('contact_id') or '').strip()
+        try:
+            if action == 'delete':
+                delete_contact(contact_id)
+                activity = 'Удалил публичный контакт'
+            elif action == 'save':
+                save_contact({
+                    'type': request.form.get('type'),
+                    'label': request.form.get('label'),
+                    'address': request.form.get('address'),
+                    'icon': request.form.get('icon'),
+                    'published': bool(request.form.get('published')),
+                    'locations': request.form.getlist('locations'),
+                    'order': request.form.get('order', '0'),
+                }, contact_id=contact_id or None)
+                activity = 'Изменил публичные контакты'
+            else:
+                raise ContactValidationError('Неподдерживаемое действие.')
+            record_activity(
+                activity,
+                current_user,
+                entity_type='setting',
+                description='Обновлена публикация контактов и ссылок',
+            )
+            return redirect(url_for('admin_settings', success='Контакты сохранены'))
+        except ContactValidationError as exc:
+            db.session.rollback()
+            flash(str(exc), 'danger')
+            return redirect(url_for('admin_settings'))
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception('Failed to save public contacts')
+            flash('Не удалось сохранить контакты.', 'danger')
+            return redirect(url_for('admin_settings'))
 
     @app.route('/admin/dictionaries', methods=['GET', 'POST'])
     @superadmin_required
@@ -616,10 +684,8 @@ def init_app(app):
             db.session.rollback()
             database_state = 'warning'
 
+        telegram_states = telegram_feature_states(current_app.config)
         feature_states = (
-            ('Вход через Telegram', current_app.config.get('TELEGRAM_LOGIN_ENABLED')),
-            ('Telegram Mini App', current_app.config.get('TELEGRAM_MINI_APP_ENABLED')),
-            ('Telegram-бот', current_app.config.get('TELEGRAM_BOT_ENABLED')),
             ('Google OAuth', current_app.config.get('GOOGLE_LOGIN_ENABLED')),
             ('Обновление сервера', current_app.config.get('SERVER_UPDATE_ENABLED')),
         )
@@ -627,6 +693,7 @@ def init_app(app):
             'admin_system.html',
             database_state=database_state,
             feature_states=feature_states,
+            telegram_states=telegram_states,
             app_version=current_app.config.get('APP_VERSION', 'unknown'),
             environment=current_app.config.get('ENVIRONMENT', 'unknown'),
             timezone=current_app.config.get('APP_TIMEZONE', 'UTC'),
