@@ -261,6 +261,22 @@ def client_ip():
     return value[:CLIENT_IP_MAX_LENGTH] or None
 
 
+ACTOR_LABEL_MAX_LENGTH = 64
+EMERGENCY_ADMIN_LABEL = 'Аварийный администратор'
+
+
+def actor_label_for(user):
+    """Human-readable snapshot of the acting account for the audit log."""
+    if not user:
+        return None
+    user_id = getattr(user, 'id', None)
+    if user_id == 'admin':
+        return EMERGENCY_ADMIN_LABEL
+    name = getattr(user, 'username', None) or getattr(user, 'first_name', None) or 'Пользователь'
+    label = f'{name} #{user_id}' if user_id is not None else str(name)
+    return label[:ACTOR_LABEL_MAX_LENGTH]
+
+
 def record_activity(action, user=None, entity_type=None, entity_id=None, description=None, ip_address=None, user_agent=None):
     user_id = getattr(user, 'id', None) if user else None
     if not isinstance(user_id, int):
@@ -277,6 +293,7 @@ def record_activity(action, user=None, entity_type=None, entity_id=None, descrip
         description=description,
         ip_address=ip_address,
         user_agent=user_agent,
+        actor_label=actor_label_for(user),
     )
     db.session.add(log)
     db.session.commit()

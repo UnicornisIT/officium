@@ -49,7 +49,8 @@ class User(UserMixin, db.Model):
         cascade='all, delete-orphan',
         order_by='FinancialGoal.priority',
     )
-    activity_logs = db.relationship('ActivityLog', back_populates='user', lazy=True, cascade='all, delete-orphan')
+    # Audit entries outlive the account: deleting a user only detaches them (user_id -> NULL).
+    activity_logs = db.relationship('ActivityLog', back_populates='user', lazy=True)
 
     @property
     def is_admin(self):
@@ -566,7 +567,7 @@ class ActivityLog(db.Model):
     __tablename__ = 'activity_logs'
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     action = db.Column(db.String(100), nullable=False)
     entity_type = db.Column(db.String(50), nullable=True)
     entity_id = db.Column(db.Integer, nullable=True)
@@ -574,6 +575,8 @@ class ActivityLog(db.Model):
     ip_address = db.Column(db.String(100), nullable=True)
     user_agent = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
+    # Snapshot of who acted, kept even after the account is deleted.
+    actor_label = db.Column(db.String(64), nullable=True)
 
     user = db.relationship('User', back_populates='activity_logs')
 

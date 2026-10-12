@@ -37,7 +37,7 @@
                 <div class="admin-log-row__headline"><strong>{{ log.action|admin_event }}</strong><time datetime="{{ log.created_at.isoformat() if log.created_at else '' }}">{{ log.created_at.strftime('%d.%m.%Y %H:%M:%S') if log.created_at else '—' }}</time></div>
                 <p>{{ log.description or 'Без дополнительного описания' }}</p>
                 <div class="admin-log-row__meta">
-                    {% if log.user %}<a href="{{ url_for('admin_user_detail', user_id=log.user.id) }}">{{ icon('user', 15) }} {{ [log.user.first_name, log.user.last_name]|select|join(' ') or log.user.username or ('Пользователь #' ~ log.user.id) }}</a>{% else %}<span>{{ icon('server', 15) }} Система</span>{% endif %}
+                    {% if log.user %}<a href="{{ url_for('admin_user_detail', user_id=log.user.id) }}">{{ icon('user', 15) }} {{ [log.user.first_name, log.user.last_name]|select|join(' ') or log.user.username or ('Пользователь #' ~ log.user.id) }}</a>{% elif log.actor_label %}<span>{{ icon('user', 15) }} {{ log.actor_label }}</span>{% else %}<span>{{ icon('server', 15) }} Система</span>{% endif %}
                     {% if log.entity_type %}<span>{{ log.entity_type|admin_entity }}{% if log.entity_id %} · #{{ log.entity_id }}{% endif %}</span>{% endif %}
                 </div>
                 {% if current_user.is_superadmin %}
