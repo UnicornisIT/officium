@@ -7,7 +7,7 @@
 ## 📝 Файлы, измененные или добавленные
 
 ### Модели и миграции
-- **[app/models.py](app/models.py)** — Добавлены поля к модели `Expense`:
+- **[app/models.py](../app/models.py)** — Добавлены поля к модели `Expense`:
   - `is_monthly` (Boolean) — флаг, что расход ежемесячный
   - `monthly_group_id` (String) — UUID для связи всех копий одного расхода
   - `generated_from_id` (Integer, FK) — ссылка на исходный расход
@@ -15,30 +15,30 @@
   - `monthly_anchor_day` (SmallInteger) — исходный день 1–31, который не теряется при сокращённом феврале
   - `monthly_settings_updated_at` (DateTime) — версия настроек серии для будущих месяцев
 
-- **[migrations/versions/20260517_add_monthly_expenses_fields.py](migrations/versions/20260517_add_monthly_expenses_fields.py)** — Миграция БД для добавления новых полей
-- **[migrations/versions/20261009_monthly_settings.py](migrations/versions/20261009_monthly_settings.py)** — безопасно добавляет метаданные серии и индекс активных серий
+- **[migrations/versions/20260517_add_monthly_expenses_fields.py](../migrations/versions/20260517_add_monthly_expenses_fields.py)** — Миграция БД для добавления новых полей
+- **[migrations/versions/20261009_monthly_settings.py](../migrations/versions/20261009_monthly_settings.py)** — безопасно добавляет метаданные серии и индекс активных серий
 
 ### Логика приложения
-- **[app/routes/expenses.py](app/routes/expenses.py)** — Обновлена логика создания и редактирования расходов:
+- **[app/routes/expenses.py](../app/routes/expenses.py)** — Обновлена логика создания и редактирования расходов:
   - При создании расхода проверяется флаг `is_monthly`
   - При ежемесячном расходе создается `monthly_group_id` (UUID)
   - При редактировании можно включать/выключать флаг ежемесячности
 
-- **[app/services/monthly_expenses_service.py](app/services/monthly_expenses_service.py)** — Новая сервисная функция:
+- **[app/services/monthly_expenses_service.py](../app/services/monthly_expenses_service.py)** — Новая сервисная функция:
   - `generate_monthly_expenses()` — генерирует копии расходов на новый месяц
   - `create_monthly_expenses_for_new_month()` — удобная функция для периодического вызова
   - Логика обработки дней месяца (31 января → 28 февраля)
   - Проверка дубликатов (идемпотентность)
 
 ### Интерфейс пользователя
-- **[templates/expenses.html](templates/expenses.html)** — Обновлена форма и таблица расходов:
+- **[templates/expenses.html](../templates/expenses.html)** — Обновлена форма и таблица расходов:
   - Добавлен переключатель "Ежемесячный расход" с иконкой замка
   - В таблице истории показывается замок для ежемесячных расходов
 
-- **[static/css/style.css](static/css/style.css)** — Минимальные CSS стили для переключателя и иконки замка
+- **[static/css/style.css](../static/css/style.css)** — Минимальные CSS стили для переключателя и иконки замка
 
 ### Тесты
-- **[tests/test_monthly_expenses.py](tests/test_monthly_expenses.py)** — Автоматические тесты календаря, истории и идемпотентности:
+- **[tests/test_monthly_expenses.py](../tests/test_monthly_expenses.py)** — Автоматические тесты календаря, истории и идемпотентности:
   - Обычный расход создается без флага ежемесячности
   - Ежемесячный расход сохраняется с `monthly_group_id`
   - При генерации следующего месяца создается копия
@@ -49,11 +49,11 @@
   - Все поля расхода копируются корректно
 
 ### CLI и утилиты
-- **[app/__init__.py](app/__init__.py)** — Добавлена CLI команда `generate-monthly-expenses`
+- **[app/__init__.py](../app/__init__.py)** — Добавлена CLI команда `generate-monthly-expenses`
 
 - **[deployment/officium-monthly-expenses.timer](../deployment/officium-monthly-expenses.timer)** — production-расписание systemd с `Persistent=true` и ежедневным восстановительным запуском
 
-- **[requirements.txt](requirements.txt)** — Добавлена зависимость `python-dateutil`
+- **[requirements.txt](../requirements.txt)** — Добавлена зависимость `python-dateutil`
 
 ## 🚀 Как применить функциональность
 
@@ -186,8 +186,8 @@ python -m unittest tests.test_monthly_expenses.MonthlyExpensesTestCase.test_gene
 
 ### Архитектура
 
-- Сервисный слой ([app/services/monthly_expenses_service.py](app/services/monthly_expenses_service.py)) содержит бизнес-логику
-- Маршруты ([app/routes/expenses.py](app/routes/expenses.py)) обрабатывают UI и создание расходов
+- Сервисный слой ([app/services/monthly_expenses_service.py](../app/services/monthly_expenses_service.py)) содержит бизнес-логику
+- Маршруты ([app/routes/expenses.py](../app/routes/expenses.py)) обрабатывают UI и создание расходов
 - CLI команда позволяет запускать генерацию вручную или по расписанию
 - Все операции идемпотентны (безопасны для повторного запуска)
 
