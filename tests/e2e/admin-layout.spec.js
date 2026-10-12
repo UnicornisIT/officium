@@ -65,20 +65,22 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
-test('contacts modal is keyboard reachable and validates through the real form', async ({ page }) => {
+test('contacts modal is keyboard reachable and validates through the real form', async ({ page }, testInfo) => {
+  // Browsers share one server database, so each project saves its own contact.
+  const label = `Документация экземпляра ${testInfo.project.name}`;
   await page.goto('/admin/settings');
   await page.getByRole('button', { name: 'Добавить' }).focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await dialog.locator('select[name="type"]').selectOption('website');
-  await dialog.locator('input[name="label"]').fill('Документация экземпляра');
+  await dialog.locator('input[name="label"]').fill(label);
   await dialog.locator('input[name="address"]').fill('https://example.org/help');
   await dialog.locator('#contactIconSelect').selectOption('globe2');
   await dialog.getByText('Footer', { exact: true }).click();
   await dialog.locator('.admin-publish-toggle').click();
   await dialog.getByRole('button', { name: 'Сохранить', exact: true }).click();
-  await expect(page.getByText('Документация экземпляра')).toBeVisible();
+  await expect(page.getByText(label, { exact: true })).toBeVisible();
 });
 
 test('contacts modal stays aligned and scrollable at responsive widths', async ({ page }) => {
@@ -195,14 +197,14 @@ test('paired release cards and search filters keep equal geometry', async ({ pag
   expect(Math.abs(releaseRects[0].width - releaseRects[1].width)).toBeLessThanOrEqual(1);
 
   await page.goto('/admin/dictionaries');
-  const dictionaryPanels = await page.locator('.admin-detail-grid--dictionary > .admin-panel').all();
-  expect(dictionaryPanels).toHaveLength(2);
-  const dictionaryRects = await Promise.all(dictionaryPanels.map(panel => panel.evaluate(element => {
-    const rect = element.getBoundingClientRect();
-    return { top: rect.top, bottom: rect.bottom };
-  })));
-  expect(Math.abs(dictionaryRects[0].top - dictionaryRects[1].top)).toBeLessThanOrEqual(1);
-  expect(Math.abs(dictionaryRects[0].bottom - dictionaryRects[1].bottom)).toBeLessThanOrEqual(1);
+  // The add form and the column of per-type groups start on the same line.
+  const dictionaryColumns = await page.locator('.admin-detail-grid--dictionary > *').all();
+  expect(dictionaryColumns).toHaveLength(2);
+  const dictionaryTops = await Promise.all(dictionaryColumns.map(column => column.evaluate(
+    element => element.getBoundingClientRect().top,
+  )));
+  expect(Math.abs(dictionaryTops[0] - dictionaryTops[1])).toBeLessThanOrEqual(1);
+  await expect(page.locator('.admin-dictionary-groups > .admin-panel')).toHaveCount(4);
 
   await page.goto('/admin/users');
   const filterGeometry = await page.evaluate(() => {
