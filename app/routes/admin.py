@@ -159,6 +159,89 @@ def _validated_settings(form):
     return values
 
 
+ROLE_LABELS = {'user': 'Пользователь', 'admin': 'Администратор', 'superadmin': 'Супер-администратор'}
+ROLE_ACTIONS = {
+    'user': 'Снял административные права',
+    'admin': 'Назначил администратора',
+    'superadmin': 'Назначил супер-администратора',
+}
+
+
+def _can_manage_access(target):
+    """Superadmins manage everyone; ordinary admins manage only plain users."""
+    return current_user.is_superadmin or target.role == 'user'
+
+
+def _deny(message):
+    flash(message, 'warning')
+    db.session.rollback()
+    return 'denied'
+
+
+def _log_user_action(action, target):
+    record_activity(
+        action, current_user, entity_type='user', entity_id=target.id,
+        description=f'Пользователь {target.username or target.telegram_id}',
+        ip_address=client_ip(), user_agent=request.headers.get('User-Agent'),
+    )
+
+
+def _apply_user_action(user, form):
+    """Apply one management action from the user card. Returns saved/deleted/denied."""
+    action = form.get('action')
+    is_self = str(user.id) == str(current_user.get_id())
+
+    if action in ('block', 'unblock'):
+        if is_self:
+            return _deny('Нельзя изменить блокировку своей учётной записи.')
+        if not _can_manage_access(user):
+            return _deny('Администратор может блокировать только обычных пользователей.')
+        if action == 'block':
+            if _is_last_superadmin(user):
+                return _deny('Нельзя заблокировать последнего супер-администратора.')
+            user.is_blocked = True
+            _log_user_action('Заблокировал пользователя', user)
+        else:
+            user.is_blocked = False
+            _log_user_action('Разблокировал пользователя', user)
+        return 'saved'
+
+    if action == 'set_role':
+        new_role = form.get('role')
+        if not current_user.is_superadmin:
+            return _deny('Менять роли может только супер-администратор.')
+        if new_role not in ROLE_LABELS:
+            return _deny('Выберите роль из списка.')
+        if new_role == user.role:
+            return _deny('Роль не изменилась.')
+        if user.is_superadmin and _is_last_superadmin(user):
+            return _deny('Нельзя понизить последнего супер-администратора.')
+        user.role = new_role
+        _log_user_action(ROLE_ACTIONS[new_role], user)
+        return 'saved'
+
+    if action == 'delete':
+        if not current_user.is_superadmin:
+            return _deny('Удалять пользователей может только супер-администратор.')
+        if is_self:
+            return _deny('Нельзя удалить свою учётную запись.')
+        if _is_last_superadmin(user):
+            return _deny('Нельзя удалить последнего супер-администратора.')
+        expected = _deletion_confirmation(user)
+        if str(form.get('confirm_username', '')).strip() != expected:
+            return _deny(f'Для удаления введите «{expected}» в поле подтверждения.')
+        _log_user_action('Удалил пользователя', user)
+        db.session.delete(user)
+        db.session.commit()
+        return 'deleted'
+
+    return _deny('Неизвестное действие.')
+
+
+def _deletion_confirmation(user):
+    return user.username or str(user.telegram_id)
+
+
 def init_app(app):
     @app.context_processor
     def inject_admin_navigation_helpers():
@@ -455,6 +538,8 @@ def init_app(app):
             users_query = users_query.filter_by(is_blocked=True)
         elif status_filter == 'active':
             users_query = users_query.filter_by(is_blocked=False)
+        elif status_filter == 'impersonated':
+            users_query = users_query.filter(User.id.in_(impersonation.active_target_ids_query()))
         if search_query:
             users_query = users_query.filter(
                 (User.username.ilike(f'%{search_query}%')) |
@@ -546,72 +631,15 @@ def init_app(app):
     @app.route('/admin/users/<int:user_id>', methods=['GET', 'POST'])
     @admin_required
     def admin_user_detail(user_id):
-        user = User.query.get_or_404(user_id)
+        user = db.session.get(User, user_id) or abort(404)
         if request.method == 'POST':
-            action = request.form.get('action')
-            successful = False
-            if action == 'block':
-                if user.id == current_user.id:
-                    flash('Нельзя заблокировать себя.', 'warning')
-                elif user.is_superadmin and not current_user.is_superadmin:
-                    flash('Нельзя заблокировать супер-администратора.', 'warning')
-                elif _is_last_superadmin(user):
-                    flash('Нельзя заблокировать последнего супер-администратора.', 'warning')
-                else:
-                    user.is_blocked = True
-                    record_activity('Заблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
-                    successful = True
-            elif action == 'unblock':
-                if user.id == current_user.id:
-                    flash('Нельзя разблокировать себя этим действием.', 'warning')
-                elif user.is_superadmin and not current_user.is_superadmin:
-                    flash('Нельзя разблокировать супер-администратора.', 'warning')
-                else:
-                    user.is_blocked = False
-                    record_activity('Разблокировал пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
-                    successful = True
-            elif action in ('make_admin', 'make_superadmin', 'make_user'):
-                if not current_user.is_superadmin:
-                    flash('Недостаточно прав для изменения ролей.', 'warning')
-                elif user.id == current_user.id and action != 'make_superadmin' and _is_last_superadmin(user):
-                    flash('Нельзя понизить последнего супер-администратора.', 'warning')
-                else:
-                    if action == 'make_admin':
-                        if user.is_superadmin and _is_last_superadmin(user):
-                            flash('Нельзя понизить последнего супер-администратора.', 'warning')
-                        else:
-                            user.role = 'admin'
-                            record_activity('Назначил администратора', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}')
-                            successful = True
-                    elif action == 'make_superadmin':
-                        user.role = 'superadmin'
-                        record_activity('Назначил супер-администратора', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}')
-                        successful = True
-                    else:
-                        if user.is_superadmin and _is_last_superadmin(user):
-                            flash('Нельзя понизить последнего супер-администратора.', 'warning')
-                        else:
-                            user.role = 'user'
-                            record_activity('Снял административные права', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}')
-                            successful = True
-            elif action == 'delete':
-                if not current_user.is_superadmin:
-                    flash('Недостаточно прав для удаления пользователя.', 'warning')
-                elif user.id == current_user.id:
-                    flash('Нельзя удалить себя.', 'warning')
-                elif user.is_superadmin and _is_last_superadmin(user):
-                    flash('Нельзя удалить последнего супер-администратора.', 'warning')
-                else:
-                    record_activity('Удалил пользователя', current_user, entity_type='user', entity_id=user.id, description=f'Пользователь {user.telegram_id}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
-                    db.session.delete(user)
-                    db.session.commit()
-                    return redirect(url_for('admin_users'))
-
-            if successful:
-                db.session.commit()
+            outcome = _apply_user_action(user, request.form)
+            if outcome == 'deleted':
+                flash('Пользователь удалён. Записи журнала о нём сохранены.', 'success')
+                return redirect(url_for('admin_users'))
+            if outcome == 'saved':
                 flash('Изменения сохранены.', 'success')
-                return redirect(url_for('admin_user_detail', user_id=user.id))
-            db.session.rollback()
+            return redirect(url_for('admin_user_detail', user_id=user.id))
 
         recent_actions = ActivityLog.query.filter(
             or_(
@@ -619,7 +647,15 @@ def init_app(app):
                 and_(ActivityLog.entity_type == 'user', ActivityLog.entity_id == user.id),
             )
         ).order_by(ActivityLog.created_at.desc()).limit(20).all()
-        return render_template('admin_user_detail.html', user=user, recent_actions=recent_actions, impersonation_timeout=impersonation.timeout_minutes())
+        return render_template(
+            'admin_user_detail.html',
+            user=user,
+            recent_actions=recent_actions,
+            impersonation_timeout=impersonation.timeout_minutes(),
+            can_manage_access=_can_manage_access(user) and str(user.id) != str(current_user.get_id()),
+            role_labels=ROLE_LABELS,
+            delete_confirmation=_deletion_confirmation(user),
+        )
 
     @app.route('/admin/logs')
     @admin_required

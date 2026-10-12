@@ -93,25 +93,47 @@
     <aside class="admin-detail-aside">
         <section class="admin-panel" aria-labelledby="management-title">
             <div class="admin-panel__header"><div><p class="admin-page-kicker">Доступ</p><h2 id="management-title">Управление</h2></div></div>
-            <form method="post" class="admin-action-stack">
+            {% if can_manage_access %}
+            <form method="post" class="admin-action-stack" aria-label="Блокировка">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if user.is_blocked %}
-                <button type="submit" name="action" value="unblock" class="btn btn-success" data-admin-confirm="Разблокировать пользователя?">{{ icon('check-circle', 17) }} Разблокировать</button>
+                <button type="submit" name="action" value="unblock" class="btn btn-success" data-admin-confirm="Разблокировать пользователя? Он снова сможет входить в приложение." data-confirm-tone="primary">{{ icon('check-circle', 17) }} Разблокировать</button>
                 {% else %}
-                <button type="submit" name="action" value="block" class="btn btn-outline-danger" data-admin-confirm="Заблокировать пользователя? Он потеряет доступ к приложению.">{{ icon('ban', 17) }} Заблокировать</button>
-                {% endif %}
-                {% if current_user.is_superadmin %}
-                <div class="admin-action-divider"><span>Изменить роль</span></div>
-                {% if user.role != 'admin' %}<button type="submit" name="action" value="make_admin" class="btn btn-outline-primary" data-admin-confirm="Назначить роль администратора?">Назначить администратором</button>{% endif %}
-                {% if user.role != 'superadmin' %}<button type="submit" name="action" value="make_superadmin" class="btn btn-outline-warning" data-admin-confirm="Назначить роль супер-администратора? Пользователь получит полный доступ.">Назначить супер-администратором</button>{% endif %}
-                {% if user.role != 'user' %}<button type="submit" name="action" value="make_user" class="btn btn-outline-secondary" data-admin-confirm="Снять административные права?">Оставить обычным пользователем</button>{% endif %}
-                <div class="admin-danger-zone">
-                    <strong>Опасная зона</strong><p>Удаление затронет связанные данные и не отменяется из интерфейса.</p>
-                    <button type="submit" name="action" value="delete" class="btn btn-danger" data-admin-confirm="Удалить пользователя и связанные с ним данные? Это действие необратимо.">{{ icon('alert', 17) }} Удалить пользователя</button>
-                </div>
+                <button type="submit" name="action" value="block" class="btn btn-outline-danger" data-admin-confirm="Заблокировать пользователя? Он потеряет доступ к приложению и боту.">{{ icon('ban', 17) }} Заблокировать</button>
                 {% endif %}
             </form>
+            {% else %}
+            <p class="admin-help-text">{% if user.id|string == current_user.get_id()|string %}Свою учётную запись нельзя заблокировать или удалить.{% else %}Управлять администраторами может только супер-администратор.{% endif %}</p>
+            {% endif %}
+
+            {% if current_user.is_superadmin and user.id|string != current_user.get_id()|string %}
+            <form method="post" class="admin-role-form" data-admin-confirm="Изменить роль пользователя? Права доступа изменятся сразу." data-confirm-tone="primary">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="set_role">
+                <label class="admin-control" for="userRole"><span>Роль</span>
+                    <select id="userRole" name="role">
+                        {% for value, label in role_labels.items() %}<option value="{{ value }}" {% if user.role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </label>
+                <button type="submit" class="btn btn-outline-primary">Сохранить роль</button>
+            </form>
+            {% endif %}
         </section>
+
+        {% if current_user.is_superadmin and user.id|string != current_user.get_id()|string %}
+        <section class="admin-panel admin-danger-zone" aria-labelledby="danger-title">
+            <div class="admin-panel__header"><div><p class="admin-page-kicker">Опасная зона</p><h2 id="danger-title">Удаление учётной записи</h2></div></div>
+            <p>Удаляются учётная запись и все её финансовые данные. Записи журнала о действиях пользователя сохраняются. Отменить удаление нельзя.</p>
+            <form method="post" class="admin-danger-zone__form" data-admin-confirm="Удалить пользователя безвозвратно?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="delete">
+                <label class="admin-control" for="confirmUsername"><span>Введите <code>{{ delete_confirmation }}</code> для подтверждения</span>
+                    <input type="text" id="confirmUsername" name="confirm_username" autocomplete="off" required data-admin-confirm-match="{{ delete_confirmation }}">
+                </label>
+                <button type="submit" class="btn btn-danger" data-admin-delete-submit disabled>{{ icon('alert', 17) }} Удалить пользователя</button>
+            </form>
+        </section>
+        {% endif %}
     </aside>
 </div>
 {% endblock %}

@@ -202,9 +202,19 @@ def record_change(record):
     )
 
 
-def active_count():
-    now = _naive(utc_now())
-    return ImpersonationSession.query.filter(
+def _active_filter():
+    return (
         ImpersonationSession.ended_at.is_(None),
-        ImpersonationSession.expires_at > now,
-    ).count()
+        ImpersonationSession.expires_at > _naive(utc_now()),
+    )
+
+
+def active_count():
+    return ImpersonationSession.query.filter(*_active_filter()).count()
+
+
+def active_target_ids_query():
+    """Subquery of user ids that an administrator is acting as right now."""
+    return db.session.query(ImpersonationSession.target_user_id).filter(
+        *_active_filter(), ImpersonationSession.target_user_id.isnot(None),
+    )

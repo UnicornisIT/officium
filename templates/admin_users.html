@@ -30,6 +30,7 @@
             <option value="">Все статусы</option>
             <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Активные</option>
             <option value="blocked" {% if status_filter == 'blocked' %}selected{% endif %}>Заблокированные</option>
+            <option value="impersonated" {% if status_filter == 'impersonated' %}selected{% endif %}>Сейчас в сеансе входа администратора</option>
         </select></label>
         <label class="admin-control"><span>Сортировка</span><select name="sort" data-admin-auto-submit>
             <option value="newest" {% if sort == 'newest' %}selected{% endif %}>Сначала новые</option>

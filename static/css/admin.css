@@ -1916,9 +1916,6 @@ html[data-theme="dark"] .admin-login-page {
 .admin-action-divider { display: flex; align-items: center; gap: 10px; color: var(--admin-text-soft); font-size: 0.68rem; text-transform: uppercase; }
 .admin-action-divider::before,
 .admin-action-divider::after { height: 1px; flex: 1; background: var(--admin-border); content: ""; }
-.admin-danger-zone { margin-top: 8px; padding: 14px; background: var(--admin-danger-soft); border: 1px solid; border-radius: 13px; }
-.admin-danger-zone strong { font-size: 0.8rem; }
-.admin-danger-zone p { margin: 5px 0 12px; color: var(--admin-text-soft); font-size: 0.69rem; line-height: 1.5; }
 
 .admin-log-row {
     display: grid;
@@ -2339,3 +2336,11 @@ html[data-theme="dark"] .admin-login-page {
 
 .admin-flash-stack { display: grid; gap: 10px; margin-bottom: 20px; }
 .admin-flash-stack .alert { margin: 0; }
+
+.admin-role-form { display: grid; gap: 12px; padding: 0 16px 16px; }
+.admin-role-form .btn { justify-self: start; }
+.admin-panel > .admin-help-text { margin: 0; padding: 16px; }
+.admin-danger-zone__form { display: grid; gap: 12px; padding: 0 16px 16px; }
+.admin-danger-zone__form .btn { justify-self: start; }
+.admin-danger-zone > p { margin: 0; padding: 16px; color: var(--admin-text-soft); font-size: 0.8rem; line-height: 1.5; }
+.admin-danger-zone code { color: var(--admin-danger); }

@@ -49,6 +49,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    document.querySelectorAll('[data-admin-confirm-match]').forEach(input => {
+        const submit = input.form?.querySelector('[data-admin-delete-submit]');
+        const sync = () => {
+            if (submit) submit.disabled = input.value.trim() !== input.dataset.adminConfirmMatch;
+        };
+        input.addEventListener('input', sync);
+        sync();
+    });
+
     const confirmElement = document.getElementById('adminConfirmModal');
     const confirmButton = document.getElementById('adminConfirmSubmit');
     const confirmMessage = document.getElementById('adminConfirmMessage');
