@@ -5,7 +5,7 @@ from flask import abort, current_app, jsonify, redirect, render_template, reques
 from flask_login import current_user, login_user, logout_user
 from sqlalchemy import and_, cast, or_, text
 from sqlalchemy.exc import SQLAlchemyError
-from app.models import ActivityLog, Debt, DictionaryEntry, Payment, User, AppSetting
+from app.models import ActivityLog, DictionaryEntry, User, AppSetting
 from app.routes.auth import LocalTestUser
 from app.services.contact_service import (
     CONTACT_ICONS,
@@ -66,6 +66,44 @@ def _filter_datetime(value, *, end=False):
     except ValueError:
         return None
     return parsed + timedelta(days=1) if end else parsed
+
+
+def _activity_log_query(args):
+    """Build the activity-log query shared by the journal page and its export."""
+    filters = {
+        'user': args.get('user', type=int),
+        'event': (args.get('event') or '').strip(),
+        'date_from': (args.get('date_from') or '').strip(),
+        'date_to': (args.get('date_to') or '').strip(),
+    }
+    query = ActivityLog.query
+    if filters['user']:
+        query = query.filter(ActivityLog.user_id == filters['user'])
+    if filters['event']:
+        query = query.filter(ActivityLog.action == filters['event'])
+    date_from = _filter_datetime(filters['date_from'])
+    date_to = _filter_datetime(filters['date_to'], end=True)
+    if date_from:
+        query = query.filter(ActivityLog.created_at >= date_from)
+    if date_to:
+        query = query.filter(ActivityLog.created_at < date_to)
+    return query, filters
+
+
+def _csv_response(header, rows, filename):
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(header)
+    for row in rows:
+        _write_csv_row(writer, row)
+    response = Response(output.getvalue(), mimetype='text/csv')
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+def _format_timestamp(value):
+    return value.strftime('%Y-%m-%d %H:%M:%S') if value else ''
 
 
 def _csv_safe(value):
@@ -579,22 +617,7 @@ def init_app(app):
     @app.route('/admin/logs')
     @admin_required
     def admin_logs():
-        user_filter = request.args.get('user', type=int)
-        event_filter = (request.args.get('event') or '').strip()
-        date_from_raw = (request.args.get('date_from') or '').strip()
-        date_to_raw = (request.args.get('date_to') or '').strip()
-
-        logs_query = ActivityLog.query
-        if user_filter:
-            logs_query = logs_query.filter(ActivityLog.user_id == user_filter)
-        if event_filter:
-            logs_query = logs_query.filter(ActivityLog.action == event_filter)
-        date_from = _filter_datetime(date_from_raw)
-        date_to = _filter_datetime(date_to_raw, end=True)
-        if date_from:
-            logs_query = logs_query.filter(ActivityLog.created_at >= date_from)
-        if date_to:
-            logs_query = logs_query.filter(ActivityLog.created_at < date_to)
+        logs_query, filters = _activity_log_query(request.args)
 
         pagination = logs_query.order_by(ActivityLog.created_at.desc()).paginate(
             page=_page_number(),
@@ -615,10 +638,10 @@ def init_app(app):
             pagination=pagination,
             filter_users=filter_users,
             event_values=event_values,
-            user_filter=user_filter,
-            event_filter=event_filter,
-            date_from=date_from_raw,
-            date_to=date_to_raw,
+            user_filter=filters['user'],
+            event_filter=filters['event'],
+            date_from=filters['date_from'],
+            date_to=filters['date_to'],
         )
 
     @app.route('/admin/system')
@@ -652,72 +675,75 @@ def init_app(app):
     def admin_export():
         if not _setting_enabled('export_enabled', True):
             abort(403)
-        debts = Debt.query.order_by(Debt.created_at.desc()).limit(100).all()
-        payments = Payment.query.order_by(Payment.payment_date.desc()).limit(100).all()
-        return render_template('admin_export.html', debts=debts, payments=payments)
+        _, filters = _activity_log_query(request.args)
+        try:
+            counts = {
+                'accounts': User.query.count(),
+                'events': ActivityLog.query.count(),
+            }
+            event_values = [
+                item[0]
+                for item in db.session.query(ActivityLog.action).distinct().order_by(ActivityLog.action.asc()).all()
+            ]
+            error_message = None
+        except SQLAlchemyError:
+            db.session.rollback()
+            counts = {'accounts': '—', 'events': '—'}
+            event_values = []
+            error_message = 'База данных недоступна, выгрузка временно невозможна.'
+        return render_template(
+            'admin_export.html',
+            counts=counts,
+            event_values=event_values,
+            filters=filters,
+            error_message=error_message,
+        )
 
-    @app.route('/admin/export/<string:export_type>.csv', methods=['POST'])
+    @app.route('/admin/export/accounts.csv', methods=['POST'])
     @superadmin_required
-    def admin_export_csv(export_type):
+    def admin_export_accounts():
         if not _setting_enabled('export_enabled', True):
             abort(403)
-        output = StringIO()
-        writer = csv.writer(output)
+        users = User.query.order_by(User.id.asc()).all()
+        record_activity(
+            'Выгрузил данные аудита', current_user, entity_type='export',
+            description=f'accounts.csv: {len(users)} учётных записей',
+            ip_address=client_ip(), user_agent=request.headers.get('User-Agent'),
+        )
+        return _csv_response(
+            ['id', 'telegram_id', 'username', 'first_name', 'last_name', 'role', 'status', 'login_count', 'created_at'],
+            (
+                [
+                    user.id, user.telegram_id, user.username, user.first_name, user.last_name, user.role,
+                    'blocked' if user.is_blocked else 'active', user.login_count, _format_timestamp(user.created_at),
+                ]
+                for user in users
+            ),
+            'accounts.csv',
+        )
 
-        if export_type == 'users':
-            writer.writerow(['id', 'telegram_id', 'username', 'first_name', 'last_name', 'role', 'is_blocked', 'login_count', 'last_login_ip', 'last_user_agent', 'created_at'])
-            for user in User.query.order_by(User.id.asc()).all():
-                _write_csv_row(writer, [
-                    user.id,
-                    user.telegram_id,
-                    user.username,
-                    user.first_name,
-                    user.last_name,
-                    user.role,
-                    'yes' if user.is_blocked else 'no',
-                    user.login_count,
-                    user.last_login_ip,
-                    user.last_user_agent,
-                    user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else '',
-                ])
-            filename = 'users.csv'
-        elif export_type == 'debts':
-            writer.writerow(['id', 'user_id', 'bank_name', 'debt_type', 'product_name', 'total_amount', 'remaining_amount', 'status', 'next_payment_date', 'created_at', 'updated_at'])
-            for debt in Debt.query.order_by(Debt.id.asc()).all():
-                _write_csv_row(writer, [
-                    debt.id,
-                    debt.user_id,
-                    debt.bank_name,
-                    debt.debt_type,
-                    debt.product_name,
-                    str(debt.total_amount),
-                    str(debt.remaining_amount),
-                    debt.status,
-                    debt.next_payment_date.strftime('%Y-%m-%d') if debt.next_payment_date else '',
-                    debt.created_at.strftime('%Y-%m-%d %H:%M:%S') if debt.created_at else '',
-                    debt.updated_at.strftime('%Y-%m-%d %H:%M:%S') if debt.updated_at else '',
-                ])
-            filename = 'debts.csv'
-        elif export_type == 'payments':
-            writer.writerow(['id', 'debt_id', 'amount', 'principal_amount', 'interest_amount', 'fee_amount', 'payment_date', 'remaining_after_payment', 'bank_remaining_after_payment', 'comment', 'created_at'])
-            for payment in Payment.query.order_by(Payment.id.asc()).all():
-                _write_csv_row(writer, [
-                    payment.id,
-                    payment.debt_id,
-                    str(payment.amount),
-                    str(payment.principal_amount or 0),
-                    str(payment.interest_amount or 0),
-                    str(payment.fee_amount or 0),
-                    payment.payment_date.strftime('%Y-%m-%d') if payment.payment_date else '',
-                    str(payment.remaining_after_payment),
-                    str(payment.bank_remaining_after_payment) if payment.bank_remaining_after_payment is not None else '',
-                    payment.comment,
-                    payment.created_at.strftime('%Y-%m-%d %H:%M:%S') if payment.created_at else '',
-                ])
-            filename = 'payments.csv'
-        else:
-            return redirect(url_for('admin_export'))
-
-        response = Response(output.getvalue(), mimetype='text/csv')
-        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
-        return response
+    @app.route('/admin/export/activity-log.csv', methods=['POST'])
+    @superadmin_required
+    def admin_export_activity_log():
+        if not _setting_enabled('export_enabled', True):
+            abort(403)
+        logs_query, filters = _activity_log_query(request.form)
+        logs = logs_query.order_by(ActivityLog.created_at.asc(), ActivityLog.id.asc()).all()
+        applied = ', '.join(f'{key}={value}' for key, value in filters.items() if value) or 'без фильтров'
+        record_activity(
+            'Выгрузил данные аудита', current_user, entity_type='export',
+            description=f'activity_log.csv: {len(logs)} событий ({applied})',
+            ip_address=client_ip(), user_agent=request.headers.get('User-Agent'),
+        )
+        return _csv_response(
+            ['id', 'created_at', 'user_id', 'username', 'action', 'entity_type', 'entity_id', 'description', 'ip_address'],
+            (
+                [
+                    log.id, _format_timestamp(log.created_at), log.user_id,
+                    log.user.username if log.user else '', log.action, log.entity_type, log.entity_id,
+                    log.description, log.ip_address,
+                ]
+                for log in logs
+            ),
+            'activity_log.csv',
+        )

@@ -61,7 +61,7 @@
             <div class="admin-nav__group">
                 <span class="admin-nav__eyebrow">Обслуживание</span>
                 <a href="{{ url_for('admin_export') }}" class="{% if request.endpoint == 'admin_export' %}active{% endif %}">
-                    {{ icon('export') }}<span>Экспорт данных</span>
+                    {{ icon('export') }}<span>Аудит-выгрузка</span>
                 </a>
                 <a href="{{ url_for('admin_server_update') }}" class="{% if request.endpoint == 'admin_server_update' %}active{% endif %}">
                     {{ icon('update') }}<span>Обновление сервера</span>

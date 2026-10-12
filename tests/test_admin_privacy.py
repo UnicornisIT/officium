@@ -4,7 +4,7 @@ import unittest
 from datetime import date
 
 from app import create_app
-from app.models import Debt, Expense, FinancialGoal, Income, Payment, User
+from app.models import ActivityLog, Debt, Expense, FinancialGoal, Income, Payment, User
 from extensions import db
 
 
@@ -33,6 +33,7 @@ class AdminPrivacyTestCase(unittest.TestCase):
         '/admin/settings',
         '/admin/dictionaries',
         '/admin/server-update',
+        '/admin/export',
     )
 
     def setUp(self):
@@ -107,6 +108,63 @@ class AdminPrivacyTestCase(unittest.TestCase):
 
         self.assertEqual(self.client.get('/admin/finance').status_code, 404)
         self.assertEqual(self.client.get('/admin/finance?section=payments').status_code, 404)
+
+
+    def test_audit_exports_contain_no_financial_records(self):
+        self._login(self.user_ids['superadmin'])
+
+        for path in ('/admin/export/accounts.csv', '/admin/export/activity-log.csv'):
+            with self.subTest(path=path):
+                response = self.client.post(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.mimetype, 'text/csv')
+                body = response.get_data(as_text=True)
+                for marker in SECRET_MARKERS:
+                    self.assertNotIn(marker, body)
+
+    def test_accounts_export_lists_service_fields_only(self):
+        self._login(self.user_ids['superadmin'])
+
+        body = self.client.post('/admin/export/accounts.csv').get_data(as_text=True)
+        header = body.splitlines()[0]
+
+        self.assertEqual(header, 'id,telegram_id,username,first_name,last_name,role,status,login_count,created_at')
+        self.assertIn('owner', body)
+
+    def test_activity_log_export_applies_journal_filters_and_is_logged(self):
+        self._login(self.user_ids['superadmin'])
+        with self.app.app_context():
+            db.session.add_all([
+                ActivityLog(action='Заблокировал пользователя', description='первое'),
+                ActivityLog(action='Изменил настройки приложения', description='второе'),
+            ])
+            db.session.commit()
+
+        body = self.client.post(
+            '/admin/export/activity-log.csv',
+            data={'event': 'Заблокировал пользователя'},
+        ).get_data(as_text=True)
+
+        self.assertIn('первое', body)
+        self.assertNotIn('второе', body)
+        with self.app.app_context():
+            entry = ActivityLog.query.filter_by(action='Выгрузил данные аудита').one()
+            self.assertIn('activity_log.csv', entry.description)
+
+    def test_financial_export_routes_are_gone(self):
+        self._login(self.user_ids['superadmin'])
+
+        for path in ('/admin/export/debts.csv', '/admin/export/payments.csv', '/admin/export/users.csv'):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.post(path).status_code, 404)
+
+    def test_admin_role_cannot_download_audit_exports(self):
+        self._login(self.user_ids['admin'])
+
+        response = self.client.post('/admin/export/accounts.csv')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn('text/csv', response.headers.get('Content-Type', ''))
 
 
 if __name__ == '__main__':

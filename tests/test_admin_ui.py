@@ -127,7 +127,7 @@ class AdminInterfaceTestCase(unittest.TestCase):
             ('/admin/system', 'Состояние системы'),
             ('/admin/settings', 'Настройки приложения'),
             ('/admin/dictionaries', 'Справочники'),
-            ('/admin/export', 'Экспорт данных'),
+            ('/admin/export', 'Аудит-выгрузка'),
         ):
             with self.subTest(path=path):
                 response = self.client.get(path)
@@ -260,7 +260,7 @@ class AdminInterfaceTestCase(unittest.TestCase):
         self.assertIn('@media (max-width: 1599.98px)', admin_css)
         self.assertIn('content: none;', admin_css)
 
-        for template_name in ('admin_export.html', 'admin_dictionaries.html', 'admin_users.html'):
+        for template_name in ('admin_dictionaries.html', 'admin_users.html'):
             template = (repository_root / 'templates' / template_name).read_text(encoding='utf-8')
             self.assertIn('class="admin-table__empty-row"', template)
 

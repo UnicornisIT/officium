@@ -1,39 +1,46 @@
 {% extends 'admin_base.html' %}
-{% from 'admin/_macros.html' import icon, field_label, status_badge %}
-{% block title %}Экспорт данных — Административная панель officium{% endblock %}
-{% block admin_topbar_title %}Экспорт данных{% endblock %}
+{% from 'admin/_macros.html' import icon %}
+{% block title %}Аудит-выгрузка — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Аудит-выгрузка{% endblock %}
 
 {% block admin_content %}
-<header class="admin-page-header"><div><p class="admin-page-kicker">Обслуживание</p><h1>Экспорт данных</h1><p>Безопасная выгрузка отчетов в CSV для дальнейшего анализа.</p></div></header>
+<header class="admin-page-header"><div><p class="admin-page-kicker">Система</p><h1>Аудит-выгрузка</h1><p>CSV-файлы для проверки доступа: кто имеет учётную запись и какие действия выполнялись. Финансовых данных пользователей в выгрузках нет.</p></div></header>
+
+{% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
+
 <div class="admin-export-grid">
-    {% for export_type, title, description, export_icon in [
-        ('users', 'Пользователи', 'Учетные записи, роли и статусы доступа.', 'users'),
-        ('debts', 'Долги', 'Карточки долгов и актуальные остатки.', 'wallet'),
-        ('payments', 'Платежи', 'Полная история проведенных платежей.', 'chart')
-    ] %}
-    <section class="admin-panel admin-export-card">
-        <span class="admin-export-card__icon">{{ icon(export_icon, 24) }}</span><div><h2>{{ title }}</h2><p>{{ description }}</p></div>
-        <form method="post" action="{{ url_for('admin_export_csv', export_type=export_type) }}">
+    <section class="admin-panel admin-export-card" aria-labelledby="export-accounts-title">
+        <span class="admin-export-card__icon">{{ icon('users', 24) }}</span>
+        <div>
+            <h2 id="export-accounts-title">Учётные записи</h2>
+            <p>Все аккаунты: идентификатор, Telegram ID, имя, роль, статус блокировки, число входов и дата создания. IP-адреса и данные браузера не включаются.</p>
+            <p class="admin-export-card__meta">Записей: {{ counts.accounts }}</p>
+        </div>
+        <form method="post" action="{{ url_for('admin_export_accounts') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-primary">{{ icon('export', 17) }} Скачать CSV</button>
+            <button type="submit" class="btn btn-primary" {% if error_message %}disabled{% endif %}>{{ icon('export', 17) }} Скачать accounts.csv</button>
         </form>
     </section>
-    {% endfor %}
+
+    <section class="admin-panel admin-export-card" aria-labelledby="export-log-title">
+        <span class="admin-export-card__icon">{{ icon('activity', 24) }}</span>
+        <div>
+            <h2 id="export-log-title">Журнал действий</h2>
+            <p>События журнала с теми же фильтрами, что и на странице журнала: время, пользователь, действие, объект, описание и IP-адрес.</p>
+            <p class="admin-export-card__meta">Событий всего: {{ counts.events }}</p>
+        </div>
+        <form method="post" action="{{ url_for('admin_export_activity_log') }}" class="admin-export-card__filters">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="admin-control"><span>Событие</span><select name="event">
+                <option value="">Все события</option>
+                {% for event in event_values %}<option value="{{ event }}" {% if filters.event == event %}selected{% endif %}>{{ event|admin_event }}</option>{% endfor %}
+            </select></label>
+            <label class="admin-control"><span>Дата от</span><input type="date" name="date_from" value="{{ filters.date_from }}"></label>
+            <label class="admin-control"><span>Дата до</span><input type="date" name="date_to" value="{{ filters.date_to }}"></label>
+            <button type="submit" class="btn btn-primary" {% if error_message %}disabled{% endif %}>{{ icon('export', 17) }} Скачать activity_log.csv</button>
+        </form>
+    </section>
 </div>
 
-<section class="admin-panel admin-table-panel">
-    <div class="admin-panel__header"><div><p class="admin-page-kicker">Предпросмотр</p><h2>Последние долги</h2></div></div>
-    <div class="admin-table-wrap"><table class="admin-table admin-table--responsive"><thead><tr><th>{{ field_label('id') }}</th><th>Пользователь</th><th>Банк и продукт</th><th>{{ field_label('remaining_amount') }}</th><th>{{ field_label('status') }}</th><th>Создан</th></tr></thead><tbody>
-        {% for debt in debts %}<tr><td data-label="ID">#{{ debt.id }}</td><td data-label="Пользователь"><a href="{{ url_for('admin_user_detail', user_id=debt.user_id) }}">{{ debt.user.first_name or debt.user.username or ('#' ~ debt.user_id) }}</a></td><td data-label="Банк и продукт"><strong>{{ debt.bank_name }}</strong><small class="admin-table__subline">{{ debt.product_name }}</small></td><td data-label="Остаток">{{ debt.remaining_amount|money }}</td><td data-label="Статус">{{ status_badge(debt.status) }}</td><td data-label="Создан">{{ debt.created_at.strftime('%d.%m.%Y') if debt.created_at else '—' }}</td></tr>
-        {% else %}<tr class="admin-table__empty-row"><td colspan="6"><div class="admin-empty-state">{{ icon('wallet', 30) }}<p>Нет долгов для отображения.</p></div></td></tr>{% endfor %}
-    </tbody></table></div>
-</section>
-
-<section class="admin-panel admin-table-panel">
-    <div class="admin-panel__header"><div><p class="admin-page-kicker">Предпросмотр</p><h2>Последние платежи</h2></div></div>
-    <div class="admin-table-wrap"><table class="admin-table admin-table--responsive"><thead><tr><th>{{ field_label('id') }}</th><th>{{ field_label('debt_id') }}</th><th>{{ field_label('amount') }}</th><th>Основной долг</th><th>Проценты</th><th>{{ field_label('payment_date') }}</th><th>Остаток банка</th></tr></thead><tbody>
-        {% for payment in payments %}<tr><td data-label="ID">#{{ payment.id }}</td><td data-label="Долг">#{{ payment.debt_id }}</td><td data-label="Сумма"><strong>{{ payment.amount|money }}</strong></td><td data-label="Основной долг">{{ payment.principal_amount|money }}</td><td data-label="Проценты">{{ payment.interest_amount|money }}</td><td data-label="Дата">{{ payment.payment_date.strftime('%d.%m.%Y') if payment.payment_date else '—' }}</td><td data-label="Остаток банка">{{ payment.bank_remaining_after_payment|money if payment.bank_remaining_after_payment is not none else '—' }}</td></tr>
-        {% else %}<tr class="admin-table__empty-row"><td colspan="7"><div class="admin-empty-state">{{ icon('chart', 30) }}<p>Нет платежей для отображения.</p></div></td></tr>{% endfor %}
-    </tbody></table></div>
-</section>
+<p class="admin-help-text">Каждая выгрузка записывается в журнал действий. Выгрузку можно отключить в настройках («Аудит-выгрузка»).</p>
 {% endblock %}
