@@ -1,11 +1,11 @@
 import csv
 from datetime import datetime, timedelta
 from io import StringIO
-from flask import abort, current_app, jsonify, redirect, render_template, request, url_for, Response, flash, session
+from flask import abort, current_app, jsonify, redirect, render_template, request, url_for, Response, flash
 from flask_login import current_user
 from sqlalchemy import and_, cast, or_, text
 from sqlalchemy.exc import SQLAlchemyError
-from app.models import ActivityLog, DictionaryEntry, User, AppSetting
+from app.models import ActivityLog, DictionaryEntry, User
 from app.services import impersonation_service as impersonation
 from app.services.contact_service import (
     CONTACT_ICONS,
@@ -23,6 +23,7 @@ from app.services.server_update_service import (
     fetch_latest_release,
     get_current_release,
     get_update_status,
+    read_update_status,
     reconcile_update_status,
     request_server_update,
     update_is_active,
@@ -354,6 +355,7 @@ def init_app(app):
 
         update_status = None
         if current_user.is_superadmin and current_app.config.get('SERVER_UPDATE_ENABLED'):
+            # The overview only reads the status file; the update page talks to the helper.
             update_status = read_update_status(current_app.config)
 
         return render_template(

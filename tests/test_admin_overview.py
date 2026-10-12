@@ -58,6 +58,14 @@ class AdminOverviewTestCase(unittest.TestCase):
         self.assertIn('<strong>0</strong>', self._card(html, 'Вход от имени сейчас'))
         self.assertIn('Обновление выключено', html)
 
+    def test_superadmin_sees_server_update_status_when_enabled(self):
+        self.app.config['SERVER_UPDATE_ENABLED'] = True
+        with patch('app.routes.admin.read_update_status', return_value={'state': 'success'}):
+            html = self.client.get('/admin').get_data(as_text=True)
+
+        self.assertIn('Обновление сервера', html)
+        self.assertIn('Успешно', html)
+
     def test_active_impersonation_sessions_are_counted(self):
         observer = self.app.test_client()
         with observer.session_transaction() as session:
