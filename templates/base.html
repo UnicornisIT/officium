@@ -32,7 +32,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=3" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=4" rel="stylesheet">
     {% block extra_css %}{% endblock %}
 </head>
 <body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
@@ -274,16 +274,16 @@
 
 {% if not is_telegram_mini_app and not request.path.startswith('/admin') %}
 <footer class="site-footer container-fluid px-4 py-4 mt-4 border-top">
-    <div class="container d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
-        <div>
-            <p class="mb-1 text-muted small">officium — личный финансовый помощник</p>
-            {% if public_contacts_footer %}<div class="public-contact-list">{% for contact in public_contacts_footer %}<a href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i>{{ contact.label }}</a>{% endfor %}</div>{% else %}<p class="mb-0 text-muted small">Контакты этого экземпляра пока не опубликованы. Обратитесь к его администратору.</p>{% endif %}
-        </div>
-        <div class="d-flex flex-wrap align-items-center gap-2">
-            <a href="{{ url_for('documentation') }}" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 site-footer__docs-button">
-                <i class="bi bi-journal-text" aria-hidden="true"></i> Документация
+    <div class="container site-footer__inner">
+        <div class="site-footer__top">
+            <p class="site-footer__tagline">officium — личный финансовый помощник</p>
+            <a href="{{ url_for('documentation') }}" class="site-footer__docs">
+                <i class="bi bi-journal-text" aria-hidden="true"></i>
+                <span>Документация</span>
+                <i class="bi bi-arrow-right site-footer__docs-arrow" aria-hidden="true"></i>
             </a>
         </div>
+        {% if public_contacts_footer %}<div class="public-contact-list">{% for contact in public_contacts_footer %}<a href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i>{{ contact.label }}</a>{% endfor %}</div>{% else %}<p class="mb-0 text-muted small">Контакты этого экземпляра пока не опубликованы. Обратитесь к его администратору.</p>{% endif %}
     </div>
 </footer>
 {% endif %}
