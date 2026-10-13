@@ -1,7 +1,10 @@
+import json
 import struct
 import unittest
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
+
+from flask import render_template
 
 from app import create_app
 
@@ -75,6 +78,39 @@ class BrandMarkupTestCase(unittest.TestCase):
 
         self.assertIn('admin-login-card__logo', html)
         self.assertIn('class="brand-mark', html)
+
+    def test_root_icons_are_public_and_not_redirected_to_login(self):
+        for path, name, content_type in (
+            ('/favicon.ico', 'favicon.ico', 'image/'),
+            ('/apple-touch-icon.png', 'apple-touch-icon.png', 'image/png'),
+            ('/apple-touch-icon-precomposed.png', 'apple-touch-icon.png', 'image/png'),
+        ):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.content_type.startswith(content_type), response.content_type)
+                self.assertEqual(response.get_data(), (STATIC / name).read_bytes())
+                response.close()
+
+    def test_manifest_lists_existing_192_and_512_icons(self):
+        response = self.client.get('/static/site.webmanifest')
+        self.assertEqual(response.status_code, 200)
+        manifest = json.loads(response.get_data(as_text=True))
+        response.close()
+        sizes = {icon['sizes'] for icon in manifest['icons']}
+        self.assertTrue({'192x192', '512x512'} <= sizes)
+        for icon in manifest['icons']:
+            self.assertTrue((PROJECT_ROOT / icon['src'].lstrip('/')).is_file(), icon['src'])
+
+    def test_every_layout_links_the_icon_set(self):
+        with self.app.test_request_context('/telegram-app'):
+            mini_app = render_template('telegram_app.html', bot_username='', mini_app_short_name='')
+        for html in (self.client.get('/login').get_data(as_text=True), self.client.get('/admin/login').get_data(as_text=True), mini_app):
+            self.assertIn('favicon.ico?v=', html)
+            self.assertIn('favicon.svg?v=', html)
+            self.assertIn('apple-touch-icon.png?v=', html)
+            self.assertIn('rel="manifest"', html)
+            self.assertNotIn('sizes="any"', html)
 
     def test_theme_switch_keeps_browser_theme_color_in_sync(self):
         script = (STATIC / 'js' / 'app.js').read_text(encoding='utf-8')

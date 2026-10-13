@@ -1,9 +1,10 @@
+import mimetypes
 import os
 import secrets
 from datetime import timedelta
 
 import click
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 from flask_login import LoginManager, current_user
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
@@ -71,6 +72,7 @@ def create_app(config_overrides=None):
     expenses.init_app(app)
     telegram_bot.init_app(app, csrf=csrf)
     main.init_app(app)
+    _register_root_icons(app)
 
     def error_response(status_code):
         messages = {
@@ -192,6 +194,23 @@ def _validate_runtime_config(app):
         raise RuntimeError('Google OAuth credentials are required when Google login is enabled.')
     if app.config.get('ADMIN_LOGIN_ENABLED') and not app.config.get('ADMIN_PASSWORD_HASH'):
         raise RuntimeError('An admin password hash is required when emergency admin login is enabled.')
+
+
+def _register_root_icons(app):
+    """Serve the icons browsers and iOS request from the site root without a <link>."""
+    mimetypes.add_type('application/manifest+json', '.webmanifest')
+    root_icons = {
+        '/favicon.ico': 'favicon.ico',
+        '/apple-touch-icon.png': 'apple-touch-icon.png',
+        '/apple-touch-icon-precomposed.png': 'apple-touch-icon.png',
+    }
+    for path, filename in root_icons.items():
+        endpoint = 'root_icon_' + path.strip('/').replace('.', '_').replace('-', '_')
+        app.add_url_rule(
+            path,
+            endpoint,
+            lambda filename=filename: send_from_directory(app.static_folder, filename),
+        )
 
 
 def register_cli_commands(app):

@@ -1,0 +1,13 @@
+{
+  "name": "officium",
+  "short_name": "officium",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#08101c",
+  "theme_color": "#08101c",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

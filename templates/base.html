@@ -21,13 +21,9 @@
         })();
     </script>
     <title>{% block title %}officium{% endblock %}</title>
-    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}?v={{ config.APP_VERSION|urlencode }}" type="image/svg+xml">
-    <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}?v={{ config.APP_VERSION|urlencode }}" sizes="any">
-    <link rel="icon" href="{{ url_for('static', filename='favicon-16x16.png') }}?v={{ config.APP_VERSION|urlencode }}" type="image/png" sizes="16x16">
-    <link rel="icon" href="{{ url_for('static', filename='favicon-32x32.png') }}?v={{ config.APP_VERSION|urlencode }}" type="image/png" sizes="32x32">
+    {% include '_favicons.html' %}
     <meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#08101c" media="(prefers-color-scheme: dark)">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v={{ config.APP_VERSION|urlencode }}" sizes="180x180">
     <link href="{{ url_for('static', filename='vendor/onest/onest.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">

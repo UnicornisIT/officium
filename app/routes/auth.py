@@ -152,6 +152,9 @@ def init_app(app):
     def require_login():
         allowed_endpoints = {
             'static',
+            'root_icon_favicon_ico',
+            'root_icon_apple_touch_icon_png',
+            'root_icon_apple_touch_icon_precomposed_png',
             'login',
             'telegram_login',
             'telegram_mini_app',

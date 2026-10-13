@@ -251,8 +251,10 @@ class AdminInterfaceTestCase(unittest.TestCase):
         self.assertIn('.admin-content > .admin-panel + .admin-panel', css)
         self.assertNotIn('\n.admin-panel + .admin-panel {', css)
         self.assertIn('.admin-control.admin-control--search .admin-input-icon > input[type="search"] { padding-left: 46px; }', css)
-        self.assertIn('favicon.svg', base)
-        self.assertIn('apple-touch-icon.png', base)
+        favicons = (repository_root / 'templates' / '_favicons.html').read_text(encoding='utf-8')
+        self.assertIn("{% include '_favicons.html' %}", base)
+        self.assertIn('favicon.svg', favicons)
+        self.assertIn('apple-touch-icon.png', favicons)
 
     def test_every_admin_icon_used_in_templates_exists_in_the_sprite(self):
         repository_root = Path(__file__).resolve().parents[1]
