@@ -539,6 +539,10 @@
                         <input type="text" inputmode="decimal" class="form-control number-format" id="pm_interest_amount" placeholder="авто">
                     </div>
                     <div class="col-md-6">
+                        <label class="form-label">Неустойка</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format" id="pm_penalty_amount" placeholder="авто">
+                    </div>
+                    <div class="col-md-6">
                         <label class="form-label">Комиссии</label>
                         <input type="text" inputmode="decimal" class="form-control number-format" id="pm_fee_amount" placeholder="0,00">
                     </div>
@@ -590,6 +594,13 @@
                         <label class="form-label">Дата платежа <span class="text-danger">*</span></label>
                         <input type="date" class="form-control" id="ep_date">
                     </div>
+                    <div class="col-12">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="ep_manual_breakdown" onchange="syncEditBreakdownInputs()">
+                            <label class="form-check-label" for="ep_manual_breakdown">Ручная разбивка</label>
+                        </div>
+                        <div class="form-text">Выключено — разбивка считается автоматически: сначала просроченные проценты и долг, затем неустойка, текущие проценты и основной долг.</div>
+                    </div>
                     <div class="col-md-6">
                         <label class="form-label">Основной долг</label>
                         <input type="text" inputmode="decimal" class="form-control number-format" id="ep_principal_amount" placeholder="авто">
@@ -597,6 +608,10 @@
                     <div class="col-md-6">
                         <label class="form-label">Проценты</label>
                         <input type="text" inputmode="decimal" class="form-control number-format" id="ep_interest_amount" placeholder="авто">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Неустойка</label>
+                        <input type="text" inputmode="decimal" class="form-control number-format" id="ep_penalty_amount" placeholder="авто">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Комиссии</label>

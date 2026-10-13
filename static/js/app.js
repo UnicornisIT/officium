@@ -952,6 +952,7 @@ async function openPaymentModal(debtId) {
     document.getElementById('pm_amount').value  = '';
     document.getElementById('pm_principal_amount').value = '';
     document.getElementById('pm_interest_amount').value = '';
+    document.getElementById('pm_penalty_amount').value = '';
     document.getElementById('pm_fee_amount').value = '';
     document.getElementById('pm_bank_remaining_after_payment').value = '';
     document.getElementById('pm_comment').value = '';
@@ -1056,6 +1057,7 @@ function applyPaymentPreset({ amount, paymentDate, isEarlyRepayment, scheduledPa
     const automaticBreakdownInputs = [
         'pm_principal_amount',
         'pm_interest_amount',
+        'pm_penalty_amount',
         'pm_fee_amount',
         'pm_bank_remaining_after_payment',
     ];
@@ -1096,6 +1098,7 @@ async function submitPayment() {
     const amount = rawAmount.replace(/\s+/g, '').replace(',', '.');
     const principalAmount = document.getElementById('pm_principal_amount').value.replace(/\s+/g, '').replace(',', '.');
     const interestAmount = document.getElementById('pm_interest_amount').value.replace(/\s+/g, '').replace(',', '.');
+    const penaltyAmount = document.getElementById('pm_penalty_amount').value.replace(/\s+/g, '').replace(',', '.');
     const feeAmount = document.getElementById('pm_fee_amount').value.replace(/\s+/g, '').replace(',', '.');
     const bankRemainingAfterPayment = document.getElementById('pm_bank_remaining_after_payment').value.replace(/\s+/g, '').replace(',', '.');
     const pmDate = document.getElementById('pm_date').value;
@@ -1118,6 +1121,7 @@ async function submitPayment() {
                 amount,
                 principal_amount: principalAmount || null,
                 interest_amount: interestAmount || null,
+                penalty_amount: penaltyAmount || null,
                 fee_amount: feeAmount || null,
                 bank_remaining_after_payment: bankRemainingAfterPayment || null,
                 payment_date: pmDate,
@@ -1221,7 +1225,9 @@ async function openHistoryModal(debtId, title) {
             if (Number(p.principal_amount || 0) || Number(p.interest_amount || 0) || Number(p.fee_amount || 0)) {
                 splitParts.push(`долг ${formatMoney(p.principal_amount)}`);
                 splitParts.push(`проц. ${formatMoney(p.interest_amount)}`);
+                if (Number(p.penalty_amount || 0) > 0) splitParts.push(`неуст. ${formatMoney(p.penalty_amount)}`);
                 if (Number(p.fee_amount || 0) > 0) splitParts.push(`ком. ${formatMoney(p.fee_amount)}`);
+                if (p.breakdown_source === 'manual') splitParts.push('вручную');
             }
             if (p.bank_remaining_after_payment !== null && p.bank_remaining_after_payment !== undefined) {
                 splitParts.push(`банк ${formatMoney(p.bank_remaining_after_payment)}`);
@@ -1245,6 +1251,9 @@ async function openHistoryModal(debtId, title) {
                     <td class="payment-history-actions">
                         <button class="history-icon-btn history-icon-btn-edit" onclick="openEditPaymentModal(${debtId}, ${p.id})" title="Редактировать платеж">
                             <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="history-icon-btn history-icon-btn-delete" onclick="deletePayment(${debtId}, ${p.id})" title="Удалить платеж">
+                            <i class="bi bi-trash"></i>
                         </button>
                     </td>
                 </tr>
@@ -1289,6 +1298,7 @@ function openEditPaymentModal(debtId, paymentId) {
     document.getElementById('ep_amount').value = Number(payment.amount).toFixed(2);
     document.getElementById('ep_principal_amount').value = Number(payment.principal_amount || 0).toFixed(2);
     document.getElementById('ep_interest_amount').value = Number(payment.interest_amount || 0).toFixed(2);
+    document.getElementById('ep_penalty_amount').value = Number(payment.penalty_amount || 0).toFixed(2);
     document.getElementById('ep_fee_amount').value = Number(payment.fee_amount || 0).toFixed(2);
     document.getElementById('ep_bank_remaining_after_payment').value = payment.bank_remaining_after_payment !== null && payment.bank_remaining_after_payment !== undefined
         ? Number(payment.bank_remaining_after_payment).toFixed(2)
@@ -1296,6 +1306,8 @@ function openEditPaymentModal(debtId, paymentId) {
     document.getElementById('ep_date').value = payment.payment_date_iso || dateDisplayToInput(payment.payment_date);
     document.getElementById('ep_comment').value = payment.comment || '';
     document.getElementById('ep_is_early_repayment').checked = Boolean(payment.is_early_repayment);
+    document.getElementById('ep_manual_breakdown').checked = payment.breakdown_source === 'manual';
+    syncEditBreakdownInputs();
 
     historyModal.hide();
     editPaymentModal.show();
@@ -1311,7 +1323,9 @@ async function submitPaymentEdit() {
     const amount = rawAmount.replace(/\s+/g, '').replace(',', '.');
     const principalAmount = document.getElementById('ep_principal_amount').value.replace(/\s+/g, '').replace(',', '.');
     const interestAmount = document.getElementById('ep_interest_amount').value.replace(/\s+/g, '').replace(',', '.');
+    const penaltyAmount = document.getElementById('ep_penalty_amount').value.replace(/\s+/g, '').replace(',', '.');
     const feeAmount = document.getElementById('ep_fee_amount').value.replace(/\s+/g, '').replace(',', '.');
+    const manualBreakdown = document.getElementById('ep_manual_breakdown').checked;
     const bankRemainingAfterPayment = document.getElementById('ep_bank_remaining_after_payment').value.replace(/\s+/g, '').replace(',', '.');
     const paymentDate = document.getElementById('ep_date').value;
     const comment = document.getElementById('ep_comment').value.trim();
@@ -1335,8 +1349,10 @@ async function submitPaymentEdit() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 amount,
-                principal_amount: principalAmount || null,
-                interest_amount: interestAmount || null,
+                manual_breakdown: manualBreakdown,
+                principal_amount: manualBreakdown ? (principalAmount || null) : null,
+                interest_amount: manualBreakdown ? (interestAmount || null) : null,
+                penalty_amount: manualBreakdown ? (penaltyAmount || null) : null,
                 fee_amount: feeAmount || null,
                 bank_remaining_after_payment: bankRemainingAfterPayment || null,
                 payment_date: paymentDate,
@@ -1359,6 +1375,31 @@ async function submitPaymentEdit() {
     } catch (err) {
         errEl.textContent = 'Ошибка сети: ' + err.message;
         errEl.classList.remove('d-none');
+    }
+}
+
+function syncEditBreakdownInputs() {
+    const manual = document.getElementById('ep_manual_breakdown').checked;
+    ['ep_principal_amount', 'ep_interest_amount', 'ep_penalty_amount'].forEach(id => {
+        document.getElementById(id).disabled = !manual;
+    });
+}
+
+async function deletePayment(debtId, paymentId) {
+    if (!confirm('Удалить платеж? Остаток, проценты и неустойка по долгу будут пересчитаны.')) return;
+
+    try {
+        const resp = await jsonFetch(`/api/debts/${debtId}/payments/${paymentId}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (!data.success) {
+            showToast(data.error || 'Не удалось удалить платеж', 'danger');
+            return;
+        }
+        historyModal.hide();
+        showToast('Платеж удален', 'success');
+        setTimeout(() => location.reload(), 650);
+    } catch (err) {
+        showToast('Ошибка сети: ' + err.message, 'danger');
     }
 }
 
