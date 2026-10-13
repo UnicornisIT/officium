@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -82,6 +83,14 @@ class UpdateFailure(RuntimeError):
 def emit_result(ok, **fields):
     payload = {'ok': bool(ok), **fields}
     print(f'{RESULT_PREFIX}{json.dumps(payload, ensure_ascii=True, separators=(",", ":"))}')
+
+
+def log_unexpected_failure(context, operation_id=''):
+    """Write the traceback to stderr (the systemd journal); it never reaches the browser."""
+    reference = f' operation_id={operation_id}' if operation_id else ''
+    print(f'officium updater: unexpected failure during {context}{reference}', file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    sys.stderr.flush()
 
 
 def utc_now():
@@ -998,6 +1007,7 @@ def perform_update(tag):
         except BlockingIOError as exc:
             raise UpdateFailure('Another server update is already running.', 'update_busy') from exc
 
+        operation_id = str(read_status(Path(config['STATUS_FILE'])).get('operation_id') or '')
         try:
             write_status(config, 'checking', tag, 'Проверка релиза и конфигурации сервера.')
             if latest_release_tag(config) != tag:
@@ -1033,6 +1043,8 @@ def perform_update(tag):
                 verify_service_health(config)
                 install_privileged_bundle(config, release_path)
             except Exception as exc:
+                if not isinstance(exc, UpdateFailure):
+                    log_unexpected_failure('post-switch verification', operation_id)
                 failure = exc if isinstance(exc, UpdateFailure) else UpdateFailure(
                     'Post-switch update stage failed unexpectedly.', 'unexpected_failure'
                 )
@@ -1048,6 +1060,7 @@ def perform_update(tag):
                     if not rollback_performed:
                         failure = UpdateFailure('Previous release restart failed.', 'rollback_failed')
                 except Exception:
+                    log_unexpected_failure('automatic rollback', operation_id)
                     failure = UpdateFailure('Automatic release rollback failed.', 'rollback_failed')
                 write_status(
                     config,
@@ -1078,6 +1091,7 @@ def perform_update(tag):
             )
             raise
         except Exception as exc:
+            log_unexpected_failure('update', operation_id)
             write_status(
                 config,
                 'failed',
@@ -1240,10 +1254,8 @@ def handle_ipc_request(request_payload):
     requested_by = str(request_payload.get('requested_by') or '')
     if not OPERATION_ID_RE.fullmatch(operation_id) or not requested_by.isdigit():
         raise UpdateFailure('Update request identity is invalid.', 'protocol_error')
-    # The browser-supplied tag is only a confirmation. The privileged service
-    # independently resolves the current stable GitHub release.
-    if latest_release_tag(config) != requested_tag:
-        raise UpdateFailure('Requested tag is not the latest stable release.', 'release_rejected')
+    # The browser-supplied tag is only a confirmation: request_background_update
+    # independently resolves the current stable GitHub release before scheduling.
     return request_background_update(
         requested_tag,
         operation_id=operation_id,
@@ -1272,21 +1284,23 @@ def serve_socket():
                 if not peer_is_authorized(connection, config):
                     raise UpdateFailure('IPC peer is not the application user.', 'authorization_failed')
                 request_payload = receive_request(connection)
-                operation_id = str(request_payload.get('operation_id') or '')
-                result = handle_ipc_request(request_payload)
-                send_ipc_response(connection, {'ok': True, **result})
+                requested_id = str(request_payload.get('operation_id') or '')
+                operation_id = requested_id if OPERATION_ID_RE.fullmatch(requested_id) else ''
+                response = {'ok': True, **handle_ipc_request(request_payload)}
             except UpdateFailure as exc:
-                send_ipc_response(connection, {
-                    'ok': False,
-                    'code': exc.code,
-                    'operation_id': operation_id if OPERATION_ID_RE.fullmatch(operation_id) else '',
-                })
+                reference = f' operation_id={operation_id}' if operation_id else ''
+                print(f'officium updater: IPC request rejected ({exc.code}){reference}: {exc}',
+                      file=sys.stderr)
+                response = {'ok': False, 'code': exc.code, 'operation_id': operation_id}
             except Exception:
-                send_ipc_response(connection, {
-                    'ok': False,
-                    'code': 'unexpected_failure',
-                    'operation_id': operation_id if OPERATION_ID_RE.fullmatch(operation_id) else '',
-                })
+                log_unexpected_failure('IPC request', operation_id)
+                response = {'ok': False, 'code': 'unexpected_failure', 'operation_id': operation_id}
+            try:
+                send_ipc_response(connection, response)
+            except OSError:
+                # The web worker gave up waiting; the status file still records the outcome.
+                print('officium updater: IPC client disconnected before the response.',
+                      file=sys.stderr)
 
 
 def main(argv):
@@ -1327,6 +1341,6 @@ if __name__ == '__main__':
         emit_result(False, code=exc.code)
         raise SystemExit(1)
     except Exception:
-        print('officium updater: unexpected failure; inspect the system journal.', file=sys.stderr)
+        log_unexpected_failure(' '.join(sys.argv[1:2]) or 'startup')
         emit_result(False, code='unexpected_failure')
         raise SystemExit(1)

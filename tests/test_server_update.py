@@ -30,6 +30,7 @@ class FakeSocket:
         self.response = bytearray(response)
         self.sent = b''
         self.connected_to = None
+        self.timeout = None
 
     def __enter__(self):
         return self
@@ -37,8 +38,8 @@ class FakeSocket:
     def __exit__(self, *_args):
         return False
 
-    def settimeout(self, _timeout):
-        pass
+    def settimeout(self, timeout):
+        self.timeout = timeout
 
     def connect(self, path):
         self.connected_to = path
@@ -198,6 +199,29 @@ class ServerUpdateServiceTestCase(unittest.TestCase):
         ), self.assertRaisesRegex(ServerUpdateError, 'upd-aabbccddeeff') as raised:
             server_update_service._ipc_request(self.config, 'get_status')
         self.assertIn('резервную копию', str(raised.exception))
+
+    def test_ipc_rejection_is_logged_with_code_and_operation_id(self):
+        fake = FakeSocket(
+            b'{"ok":false,"code":"unexpected_failure","operation_id":"upd-aabbccddeeff"}\n'
+        )
+        with patch.object(server_update_service.socket, 'AF_UNIX', 1, create=True), patch.object(
+            server_update_service.socket, 'socket', return_value=fake
+        ), self.assertLogs(server_update_service.logger, 'WARNING') as logs, self.assertRaises(
+            ServerUpdateError
+        ):
+            server_update_service._ipc_request(self.config, 'get_status')
+        self.assertIn('code=unexpected_failure operation_id=upd-aabbccddeeff', logs.output[0])
+
+    def test_start_request_waits_for_runner_release_checks(self):
+        fake = FakeSocket(b'{"ok":true,"code":"scheduled","operation_id":"upd-aabbccddeeff"}\n')
+        with patch.object(server_update_service.socket, 'AF_UNIX', 1, create=True), patch.object(
+            server_update_service.socket, 'socket', return_value=fake
+        ):
+            server_update_service._ipc_request(
+                self.config, 'start_latest_update', tag='v1.1.0',
+                operation_id='upd-aabbccddeeff', requested_by='42',
+            )
+        self.assertGreaterEqual(fake.timeout, 45)
 
     def test_status_falls_back_to_read_only_file_when_ipc_is_unavailable(self):
         Path(self.config['SERVER_UPDATE_STATUS_PATH']).write_text(

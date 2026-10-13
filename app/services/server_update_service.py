@@ -52,6 +52,7 @@ _IPC_ERROR_MESSAGES = {
     'unexpected_failure': 'Служба обновления завершила запрос с внутренней ошибкой.',
 }
 _MAX_IPC_RESPONSE_BYTES = 64 * 1024
+_START_IPC_TIMEOUT_SECONDS = 45
 
 
 def _utc_now():
@@ -253,6 +254,9 @@ def _ipc_socket_path(config):
 def _ipc_request(config, action, **fields):
     """Call the fixed local updater protocol without spawning a privileged process."""
     timeout = max(1, min(int(config.get('SERVER_UPDATE_IPC_TIMEOUT_SECONDS', 8)), 30))
+    if action == 'start_latest_update':
+        # The runner checks GitHub, the Git remote and systemd-run before it answers.
+        timeout = max(timeout, _START_IPC_TIMEOUT_SECONDS)
     request_payload = {
         'protocol': 1,
         'action': str(action),
@@ -298,6 +302,10 @@ def _ipc_request(config, action, **fields):
         code = str(payload.get('code') or 'unexpected_failure')
         message = _IPC_ERROR_MESSAGES.get(code, _IPC_ERROR_MESSAGES['unexpected_failure'])
         operation_id = str(payload.get('operation_id') or '')
+        logger.warning(
+            'Updater rejected %s; code=%s operation_id=%s',
+            action, code if code in _IPC_ERROR_MESSAGES else 'unknown', operation_id or '-',
+        )
         suffix = f' Код операции: {operation_id}.' if operation_id else ''
         raise ServerUpdateError(f'{message}{suffix}')
     return payload
