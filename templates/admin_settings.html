@@ -14,6 +14,7 @@
         <div class="admin-panel__header"><div><p class="admin-page-kicker">{{ group.kicker }}</p><h2 id="settings-group-{{ loop.index }}">{{ group.title }}</h2></div></div>
         {% set inputs = group.fields|rejectattr('type', 'equalto', 'bool')|list %}
         {% set switches = group.fields|selectattr('type', 'equalto', 'bool')|list %}
+        <div class="admin-panel__body">
         {% if inputs %}
         <div class="admin-form-grid">
             {% for field in inputs %}
@@ -35,6 +36,7 @@
             {% endfor %}
         </div>
         {% endif %}
+        </div>
     </section>
     {% endfor %}
     <div class="admin-sticky-actions"><span>{{ icon('info', 17) }} Изменения применяются сразу после сохранения.</span><button type="submit" class="btn btn-primary">{{ icon('check-circle', 17) }} Сохранить настройки</button></div>
@@ -45,6 +47,7 @@
         <div><p class="admin-page-kicker">Публикация</p><h2 id="contacts-title">Контакты и ссылки</h2><p>Ссылки проходят серверную проверку и появляются сразу после сохранения.</p></div>
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#contactModal" data-contact-new>{{ icon('plus', 17) }} Добавить</button>
     </div>
+    <div class="admin-panel__body">
     {% if contacts %}
     <div class="admin-contact-grid">
         {% for contact in contacts %}
@@ -66,6 +69,7 @@
     {% else %}
     <div class="admin-empty-state admin-empty-state--compact"><p>Контакты пока не опубликованы. Пользователи увидят нейтральную подсказку обратиться к администратору экземпляра.</p></div>
     {% endif %}
+    </div>
 </section>
 
 <div class="modal fade" id="contactModal" tabindex="-1" aria-labelledby="contactModalTitle" aria-hidden="true">

@@ -1451,9 +1451,13 @@ html[data-theme="dark"] .admin-login-page {
 .admin-log-row__details dd { margin: 3px 0 0; font-size: 0.72rem; }
 .admin-log-row__details-wide { grid-column: 1 / -1; }
 
-.admin-settings-form { display: grid; gap: 18px; }
+.admin-panel__body { display: grid; gap: var(--admin-panel-gap); padding: var(--admin-panel-padding); }
+.admin-settings-form { display: grid; gap: var(--admin-panel-gap); }
 .admin-settings-form .admin-form-grid,
-.admin-settings-form .admin-switch-list { padding: 0 22px 22px; }
+.admin-settings-form .admin-switch-list,
+.admin-contacts .admin-contact-grid { gap: var(--admin-panel-gap); }
+.admin-contacts { margin-top: var(--admin-panel-gap); }
+.admin-contacts .admin-empty-state { padding: 0; }
 .admin-switch-list > label {
     position: relative;
     display: flex;
