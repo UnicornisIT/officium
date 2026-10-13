@@ -535,16 +535,19 @@ def build_debt_reminder_message(user, today=None, days=7):
     lines = ['Напоминание по долгам:']
     for due_date, debt in sorted(due_debts, key=lambda item: item[0]):
         diff = (due_date - today).days
-        if diff < 0:
-            timing = f'просрочен на {abs(diff)} дн.'
-        elif diff == 0:
-            timing = 'сегодня'
+        state = debt.accrual_state(today)
+        if state['is_overdue']:
+            line = (
+                f'{debt.bank_name} {debt.product_name}: просрочен на {state["overdue_days"]} дн., '
+                f'к оплате {_format_money(state["amount_to_clear_overdue"])}'
+            )
+            if state['penalty'] > 0:
+                line += f' (в т. ч. неустойка {_format_money(state["penalty"])})'
         else:
-            timing = f'через {diff} дн.'
-        amount = debt.effective_next_payment_amount() or debt.remaining_amount
-        lines.append(
-            f'{debt.bank_name} {debt.product_name}: {timing}, платеж {_format_money(amount)}, остаток {_format_money(debt.remaining_amount)}'
-        )
+            timing = 'сегодня' if diff == 0 else f'через {diff} дн.'
+            amount = state['next_due_amount'] or debt.effective_next_payment_amount() or state['total']
+            line = f'{debt.bank_name} {debt.product_name}: {timing}, платеж {_format_money(amount)}'
+        lines.append(f'{line}, задолженность {_format_money(state["total"])}')
     return '\n'.join(lines)
 
 
@@ -937,7 +940,7 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
         db.session.commit()
         return _result(
             chat_id,
-            f'Записал платеж: {_format_money(payment.amount)} по долгу #{debt.id} {debt.bank_name} {debt.product_name}.\nОстаток: {_format_money(debt.remaining_amount)}.',
+            f'Записал платеж: {_format_money(payment.amount)} по долгу #{debt.id} {debt.bank_name} {debt.product_name}.\nЗадолженность: {_format_money(debt.total_debt())}.',
             MAIN_MENU_KEYBOARD,
             callback_answer_text,
         )
@@ -1112,9 +1115,10 @@ def _list_debts(user):
     for index, debt in enumerate(debts[:10], start=1):
         due_date = _effective_due_date(debt, today)
         due_part = f', платеж {_format_date(due_date)}' if due_date else ''
+        overdue_part = ' (просрочка)' if debt.is_overdue(today) else ''
         lines.append(
             f'{index}. #{debt.id} {debt.bank_name} {debt.product_name}: '
-            f'остаток {_format_money(debt.remaining_amount)}{due_part}'
+            f'задолженность {_format_money(debt.total_debt(today))}{overdue_part}{due_part}'
         )
     if len(debts) > 10:
         lines.append(f'И еще {len(debts) - 10}...')
@@ -1130,7 +1134,7 @@ def _build_summary(user):
         f'Расходы: {_format_money(summary.get("total_expenses", 0))}',
         f'Платежи по долгам: {_format_money(summary.get("total_payments", 0))}',
         f'Свободный остаток: {_format_money(summary.get("free_balance", 0))}',
-        f'Остаток по долгам: {_format_money(summary.get("total_remaining", 0))}',
+        f'Задолженность по долгам: {_format_money(summary.get("total_remaining", 0))}',
     ]
 
     nearest = summary.get('nearest_debt')
