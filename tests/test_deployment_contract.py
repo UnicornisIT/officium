@@ -139,6 +139,14 @@ class DeploymentContractTestCase(unittest.TestCase):
         self.assertIn('listen 443 ssl', staging_tls)
         self.assertIn('proxy_pass http://127.0.0.1:5000', staging_tls)
         self.assertIn('proxy_set_header X-Forwarded-Proto https', staging_tls)
+        # nginx (www-data) cannot read the root:officium 0750 release tree;
+        # Flask serves /static/ through the proxy.
+        for template in (production, staging_tls):
+            self.assertNotIn('location /static/', template)
+            self.assertNotIn('alias ', template)
+        installer = (PROJECT_ROOT / 'deployment' / 'install-officium.sh').read_text(encoding='utf-8')
+        self.assertIn('check_nginx_app_paths "$release_script_dir"', installer)
+        self.assertIn('if [ "$FIX_NGINX" = true ]; then', installer)
 
     def test_managed_sqlite_is_shared_and_legacy_database_is_copied_safely(self):
         installer = (PROJECT_ROOT / 'deployment' / 'install-officium.sh').read_text(encoding='utf-8')

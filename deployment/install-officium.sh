@@ -28,6 +28,8 @@ ENV_FILE_SOURCE="${ENV_FILE_SOURCE:-}"
 SERVER_NAME="${SERVER_NAME:-_}"
 ROLLBACK_RELEASE="${ROLLBACK_RELEASE:-}"
 ENABLE_NGINX="${ENABLE_NGINX:-false}"
+# Comment out nginx locations that serve files from APP_DIR (only with true).
+FIX_NGINX="${FIX_NGINX:-false}"
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # Commands run as APP_USER inherit the working directory; one it cannot stat
 # (for example /root/officium-vX.Y.Z) makes git fail with "Permission denied".
@@ -37,6 +39,8 @@ cd /
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 info() { printf '==> %s\n' "$*"; }
+WARNINGS=()
+warn() { printf 'WARNING: %s\n' "$*" >&2; WARNINGS+=("$*"); }
 # The same health check as the runner: active, NRestarts stable for 10 s and
 # HTTP 200. A lone is-active probe passes a 203/EXEC crash loop.
 service_is_healthy() {
@@ -82,6 +86,33 @@ verify_current_environment() {
     [ "$current_env" = "$(realpath -e "$APP_DIR/shared/.env")" ] || {
         printf 'ERROR: %s/current/.env resolves to %s, not %s/shared/.env.\n' \
             "$APP_DIR" "$current_env" "$APP_DIR" >&2; return 1; }
+}
+# An old `location /static/ { alias $APP_DIR/static/; }` serves no CSS once the
+# checkout is moved, and nginx cannot read anything inside the 0750 app tree.
+# Findings are backed up and reported; nginx is only edited with FIX_NGINX=true.
+check_nginx_app_paths() {
+    helper="$1/nginx_legacy_static.py"
+    command -v nginx >/dev/null 2>&1 && [ -d /etc/nginx ] && [ -f "$helper" ] || return 0
+    findings=$(python3 "$helper" check "$APP_DIR" /etc/nginx) && return 0
+    nginx_backup="$BACKUP_DIR/nginx.$(date -u +%Y%m%dT%H%M%SZ)"
+    install -d -o root -g root -m 0700 "$nginx_backup"
+    mapfile -t nginx_files < <(printf '%s\n' "$findings" | cut -d: -f1 | sort -u)
+    for nginx_file in "${nginx_files[@]}"; do cp -a --parents -- "$nginx_file" "$nginx_backup"; done
+    if [ "$FIX_NGINX" = true ]; then
+        python3 "$helper" disable "$APP_DIR" "${nginx_files[@]}"
+        if nginx -t && systemctl reload nginx; then
+            info "Disabled nginx locations that served files from $APP_DIR; backup: $nginx_backup"
+            return 0
+        fi
+        cp -a "$nginx_backup/." /
+        { nginx -t && systemctl reload nginx; } || true
+        warn "nginx rejected the edited configuration; the backup from $nginx_backup was restored."
+    fi
+    warn "nginx serves files from $APP_DIR directly (CSS breaks or answers 403):
+$findings
+Backup: $nginx_backup
+Fix (comments out those location blocks; static files come from the application):
+  sudo python3 $helper disable $APP_DIR ${nginx_files[*]} && sudo nginx -t && sudo systemctl reload nginx"
 }
 seal_release() {
     release_path="$1"
@@ -364,6 +395,7 @@ PY
         -e "s|^VENV_NAME=.*|VENV_NAME=$VENV_NAME|" \
         /etc/officium/updater.env
     systemctl enable --now "$MONTHLY_SERVICE.timer" officium-updater.socket
+    check_nginx_app_paths "$release_script_dir"
     runuser -u "$APP_USER" -- /usr/local/bin/officium-update-client integration_check
     /bin/bash "$release_script_dir/post-deploy-smoke.sh" --service "$SERVICE_NAME" --app-dir "$APP_DIR/current" --url "http://$HOST:$PORT/login" --timer "$MONTHLY_SERVICE.timer"
     info "Legacy migration PASS. Preserved previous checkout at $legacy_root; remove only after backup/rollback review."

@@ -7,13 +7,10 @@ server {
     # Waitress bound to loopback only.
     client_max_body_size 10m;
 
-    location /static/ {
-        alias @@APP_ROOT@@/current/static/;
-        access_log off;
-        expires 7d;
-        add_header X-Content-Type-Options nosniff always;
-    }
-
+    # Static files are served by the application through this proxy (with
+    # Cache-Control and nosniff headers). Do not add `location /static/` with
+    # an alias: nginx (www-data) cannot read the root:officium 0750 release
+    # tree, and an alias into an old checkout breaks after an upgrade.
     location / {
         proxy_pass http://@@HOST@@:@@PORT@@;
         proxy_http_version 1.1;
