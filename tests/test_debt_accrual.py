@@ -125,6 +125,26 @@ class ConsumerCreditTestCase(unittest.TestCase):
         self.assertEqual(state['current_interest'], D('420.55'))
         self.assertEqual(state['principal'], D('96528.77'))
 
+    def test_money_that_settled_an_overdue_does_not_pay_the_next_cycle(self):
+        debt = make_debt()
+        payments = [pay(date(2026, 8, 25), '5000'), pay(date(2026, 9, 15), '5000')]
+
+        state = get_debt_state(debt, as_of=date(2026, 8, 26), payments=payments[:1])
+        # The late 5000 closed the 15.08 overdue, the 15.09 payment is still due.
+        self.assertEqual(state['next_due_date'], date(2026, 9, 15))
+        self.assertEqual(state['next_due_amount'], D('5000.00'))
+
+        state = get_debt_state(debt, as_of=date(2026, 9, 16), payments=payments)
+        # 25.08 money went to the 15.08 overdue, so it is not credited to the
+        # 15.09 cycle. The 15.09 payment first pays the 27.40 penalty left from
+        # August (legal order), so 4972.60 reaches the installment and 27.40 of
+        # it becomes overdue.
+        self.assertEqual(state['cycles'][1]['paid'], D('4972.60'))
+        self.assertEqual(state['cycles'][1]['shortfall'], D('27.40'))
+        self.assertTrue(state['is_overdue'])
+        self.assertEqual(state['next_due_date'], date(2026, 9, 15))
+        self.assertEqual(state['next_due_amount'], D('27.40'))
+
     def test_two_partial_payments_before_due_date_are_on_time(self):
         debt = make_debt()
         payments = [pay(date(2026, 8, 5), '2000'), pay(date(2026, 8, 15), '3000')]

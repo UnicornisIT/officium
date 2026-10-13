@@ -308,10 +308,19 @@ class _AccrualEngine:
     def _paid_in_cycle(self, cycle_start, due, through=None):
         through = through or due
         return money(sum(
-            (scheduled_payment_component(payment) for payment in self.payments
+            (self._cycle_credit(payment) for payment in self.payments
              if cycle_start < payment.payment_date <= through),
             ZERO,
         ))
+
+    def _cycle_credit(self, payment):
+        # Money that settled an earlier overdue or the penalty does not pay
+        # the current cycle.
+        credit = scheduled_payment_component(payment)
+        allocation = self.allocations.get(payment.id)
+        if allocation:
+            credit -= allocation['overdue_interest'] + allocation['overdue_principal'] + allocation['penalty']
+        return max(credit, ZERO)
 
     def _close_cycle(self, ledger, due, cycle_index, cycle_opening_principal):
         interest_due = money(ledger.current_interest)
@@ -464,7 +473,7 @@ class _AccrualEngine:
             item = ledger.overdue[0]
             return item.due_date, money(item.interest + item.principal)
         cycle_index = len(self.cycles)
-        for due in self._due_dates(self.start, as_of):
+        for due in self._due_dates(self.start, date.max):
             if due < as_of:
                 continue
             required = self._required_payment(cycle_index, ledger.principal)
