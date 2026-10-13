@@ -23,6 +23,10 @@ BACKUP_DIR="${BACKUP_DIR:-/var/backups/officium}"
 STATE_DIR="${STATE_DIR:-/var/lib/officium}"
 UPDATE_SOCKET="${UPDATE_SOCKET:-/run/officium/updater.sock}"
 REPOSITORY="${REPOSITORY:-UnicornisIT/officium}"
+# Release sources; only integration tests use a file:/// mirror and a
+# loopback release API instead of GitHub.
+SOURCE_URL="${SOURCE_URL:-https://github.com}"
+GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
 RELEASE_TAG="${RELEASE_TAG:-}"
 ENV_FILE_SOURCE="${ENV_FILE_SOURCE:-}"
 SERVER_NAME="${SERVER_NAME:-_}"
@@ -206,7 +210,7 @@ seal_release() {
     [ "$(dirname "$release_real")" = "$releases_real" ] || fail "Release escaped the managed releases directory."
     release_commit=$(tr -d '\r\n' <"$release_real/.officium-release-ready")
     [[ "$release_commit" =~ ^[0-9a-f]{40,64}$ ]] || fail "Release commit marker is invalid."
-    remote_commit=$(git ls-remote --exit-code "https://github.com/$REPOSITORY.git" \
+    remote_commit=$(git ls-remote --exit-code "$SOURCE_URL/$REPOSITORY.git" \
         "refs/tags/$expected_tag^{}" "refs/tags/$expected_tag" | \
         awk '$2 ~ /\^\{\}$/ {peeled=$1} NR==1 {direct=$1} END {print peeled ? peeled : direct}')
     [ "$remote_commit" = "$release_commit" ] || fail "Release commit no longer matches the remote tag."
@@ -238,6 +242,8 @@ for name in "$APP_USER" "$APP_GROUP" "$SERVICE_NAME" "$MONTHLY_SERVICE"; do
     valid_name "$name" || fail "Unsafe user, group, or service name: $name"
 done
 [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "Invalid REPOSITORY."
+[[ "$SOURCE_URL" = https://github.com || "$SOURCE_URL" =~ ^file:///[A-Za-z0-9_./-]+$ ]] || fail "Invalid SOURCE_URL."
+[[ "$GITHUB_API_URL" = https://api.github.com || "$GITHUB_API_URL" =~ ^http://127\.0\.0\.1:[0-9]{2,5}$ ]] || fail "Invalid GITHUB_API_URL."
 [[ "$SERVER_NAME" =~ ^[A-Za-z0-9._-]+$ ]] || fail "Invalid SERVER_NAME."
 [[ "$DB_NAME" =~ ^[A-Za-z0-9_$][A-Za-z0-9_$-]{0,63}$ ]] || fail "Invalid DB_NAME."
 [[ "$PORT" =~ ^[0-9]+$ ]] && [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || fail "Invalid PORT."
@@ -267,7 +273,7 @@ available_kb=$(df -Pk "$(dirname "$APP_DIR")" | awk 'NR==2 {print $4}')
 if [ "$MODE" != recover ] && [ "$MODE" != units ]; then
     [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ ]] || fail "Set exact RELEASE_TAG."
     [[ "$RELEASE_TAG" != *..* && "$RELEASE_TAG" != *@\{* && "$RELEASE_TAG" != *.lock ]] || fail "Unsafe RELEASE_TAG."
-    git ls-remote --exit-code "https://github.com/$REPOSITORY.git" "refs/tags/$RELEASE_TAG" >/dev/null || fail "Release tag does not exist in configured repository."
+    git ls-remote --exit-code "$SOURCE_URL/$REPOSITORY.git" "refs/tags/$RELEASE_TAG" >/dev/null || fail "Release tag does not exist in configured repository."
 fi
 if [ "$MODE" = install ] || [ "$MODE" = preflight ]; then
     [ -n "$ENV_FILE_SOURCE" ] && [ -f "$ENV_FILE_SOURCE" ] || fail "Set ENV_FILE_SOURCE to a prepared .env file."
@@ -354,6 +360,7 @@ if [ "$MODE" = upgrade ] && { [ -d "$APP_DIR/.git" ] || [ -f "$APP_DIR/.git" ]; 
     git -C "$APP_DIR" diff --cached --quiet --ignore-submodules -- || fail "Staged local changes exist; migration requires owner review."
 
     APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" SERVICE_NAME="$SERVICE_NAME" \
+        SOURCE_URL="$SOURCE_URL" GITHUB_API_URL="$GITHUB_API_URL" \
         /bin/sh "$SCRIPT_DIR/install-officium-updater.sh" "$APP_USER" "$APP_GROUP"
     sed -i \
         -e "s|^APP_DIR=.*|APP_DIR=$APP_DIR|" \
@@ -448,7 +455,7 @@ PY
     chown "$APP_USER:$APP_GROUP" "$stage_file" "$result_file"
     chmod 0600 "$stage_file" "$result_file"
     runuser -u "$APP_USER" -- /usr/local/lib/officium/deploy-release \
-        --release "$RELEASE_TAG" --repository "$REPOSITORY" \
+        --release "$RELEASE_TAG" --repository "$REPOSITORY" --source-url "$SOURCE_URL" \
         --releases-dir "$build_root" --current-link "$APP_DIR/current" \
         --environment-file "$managed_root/shared/.env" \
         --environment-link "$APP_DIR/shared/.env" --stage-file "$stage_file" \
@@ -499,6 +506,7 @@ PY
     # in the summary instead of aborting halfway with a traceback.
     if ! {
         APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" SERVICE_NAME="$SERVICE_NAME" \
+        SOURCE_URL="$SOURCE_URL" GITHUB_API_URL="$GITHUB_API_URL" \
             /bin/sh "$release_script_dir/install-officium-updater.sh" "$APP_USER" "$APP_GROUP" &&
         sed -i \
             -e "s|^APP_DIR=.*|APP_DIR=$APP_DIR/current|" \
@@ -541,6 +549,7 @@ fi
 
 info "Installing restricted updater"
 APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" SERVICE_NAME="$SERVICE_NAME" \
+        SOURCE_URL="$SOURCE_URL" GITHUB_API_URL="$GITHUB_API_URL" \
     /bin/sh "$SCRIPT_DIR/install-officium-updater.sh" "$APP_USER" "$APP_GROUP"
 sed -i \
     -e "s|^APP_DIR=.*|APP_DIR=$APP_DIR/current|" \
@@ -573,7 +582,7 @@ chmod 0750 "$build_root"
 chown "$APP_USER:$APP_GROUP" "$stage_file" "$result_file"
 chmod 0600 "$stage_file" "$result_file"
 runuser -u "$APP_USER" -- /usr/local/lib/officium/deploy-release \
-    --release "$RELEASE_TAG" --repository "$REPOSITORY" \
+    --release "$RELEASE_TAG" --repository "$REPOSITORY" --source-url "$SOURCE_URL" \
     --releases-dir "$build_root" --current-link "$APP_DIR/current" \
     --environment-file "$APP_DIR/shared/.env" \
     --environment-link "$APP_DIR/shared/.env" --stage-file "$stage_file" \

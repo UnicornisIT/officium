@@ -5,6 +5,8 @@
 
 RELEASE_TAG=""
 REPOSITORY=""
+# GitHub in production; integration tests use a local file:/// mirror.
+SOURCE_URL="https://github.com"
 RELEASES_DIR=""
 CURRENT_LINK=""
 ENVIRONMENT_FILE=""
@@ -64,6 +66,7 @@ main() {
         case "$1" in
             --release) RELEASE_TAG="${2:-}"; shift 2 ;;
             --repository) REPOSITORY="${2:-}"; shift 2 ;;
+            --source-url) SOURCE_URL="${2:-}"; shift 2 ;;
             --releases-dir) RELEASES_DIR="${2:-}"; shift 2 ;;
             --current-link) CURRENT_LINK="${2:-}"; shift 2 ;;
             --environment-file) ENVIRONMENT_FILE="${2:-}"; shift 2 ;;
@@ -78,6 +81,9 @@ main() {
     [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ ]] || fail "Invalid release tag."
     [[ "$RELEASE_TAG" != *..* && "$RELEASE_TAG" != *@\{* && "$RELEASE_TAG" != *.lock ]] || fail "Unsafe release tag."
     [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "Invalid repository."
+    [[ "$SOURCE_URL" = https://github.com || "$SOURCE_URL" =~ ^file:///[A-Za-z0-9_./-]+$ ]] || \
+        fail "Source must be https://github.com or a local file:/// mirror."
+    repository_url="${SOURCE_URL%/}/${REPOSITORY}.git"
     case "$VENV_NAME" in venv|.venv) ;; *) fail "Venv name must be venv or .venv." ;; esac
     for required_path in "$RELEASES_DIR" "$CURRENT_LINK" "$ENVIRONMENT_FILE" "$STAGE_FILE" "$RESULT_FILE"; do
         [ -n "$required_path" ] && [[ "$required_path" = /* ]] || fail "All deployment paths must be absolute."
@@ -100,11 +106,11 @@ main() {
     trap cleanup EXIT HUP INT TERM
 
     report installing
-    git clone --quiet --no-checkout "https://github.com/${REPOSITORY}.git" "$stage_dir/source"
+    git clone --quiet --no-checkout "$repository_url" "$stage_dir/source"
     git -C "$stage_dir/source" fetch --quiet --force origin \
         "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
     release_commit=$(git -C "$stage_dir/source" rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")
-    remote_commit=$(git ls-remote --exit-code "https://github.com/${REPOSITORY}.git" \
+    remote_commit=$(git ls-remote --exit-code "$repository_url" \
         "refs/tags/${RELEASE_TAG}^{}" "refs/tags/${RELEASE_TAG}" | \
         awk '$2 ~ /\^\{\}$/ {peeled=$1} NR==1 {direct=$1} END {print peeled ? peeled : direct}')
     [ -n "$remote_commit" ] || fail "Release tag is missing from the configured repository."

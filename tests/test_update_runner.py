@@ -314,3 +314,33 @@ class ServiceHealthTestCase(unittest.TestCase):
         with self.assertRaises(runner.UpdateFailure) as caught:
             runner.verify_service_health('officium', 'ftp://example.org/')
         self.assertEqual(caught.exception.code, 'configuration_invalid')
+
+
+class ReleaseSourceTestCase(unittest.TestCase):
+    def test_production_defaults_are_github(self):
+        values = {'SOURCE_URL': 'https://github.com/', 'GITHUB_API_URL': 'https://api.github.com'}
+        runner.validate_release_sources(values)
+        self.assertEqual(runner.repository_url({**values, 'REPOSITORY': 'o/officium'}),
+                         'https://github.com/o/officium.git')
+
+    def test_only_a_local_mirror_and_a_loopback_api_are_accepted_for_tests(self):
+        runner.validate_release_sources({
+            'SOURCE_URL': 'file:///srv/qa-git', 'GITHUB_API_URL': 'http://127.0.0.1:8765',
+        })
+        for source, api in (
+            ('https://gitlab.com', 'https://api.github.com'),
+            ('http://github.com', 'https://api.github.com'),
+            ('file:///srv/qa git', 'https://api.github.com'),
+            ('https://github.com', 'http://10.0.0.5:8765'),
+            ('https://github.com', 'http://127.0.0.1:8765/evil'),
+        ):
+            with self.subTest(source=source, api=api), self.assertRaises(runner.UpdateFailure):
+                runner.validate_release_sources({'SOURCE_URL': source, 'GITHUB_API_URL': api})
+
+    def test_checkout_remote_from_the_mirror_matches_the_repository(self):
+        self.assertEqual(
+            runner.normalize_github_remote('file:///srv/qa-git/qa/officium.git\n', 'file:///srv/qa-git'),
+            'qa/officium',
+        )
+        self.assertEqual(runner.normalize_github_remote('https://github.com/o/officium.git'), 'o/officium')
+        self.assertEqual(runner.normalize_github_remote('file:///elsewhere/o/officium.git'), '')

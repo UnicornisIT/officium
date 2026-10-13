@@ -31,6 +31,12 @@ LOCK_PATH = Path('/run/lock/officium-update.lock')
 REQUEST_LOCK_PATH = Path('/run/lock/officium-update-request.lock')
 TAG_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$')
 REPOSITORY_RE = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
+# Release sources. Production uses GitHub; a root-owned updater.env may point
+# at a local file:// mirror and a loopback release API for integration tests.
+DEFAULT_SOURCE_URL = 'https://github.com'
+DEFAULT_GITHUB_API_URL = 'https://api.github.com'
+TEST_SOURCE_URL_RE = re.compile(r'^file:///[A-Za-z0-9_./-]+$')
+TEST_API_URL_RE = re.compile(r'^http://127\.0\.0\.1:[0-9]{2,5}$')
 USER_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
 NAME_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,127}$')
 ALLOWED_CONFIG_KEYS = {
@@ -41,10 +47,12 @@ ALLOWED_CONFIG_KEYS = {
     'DEPLOY_SCRIPT',
     'ENV_FILE',
     'GIT_REMOTE',
+    'GITHUB_API_URL',
     'HEALTHCHECK_URL',
     'REPOSITORY',
     'RELEASES_DIR',
     'SERVICE_NAME',
+    'SOURCE_URL',
     'STATUS_FILE',
     'STALE_MINUTES',
     'UPDATE_SOCKET',
@@ -162,7 +170,10 @@ def load_runner_config():
         'VENV_NAME': configured.get('VENV_NAME', 'venv'),
         'ENV_FILE': configured.get('ENV_FILE', ''),
         'UPDATE_SOCKET': configured.get('UPDATE_SOCKET', '/run/officium/updater.sock'),
+        'SOURCE_URL': configured.get('SOURCE_URL', '') or DEFAULT_SOURCE_URL,
+        'GITHUB_API_URL': configured.get('GITHUB_API_URL', '') or DEFAULT_GITHUB_API_URL,
     }
+    validate_release_sources(values)
     if not Path(values['UPDATE_SOCKET']).is_absolute():
         raise UpdateFailure('UPDATE_SOCKET must be an absolute path.')
     if values['ENV_FILE'] and not Path(values['ENV_FILE']).is_absolute():
@@ -197,6 +208,21 @@ def load_runner_config():
     except KeyError as exc:
         raise UpdateFailure('APP_GROUP does not exist.') from exc
     return values
+
+
+def validate_release_sources(values):
+    source = values['SOURCE_URL'].rstrip('/')
+    api = values['GITHUB_API_URL'].rstrip('/')
+    if source != DEFAULT_SOURCE_URL and not TEST_SOURCE_URL_RE.fullmatch(source):
+        raise UpdateFailure('SOURCE_URL must be https://github.com or a local file:/// mirror.')
+    if api != DEFAULT_GITHUB_API_URL and not TEST_API_URL_RE.fullmatch(api):
+        raise UpdateFailure('GITHUB_API_URL must be https://api.github.com or a loopback test API.')
+    values['SOURCE_URL'] = source
+    values['GITHUB_API_URL'] = api
+
+
+def repository_url(config):
+    return f'{config.get("SOURCE_URL") or DEFAULT_SOURCE_URL}/{config["REPOSITORY"]}.git'
 
 
 def read_status(status_path):
@@ -250,7 +276,7 @@ def latest_release_tag(config):
         'User-Agent': 'officium-server-updater',
     }
     request = Request(
-        f'https://api.github.com/repos/{repository}/releases/latest',
+        f'{config.get("GITHUB_API_URL") or DEFAULT_GITHUB_API_URL}/repos/{repository}/releases/latest',
         headers=headers,
         method='GET',
     )
@@ -272,8 +298,11 @@ def latest_release_tag(config):
     return validate_tag(str(payload.get('tag_name') or ''))
 
 
-def normalize_github_remote(remote):
+def normalize_github_remote(remote, source_url=DEFAULT_SOURCE_URL):
     value = remote.strip()
+    if source_url != DEFAULT_SOURCE_URL and value.startswith(source_url + '/'):
+        value = value[len(source_url) + 1:]
+        return value[:-4] if value.endswith('.git') else value
     prefixes = (
         'https://github.com/',
         'http://github.com/',
@@ -302,7 +331,7 @@ def verify_git_remote(config):
     )
     if result.returncode != 0:
         raise UpdateFailure('Cannot read the configured Git remote.')
-    if normalize_github_remote(result.stdout) != config['REPOSITORY']:
+    if normalize_github_remote(result.stdout, config.get('SOURCE_URL', DEFAULT_SOURCE_URL)) != config['REPOSITORY']:
         raise UpdateFailure('Git remote does not match the configured GitHub repository.')
 
 
@@ -594,6 +623,8 @@ def deploy_command(config, tag, *, runuser, deploy_script, build_root, stage_pat
     env_path = application_env_path(config)
     if env_path.parts[-2:] != ('shared', '.env'):
         raise UpdateFailure('Managed releases need the shared .env file.', 'configuration_invalid')
+    source_url = config.get('SOURCE_URL') or DEFAULT_SOURCE_URL
+    source = [] if source_url == DEFAULT_SOURCE_URL else ['--source-url', source_url]
     return [
         runuser,
         '-u',
@@ -602,6 +633,7 @@ def deploy_command(config, tag, *, runuser, deploy_script, build_root, stage_pat
         str(deploy_script),
         '--release', tag,
         '--repository', config['REPOSITORY'],
+        *source,
         '--releases-dir', str(build_root),
         '--current-link', str(config['APP_DIR']),
         '--environment-file', str(env_path),
@@ -839,7 +871,7 @@ def seal_and_verify_release(config, release_path, tag, release_commit):
     remote = subprocess.run(
         [
             git, 'ls-remote', '--exit-code',
-            f'https://github.com/{config["REPOSITORY"]}.git',
+            repository_url(config),
             f'refs/tags/{tag}^{{}}', f'refs/tags/{tag}',
         ],
         capture_output=True,

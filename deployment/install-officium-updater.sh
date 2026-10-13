@@ -80,6 +80,8 @@ ensure_setting APP_USER "$APP_USER"
 ensure_setting APP_GROUP "$APP_GROUP"
 ensure_setting SERVICE_NAME "${SERVICE_NAME:-officium}"
 ensure_setting UPDATE_SOCKET "$UPDATE_SOCKET"
+ensure_setting SOURCE_URL "${SOURCE_URL:-https://github.com}"
+ensure_setting GITHUB_API_URL "${GITHUB_API_URL:-https://api.github.com}"
 ensure_setting STATUS_FILE "$STATE_DIR/server-update-status.json"
 ensure_setting STALE_MINUTES 120
 ensure_setting BACKUP_DIR "$BACKUP_DIR"
