@@ -2466,6 +2466,26 @@ html[data-theme="dark"] .navbar {
     margin-top: 1px;
 }
 
+.debt-card__breakdown {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: -4px 0 8px;
+}
+
+.debt-card__overdue {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--danger);
+    text-decoration: none;
+    margin: -2px 0 10px;
+}
+
+.debt-card__overdue:hover,
+.debt-card__overdue:focus {
+    text-decoration: underline;
+}
+
 /* Details */
 .debt-card__details {
     display: flex;

@@ -410,7 +410,7 @@
             <div class="col-12 col-lg-3">
                 <div class="finance-load">
                     <div class="finance-load__top">
-                        <span>Остаток долгов</span>
+                        <span>Задолженность</span>
                         <strong>{{ total_remaining|money }}</strong>
                     </div>
                     <div class="finance-load__meta">Всего долгов: {{ total_debts }}, в архиве: {{ archived_count }}</div>
@@ -421,7 +421,7 @@
                     <div class="finance-load__top">
                         <span>Погашено</span>
                         {% if total_original > 0 %}
-                        <strong>{{ '{:.0f}'.format((1 - total_remaining / total_original) * 100) }}%</strong>
+                        <strong>{{ '{:.0f}'.format((1 - total_principal / total_original) * 100) }}%</strong>
                         {% else %}
                         <strong>—</strong>
                         {% endif %}
@@ -455,7 +455,7 @@
                 <thead>
                     <tr>
                         <th>Банк / продукт</th>
-                        <th>Остаток</th>
+                        <th>Задолженность</th>
                         <th>Ставка</th>
                         <th>Платеж</th>
                         <th>Процентов мес.</th>
@@ -469,7 +469,7 @@
                             <div class="fw-semibold">{{ debt.bank_name }}</div>
                             <div class="text-muted small">{{ debt.product_name }}</div>
                         </td>
-                        <td>{{ debt.remaining_amount|money }}</td>
+                        <td>{{ debt.total_debt(today)|money }}{% if debt.is_overdue(today) %} <span class="badge bg-danger ms-1">просрочка</span>{% endif %}</td>
                         {% set display_interest_rate = debt.interest_rate_for(month_start) %}
                         <td>{{ display_interest_rate if display_interest_rate is not none else '—' }}%</td>
                         <td>{{ debt.minimum_payment|money }}</td>
@@ -480,7 +480,8 @@
                             —
                             {% endif %}
                         </td>
-                        <td>{{ debt.next_payment_date.strftime('%d.%m.%Y') if debt.next_payment_date else '—' }}</td>
+                        {% set mortgage_due_date = debt.effective_next_payment_date(today) %}
+                        <td>{{ mortgage_due_date.strftime('%d.%m.%Y') if mortgage_due_date else '—' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

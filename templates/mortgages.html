@@ -1,6 +1,8 @@
 {% extends 'base.html' %}
 {% block title %}Ипотечные кредиты — officium{% endblock %}
 
+{% from '_debt_amounts.html' import debt_amounts %}
+
 {% block content %}
 <div class="d-flex align-items-center justify-content-between gap-3 mb-4">
     <div>
@@ -24,14 +26,14 @@
         <div class="summary-card summary-card--danger">
             <div class="summary-icon"><i class="bi bi-cash-stack"></i></div>
             <div class="summary-value">{{ total_remaining|money }}</div>
-            <div class="summary-label">Общий остаток по ипотеке</div>
+            <div class="summary-label">Общая задолженность по ипотеке</div>
         </div>
     </div>
     <div class="col-12 col-md-4">
         <div class="summary-card summary-card--muted">
             <div class="summary-icon"><i class="bi bi-bar-chart-line"></i></div>
             {% if total_original > 0 %}
-            <div class="summary-value">{{ '{:.0f}'.format((1 - total_remaining / total_original) * 100) }}%</div>
+            <div class="summary-value">{{ '{:.0f}'.format((1 - total_principal / total_original) * 100) }}%</div>
             {% else %}
             <div class="summary-value">—</div>
             {% endif %}
@@ -45,7 +47,8 @@
     {% for debt in debts %}
     {% set first_payment_pending = debt.is_first_payment_pending() %}
     {% set next_payment_amount = debt.effective_next_payment_amount() %}
-    {% set days = (debt.next_payment_date - today).days if debt.next_payment_date else None %}
+    {% set payment_date = debt.effective_next_payment_date(today) %}
+    {% set days = (payment_date - today).days if payment_date else None %}
     {% set paid_pct = ((1 - debt.remaining_amount / debt.total_amount) * 100) | round(1) if debt.total_amount > 0 else 100 %}
     <div class="col-12 col-md-6 col-xl-4">
         <div class="debt-card
@@ -72,24 +75,17 @@
             </div>
             <div class="debt-card__progress-label">
                 <span>Погашено {{ paid_pct }}%</span>
-                <span>{{ debt.remaining_amount|money }} осталось</span>
+                <span>{{ debt.remaining_amount|money }} основного долга</span>
             </div>
 
-            <div class="debt-card__amounts">
-                <div class="debt-card__amount-main">
-                    {{ debt.remaining_amount|money }}
-                </div>
-                <div class="debt-card__amount-total">
-                    из {{ debt.total_amount|money }}
-                </div>
-            </div>
+            {{ debt_amounts(debt, today) }}
 
             <div class="debt-card__details">
                 <div class="debt-card__detail">
                     <span class="detail-label"><i class="bi bi-calendar3"></i> Следующий платеж</span>
                     <span class="detail-value{% if days is not none %}{% if days < 0 %} text-danger fw-semibold{% elif days <= payment_days.urgent %} text-orange fw-semibold{% elif days <= payment_days.warning %} text-warning-strong{% endif %}{% endif %}">
-                        {% if debt.next_payment_date %}
-                            {{ debt.next_payment_date.strftime('%d.%m.%Y') }}
+                        {% if payment_date %}
+                            {{ payment_date.strftime('%d.%m.%Y') }}
                             {% if debt.is_payment_recurring %}
                                 <span class="badge bg-secondary ms-1" title="Дата обновляется после обязательного платежа">ежемес.</span>
                             {% endif %}
@@ -149,7 +145,7 @@
                     <button class="btn btn-action btn-action--pay" onclick="openPaymentModal({{ debt.id }})">
                         <i class="bi bi-cash"></i> Платеж
                     </button>
-                    {% if debt.next_payment_date and debt.next_payment_date < today and debt.interest_rate_for(today) %}
+                    {% if debt.is_overdue(today) %}
                     <button class="btn btn-action btn-action--info btn-action--outline" onclick="window.location.href='/debts/{{ debt.id }}/overdue'" title="О просрочке">
                         <i class="bi bi-info-circle"></i> О просрочке
                     </button>
@@ -160,7 +156,7 @@
                         <i class="bi bi-pencil"></i>
                     </button>
                     <button class="btn btn-action btn-action--calendar"
-                        onclick="openGoogleCalendar({{ debt.id }}, '{{ debt.bank_name }}', '{{ debt.product_name }}', '{{ debt.next_payment_date.strftime('%Y-%m-%d') if debt.next_payment_date else '' }}', {{ next_payment_amount or 0 }}, {{ debt.remaining_amount }})"
+                        onclick="openGoogleCalendar({{ debt.id }}, '{{ debt.bank_name }}', '{{ debt.product_name }}', '{{ payment_date.strftime('%Y-%m-%d') if payment_date else '' }}', {{ next_payment_amount or 0 }}, {{ debt.total_debt(today) }})"
                         title="Добавить в Google Calendar">
                         <i class="bi bi-calendar-plus"></i>
                     </button>

@@ -105,12 +105,13 @@ def init_app(app):
         )
         upcoming = [d for d in active_debts if d.effective_next_payment_date(today) and d.effective_next_payment_date(today) >= today]
         nearest_debt = upcoming[0] if upcoming else None
-        overdue_count = len([d for d in active_debts if d.effective_next_payment_date(today) and d.effective_next_payment_date(today) < today])
+        overdue_count = len([d for d in active_debts if d.is_overdue(today)])
 
         daily_budget = free_balance / days_left if days_left > 0 else 0
         return render_template('index.html',
             debts=active_debts,
             total_remaining=total_remaining,
+            total_principal=summary['total_principal'],
             total_original=total_original,
             active_count=len(active_debts),
             nearest_debt=nearest_debt,
@@ -149,6 +150,7 @@ def init_app(app):
         return render_template('finance.html',
             active_count=len(summary['active_debts']),
             total_remaining=summary['total_remaining'],
+            total_principal=summary['total_principal'],
             total_original=summary['total_original'],
             nearest_debt=summary['nearest_debt'],
             overdue_count=summary['overdue_count'],
@@ -587,15 +589,18 @@ def init_app(app):
             active_debts = active_debts.order_by(db.case((Debt.next_payment_date.is_(None), 1), else_=0), Debt.next_payment_date.asc()).all()
 
         today = date.today()
-        total_remaining = sum((Decimal(str(d.remaining_amount or 0)) for d in active_debts), Decimal('0.00'))
+        active_debts = sorted(active_debts, key=lambda d: d.effective_next_payment_date(today) or date.max)
+        total_remaining = sum((Decimal(str(d.total_debt(today))) for d in active_debts), Decimal('0.00'))
+        total_principal = sum((Decimal(str(d.remaining_amount or 0)) for d in active_debts), Decimal('0.00'))
         total_original = sum((Decimal(str(d.total_amount or 0)) for d in active_debts), Decimal('0.00'))
-        overdue_count = len([d for d in active_debts if d.next_payment_date and d.next_payment_date < today])
-        nearest_debt = next((d for d in active_debts if d.next_payment_date and d.next_payment_date >= today), None)
+        overdue_count = len([d for d in active_debts if d.is_overdue(today)])
+        nearest_debt = next((d for d in active_debts if (d.effective_next_payment_date(today) or date.min) >= today), None)
 
         return render_template('mortgages.html',
             debts=active_debts,
             active_count=len(active_debts),
             total_remaining=total_remaining,
+            total_principal=total_principal,
             total_original=total_original,
             overdue_count=overdue_count,
             nearest_debt=nearest_debt,

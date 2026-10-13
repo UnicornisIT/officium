@@ -45,6 +45,20 @@ def _effective_debt_payment_date(debt, today):
     return debt.next_payment_date
 
 
+def _debt_total(debt, today):
+    """Principal plus unpaid interest and penalty."""
+    if hasattr(debt, 'total_debt'):
+        return _money_value(debt.total_debt(today))
+    return _money_value(debt.remaining_amount)
+
+
+def _is_overdue(debt, today):
+    if hasattr(debt, 'is_overdue'):
+        return debt.is_overdue(today)
+    due_date = _effective_debt_payment_date(debt, today)
+    return bool(due_date and due_date < today)
+
+
 def _expense_view(expense):
     payment_method = getattr(expense, 'payment_method', None)
     title = getattr(expense, 'title', None) or 'Расход'
@@ -393,11 +407,11 @@ def get_finance_summary(user_id, year=None, month=None):
         total_payments = sum((_money_value(item.amount) for item in payments_this_month), ZERO)
         free_balance = total_incomes - total_expenses - total_payments
         debts = sorted(debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
-        overdue_count = len([d for d in debts if _effective_debt_payment_date(d, today) and _effective_debt_payment_date(d, today) < today])
+        overdue_count = len([d for d in debts if _is_overdue(d, today)])
         nearest_debt = next((d for d in debts if _effective_debt_payment_date(d, today) and _effective_debt_payment_date(d, today) >= today), None)
 
         mortgage_debts = [d for d in debts if d.debt_type == 'mortgage']
-        total_mortgage_remaining = sum((_money_value(d.remaining_amount) for d in mortgage_debts), ZERO)
+        total_mortgage_remaining = sum((_debt_total(d, today) for d in mortgage_debts), ZERO)
         total_mortgage_original = sum((_money_value(d.total_amount) for d in mortgage_debts), ZERO)
         total_mortgage_interest = sum(
             (calculate_period_interest(d, d.remaining_amount, month_start, month_end)
@@ -416,7 +430,8 @@ def get_finance_summary(user_id, year=None, month=None):
             'total_mortgage_remaining': total_mortgage_remaining,
             'total_mortgage_original': total_mortgage_original,
             'total_mortgage_interest': total_mortgage_interest,
-            'total_remaining': sum((_money_value(d.remaining_amount) for d in debts), ZERO),
+            'total_remaining': sum((_debt_total(d, today) for d in debts), ZERO),
+            'total_principal': sum((_money_value(d.remaining_amount) for d in debts), ZERO),
             'total_original': sum((_money_value(d.total_amount) for d in debts), ZERO),
             'incomes_this_month': incomes_this_month,
             'expenses_this_month': expenses_this_month,
@@ -437,7 +452,8 @@ def get_finance_summary(user_id, year=None, month=None):
     try:
         active_debts = Debt.query.filter_by(status='active', user_id=user_id).order_by(db.case((Debt.next_payment_date.is_(None), 1), else_=0), Debt.next_payment_date.asc()).all()
         active_debts = sorted(active_debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
-        total_remaining = sum((_money_value(d.remaining_amount) for d in active_debts), ZERO)
+        total_remaining = sum((_debt_total(d, today) for d in active_debts), ZERO)
+        total_principal = sum((_money_value(d.remaining_amount) for d in active_debts), ZERO)
         total_original = sum((_money_value(d.total_amount) for d in active_debts), ZERO)
 
         incomes_this_month = Income.query.filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).all()
@@ -473,6 +489,7 @@ def get_finance_summary(user_id, year=None, month=None):
             'total_mortgage_original': ZERO,
             'total_mortgage_interest': ZERO,
             'total_remaining': ZERO,
+            'total_principal': ZERO,
             'total_original': ZERO,
             'incomes_this_month': [],
             'expenses_this_month': [],
@@ -511,7 +528,7 @@ def get_finance_summary(user_id, year=None, month=None):
     total_payments = _money_value(Payment.query.with_entities(func.coalesce(func.sum(Payment.amount), 0)).join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).scalar())
     free_balance = total_incomes - total_expenses - total_payments
     active_debts = sorted(active_debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
-    overdue_count = len([d for d in active_debts if _effective_debt_payment_date(d, today) and _effective_debt_payment_date(d, today) < today])
+    overdue_count = len([d for d in active_debts if _is_overdue(d, today)])
     archived_count = Debt.query.filter_by(status='archived', user_id=user_id).count()
     total_debts = Debt.query.filter_by(user_id=user_id).count()
 
@@ -523,7 +540,7 @@ def get_finance_summary(user_id, year=None, month=None):
     nearest_debt = next((d for d in active_debts if _effective_debt_payment_date(d, today) and _effective_debt_payment_date(d, today) >= today), None)
 
     mortgage_debts = [d for d in active_debts if d.debt_type == 'mortgage']
-    total_mortgage_remaining = sum((_money_value(d.remaining_amount) for d in mortgage_debts), ZERO)
+    total_mortgage_remaining = sum((_debt_total(d, today) for d in mortgage_debts), ZERO)
     total_mortgage_original = sum((_money_value(d.total_amount) for d in mortgage_debts), ZERO)
     total_mortgage_interest = sum(
         (calculate_period_interest(d, d.remaining_amount, month_start, month_end)
@@ -543,6 +560,7 @@ def get_finance_summary(user_id, year=None, month=None):
         'total_mortgage_original': total_mortgage_original,
         'total_mortgage_interest': total_mortgage_interest,
         'total_remaining': total_remaining,
+        'total_principal': total_principal,
         'total_original': total_original,
         'incomes_this_month': incomes_this_month,
         'expenses_this_month': expenses_this_month,

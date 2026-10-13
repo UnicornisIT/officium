@@ -126,7 +126,29 @@ class Debt(db.Model):
             return self.interest_rate_after_change
         return self.interest_rate
 
+    def accrual_state(self, today=None):
+        """Principal, interest, penalty, overdue and next due date as of today."""
+        from app.services.debt_accrual_service import cached_debt_state
+        return cached_debt_state(self, as_of=today or date.today())
+
+    def is_overdue(self, today=None):
+        return self.accrual_state(today)['is_overdue']
+
+    def total_debt(self, today=None):
+        """Principal plus unpaid interest and penalty."""
+        return self.accrual_state(today)['total']
+
     def effective_next_payment_date(self, today=None):
+        """The oldest unpaid due date when overdue, else the next one.
+
+        A date before today therefore always means the debt is overdue.
+        """
+        today = today or date.today()
+        if self.next_payment_date and float(self.remaining_amount or 0) > 0:
+            return self.accrual_state(today)['next_due_date']
+        return self._calendar_next_payment_date(today)
+
+    def _calendar_next_payment_date(self, today=None):
         today = today or date.today()
         if self.debt_type != 'split' or not self.next_payment_date or float(self.remaining_amount or 0) <= 0:
             return self.next_payment_date
@@ -183,6 +205,7 @@ class Debt(db.Model):
 
     def to_dict(self):
         today = date.today()
+        accrual = self.accrual_state(today)
         effective_next_payment_date = self.effective_next_payment_date(today)
         effective_next_payment_amount = self.effective_next_payment_amount()
         days_until_payment = None
@@ -228,6 +251,18 @@ class Debt(db.Model):
             'comment': self.comment,
             'status': self.status,
             'days_until_payment': days_until_payment,
+            'total_debt': float(accrual['total']),
+            'accrued_interest': float(accrual['accrued_interest']),
+            'penalty': float(accrual['penalty']),
+            'overdue_amount': float(accrual['overdue_amount']),
+            'amount_to_clear_overdue': float(accrual['amount_to_clear_overdue']),
+            'is_overdue': accrual['is_overdue'],
+            'overdue_days': accrual['overdue_days'],
+            'next_due_amount': float(accrual['next_due_amount']),
+            'penalty_rate': float(self.penalty_rate) if self.penalty_rate is not None else None,
+            'capitalize_interest': bool(self.capitalize_interest),
+            'grace_period_end_date': self.grace_period_end_date.strftime('%Y-%m-%d') if self.grace_period_end_date else None,
+            'accrual_start_date': self.accrual_start_date.strftime('%Y-%m-%d') if self.accrual_start_date else None,
             'paid_percent': round((1 - float(self.remaining_amount) / float(self.total_amount)) * 100, 1) if float(self.total_amount) > 0 else 100,
             'created_at': self.created_at.strftime('%d.%m.%Y') if self.created_at else None,
         }

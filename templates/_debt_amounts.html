@@ -1,0 +1,23 @@
+{# Debt card amounts: total debt with its breakdown and the overdue line. #}
+{% macro debt_amounts(debt, today) %}
+{% set accrual = debt.accrual_state(today) %}
+<div class="debt-card__amounts">
+    <div class="debt-card__amount-main" title="Основной долг, начисленные проценты и неустойка">
+        {{ accrual.total|money }}
+    </div>
+    <div class="debt-card__amount-total">
+        из {{ debt.total_amount|money }}
+    </div>
+</div>
+{% if accrual.accrued_interest > 0 or accrual.penalty > 0 %}
+<div class="debt-card__breakdown">
+    долг {{ accrual.principal|money }} · проценты {{ accrual.accrued_interest|money }}{% if accrual.penalty > 0 %} · неустойка {{ accrual.penalty|money }}{% endif %}
+</div>
+{% endif %}
+{% if accrual.is_overdue %}
+<a class="debt-card__overdue" href="/debts/{{ debt.id }}/overdue">
+    <i class="bi bi-exclamation-triangle"></i>
+    Просрочено {{ accrual.overdue_amount|money }}, {{ accrual.overdue_days }} дн. — к оплате {{ accrual.amount_to_clear_overdue|money }}
+</a>
+{% endif %}
+{% endmacro %}

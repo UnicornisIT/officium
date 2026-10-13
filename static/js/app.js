@@ -979,18 +979,26 @@ async function openPaymentModal(debtId) {
 
         const d = data.debt;
         document.getElementById('pm_name').textContent = `${d.bank_name} — ${d.product_name}`;
-        document.getElementById('pm_remaining').textContent = formatMoney(d.remaining_amount);
+        document.getElementById('pm_remaining').textContent = formatMoney(d.total_debt ?? d.remaining_amount);
         const minimumPayment = parseNumberInputValue(d.effective_next_payment_amount ?? d.minimum_payment);
-        const remainingAmount = parseNumberInputValue(d.remaining_amount);
+        const remainingAmount = parseNumberInputValue(d.total_debt ?? d.remaining_amount);
         currentMinimumPaymentAmount = d.is_first_payment_pending
             ? minimumPayment
             : minimumPayment > 0 && remainingAmount > 0
                 ? Math.min(minimumPayment, remainingAmount)
                 : minimumPayment;
-        currentMinimumPaymentDate = d.effective_next_payment_date || d.next_payment_date || null;
-        document.getElementById('pm_required_payment_label').textContent = d.is_first_payment_pending
-            ? 'Первый платёж'
-            : 'Минимальный платёж';
+        if (d.is_overdue && Number(d.amount_to_clear_overdue) > 0) {
+            // Overdue first: the preset closes the overdue and its penalty today.
+            currentMinimumPaymentAmount = parseNumberInputValue(d.amount_to_clear_overdue);
+        }
+        currentMinimumPaymentDate = d.is_overdue
+            ? today
+            : d.effective_next_payment_date || d.next_payment_date || null;
+        document.getElementById('pm_required_payment_label').textContent = d.is_overdue
+            ? 'Закрыть просрочку'
+            : d.is_first_payment_pending
+                ? 'Первый платёж'
+                : 'Минимальный платёж';
         const plannedTotalPayment = parseNumberInputValue(d.planned_early_repayment_amount);
         const earlyRepaymentAvailable = (
             d.debt_type === 'consumer_credit'

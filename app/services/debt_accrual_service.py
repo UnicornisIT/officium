@@ -27,6 +27,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from types import SimpleNamespace
 
 from dateutil.relativedelta import relativedelta
+from flask import g, has_app_context
 from sqlalchemy import inspect as sa_inspect
 
 from app.services.debt_calendar_service import (
@@ -86,6 +87,31 @@ def get_debt_state(debt, as_of=None, payments=None):
     if payments is None:
         payments = _load_payments(debt)
     return _AccrualEngine(debt, payments).run(as_of)
+
+
+def cached_debt_state(debt, as_of=None):
+    """get_debt_state memoized for the current request.
+
+    Pages ask for the same debt's state many times (sorting, cards, totals).
+    The key includes the fields every payment change touches, so a state
+    computed before a change is not reused after it.
+    """
+    as_of = as_of or date.today()
+    if not has_app_context():
+        return get_debt_state(debt, as_of=as_of)
+    cache = g.setdefault('_debt_state_cache', {})
+    key = (
+        id(debt),
+        getattr(debt, 'id', None),
+        as_of,
+        getattr(debt, 'updated_at', None),
+        str(getattr(debt, 'remaining_amount', None)),
+        getattr(debt, 'next_payment_date', None),
+        getattr(debt, 'accrual_start_date', None),
+    )
+    if key not in cache:
+        cache[key] = get_debt_state(debt, as_of=as_of)
+    return cache[key]
 
 
 def opening_principal(debt, payments):
@@ -153,6 +179,7 @@ class _AccrualEngine:
             include_payment_day=False,
         )
         self.grace_start, self.grace_end = self._grace_window()
+        self.split_anchor = None
         self.periods = []
         self.cycles = []
         self.allocations = {}
@@ -192,12 +219,9 @@ class _AccrualEngine:
                 yield anchor
             return
         if self.debt_type == 'split':
-            due = anchor
-            for _ in range(MAX_CYCLES):
-                previous = previous_payment_due_date(self.debt, due)
-                if after is None or previous <= after:
-                    break
-                due = previous
+            # Split cycles start where the split calendar stands now: every
+            # cycle up to the latest required payment counts as paid.
+            due = self.split_anchor or anchor
             while after is not None and due <= after:
                 due = next_payment_due_date(self.debt, due)
             for _ in range(MAX_CYCLES):
@@ -435,7 +459,19 @@ class _AccrualEngine:
         return paid, amount
 
     # --- driver ----------------------------------------------------------
+    def _split_calendar_anchor(self, as_of):
+        anchor = getattr(self.debt, 'next_payment_date', None)
+        paid_dates = [
+            payment.payment_date for payment in self.all_payments
+            if payment.payment_date <= as_of and not getattr(payment, 'is_early_repayment', False)
+        ]
+        if not anchor or not paid_dates or anchor > max(paid_dates):
+            return anchor
+        return next_payment_due_date(self.debt, max(paid_dates))
+
     def run(self, as_of):
+        if self.debt_type == 'split':
+            self.split_anchor = self._split_calendar_anchor(as_of)
         opening = opening_principal(self.debt, self.all_payments)
         start = self.start or as_of
         ledger = _Ledger(principal=opening, cursor=min(start, as_of))
@@ -489,7 +525,10 @@ class _AccrualEngine:
                 return due, money(max(required - paid, ZERO))
             if cycle_index > MAX_CYCLES:
                 break
-        return getattr(self.debt, 'next_payment_date', None), ZERO
+        anchor = getattr(self.debt, 'next_payment_date', None)
+        # A past date that is not overdue (e.g. a one-off payment already
+        # made) is not a due date any more.
+        return (anchor if anchor and anchor >= as_of else None), ZERO
 
     def _result(self, ledger, as_of, opening):
         principal = money(ledger.principal)
