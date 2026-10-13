@@ -275,6 +275,8 @@ class Payment(db.Model):
             'principal_amount': float(principal_amount),
             'interest_amount': float(interest_amount),
             'fee_amount': float(fee_amount),
+            'penalty_amount': float(self.penalty_amount or 0),
+            'breakdown_source': self.breakdown_source or 'auto',
             'payment_date': self.payment_date.strftime('%d.%m.%Y') if self.payment_date else None,
             'payment_date_iso': self.payment_date.strftime('%Y-%m-%d') if self.payment_date else None,
             'comment': self.comment,

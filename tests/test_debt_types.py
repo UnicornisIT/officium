@@ -868,7 +868,9 @@ class DebtTypesTestCase(unittest.TestCase):
         with self.app.app_context():
             debt = db.session.get(Debt, debt_id)
             self.assertEqual(debt.next_payment_date, date(2026, 9, 15))
-            self.assertEqual(debt.remaining_amount, Decimal('285000.00'))
+            # Interest 15.07-10.08 = 26 days: 300000 * 18.5% * 26 / 365 = 3953.42,
+            # principal 15000 - 3953.42 = 11046.58.
+            self.assertEqual(debt.remaining_amount, Decimal('288953.42'))
 
     def test_on_time_required_payment_has_no_auto_interest(self):
         self.login()
@@ -949,7 +951,7 @@ class DebtTypesTestCase(unittest.TestCase):
         self.assertEqual(payload['payment']['principal_amount'], 7173.66)
         self.assertEqual(payload['payment']['remaining_after_payment'], 9769.0)
 
-    def test_late_required_payment_gets_auto_overdue_interest(self):
+    def test_late_card_payment_without_grace_period_has_no_interest(self):
         self.login()
         with self.app.app_context():
             debt = Debt(
@@ -977,8 +979,9 @@ class DebtTypesTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertGreater(payload['payment']['interest_amount'], 0)
-        self.assertLess(payload['payment']['principal_amount'], 7173.66)
+        # No grace period is set, so the card accrues no interest at all.
+        self.assertEqual(payload['payment']['interest_amount'], 0.0)
+        self.assertEqual(payload['payment']['principal_amount'], 7173.66)
 
     def test_recurring_payment_date_stays_when_payment_is_below_minimum(self):
         self.login()
@@ -1143,6 +1146,7 @@ class DebtTypesTestCase(unittest.TestCase):
                 minimum_payment=Decimal('8355.71'),
                 interest_rate=Decimal('32.75'),
                 next_payment_date=date(2026, 8, 21),
+                accrual_start_date=date(2026, 6, 21),
                 is_payment_recurring=True,
                 status='active',
             )
@@ -1190,7 +1194,10 @@ class DebtTypesTestCase(unittest.TestCase):
             edited_payment = db.session.get(Payment, payment_id)
             self.assertTrue(edited_payment.is_early_repayment)
             self.assertEqual(debt.next_payment_date, date(2026, 7, 21))
-            self.assertEqual(debt.remaining_amount, Decimal('189828.07'))
+            # Principal on 21.06 is 189828.07 + 10000 + 171.93 = 200000.00.
+            # The early 10000 goes to principal; 171.93 on 21.07 covers part of the
+            # interest accrued since 21.06, so the principal stays at 190000.00.
+            self.assertEqual(debt.remaining_amount, Decimal('190000.00'))
 
     def test_editing_payment_amount_recalculates_following_balances(self):
         self.login()

@@ -3,7 +3,7 @@ from decimal import Decimal
 from flask import current_app, jsonify, request
 from app.models import Payment
 from app.services.debt_service import get_user_debt
-from app.services.payment_service import add_payment, update_payment
+from app.services.payment_service import add_payment, delete_payment, update_payment
 from app.utils import parse_date, parse_decimal
 from extensions import db
 
@@ -39,6 +39,8 @@ def init_app(app):
             principal_amount = parse_decimal(data.get('principal_amount'), 'Основной долг', required=False)
             interest_amount = parse_decimal(data.get('interest_amount'), 'Проценты', required=False)
             fee_amount = parse_decimal(data.get('fee_amount'), 'Комиссии', required=False)
+            penalty_amount = parse_decimal(data.get('penalty_amount'), 'Неустойка', required=False)
+            manual_breakdown = _manual_breakdown_flag(data)
             scheduled_payment_amount = parse_decimal(data.get('scheduled_payment_amount'), 'Обязательная часть платежа', required=False)
             bank_remaining_after_payment = parse_decimal(data.get('bank_remaining_after_payment'), 'Остаток банка после платежа', required=False)
             if amount <= 0:
@@ -68,7 +70,9 @@ def init_app(app):
                 principal_amount=principal_amount,
                 interest_amount=interest_amount,
                 fee_amount=fee_amount,
+                penalty_amount=penalty_amount,
                 bank_remaining_after_payment=bank_remaining_after_payment,
+                manual_breakdown=manual_breakdown,
             )
             debt_cleared = Decimal(str(debt.remaining_amount or 0)) <= Decimal('0.00')
 
@@ -81,6 +85,7 @@ def init_app(app):
             })
 
         except ValueError as e:
+            db.session.rollback()
             return jsonify({'success': False, 'error': str(e)}), 422
         except Exception:
             db.session.rollback()
@@ -106,6 +111,8 @@ def init_app(app):
             principal_amount = parse_decimal(data.get('principal_amount'), 'Основной долг', required=False)
             interest_amount = parse_decimal(data.get('interest_amount'), 'Проценты', required=False)
             fee_amount = parse_decimal(data.get('fee_amount'), 'Комиссии', required=False)
+            penalty_amount = parse_decimal(data.get('penalty_amount'), 'Неустойка', required=False)
+            manual_breakdown = _manual_breakdown_flag(data)
             scheduled_payment_amount = parse_decimal(
                 data.get('scheduled_payment_amount', payment.scheduled_payment_amount),
                 'Обязательная часть платежа',
@@ -135,7 +142,9 @@ def init_app(app):
                 principal_amount=principal_amount,
                 interest_amount=interest_amount,
                 fee_amount=fee_amount,
+                penalty_amount=penalty_amount,
                 bank_remaining_after_payment=bank_remaining_after_payment,
+                manual_breakdown=manual_breakdown,
             )
 
             return jsonify({
@@ -151,3 +160,31 @@ def init_app(app):
             db.session.rollback()
             current_app.logger.exception('Failed to update a debt payment')
             return jsonify({'success': False, 'error': 'Не удалось обновить платеж'}), 500
+
+    @app.route('/api/debts/<int:debt_id>/payments/<int:payment_id>', methods=['DELETE'])
+    def api_delete_payment(debt_id, payment_id):
+        debt = get_user_debt(debt_id)
+        if not debt:
+            return jsonify({'success': False, 'error': 'Долг не найден'}), 404
+
+        payment = Payment.query.filter_by(id=payment_id, debt_id=debt_id).first()
+        if not payment:
+            return jsonify({'success': False, 'error': 'Платеж не найден'}), 404
+
+        try:
+            delete_payment(debt, payment)
+            return jsonify({'success': True, 'debt': debt.to_dict()})
+        except ValueError as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 422
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception('Failed to delete a debt payment')
+            return jsonify({'success': False, 'error': 'Не удалось удалить платеж'}), 500
+
+
+def _manual_breakdown_flag(data):
+    """None when the client did not say; then any typed amount means manual."""
+    if 'manual_breakdown' not in data or data.get('manual_breakdown') is None:
+        return None
+    return bool(data.get('manual_breakdown'))

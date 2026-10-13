@@ -149,8 +149,10 @@ class PaymentIntegrityTestCase(unittest.TestCase):
 
     def test_overpayment_and_payment_of_closed_debt_are_rejected(self):
         debt = self._debt()
+        # Interest accrues from the cycle start 01.12.2025 to 11.01.2026:
+        # 1000 * 36.5% * 41 / 365 = 41.00, so at most 1041.00 can be paid.
         with self.assertRaisesRegex(ValueError, 'превышает остаток'):
-            add_payment(debt, Decimal('1010.01'), payment_date=date(2026, 1, 11))
+            add_payment(debt, Decimal('1041.01'), payment_date=date(2026, 1, 11))
 
         debt.remaining_amount = Decimal('0.00')
         db.session.commit()
