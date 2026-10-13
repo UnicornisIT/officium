@@ -547,7 +547,7 @@
                 <div class="plan-source-list">
                     {% for item in plan.debt_items %}
                     <div class="plan-source-row">
-                        <div><strong>{{ item.label }}</strong><span>{{ item.debt_type_label }} · остаток {{ item.remaining|money }}</span></div>
+                        <div><strong>{{ item.label }}</strong><span>{{ item.debt_type_label }} · задолженность {{ item.remaining|money }}{% if item.is_overdue %} · просрочено {{ item.overdue_amount|money }}{% endif %}{% if item.penalty > 0 %} · неустойка {{ item.penalty|money }}{% endif %}</span></div>
                         <strong>{{ item.monthly_amount|money }}</strong>
                         {% if not plan.is_demo %}<a href="{{ url_for('index', edit_debt=item.id) }}" title="Открыть долг"><i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
                     </div>

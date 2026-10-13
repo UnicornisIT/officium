@@ -635,6 +635,12 @@ def _build_debt_items(debts, today, planning_horizon_end):
             monthly_amount = _decimal(minimum_payment + monthly_fee)
             scheduled_amount = monthly_amount
 
+        accrual = _debt_accrual(debt, today)
+        unpaid_penalty = _decimal(accrual['penalty']) if accrual else Decimal('0.00')
+        if unpaid_penalty > 0:
+            # The penalty is repaid before current installments, so it is due now.
+            monthly_amount = _decimal(monthly_amount + unpaid_penalty)
+
         projected_remaining_after_plan = _decimal(debt.remaining_amount)
         if schedule is not None and planned_rows:
             projected_remaining_after_plan = _decimal(
@@ -663,9 +669,11 @@ def _build_debt_items(debts, today, planning_horizon_end):
         ]
         if schedule is None and monthly_amount > 0:
             planned_payments = [{
-                'amount': _float(monthly_amount),
+                'amount': _float(monthly_amount - unpaid_penalty),
                 'due_date': next_payment_date,
             }]
+        if unpaid_penalty > 0:
+            planned_payments = [{'amount': _float(unpaid_penalty), 'due_date': today}] + planned_payments
 
         end_date, payments_left = _debt_completion(debt, today, schedule=schedule)
         months_left = _months_until(today, end_date) if end_date else None
@@ -677,7 +685,11 @@ def _build_debt_items(debts, today, planning_horizon_end):
             'label': f'{debt.bank_name} — {debt.product_name}',
             'debt_type': debt.debt_type,
             'debt_type_label': Debt.DEBT_TYPE_LABELS.get(debt.debt_type, 'Долг'),
-            'remaining': _float(debt.remaining_amount),
+            'remaining': _float(accrual['total'] if accrual else debt.remaining_amount),
+            'principal': _float(debt.remaining_amount),
+            'is_overdue': bool(accrual and accrual['is_overdue']),
+            'overdue_amount': _float(accrual['overdue_amount'] if accrual else 0),
+            'penalty': _float(unpaid_penalty),
             'minimum_payment': _float(minimum_payment),
             'monthly_fee': _float(monthly_fee),
             'monthly_amount': _float(monthly_amount),
@@ -732,6 +744,15 @@ def _build_debt_items(debts, today, planning_horizon_end):
                 'detail': 'Платеж включен в бюджет, но параметры долга нужно проверить для прогноза.',
             })
     return items, gaps
+
+
+def _debt_accrual(debt, today):
+    if not hasattr(debt, 'accrual_state'):
+        return None
+    try:
+        return debt.accrual_state(today)
+    except (ValueError, ArithmeticError, SQLAlchemyError):
+        return None
 
 
 def _planned_schedule_rows(schedule, planning_horizon_end):
