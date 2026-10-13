@@ -27,6 +27,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from types import SimpleNamespace
 
 from dateutil.relativedelta import relativedelta
+from sqlalchemy import inspect as sa_inspect
 
 from app.services.debt_calendar_service import (
     next_payment_due_date,
@@ -106,7 +107,10 @@ def accrual_start_date(debt):
 
 
 def _load_payments(debt):
-    if not getattr(debt, 'id', None):
+    # Only stored debts read payments from the database: demo debts carry
+    # made-up ids that may belong to someone else's rows.
+    state = sa_inspect(debt, raiseerr=False)
+    if not getattr(debt, 'id', None) or state is None or not state.persistent:
         return list(getattr(debt, 'payments', None) or [])
     from app.models import Payment
     return Payment.query.filter_by(debt_id=debt.id).all()
@@ -514,7 +518,18 @@ class _AccrualEngine:
             'amount_to_clear_overdue': overdue_interest + overdue_principal + penalty,
             'is_overdue': overdue_since is not None,
             'overdue_since': overdue_since,
+            'overdue_items': [
+                {
+                    'due_date': item.due_date,
+                    'interest': money(item.interest),
+                    'principal': money(item.principal),
+                    'amount': money(item.interest + item.principal),
+                    'days': (as_of - item.due_date).days,
+                }
+                for item in ledger.overdue
+            ],
             'overdue_days': (as_of - overdue_since).days if overdue_since else 0,
+            'accrues_interest': self._accrues_interest(),
             'grace_interest_pending': money(ledger.grace_interest),
             'grace_period_end_date': self.grace_end,
             'penalty_rate': self.penalty_rate if self.penalty_rate > 0 else None,
