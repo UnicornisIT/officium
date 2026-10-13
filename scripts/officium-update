@@ -1,0 +1,737 @@
+#!/bin/bash
+# officium-update: inspect, back up, update and roll back an Officium server
+# with one command. Installed as /usr/local/sbin/officium-update (root:root 0755).
+#
+#   officium-update check                  diagnostics only, changes nothing
+#   officium-update backup                 database and configuration backup
+#   officium-update latest                 update to the latest GitHub release
+#   officium-update --tag vX.Y.Z           update to an exact published tag
+#   officium-update rollback [--to DIR]    switch the code back to a release
+#   global flags: --yes (no confirmation), --dry-run (print the plan only)
+#
+# Managed installs (<APP_ROOT>/current -> releases/...) are updated by the
+# root-owned officium-update-runner, the same code path as the admin button.
+# A legacy git checkout is migrated by install-officium.sh from a verified
+# copy of the target tag. Parameters come from the existing .env, systemd
+# unit and /etc/officium/updater.env.
+#
+# Exit codes: 0 success, 1 failed and rolled back, 2 manual action needed.
+
+ASSUME_YES=false
+DRY_RUN=false
+COMMAND=""
+TARGET_TAG=""
+ROLLBACK_TO=""
+EXIT_ROLLED_BACK=1
+EXIT_MANUAL=2
+UPDATER_ENV="${OFFICIUM_UPDATER_ENV:-/etc/officium/updater.env}"
+RUNNER="${OFFICIUM_RUNNER:-/usr/local/sbin/officium-update-runner}"
+CLIENT="${OFFICIUM_CLIENT:-/usr/local/bin/officium-update-client}"
+LOG_DIR="${OFFICIUM_LOG_DIR:-/var/log/officium}"
+MIN_FREE_KB=1048576
+TAG_RE='^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$'
+WARNINGS=()
+CHECKOUT=""
+OPTION_FILE=""
+BACKUP_PATH=""
+LOG_FILE=""
+
+info() { printf '==> %s\n' "$*"; }
+warn() { printf 'WARNING: %s\n' "$*" >&2; WARNINGS+=("$*"); }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit "$EXIT_MANUAL"; }
+usage() {
+    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    exit "$EXIT_MANUAL"
+}
+
+cleanup() {
+    if [ -n "$OPTION_FILE" ]; then rm -f -- "$OPTION_FILE"; fi
+    if [ -n "$CHECKOUT" ] && [[ "$CHECKOUT" = /var/tmp/officium-update.* ]]; then rm -rf -- "$CHECKOUT"; fi
+}
+
+# KEY=VALUE files are read, never sourced or eval'd. The last assignment wins.
+read_env_value() {
+    local file="$1" key="$2" line value=""
+    [ -r "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line#export }"
+        case "$line" in "$key="*) value="${line#"$key="}" ;; esac
+    done <"$file"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [[ "$value" =~ ^\"(.*)\"$ || "$value" =~ ^\'(.*)\'$ ]]; then value="${BASH_REMATCH[1]}"; fi
+    printf '%s' "$value"
+}
+
+# Waitress options from `systemctl show -p ExecStart --value`, which already
+# reflects drop-ins. Works for both .../waitress-serve and python -m waitress.
+parse_exec_start() {
+    local exec_start="$1" argv
+    argv="${exec_start#*argv\[\]=}"
+    argv="${argv%% ; *}"
+    [[ "$argv" =~ --listen=([^[:space:]]+):([0-9]+) ]] && \
+        printf 'HOST=%s\nPORT=%s\n' "${BASH_REMATCH[1]//[\[\]]/}" "${BASH_REMATCH[2]}"
+    [[ "$argv" =~ --threads=([0-9]+) ]] && printf 'WAITRESS_THREADS=%s\n' "${BASH_REMATCH[1]}"
+    [[ "$argv" =~ --trusted-proxy=([^[:space:]]+) ]] && printf 'TRUSTED_PROXY=%s\n' "${BASH_REMATCH[1]}"
+    [[ "$argv" =~ --trusted-proxy-headers=([a-z -]+[a-z])[[:space:]]+[A-Za-z_]+:[A-Za-z_]+ ]] && \
+        printf 'TRUSTED_PROXY_HEADERS=%s\n' "${BASH_REMATCH[1]}"
+    [[ "$argv" =~ ^([^[:space:]]+)/bin/(python|waitress-serve) ]] && printf 'UNIT_VENV=%s\n' "${BASH_REMATCH[1]}"
+    return 0
+}
+
+github_repository_from_remote() {
+    local remote="$1"
+    remote="${remote%.git}"
+    case "$remote" in
+        https://github.com/*) printf '%s' "${remote#https://github.com/}" ;;
+        git@github.com:*) printf '%s' "${remote#git@github.com:}" ;;
+        ssh://git@github.com/*) printf '%s' "${remote#ssh://git@github.com/}" ;;
+    esac
+}
+
+# A dump is usable only if mysqldump got to its trailer line.
+dump_is_complete() {
+    [ -s "$1" ] && tail -n 1 "$1" | grep -q '^-- Dump completed'
+}
+
+# The newest completed release other than the current one.
+previous_release() {
+    local releases="$1" current="$2" marker
+    while IFS= read -r marker; do
+        marker="${marker#* }"
+        [ "$(dirname "$marker")" = "$current" ] && continue
+        dirname "$marker"
+        return 0
+    done < <(find "$releases" -mindepth 2 -maxdepth 2 -name .officium-release-ready -printf '%T@ %p\n' 2>/dev/null | sort -rn)
+    return 1
+}
+
+release_label() {
+    if [ -L "$APP_ROOT/current" ]; then
+        basename "$(realpath -e "$APP_ROOT/current" 2>/dev/null || echo unknown)"
+    elif [ -d "$APP_ROOT/.git" ]; then
+        git -c "safe.directory=$APP_ROOT" -C "$APP_ROOT" describe --tags --always 2>/dev/null || echo legacy
+    else
+        echo none
+    fi
+}
+
+discover() {
+    local updater_app_dir exec_start
+    APP_ROOT="${OFFICIUM_APP_ROOT:-}"
+    updater_app_dir=$(read_env_value "$UPDATER_ENV" APP_DIR)
+    if [ -z "$APP_ROOT" ]; then
+        case "$updater_app_dir" in
+            */current) APP_ROOT="${updater_app_dir%/current}" ;;
+            /*) APP_ROOT="$updater_app_dir" ;;
+            *) APP_ROOT=/opt/officium ;;
+        esac
+    fi
+    if [ -L "$APP_ROOT/current" ]; then
+        LAYOUT=managed
+        ENV_FILE="$APP_ROOT/shared/.env"
+    elif [ -e "$APP_ROOT/.git" ]; then
+        LAYOUT=legacy
+        ENV_FILE="$APP_ROOT/.env"
+    else
+        LAYOUT=unknown
+        ENV_FILE=""
+    fi
+    SERVICE_NAME=$(read_env_value "$UPDATER_ENV" SERVICE_NAME)
+    SERVICE_NAME="${OFFICIUM_SERVICE_NAME:-${SERVICE_NAME:-officium}}"
+    MONTHLY_SERVICE="${OFFICIUM_MONTHLY_SERVICE:-officium-monthly-expenses}"
+    APP_USER=$(systemctl show "$SERVICE_NAME.service" -p User --value 2>/dev/null || true)
+    APP_GROUP=$(systemctl show "$SERVICE_NAME.service" -p Group --value 2>/dev/null || true)
+    APP_USER="${APP_USER:-$(read_env_value "$UPDATER_ENV" APP_USER)}"
+    APP_GROUP="${APP_GROUP:-$(read_env_value "$UPDATER_ENV" APP_GROUP)}"
+    HOST="" PORT="" WAITRESS_THREADS="" TRUSTED_PROXY="" TRUSTED_PROXY_HEADERS=""
+    exec_start=$(systemctl show "$SERVICE_NAME.service" -p ExecStart --value 2>/dev/null || true)
+    while IFS='=' read -r key value; do
+        case "$key" in
+            HOST|PORT|WAITRESS_THREADS|TRUSTED_PROXY|TRUSTED_PROXY_HEADERS) printf -v "$key" '%s' "$value" ;;
+        esac
+    done < <(parse_exec_start "$exec_start")
+    WAITRESS_THREADS="${WAITRESS_THREADS:-4}"
+    TRUSTED_PROXY="${TRUSTED_PROXY:-127.0.0.1}"
+    TRUSTED_PROXY_HEADERS="${TRUSTED_PROXY_HEADERS:-x-forwarded-for x-forwarded-host x-forwarded-proto x-forwarded-port}"
+    DB_ENGINE=$(read_env_value "$ENV_FILE" DB_ENGINE)
+    case "$(read_env_value "$ENV_FILE" DATABASE_URL)" in
+        sqlite:*) DB_ENGINE=sqlite ;;
+        mysql*) DB_ENGINE=mysql ;;
+    esac
+    DB_ENGINE="${DB_ENGINE:-mysql}"
+    DB_NAME=$(read_env_value "$ENV_FILE" DB_NAME)
+    DB_NAME="${DB_NAME:-officium}"
+    APP_TIMEZONE=$(read_env_value "$ENV_FILE" APP_TIMEZONE)
+    REPOSITORY="${OFFICIUM_REPOSITORY:-$(read_env_value "$UPDATER_ENV" REPOSITORY)}"
+    if [ -z "$REPOSITORY" ] && [ "$LAYOUT" = legacy ]; then
+        REPOSITORY=$(github_repository_from_remote "$(git -c "safe.directory=$APP_ROOT" -C "$APP_ROOT" remote get-url origin 2>/dev/null || true)")
+    fi
+    SOURCE_URL="${OFFICIUM_SOURCE_URL:-$(read_env_value "$UPDATER_ENV" SOURCE_URL)}"
+    SOURCE_URL="${SOURCE_URL:-https://github.com}"
+    GITHUB_API_URL="${OFFICIUM_GITHUB_API_URL:-$(read_env_value "$UPDATER_ENV" GITHUB_API_URL)}"
+    GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
+    BACKUP_DIR=$(read_env_value "$UPDATER_ENV" BACKUP_DIR)
+    BACKUP_DIR="${OFFICIUM_BACKUP_DIR:-${BACKUP_DIR:-/var/backups/officium}}"
+    STATUS_FILE=$(read_env_value "$UPDATER_ENV" STATUS_FILE)
+    STATUS_FILE="${STATUS_FILE:-/var/lib/officium/server-update-status.json}"
+    STATE_DIR=$(dirname "$STATUS_FILE")
+    UPDATE_SOCKET=$(read_env_value "$UPDATER_ENV" UPDATE_SOCKET)
+    UPDATE_SOCKET="${UPDATE_SOCKET:-/run/officium/updater.sock}"
+    HEALTHCHECK_URL="http://${HOST:-127.0.0.1}:${PORT:-5000}/login"
+}
+
+# Everything an update needs, with the exact names that are missing.
+require_parameters() {
+    local missing=()
+    [ "$LAYOUT" != unknown ] || missing+=("installation at $APP_ROOT (no current/ link and no git checkout; set OFFICIUM_APP_ROOT)")
+    [ -n "$ENV_FILE" ] && [ -r "$ENV_FILE" ] || missing+=("readable application .env (${ENV_FILE:-unknown})")
+    [ -n "$APP_USER" ] || missing+=("User= of $SERVICE_NAME.service")
+    [ -n "$APP_GROUP" ] || missing+=("Group= of $SERVICE_NAME.service")
+    [ -n "$PORT" ] || missing+=("--listen=HOST:PORT in ExecStart of $SERVICE_NAME.service")
+    [ -n "$APP_TIMEZONE" ] || missing+=("APP_TIMEZONE in $ENV_FILE")
+    [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || missing+=("REPOSITORY in $UPDATER_ENV or OFFICIUM_REPOSITORY=owner/name")
+    if [ "${#missing[@]}" -gt 0 ]; then
+        printf 'ERROR: cannot continue, these parameters are missing:\n' >&2
+        printf '  - %s\n' "${missing[@]}" >&2
+        exit "$EXIT_MANUAL"
+    fi
+}
+
+latest_tag() {
+    local tag
+    tag=$(curl --silent --show-error --fail --max-time 15 \
+        --header 'Accept: application/vnd.github+json' --header 'User-Agent: officium-update' \
+        "$GITHUB_API_URL/repos/$REPOSITORY/releases/latest" | \
+        python3 -c 'import json, sys; print(json.load(sys.stdin).get("tag_name", ""))') || return 1
+    [[ "$tag" =~ $TAG_RE ]] || return 1
+    printf '%s' "$tag"
+}
+
+# Clone the exact tag into a root-only directory outside /root and check that
+# its commit is the one the remote tag points to.
+verified_checkout() {
+    local tag="$1" url commit remote_commit
+    url="$SOURCE_URL/$REPOSITORY.git"
+    CHECKOUT=$(mktemp -d /var/tmp/officium-update.XXXXXX)
+    chmod 0700 "$CHECKOUT"
+    git clone --quiet --no-checkout "$url" "$CHECKOUT/source"
+    git -C "$CHECKOUT/source" fetch --quiet --force origin "refs/tags/$tag:refs/tags/$tag"
+    commit=$(git -C "$CHECKOUT/source" rev-parse --verify "refs/tags/$tag^{commit}")
+    remote_commit=$(git ls-remote --exit-code "$url" "refs/tags/$tag^{}" "refs/tags/$tag" | \
+        awk '$2 ~ /\^\{\}$/ {peeled=$1} NR==1 {direct=$1} END {print peeled ? peeled : direct}')
+    [ "$commit" = "$remote_commit" ] || die "The fetched $tag does not match the remote tag."
+    git -C "$CHECKOUT/source" checkout --quiet --detach "$commit"
+    [ -f "$CHECKOUT/source/deployment/install-officium.sh" ] || die "$tag has no deployment/install-officium.sh."
+    CHECKOUT_DIR="$CHECKOUT/source"
+    info "Verified $tag at commit ${commit:0:12} in $CHECKOUT_DIR"
+}
+
+# Writes the 0600 MySQL option file $1 from the .env without the password
+# ever reaching argv or a shell variable; prints "mysql DB" or "sqlite PATH".
+write_database_options() {
+    python3 - "$ENV_FILE" "$1" "$APP_ROOT" <<'PY'
+import sys
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
+
+env_file, option_file, app_root = sys.argv[1:]
+values = {}
+for raw in Path(env_file).read_text(encoding='utf-8').splitlines():
+    line = raw.strip()
+    if line.startswith('export '):
+        line = line[7:]
+    if line and not line.startswith('#') and '=' in line:
+        key, value = line.split('=', 1)
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in '"\'':
+            value = value[1:-1]
+        values[key.strip()] = value
+url = values.get('DATABASE_URL', '')
+if url.startswith('sqlite:///'):
+    path = Path(unquote(url[len('sqlite:///'):].split('?', 1)[0]))
+    print('sqlite', path if path.is_absolute() else Path(app_root) / path)
+    raise SystemExit(0)
+if not url and values.get('DB_ENGINE', 'mysql').lower() == 'sqlite':
+    path = Path(values.get('SQLITE_PATH', 'dev.db'))
+    print('sqlite', path if path.is_absolute() else Path(app_root) / path)
+    raise SystemExit(0)
+if url:
+    parsed = urlsplit(url.replace('mysql+pymysql://', 'mysql://', 1))
+    settings = {
+        'user': unquote(parsed.username or ''), 'password': unquote(parsed.password or ''),
+        'host': parsed.hostname or 'localhost', 'port': str(parsed.port or 3306),
+    }
+    database = unquote(parsed.path.lstrip('/'))
+else:
+    settings = {
+        'user': values.get('DB_USER', ''), 'password': values.get('DB_PASSWORD', ''),
+        'host': values.get('DB_HOST', 'localhost'), 'port': values.get('DB_PORT', '3306'),
+    }
+    database = values.get('DB_NAME', '')
+for key, value in settings.items():
+    if any(character in value for character in '\n\r\0'):
+        raise SystemExit(f'{key} contains a control character')
+
+
+def quote(value):
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+
+with open(option_file, 'w', encoding='utf-8') as handle:
+    handle.write('[client]\n')
+    for key in ('user', 'password', 'host'):
+        handle.write(f'{key}={quote(settings[key])}\n')
+    handle.write(f'port={int(settings["port"])}\n')
+print('mysql', database)
+PY
+}
+
+backup_all() {
+    local from="$1" to="$2" engine target nginx_file
+    BACKUP_PATH="$BACKUP_DIR/$(date -u +%Y%m%dT%H%M%SZ)-${from//[^A-Za-z0-9._+-]/_}-to-${to//[^A-Za-z0-9._+-]/_}"
+    if [ "$DRY_RUN" = true ]; then
+        info "[dry-run] would back up the database and configuration to $BACKUP_PATH"
+        return 0
+    fi
+    install -d -o root -g root -m 0700 "$BACKUP_PATH"
+    # Created here, not in the process substitution below, so the path is
+    # known to this shell and the EXIT trap removes the file.
+    OPTION_FILE=$(mktemp /run/officium-update-mysql.XXXXXX)
+    chmod 0600 "$OPTION_FILE"
+    read -r engine target < <(write_database_options "$OPTION_FILE")
+    case "$engine" in
+        mysql)
+            [[ "$target" =~ ^[A-Za-z0-9_$][A-Za-z0-9_$-]{0,63}$ ]] || die "Invalid MySQL database name in $ENV_FILE."
+            command -v mysqldump >/dev/null 2>&1 || die "mysqldump is not installed (apt install mysql-client)."
+            info "Dumping MySQL database $target"
+            (umask 077; mysqldump --defaults-extra-file="$OPTION_FILE" --single-transaction --quick \
+                --no-tablespaces --routines --triggers --events --hex-blob \
+                --default-character-set=utf8mb4 "$target" >"$BACKUP_PATH/database.sql") || \
+                die "mysqldump failed; nothing was changed. Backup directory: $BACKUP_PATH"
+            dump_is_complete "$BACKUP_PATH/database.sql" || \
+                die "The MySQL dump is empty or has no '-- Dump completed' line; nothing was changed."
+            ;;
+        sqlite)
+            [ -f "$target" ] || die "SQLite database $target does not exist."
+            info "Backing up SQLite database $target"
+            python3 - "$target" "$BACKUP_PATH/database.sqlite3" <<'PY'
+import sqlite3
+import sys
+
+with sqlite3.connect(f'file:{sys.argv[1]}?mode=ro', uri=True) as source, sqlite3.connect(sys.argv[2]) as target:
+    source.backup(target)
+PY
+            ;;
+        *) die "Cannot determine the database engine from $ENV_FILE." ;;
+    esac
+    rm -f -- "$OPTION_FILE"
+    OPTION_FILE=""
+    cp -a -- "$ENV_FILE" "$BACKUP_PATH/app.env"
+    if [ -f "$UPDATER_ENV" ]; then cp -a -- "$UPDATER_ENV" "$BACKUP_PATH/updater.env"; fi
+    for unit in "/etc/systemd/system/$SERVICE_NAME.service" "/etc/systemd/system/$SERVICE_NAME.service.d" \
+            "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer" \
+            /etc/tmpfiles.d/officium.conf; do
+        if [ -e "$unit" ]; then cp -a --parents -- "$unit" "$BACKUP_PATH"; fi
+    done
+    if [ -d /etc/nginx ]; then
+        while IFS= read -r nginx_file; do
+            cp -a --parents -- "$(realpath -e "$nginx_file")" "$BACKUP_PATH"
+        done < <(grep -rlsE -e "127\.0\.0\.1:${PORT:-5000}|localhost:${PORT:-5000}" -e "$APP_ROOT" \
+            /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | sort -u)
+    fi
+    chmod -R go-rwx "$BACKUP_PATH"
+    info "Backup complete: $BACKUP_PATH"
+}
+
+check_line() {
+    local status="$1" name="$2" detail="${3:-}"
+    printf '%-5s %-28s %s\n' "$status" "$name" "$detail"
+    [ "$status" != FAIL ] || CHECK_FAILED=true
+}
+
+command_check() {
+    local current latest free_kb exec_start dropin nginx_hits restarts http env_real components
+    CHECK_FAILED=false
+    discover
+    check_line INFO layout "$LAYOUT at $APP_ROOT (service $SERVICE_NAME, user ${APP_USER:-?}:${APP_GROUP:-?})"
+    current=$(release_label)
+    if latest=$(latest_tag 2>/dev/null); then
+        if [[ "$current" = "$latest" || "$current" = "$latest"-* ]]; then
+            check_line PASS version "$current (latest release $latest)"
+        else
+            check_line WARN version "$current; latest release is $latest"
+        fi
+    else
+        check_line WARN version "$current; the latest release could not be read from $GITHUB_API_URL"
+    fi
+    free_kb=$(df -Pk "$APP_ROOT" 2>/dev/null | awk 'NR==2 {print $4}')
+    if [[ "$free_kb" =~ ^[0-9]+$ ]] && [ "$free_kb" -ge "$MIN_FREE_KB" ]; then
+        check_line PASS "disk space" "$((free_kb / 1024)) MiB free"
+    else
+        check_line FAIL "disk space" "at least 1 GiB is needed next to $APP_ROOT"
+    fi
+    if [ "$LAYOUT" = managed ] && components=$("$RUNNER" --components 2>/dev/null); then
+        if [[ "$components" =~ \"state\":\"(differs|missing)\" ]]; then
+            check_line WARN "updater components" "$(grep -o '{[^}]*}' <<<"$components" | grep -v '"current"' | tr '\n' ' ')"
+        else
+            check_line PASS "updater components" "runner, client and deploy-release match the current release"
+        fi
+    elif [ -x "$RUNNER" ]; then
+        check_line WARN "updater components" "the installed runner predates this command; 'officium-update latest' replaces it"
+    else
+        check_line WARN "updater components" "$RUNNER is not installed"
+    fi
+    if [ -n "$APP_USER" ] && [ -x "$CLIENT" ] && \
+            (cd / && runuser -u "$APP_USER" -- env "OFFICIUM_UPDATE_SOCKET=$UPDATE_SOCKET" "$CLIENT" get_status >/dev/null 2>&1); then
+        check_line PASS "updater socket" "$APP_USER can connect to $UPDATE_SOCKET"
+    else
+        check_line WARN "updater socket" "$APP_USER cannot use $UPDATE_SOCKET (admin button unavailable)"
+    fi
+    exec_start=$(systemctl show "$SERVICE_NAME.service" -p ExecStart --value 2>/dev/null || true)
+    if [[ "$exec_start" == *waitress-serve* ]]; then
+        check_line FAIL "service command" "runs a venv console script; 'officium-update latest' switches to python -m waitress"
+    else
+        check_line PASS "service command" "python -m waitress"
+    fi
+    for dropin in "/etc/systemd/system/$SERVICE_NAME.service.d/"*.conf; do
+        [ -f "$dropin" ] || continue
+        if grep -q '^[[:space:]]*ExecStart=' "$dropin"; then
+            check_line WARN "drop-in" "$dropin overrides ExecStart"
+        fi
+    done
+    if [ -d /etc/nginx ]; then
+        nginx_hits=$(grep -rnsE "^[[:space:]]*(alias|root)[[:space:]]+\"?$APP_ROOT(/|\"|;)" /etc/nginx 2>/dev/null | sort -u || true)
+        if [ -n "$nginx_hits" ]; then
+            check_line FAIL "nginx static" "nginx reads files from $APP_ROOT directly: $(printf '%s' "$nginx_hits" | tr '\n' ' ')"
+        else
+            check_line PASS "nginx static" "served by the application"
+        fi
+    fi
+    if [ "$LAYOUT" = managed ]; then
+        env_real=$(realpath -e "$APP_ROOT/current/.env" 2>/dev/null || echo broken)
+        if [ "$env_real" = "$(realpath -e "$ENV_FILE" 2>/dev/null)" ]; then
+            check_line PASS ".env link" "current/.env -> $ENV_FILE"
+        else
+            check_line FAIL ".env link" "current/.env resolves to $env_real, not $ENV_FILE"
+        fi
+        if "$RUNNER" --verify-release "$(realpath -e "$APP_ROOT/current")" >/dev/null 2>&1; then
+            check_line PASS "venv paths" "every venv/bin script points inside the release"
+        else
+            check_line WARN "venv paths" "venv/bin scripts point outside the release (harmless with python -m waitress)"
+        fi
+    fi
+    restarts=$(systemctl show "$SERVICE_NAME.service" -p NRestarts --value 2>/dev/null || echo '?')
+    if systemctl is-active --quiet "$SERVICE_NAME.service"; then
+        check_line PASS service "active, NRestarts=$restarts"
+    else
+        check_line FAIL service "$SERVICE_NAME.service is not active (NRestarts=$restarts)"
+    fi
+    http=$(curl --silent --output /dev/null --max-time 10 --write-out '%{http_code}' "$HEALTHCHECK_URL" || true)
+    if [ "$http" = 200 ]; then
+        check_line PASS http "$HEALTHCHECK_URL answered 200"
+    else
+        check_line FAIL http "$HEALTHCHECK_URL answered ${http:-nothing}"
+    fi
+    [ "$CHECK_FAILED" = false ] || return "$EXIT_MANUAL"
+}
+
+confirm() {
+    [ "$ASSUME_YES" = true ] && return 0
+    [ -t 0 ] || die "Not running interactively; pass --yes to confirm: $*"
+    local answer
+    read -r -p "$* [y/N] " answer
+    [[ "$answer" =~ ^[Yy] ]] || die "Cancelled; nothing was changed."
+}
+
+installer_environment() {
+    printf '%s\n' \
+        "APP_DIR=$APP_ROOT" "APP_USER=$APP_USER" "APP_GROUP=$APP_GROUP" \
+        "VENV_DIR=$APP_ROOT/current/venv" "SERVICE_NAME=$SERVICE_NAME" "MONTHLY_SERVICE=$MONTHLY_SERVICE" \
+        "HOST=${HOST:-127.0.0.1}" "PORT=$PORT" "WAITRESS_THREADS=$WAITRESS_THREADS" \
+        "TRUSTED_PROXY=$TRUSTED_PROXY" "TRUSTED_PROXY_HEADERS=$TRUSTED_PROXY_HEADERS" \
+        "APP_TIMEZONE=$APP_TIMEZONE" "DB_ENGINE=$DB_ENGINE" "DB_NAME=$DB_NAME" \
+        "BACKUP_DIR=$BACKUP_DIR" "STATE_DIR=$STATE_DIR" "UPDATE_SOCKET=$UPDATE_SOCKET" \
+        "REPOSITORY=$REPOSITORY" "SOURCE_URL=$SOURCE_URL" "GITHUB_API_URL=$GITHUB_API_URL"
+}
+
+run_installer() {
+    local mode="$1"
+    shift
+    local -a environment
+    mapfile -t environment < <(installer_environment)
+    env "${environment[@]}" "$@" /bin/bash "$CHECKOUT_DIR/deployment/install-officium.sh" "$mode"
+}
+
+# "state rollback_performed message" from the runner's status file.
+status_fields() {
+    python3 -c '
+import json, sys
+try:
+    status = json.load(open(sys.argv[1], encoding="utf-8"))
+except (OSError, ValueError):
+    status = {}
+print(status.get("state", "unknown"), str(bool(status.get("rollback_performed"))).lower(),
+      status.get("error_code") or status.get("message", ""))
+' "$STATUS_FILE" 2>/dev/null || echo "unknown false"
+}
+
+# Follows the background update unit through the runner's status file.
+wait_for_update() {
+    local tag="$1" unit="$2" deadline state="" message="" last="" rollback unit_gone=0
+    deadline=$((SECONDS + 2700))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        read -r state rollback message < <(status_fields)
+        if [ "$state $message" != "$last" ]; then
+            info "update: $state $message"
+            last="$state $message"
+        fi
+        case "$state" in
+            success) return 0 ;;
+            failed)
+                if [ "$rollback" = true ]; then return "$EXIT_ROLLED_BACK"; fi
+                return "$EXIT_MANUAL"
+                ;;
+        esac
+        # A unit that ended without a final status crashed; allow a moment
+        # for the last status write before giving up.
+        if [ -n "$unit" ] && [[ "$(systemctl show "$unit" -p ActiveState --value 2>/dev/null)" =~ ^(inactive|failed)$ ]]; then
+            unit_gone=$((unit_gone + 1))
+            if [ "$unit_gone" -ge 3 ]; then
+                warn "The update unit $unit stopped without a final status; see: journalctl -u $unit"
+                return "$EXIT_MANUAL"
+            fi
+        fi
+        sleep 2
+    done
+    warn "The update of $tag did not finish within 45 minutes; follow it with: journalctl -fu 'officium-update-*'"
+    return "$EXIT_MANUAL"
+}
+
+verify_after_update() {
+    SITE_STATUS="healthy"
+    BUTTON_STATUS="ready"
+    if ! "$RUNNER" --verify-health "$SERVICE_NAME" "$HEALTHCHECK_URL"; then
+        SITE_STATUS="NOT healthy"
+        return 1
+    fi
+    if ! /bin/bash "$APP_ROOT/current/deployment/post-deploy-smoke.sh" --service "$SERVICE_NAME" \
+            --app-dir "$APP_ROOT/current" --url "$HEALTHCHECK_URL" --timer "$MONTHLY_SERVICE.timer"; then
+        SITE_STATUS="healthy, smoke test FAILED"
+        warn "The smoke test failed (see its FAIL line); the site answers but needs attention."
+    fi
+    if ! (cd / && runuser -u "$APP_USER" -- env "OFFICIUM_UPDATE_SOCKET=$UPDATE_SOCKET" "$CLIENT" integration_check >/dev/null 2>&1); then
+        BUTTON_STATUS="NOT ready"
+        warn "The admin update button is not ready; the site is fine. Diagnose: sudo $RUNNER --check"
+    fi
+}
+
+print_summary() {
+    local outcome="$1"
+    printf '\n==== officium-update summary ====\n'
+    printf 'Result:          %s\n' "$outcome"
+    printf 'Version:         %s\n' "$(tr -d '\r\n' <"$APP_ROOT/current/VERSION" 2>/dev/null || release_label)"
+    printf 'current:         %s\n' "$(realpath -e "$APP_ROOT/current" 2>/dev/null || echo "$APP_ROOT (legacy)")"
+    printf 'Site:            %s (%s)\n' "${SITE_STATUS:-unknown}" "$HEALTHCHECK_URL"
+    printf 'Update button:   %s\n' "${BUTTON_STATUS:-unknown}"
+    printf 'Backup:          %s\n' "${BACKUP_PATH:-none}"
+    printf 'Backups folder:  %s\n' "$BACKUP_DIR"
+    if compgen -G "$APP_ROOT.legacy.*" >/dev/null; then
+        printf 'Legacy checkout: %s\n' "$(compgen -G "$APP_ROOT.legacy.*" | tr '\n' ' ')"
+    fi
+    printf 'Log:             %s\n' "${LOG_FILE:-none}"
+    if [ "${#WARNINGS[@]}" -gt 0 ]; then
+        printf 'Warnings:\n'
+        printf '  - %s\n' "${WARNINGS[@]}"
+    fi
+}
+
+command_update() {
+    local current tag status=0 runner_output unit=""
+    discover
+    require_parameters
+    if [ "$COMMAND" = latest ]; then
+        tag=$(latest_tag) || die "Cannot read the latest release from $GITHUB_API_URL."
+    else
+        tag="$TARGET_TAG"
+    fi
+    [[ "$tag" =~ $TAG_RE && "$tag" != *..* ]] || die "Unsafe tag: $tag"
+    current=$(release_label)
+    info "Layout: $LAYOUT at $APP_ROOT; current: $current; target: $tag"
+    info "Parameters: service $SERVICE_NAME, user $APP_USER:$APP_GROUP, listen ${HOST:-127.0.0.1}:$PORT, database $DB_ENGINE/$DB_NAME"
+    if [ "$LAYOUT" = managed ] && [[ "$current" = "$tag"-* ]]; then
+        info "$tag is already installed; checking it."
+        SITE_STATUS="unknown"
+        verify_after_update || status=$EXIT_MANUAL
+        print_summary "already up to date"
+        return "$status"
+    fi
+    local free_kb
+    free_kb=$(df -Pk "$(dirname "$APP_ROOT")" | awk 'NR==2 {print $4}')
+    [[ "$free_kb" =~ ^[0-9]+$ ]] && [ "$free_kb" -ge "$MIN_FREE_KB" ] || die "At least 1 GiB of free space is needed."
+    if [ "$DRY_RUN" = true ]; then
+        info "[dry-run] would verify $tag from $SOURCE_URL/$REPOSITORY, back up to $BACKUP_DIR,"
+        if [ "$LAYOUT" = legacy ]; then
+            info "[dry-run] migrate the legacy checkout with install-officium.sh upgrade, then verify."
+        else
+            info "[dry-run] install the updater bundle, refresh units, run officium-update-runner, then verify."
+        fi
+        return 0
+    fi
+    confirm "Update $APP_ROOT from $current to $tag?"
+    verified_checkout "$tag"
+    backup_all "$current" "$tag"
+
+    if [ "$LAYOUT" = legacy ]; then
+        info "Migrating the legacy checkout with install-officium.sh upgrade from $tag"
+        run_installer upgrade "RELEASE_TAG=$tag" || status=$?
+        case "$status" in
+            0) SITE_STATUS="healthy"; BUTTON_STATUS="see the installer summary" ;;
+            2) SITE_STATUS="healthy, smoke test FAILED"; status=$EXIT_MANUAL ;;
+            10) SITE_STATUS="legacy checkout restored"; status=$EXIT_ROLLED_BACK ;;
+            *) SITE_STATUS="unknown"; status=$EXIT_MANUAL ;;
+        esac
+        print_summary "$([ "$status" = 0 ] && echo "migrated to $tag" || echo "migration did not complete (exit $status)")"
+        return "$status"
+    fi
+
+    # The new bundle first: the installed runner and deploy-release may be
+    # too old to build this release correctly (see docs/DEPLOYMENT.md).
+    info "Installing the updater bundle from $tag"
+    APP_ROOT="$APP_ROOT" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" \
+        SERVICE_NAME="$SERVICE_NAME" SOURCE_URL="$SOURCE_URL" GITHUB_API_URL="$GITHUB_API_URL" \
+        /bin/sh "$CHECKOUT_DIR/deployment/install-officium-updater.sh" "$APP_USER" "$APP_GROUP" || \
+        die "The updater bundle could not be installed; the application was not changed."
+    if [ -z "$(read_env_value "$UPDATER_ENV" HEALTHCHECK_URL)" ]; then
+        sed -i "s|^HEALTHCHECK_URL=.*|HEALTHCHECK_URL=$HEALTHCHECK_URL|" "$UPDATER_ENV"
+        grep -q '^HEALTHCHECK_URL=' "$UPDATER_ENV" || printf 'HEALTHCHECK_URL=%s\n' "$HEALTHCHECK_URL" >>"$UPDATER_ENV"
+    fi
+    info "Refreshing the systemd units"
+    run_installer units || status=$?
+    if [ "$status" -ne 0 ]; then
+        SITE_STATUS="previous units restored"
+        print_summary "units could not be updated (exit $status); code unchanged"
+        [ "$status" = 10 ] && return "$EXIT_ROLLED_BACK"
+        return "$EXIT_MANUAL"
+    fi
+    info "Starting the update through officium-update-runner"
+    if [ "$COMMAND" = latest ]; then
+        runner_output=$("$RUNNER" --start "$tag") || status=$?
+    else
+        runner_output=$("$RUNNER" --start-tag "$tag") || status=$?
+    fi
+    printf '%s\n' "$runner_output"
+    if [ "$status" -ne 0 ]; then
+        print_summary "the runner refused the update (exit $status); nothing was changed"
+        return "$EXIT_MANUAL"
+    fi
+    [[ "$runner_output" =~ \"unit\":\"([A-Za-z0-9_.@-]+)\" ]] && unit="${BASH_REMATCH[1]}.service"
+    wait_for_update "$tag" "$unit" || status=$?
+    case "$status" in
+        0)
+            verify_after_update || status=$EXIT_MANUAL
+            print_summary "updated to $tag"
+            ;;
+        "$EXIT_ROLLED_BACK")
+            SITE_STATUS="rolled back"
+            verify_after_update || status=$EXIT_MANUAL
+            print_summary "the update failed and the previous release was restored"
+            ;;
+        *)
+            SITE_STATUS="unknown"
+            print_summary "the update needs manual attention: journalctl -u 'officium-update-*' and $STATUS_FILE"
+            ;;
+    esac
+    return "$status"
+}
+
+command_backup() {
+    discover
+    require_parameters
+    confirm "Back up the database and configuration of $APP_ROOT?"
+    backup_all "$(release_label)" backup
+}
+
+command_rollback() {
+    local target output status=0
+    discover
+    [ "$LAYOUT" = managed ] || die "Rollback needs a managed install; a legacy checkout has no release history."
+    if [ -n "$ROLLBACK_TO" ]; then
+        target=$(realpath -e "$ROLLBACK_TO") || die "$ROLLBACK_TO does not exist."
+    else
+        target=$(previous_release "$APP_ROOT/releases" "$(realpath -e "$APP_ROOT/current")") || \
+            die "There is no earlier release in $APP_ROOT/releases."
+    fi
+    info "Rollback of the code: $(release_label) -> $(basename "$target")"
+    info "The database is NOT changed. If the newer release ran migrations, restore the database"
+    info "backup separately (docs/DEPLOYMENT.md, Recovery)."
+    if [ "$DRY_RUN" = true ]; then
+        info "[dry-run] would switch current to $target and verify its health."
+        return 0
+    fi
+    confirm "Switch $APP_ROOT/current to $target?"
+    output=$("$RUNNER" --rollback-to "$target") || status=$?
+    printf '%s\n' "$output"
+    if [ "$status" -ne 0 ]; then
+        SITE_STATUS="unchanged (rollback refused or failed, previous release restored)"
+        print_summary "rollback did not happen"
+        return "$EXIT_MANUAL"
+    fi
+    verify_after_update || status=$EXIT_MANUAL
+    print_summary "code rolled back to $(basename "$target"); database unchanged"
+    return "$status"
+}
+
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            check|backup|latest|rollback) [ -z "$COMMAND" ] || usage; COMMAND="$1"; shift ;;
+            --tag) [ -z "$COMMAND" ] || usage; COMMAND=tag; TARGET_TAG="${2:-}"; shift 2 || usage ;;
+            --to) ROLLBACK_TO="${2:-}"; shift 2 || usage ;;
+            --yes|-y) ASSUME_YES=true; shift ;;
+            --dry-run) DRY_RUN=true; shift ;;
+            -h|--help) usage ;;
+            *) printf 'Unknown argument: %s\n' "$1" >&2; usage ;;
+        esac
+    done
+    [ -n "$COMMAND" ] || usage
+    if [ "$COMMAND" = tag ]; then [[ "$TARGET_TAG" =~ $TAG_RE ]] || die "--tag needs a release tag like v1.2.3."; fi
+    if [ -n "$ROLLBACK_TO" ] && [ "$COMMAND" != rollback ]; then usage; fi
+    return 0
+}
+
+main() {
+    set -Eeuo pipefail
+    umask 077
+    parse_args "$@"
+    [ "$(id -u)" -eq 0 ] || die "Run as root: sudo officium-update $*"
+    # Commands run as the application user inherit the working directory.
+    cd /
+    trap cleanup EXIT
+    # An unexpected failure is never reported as "rolled back": exit 2.
+    trap 'printf "ERROR: line %s: \"%s\" exited with %s; see the output above.\n" "$LINENO" "$BASH_COMMAND" "$?" >&2; exit "$EXIT_MANUAL"' ERR
+    exec 9>/run/lock/officium-update-cli.lock
+    flock -n 9 || die "Another officium-update is running."
+    if [ "$COMMAND" != check ] && [ "$DRY_RUN" = false ]; then
+        install -d -o root -g root -m 0750 "$LOG_DIR"
+        LOG_FILE="$LOG_DIR/update-$(date -u +%Y%m%dT%H%M%SZ).log"
+        # Secrets never reach the output: the database password stays in a
+        # 0600 option file and is not printed by any step.
+        exec > >(tee -a "$LOG_FILE") 2>&1
+        chmod 0640 "$LOG_FILE"
+    fi
+    local status=0
+    case "$COMMAND" in
+        check) command_check || status=$? ;;
+        backup) command_backup || status=$? ;;
+        latest|tag) command_update || status=$? ;;
+        rollback) command_rollback || status=$? ;;
+    esac
+    exit "$status"
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    main "$@"
+fi
