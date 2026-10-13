@@ -28,6 +28,9 @@
     --admin-radius-sm: 10px;
     --admin-radius: 16px;
     --admin-radius-lg: 22px;
+    /* Inner padding of a panel body and the gap between its blocks. */
+    --admin-panel-padding: 22px;
+    --admin-panel-gap: 18px;
     background: var(--admin-bg);
     color: var(--admin-text);
 }
@@ -1549,15 +1552,16 @@ html[data-theme="dark"] .admin-login-page {
 .admin-update-status__body p { width: 100%; margin: 0; color: var(--admin-text-soft); font-size: 0.77rem; }
 .admin-update-status__body small { color: var(--admin-text-soft); font-size: 0.68rem; }
 .admin-empty-state--compact { min-height: 130px; }
-.admin-update-plan { margin-top: 20px; }
-.admin-update-plan ol { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 20px 22px; list-style: none; }
+.admin-update-plan { --admin-update-steps-gap: 12px; margin-top: 20px; }
+.admin-update-plan ol { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--admin-update-steps-gap); margin: 0; padding: var(--admin-panel-padding); list-style: none; }
+.admin-update-plan ol:not(:last-child) { padding-bottom: 0; }
 .admin-update-plan li { display: flex; align-items: flex-start; gap: 10px; padding: 13px; background: var(--admin-surface-soft); border: 1px solid var(--admin-border); border-radius: 12px; }
 .admin-update-plan li > span { display: grid; width: 25px; height: 25px; flex: 0 0 auto; place-items: center; color: var(--admin-primary); background: var(--admin-primary-soft); border-radius: 8px; font-size: 0.7rem; font-weight: 760; }
 .admin-update-plan li strong { font-size: 0.76rem; }
 .admin-update-plan li p { margin: 4px 0 0; color: var(--admin-text-soft); font-size: 0.67rem; line-height: 1.45; }
 .admin-update-plan > form,
 .admin-update-plan > .alert,
-.admin-update-plan > button { margin: 0 22px 22px; }
+.admin-update-plan > button { margin: var(--admin-update-steps-gap) var(--admin-panel-padding) var(--admin-panel-padding); }
 
 .admin-login-page .app-navbar,
 .admin-login-page .app-footer { display: none !important; }
@@ -1701,6 +1705,7 @@ html[data-theme="dark"] .admin-login-page {
     .admin-system-grid { grid-template-columns: 1fr; }
     .admin-filter-grid > * { grid-column: auto !important; }
     .admin-panel__header { padding: 17px; }
+    .admin-page { --admin-panel-padding: 17px; }
 
     .admin-user-hero { align-items: flex-start; flex-wrap: wrap; padding: 18px; }
 
