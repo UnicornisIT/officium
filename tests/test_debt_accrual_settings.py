@@ -110,6 +110,24 @@ class DebtAccrualSettingsTestCase(unittest.TestCase):
         self.assertEqual(bad.status_code, 422)
         self.assertIn('льготного периода', bad.get_json()['error'])
 
+    def test_new_card_in_grace_period_is_not_overdue(self):
+        # The grace period began on 01.07, the next payment is 10.09: earlier
+        # installments are settled, tracking starts at the cycle start 10.08.
+        debt = self.create(
+            debt_type='credit_card', remaining_amount='40000', minimum_payment='3000',
+            interest_rate='30', next_payment_date='2026-09-10',
+            interest_period_start_date='2026-07-01', grace_period_end_date='2026-10-31',
+        ).get_json()['debt']
+
+        self.assertEqual(debt['accrual_start_date'], '2026-08-10')
+        self.assertFalse(debt['is_overdue'])
+        self.assertEqual(debt['effective_next_payment_date'], '2026-09-10')
+        self.assertEqual(debt['accrued_interest'], 0.0)
+        with self.app.app_context():
+            state = db.session.get(Debt, debt['id']).accrual_state(date(2026, 8, 25))
+        # Grace interest from 01.07 is pending: 40000 * 30% * 55 / 365 = 1808.22
+        self.assertEqual(state['grace_interest_pending'], Decimal('1808.22'))
+
     def test_split_cannot_capitalize_interest(self):
         split = self.create(debt_type='split', capitalize_interest=True).get_json()['debt']
         loan = self.create(capitalize_interest=True).get_json()['debt']

@@ -129,12 +129,24 @@ def opening_principal(debt, payments):
 
 
 def accrual_start_date(debt):
+    """The stored start, or the start of the current cycle.
+
+    The next payment date the user entered means earlier installments are
+    settled, so tracking starts one cycle before it; a later interest period
+    start (the issue date) wins. A card's grace period may begin earlier;
+    the engine charges those days separately.
+    """
     if getattr(debt, 'accrual_start_date', None):
         return debt.accrual_start_date
-    if getattr(debt, 'interest_period_start_date', None):
-        return debt.interest_period_start_date
-    if getattr(debt, 'next_payment_date', None):
-        return previous_payment_due_date(debt, debt.next_payment_date)
+    next_payment_date = getattr(debt, 'next_payment_date', None)
+    period_start = getattr(debt, 'interest_period_start_date', None)
+    if next_payment_date:
+        cycle_start = previous_payment_due_date(debt, next_payment_date)
+        if period_start and cycle_start < period_start < next_payment_date:
+            return period_start
+        return cycle_start
+    if period_start:
+        return period_start
     created_at = getattr(debt, 'created_at', None)
     return created_at.date() if created_at else None
 
