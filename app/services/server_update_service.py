@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
@@ -65,6 +66,27 @@ def _iso_now():
     return _utc_now().isoformat().replace('+00:00', 'Z')
 
 
+_MONTHS_GENITIVE = (
+    'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+)
+
+
+def format_release_date(value, timezone_name='UTC'):
+    """Format a GitHub ISO timestamp as "13 октября 2026, 15:16" in the app timezone."""
+    try:
+        moment = datetime.fromisoformat(str(value or '').strip().replace('Z', '+00:00'))
+    except ValueError:
+        return ''
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    try:
+        moment = moment.astimezone(ZoneInfo(str(timezone_name or 'UTC')))
+    except (ZoneInfoNotFoundError, ValueError):
+        moment = moment.astimezone(timezone.utc)
+    return f'{moment.day} {_MONTHS_GENITIVE[moment.month - 1]} {moment.year}, {moment:%H:%M}'
+
+
 def validate_repository(value):
     repository = str(value or '').strip()
     if not _REPOSITORY_RE.fullmatch(repository):
@@ -119,6 +141,7 @@ def fetch_latest_release(config):
         'notes_html': notes_html,
         'notes_truncated': notes_truncated,
         'published_at': published_at,
+        'published_label': format_release_date(published_at, config.get('APP_TIMEZONE', 'UTC')),
         'url': f'https://github.com/{repository}/releases/tag/{quote(tag, safe="")}',
     }
 

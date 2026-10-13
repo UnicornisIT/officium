@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
@@ -11,6 +12,7 @@ from app import create_app
 from app.models import ActivityLog, User
 from app.services import server_update_service
 from app.services.server_update_service import (
+    format_release_date,
     ServerUpdateError,
     check_update_readiness,
     current_release_has_tag,
@@ -99,6 +101,22 @@ class ServerUpdateServiceTestCase(unittest.TestCase):
             '<p>Security fixes</p>\n<p>and deployment hardening.</p>',
         )
         self.assertFalse(release['notes_truncated'])
+        self.assertEqual(release['published_at'], '2026-08-30T10:00:00Z')
+
+    def test_release_date_is_formatted_in_the_app_timezone(self):
+        try:
+            ZoneInfo('Europe/Moscow')
+        except ZoneInfoNotFoundError:
+            pass  # Windows without the tzdata package has no IANA zones.
+        else:
+            self.assertEqual(
+                format_release_date('2026-10-13T12:16:45Z', 'Europe/Moscow'),
+                '13 октября 2026, 15:16',
+            )
+        self.assertEqual(format_release_date('2026-01-01T00:05:00Z', 'UTC'), '1 января 2026, 00:05')
+        self.assertEqual(format_release_date('2026-01-01T00:05:00Z', 'No/Such_Zone'), '1 января 2026, 00:05')
+        self.assertEqual(format_release_date('not a date'), '')
+        self.assertEqual(format_release_date(''), '')
 
     def test_newer_installed_release_supersedes_only_an_older_failed_status(self):
         failed = {'state': 'failed', 'tag': 'v1.1.0', 'error_code': 'restart_failed'}
