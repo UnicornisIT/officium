@@ -16,10 +16,16 @@
   releases/                 # root:officium; только одноразовый .build-* app-owned
   shared/.env               # root:officium 0640
   shared/instance/          # данные приложения, если они нужны локально
+  releases/<tag>-<commit>/.env -> /opt/officium/shared/.env   # всегда абсолютная ссылка
 /etc/officium/updater.env   # root:root 0600
+/usr/local/sbin/officium-update              # root:root 0755, команда оператора
 /usr/local/sbin/officium-update-runner       # root:root 0755
+/usr/local/bin/officium-update-client        # root:root 0755
 /usr/local/lib/officium/deploy-release       # root:root 0755
+/etc/tmpfiles.d/officium.conf  # d /run/officium 0750 root officium -
+/run/officium/              # root:officium 0750 (создаёт tmpfiles.d)
 /run/officium/updater.sock  # root:officium 0660
+/var/log/officium/update-<время>.log         # журнал officium-update без секретов
 /var/lib/officium/          # root:officium 0750, status операции
 /var/backups/officium/      # root:root 0750
 ```
@@ -146,10 +152,10 @@ sudo env <те же переменные> bash deployment/install-officium.sh in
 8. вызывает `integration_check` через тот же socket от `APP_USER`;
 9. запускает read-only `post-deploy-smoke.sh`.
 
-Waitress unit формирует один аргумент proxy headers:
+Waitress запускается через `python -m waitress`, proxy headers — один аргумент:
 
 ```ini
-ExecStart=/opt/officium/current/venv/bin/waitress-serve \
+ExecStart=/opt/officium/current/venv/bin/python -m waitress \
   --listen=127.0.0.1:5000 --threads=4 --trusted-proxy=127.0.0.1 \
   "--trusted-proxy-headers=x-forwarded-for x-forwarded-host x-forwarded-proto x-forwarded-port" \
   run:app
@@ -157,26 +163,91 @@ ExecStart=/opt/officium/current/venv/bin/waitress-serve \
 
 Фактический unit — одна строка; переносы выше только для чтения. `app:app` не
 используется. Forwarded-заголовки принимаются только от явно заданного proxy.
+Console-скрипты venv (`waitress-serve`, `flask`, `pip`) нигде не вызываются:
+они хранят абсолютный путь каталога сборки и ломаются после перемещения
+релиза. Сборка и runner проверяют, что ни один файл `venv/bin/` не ссылается
+за пределы своего релиза.
 
-## 5. Обновление managed-установки
+## 5. Обновление
 
-Панель superadmin автоматически показывает GitHub release и выполняет две
-проверки: статический preflight и интеграционный IPC. Кнопка доступна только при
-успехе обеих. После подтверждения состояние проходит реальные этапы:
+### 5.1. Одна команда с сервера
+
+```bash
+sudo officium-update check          # только диагностика, ничего не меняет
+sudo officium-update latest         # обновить до последнего GitHub Release
+sudo officium-update --tag vX.Y.Z   # обновить до конкретного опубликованного тега
+sudo officium-update backup         # только резервная копия БД и конфигурации
+sudo officium-update rollback       # вернуть код на предыдущий релиз (БД не меняется)
+```
+
+Флаги: `--yes` — без интерактивного подтверждения, `--dry-run` — показать план
+и ничего не делать. Коды выхода: `0` — успех, `1` — обновление не прошло и
+предыдущий релиз восстановлен, `2` — нужно ручное вмешательство (команда
+печатает, что именно сделать).
+
+Команда сама определяет раскладку (managed или legacy checkout) и берёт
+параметры из существующих `shared/.env` (или legacy `.env`), unit
+(`systemctl show -p ExecStart`, включая drop-ins) и `/etc/officium/updater.env`.
+Если чего-то не хватает, она останавливается до любых изменений и перечисляет
+недостающие параметры. Порядок обновления:
+
+1. Проверка root, `cd /`, минимум 1 GiB свободного места.
+2. Проверенная копия нужного тега во временном `/var/tmp/officium-update.*`
+   (commit сверяется с удалённым тегом).
+3. Резервная копия в `/var/backups/officium/<время>-<с>-to-<на>/`:
+   `mysqldump --single-transaction --no-tablespaces` через временный option-file
+   `0600` (пароль не попадает в argv и вывод; дамп обязан заканчиваться строкой
+   `-- Dump completed`) или SQLite `.backup`; копии `.env`, unit, всех drop-ins,
+   nginx vhost, `updater.env` и `tmpfiles.d`, права `0600`.
+4. Managed: установка updater-bundle и unit-файлов из нового тега, затем
+   `officium-update-runner --start` — тот же путь, что у кнопки. Legacy:
+   `install-officium.sh upgrade` из проверенной копии (см. раздел 6).
+5. Проверка здоровья (active, `NRestarts` не растёт 10 с, HTTP 200 на
+   `HEALTHCHECK_URL`), smoke-тест со статикой через nginx, `integration_check`.
+6. Итоговая сводка: версия, путь `current`, статус сайта и кнопки обновления,
+   бэкапы, legacy-каталог, предупреждения.
+
+Полный журнал без секретов: `/var/log/officium/update-<время>.log`.
+
+Если команды ещё нет на сервере, возьмите её из нужного релиза:
+
+```bash
+curl -fsSLo /root/officium-update \
+  https://raw.githubusercontent.com/UnicornisIT/officium/<tag>/scripts/officium-update
+sudo bash /root/officium-update --tag <tag>
+```
+
+После первого запуска команда установлена в `/usr/local/sbin/officium-update` и
+обновляется вместе с runner.
+
+**С версии ≤ v0.0.7 обновляться только командой с сервера.** В этих версиях
+кнопка вызывала `sudo` из Flask и всегда падала из-за `NoNewPrivileges`, а
+установленный тогда runner мог отклонять корректные теги. На v0.0.8–v0.0.9
+первое обновление тоже лучше выполнить командой: старый runner собирает релиз
+со ссылкой `.env` через `current` и `waitress-serve` в unit, а `officium-update`
+сначала ставит исправленный runner и unit из нового тега.
+
+### 5.2. Кнопка в админке
+
+Панель superadmin показывает GitHub release и выполняет две проверки:
+статический preflight и интеграционный IPC. Кнопка доступна только при успехе
+обеих. После подтверждения состояние проходит реальные этапы:
 
 `preflight → backup → checkout → dependencies → migrations → restart → healthcheck`.
 
 `operation_id`, status и диагностический код живут в `/var/lib/officium`, поэтому
 рестарт Flask не теряет операцию. Повторный POST и конкурентный update
-блокируются в root-службе.
+блокируются в root-службе. Кнопка принимает только последний stable release;
+конкретный тег — только из root CLI (`--start-tag`).
 
-CLI-эквивалент для аварийной процедуры (не из Flask):
+Низкоуровневые команды runner (их вызывает `officium-update`):
 
 ```bash
-sudo /usr/local/sbin/officium-update-runner --check
-sudo -u officium /usr/local/bin/officium-update-client integration_check
+sudo /usr/local/sbin/officium-update-runner --check       # в т.ч. connect() от APP_USER и версии компонентов
+sudo /usr/local/sbin/officium-update-runner --components  # runner/client/deploy-release против текущего релиза
 sudo /usr/local/sbin/officium-update-runner --start-latest
-sudo journalctl -fu officium-update-*.service
+sudo /usr/local/sbin/officium-update-runner --verify-health
+sudo journalctl -fu 'officium-update-*'
 ```
 
 `scripts/deploy.sh --release <tag>` — совместимая root-only оболочка. Она не
@@ -184,8 +255,9 @@ sudo journalctl -fu officium-update-*.service
 
 ## 6. Миграция старого `/opt/officium` или `/var/www/...` checkout
 
-Укажите фактический legacy path в `APP_DIR` и вызовите `upgrade` из проверенной
-копии нового installer:
+Рекомендуемый путь — `sudo officium-update --tag <tag>` (раздел 5.1): команда
+сама соберёт параметры и запустит установщик из проверенной копии тега. Ручной
+эквивалент:
 
 ```bash
 sudo env \
@@ -203,11 +275,19 @@ sudo env \
 - отказывается продолжать при tracked/staged local changes, но ничего не
   удаляет и не вызывает `stash`, `reset --hard` или `clean`;
 - делает database/config backup через новый runner;
-- собирает release в соседнем `$APP_DIR.managed.*`;
+- собирает release в соседнем `$APP_DIR.managed.*`; ссылка `.env` релиза сразу
+  указывает на постоянный `$APP_DIR/shared/.env`, пути venv переписываются на
+  финальный каталог;
 - останавливает старую службу только после успешной сборки/migrations;
 - переименовывает старый каталог в `$APP_DIR.legacy.<timestamp>` и активирует
   managed tree;
-- при неуспешном restart возвращает старый каталог и unit.
+- рендерит unit с `python -m waitress`, убирает устаревшие drop-ins с
+  `ExecStart=` (копия — в `$BACKUP_DIR/units.legacy.*`);
+- при неуспешной проверке здоровья возвращает старый каталог, unit и drop-ins
+  (код выхода 10, у `officium-update` — 1);
+- после успеха: updater, проверка nginx, smoke-тест, затем `integration_check`.
+  Сбой IPC — только предупреждение с командой исправления; в конце всегда
+  печатается сводка.
 
 Untracked пользовательские файлы остаются в сохранённом legacy-каталоге и не
 подмешиваются в release. Проверите их вручную до удаления каталога.
@@ -218,6 +298,14 @@ Untracked пользовательские файлы остаются в сох
 `deployment/nginx-officium.conf.in` и выполняет `nginx -t`. Waitress остаётся на
 loopback. Получите сертификат обычным контролируемым способом, затем включите
 redirect HTTP→HTTPS и оставьте `SESSION_COOKIE_SECURE=true`.
+
+Статику (`/static/`) отдаёт приложение через proxy с `Cache-Control` и
+`nosniff`. Не добавляйте `location /static/ { alias ...; }`: nginx (`www-data`)
+не может читать дерево `root:officium 0750`, а alias на старый checkout
+перестаёт работать после миграции. Legacy-миграция находит такие `alias`/`root`
+в `/etc/nginx`, делает их копию и печатает точную команду исправления;
+автоматически nginx правится только с `FIX_NGINX=true`. Smoke-тест проверяет
+`/static/css/style.css` через публичный vhost (`Host:` из `server_name`).
 
 Reverse proxy обязан передавать Host, X-Forwarded-For/Host/Proto/Port. Не
 доверяйте `0.0.0.0/0` и внешнему адресу proxy. Маршруты `/login`,
@@ -240,6 +328,15 @@ journalctl -u officium-monthly-expenses.service --since today
 ## 9. Recovery и ограничения rollback
 
 Код можно переключить на завершённый release:
+
+```bash
+sudo officium-update rollback                         # предыдущий релиз
+sudo officium-update rollback --to /opt/officium/releases/<release-dir>
+```
+
+Откат идёт через runner с той же проверкой здоровья; при неудаче ссылка
+`current` возвращается обратно. У релизов, собранных до исправления, ссылка
+`.env` чинится на `shared/.env`. База данных не меняется. Прежний вариант:
 
 ```bash
 sudo env APP_DIR=/opt/officium SERVICE_NAME=officium \
@@ -269,6 +366,27 @@ sudo bash deployment/post-deploy-smoke.sh \
   --timer officium-monthly-expenses.timer
 ```
 
-Скрипт не пишет финансовые данные: проверяет version/commit, active units,
-`NoNewPrivileges`, импорт `run:app`, read-only Alembic state, локальный HTTP,
-статику и число critical journal events. Секреты не печатаются.
+Скрипт не пишет финансовые данные: проверяет version/commit, ссылку
+`current/.env`, active units, `NoNewPrivileges`, импорт `run:app`, read-only
+Alembic state, локальный HTTP, статику напрямую и через nginx (`--public-host`,
+по умолчанию `auto`) и число critical journal events **текущего запуска**
+сервиса (`InvocationID`), а не последних 10 минут. Любая неудача печатается как
+`FAIL <проверка>: <причина>`, успех — `SMOKE PASS`. Секреты не печатаются.
+
+## 11. Типовые сбои
+
+Все случаи ниже воспроизводились на production при обновлении v0.0.7 → v0.0.9;
+начиная с этой версии их ловят установщик, runner и `officium-update check`.
+
+| Симптом | Причина | Что делать |
+|---|---|---|
+| `officium.service: Failed to execute .../venv/bin/waitress-serve: No such file or directory`, `status=203/EXEC`, бесконечный рестарт | console-скрипты venv хранят путь каталога сборки, а релиз после сборки перемещается | `sudo officium-update latest`: unit переходит на `python -m waitress`. Проверка: `sudo officium-update check` (строки `service command`, `venv paths`) |
+| Drop-in `/etc/systemd/system/officium.service.d/*.conf` с `ExecStart=` перекрывает новый unit | ручной обход прошлого сбоя | установщик сохраняет его в `$BACKUP_DIR/units.*` и удаляет, если он запускает то же, что новый unit, или несуществующую/старую программу; иначе оставляет и предупреждает |
+| `RuntimeError: SECRET_KEY must be ... in production` у `flask db ...`, smoke-теста, `integration_check` (`configuration_invalid`) | ссылка `releases/<tag>/.env` указывала на временный `/opt/officium.managed.<PID>` или на `current/.env` (ссылка сама на себя) | ссылка всегда абсолютная на `<APP_ROOT>/shared/.env`; проверка `realpath -e current/.env`. Для старого релиза: `sudo ln -sfn /opt/officium/shared/.env /opt/officium/releases/<release>/.env` (или `officium-update rollback`, он чинит ссылку сам) |
+| `fatal: failed to stat '/root/officium-vX.Y.Z': Permission denied` при сборке | `runuser` наследует рабочий каталог, недоступный `APP_USER` | исправлено: все скрипты делают `cd /` |
+| `PermissionError` у `officium-update-client` и у кнопки | `/run/officium` создавался как `root:root 0750` | `install-officium-updater.sh` ставит `/etc/tmpfiles.d/officium.conf`; проверка: `sudo officium-update-runner --check` |
+| Установщик пишет PASS, а сайт лежит | одиночный `is-active` проходит во время крэш-лупа | здоровье = active + `NRestarts` не растёт 10 с + HTTP 200; иначе автоматический откат |
+| Traceback `integration_check` после успешного рестарта, непонятно, обновился ли сервер | IPC проверялся раньше smoke-теста | порядок: health → smoke → IPC; сбой IPC — предупреждение, в конце всегда сводка |
+| Сайт без стилей, CSS отдаёт 404 или 403 | `location /static/ { alias /opt/officium/static/; }` в nginx | закомментировать блок (команду печатает установщик) или `FIX_NGINX=true`; статику отдаёт приложение |
+| Smoke-тест молча завершается или ещё 10 минут после починки пишет FAIL | `set -e` без сообщения; ошибки журнала считались за 10 минут | каждая проверка печатает своё имя и причину; ошибки считаются с текущего запуска |
+| Кнопка падает с `sudo: The "no new privileges" flag is set`; старый runner отвечает `Release tag is unsafe or unsupported`; нет `officium-update-client` | updater из v0.0.7 и раньше | обновляться только `sudo officium-update`; `officium-update-runner --check` сообщает об устаревших и отсутствующих компонентах |
