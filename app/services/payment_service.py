@@ -387,28 +387,3 @@ def paid_toward_payment_cycle(debt, due_date, through_date=None, payments=None):
         Decimal('0.00'),
     )
     return paid.quantize(MONEY, rounding=ROUND_HALF_UP)
-
-
-def principal_paid_in_payment_cycle(debt, due_date, through_date=None, payments=None):
-    """Return principal reduction recorded during a required-payment cycle."""
-    if not due_date:
-        return Decimal('0.00')
-
-    cycle_start = _previous_payment_due_date(debt, due_date)
-    through_date = through_date or due_date
-    if payments is None:
-        payments = Payment.query.filter_by(debt_id=debt.id).all() if getattr(debt, 'id', None) else []
-
-    principal = sum(
-        (
-            Decimal(str(
-                payment.principal_amount
-                if payment.principal_amount is not None
-                else payment.amount or 0
-            ))
-            for payment in payments
-            if payment.payment_date and cycle_start < payment.payment_date <= through_date
-        ),
-        Decimal('0.00'),
-    )
-    return principal.quantize(MONEY, rounding=ROUND_HALF_UP)

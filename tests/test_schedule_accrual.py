@@ -73,10 +73,14 @@ class ScheduleAccrualTestCase(unittest.TestCase):
         # 99035.62: 99035.62 * 18% * 10 / 365 = 488.39.
         engine_interest = get_debt_state(debt, as_of=date(2026, 8, 15))['current_interest']
         self.assertEqual(engine_interest, Decimal('488.39'))
+        # Only 5000 - 2000 = 3000 is still due in the cycle: principal
+        # 3000 - 488.39 = 2511.61, balance 96524.01.
         self.assertEqual(rows[0]['payment_date'], '2026-08-15')
+        self.assertEqual(rows[0]['status'], 'partly_paid')
+        self.assertEqual(rows[0]['payment'], 3000.0)
         self.assertEqual(rows[0]['interest'], 488.39)
-        self.assertEqual(rows[0]['principal'], 4511.61)
-        self.assertEqual(rows[0]['remaining'], 94524.01)
+        self.assertEqual(rows[0]['principal'], 2511.61)
+        self.assertEqual(rows[0]['remaining'], 96524.01)
 
     def test_overdue_debt_starts_with_a_row_that_clears_the_overdue(self):
         debt = self.debt()

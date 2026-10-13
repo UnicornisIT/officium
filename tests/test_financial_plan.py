@@ -317,8 +317,11 @@ class FinancialPlanTestCase(unittest.TestCase):
 
         credit = next(item for item in plan['debt_items'] if item['debt_type'] == 'consumer_credit')
         self.assertEqual(credit['paid_toward_next_payment'], 500.0)
-        self.assertEqual(credit['monthly_amount'], credit['scheduled_amount'])
+        # Still due: the 500 principal plus its interest, credited once; the
+        # scheduled amount shows the whole cycle (paid part included).
         self.assertGreater(credit['monthly_amount'], 500.0)
+        self.assertLess(credit['monthly_amount'], 1000.0)
+        self.assertEqual(credit['scheduled_amount'], credit['monthly_amount'] + 500.0)
         self.assertEqual(credit['projected_remaining_after_plan'], 0.0)
 
     def test_page_saves_only_plan_preferences(self):

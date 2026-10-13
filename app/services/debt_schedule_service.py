@@ -49,13 +49,26 @@ def build_debt_payment_schedule(debt, today=None):
         else None
     )
 
-    for number in range(len(rows) + 1, MAX_SCHEDULE_ROWS + 1):
+    first_regular_number = len(rows) + 1
+    for number in range(first_regular_number, MAX_SCHEDULE_ROWS + 1):
         uses_custom_first_payment = number == 1 and first_payment is not None
         scheduled_payment_without_fee = monthly_payment
         if uses_custom_first_payment:
             scheduled_payment_without_fee = (first_payment - monthly_fee).quantize(MONEY, rounding=ROUND_HALF_UP)
             if scheduled_payment_without_fee <= 0:
                 raise ValueError('Первый платеж должен быть больше ежемесячной комиссии.')
+        row_penalty = Decimal('0.00')
+        partly_paid = False
+        if number == first_regular_number:
+            # What is still due in this cycle, net of payments already made;
+            # an unpaid penalty is repaid with it.
+            row_penalty = start['first_penalty']
+            due_amount = start['first_due_amount']
+            full_amount = first_payment if uses_custom_first_payment else monthly_payment
+            if due_amount is not None and full_amount > 0 and Decimal('0') < due_amount < full_amount:
+                partly_paid = True
+                fee_part = monthly_fee if uses_custom_first_payment else Decimal('0.00')
+                scheduled_payment_without_fee = max(due_amount - fee_part, Decimal('0.01')).quantize(MONEY, rounding=ROUND_HALF_UP)
 
         annual_rate = Decimal(str(debt.interest_rate_for(payment_date) or 0))
         if first_interest is not None:
@@ -74,9 +87,14 @@ def build_debt_payment_schedule(debt, today=None):
                 period_end=payment_date,
             )).quantize(MONEY, rounding=ROUND_HALF_UP)
         carried_interest = Decimal('0.00')
-        if uses_custom_first_payment:
+        if uses_custom_first_payment and not partly_paid:
             interest = min(interest, scheduled_payment_without_fee).quantize(MONEY, rounding=ROUND_HALF_UP)
             principal = (scheduled_payment_without_fee - interest).quantize(MONEY, rounding=ROUND_HALF_UP)
+        elif partly_paid:
+            principal = max(scheduled_payment_without_fee - interest, Decimal('0.00')).quantize(MONEY, rounding=ROUND_HALF_UP)
+            if principal == 0:
+                carried_interest = (interest - scheduled_payment_without_fee).quantize(MONEY, rounding=ROUND_HALF_UP)
+                interest = scheduled_payment_without_fee
         elif interest >= scheduled_payment_without_fee and _period_interest_fits(
             debt, remaining, payment_date, scheduled_payment_without_fee,
         ):
@@ -94,15 +112,14 @@ def build_debt_payment_schedule(debt, today=None):
                 months_left=months_left,
             )
 
-        if principal < 0 or (principal == 0 and not uses_custom_first_payment and carried_interest <= 0):
+        if principal < 0 or (principal == 0 and not uses_custom_first_payment and not partly_paid and carried_interest <= 0):
             raise ValueError('Минимальный платеж не покрывает проценты. Увеличьте платеж или проверьте ставку.')
 
         payment_without_fee = (principal + interest).quantize(MONEY, rounding=ROUND_HALF_UP)
-        payment_amount = (payment_without_fee + monthly_fee).quantize(MONEY, rounding=ROUND_HALF_UP)
         if principal >= remaining:
             principal = remaining
             payment_without_fee = (principal + interest).quantize(MONEY, rounding=ROUND_HALF_UP)
-            payment_amount = (payment_without_fee + monthly_fee).quantize(MONEY, rounding=ROUND_HALF_UP)
+        payment_amount = (payment_without_fee + monthly_fee + row_penalty).quantize(MONEY, rounding=ROUND_HALF_UP)
 
         remaining = (remaining - principal).quantize(MONEY, rounding=ROUND_HALF_UP)
         total_payments += payment_amount
@@ -121,6 +138,8 @@ def build_debt_payment_schedule(debt, today=None):
             'remaining': float(remaining),
             'rate': float(annual_rate),
             'interest_days': interest_days(period_start, payment_date, debt=debt),
+            **({'penalty': float(row_penalty)} if row_penalty > 0 else {}),
+            **({'status': 'partly_paid', 'status_label': 'частично оплачен'} if partly_paid else {}),
         })
 
         if remaining <= 0:
@@ -160,6 +179,8 @@ def _schedule_start(debt, today):
         'first_interest': None,
         'carried_interest': Decimal('0.00'),
         'accrues_interest': True,
+        'first_due_amount': None,
+        'first_penalty': Decimal('0.00'),
     }
     state = _accrual_state(debt, today)
     if state is None:
@@ -181,6 +202,8 @@ def _schedule_start(debt, today):
             'first_interest': at_due['current_interest'] + at_due['overdue_interest'],
             'carried_interest': Decimal('0.00'),
             'accrues_interest': state['accrues_interest'],
+            'first_due_amount': state['next_due_amount'] - state['penalty'],
+            'first_penalty': state['penalty'],
         }
 
     overdue_since = state['overdue_since']
@@ -215,6 +238,8 @@ def _schedule_start(debt, today):
         # overdue part is paid in the overdue row.
         'carried_interest': state['current_interest'],
         'accrues_interest': state['accrues_interest'],
+        'first_due_amount': None,
+        'first_penalty': Decimal('0.00'),
     }
 
 

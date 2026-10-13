@@ -16,7 +16,7 @@ from app.models import (
 )
 from app.services.debt_schedule_service import build_debt_payment_schedule
 from app.services.finance_summary_service import get_finance_summary
-from app.services.payment_service import paid_toward_payment_cycle, principal_paid_in_payment_cycle
+from app.services.payment_service import paid_toward_payment_cycle
 from app.utils import EXPENSE_CATEGORIES, INCOME_CATEGORIES, format_currency
 from extensions import db
 
@@ -597,34 +597,22 @@ def _build_debt_items(debts, today, planning_horizon_end):
         if outstanding_rows:
             first_due_date = date.fromisoformat(outstanding_rows[0]['payment_date'])
             payments = list(getattr(debt, 'payments', []) or [])
-            paid_toward_next_payment = min(
+            paid_toward_next_payment = (
                 paid_toward_payment_cycle(
                     debt,
                     first_due_date,
                     through_date=today,
                     payments=payments,
-                ),
-                _decimal(outstanding_rows[0].get('payment')),
+                )
+                if outstanding_rows[0].get('status') == 'partly_paid'
+                else Decimal('0.00')
             )
-            principal_paid_in_cycle = principal_paid_in_payment_cycle(
-                debt,
-                first_due_date,
-                through_date=today,
-                payments=payments,
-            )
-            cycle_opening_balance = _decimal(debt.remaining_amount) + principal_paid_in_cycle
-            # Overdue rows are already net of recorded payments; only a cycle
-            # that is not due yet takes credit for payments made in it.
-            if first_due_date >= today and (minimum_payment <= 0 or cycle_opening_balance > minimum_payment):
-                applied_payment_credit = paid_toward_next_payment
-            first_outstanding = _decimal(
-                _decimal(outstanding_rows[0].get('payment')) - applied_payment_credit
-            )
-            if first_outstanding > 0:
+            # Schedule rows are already net of recorded payments (the first
+            # row holds only what is still due in its cycle), so nothing is
+            # credited twice here; a part-paid cycle is only marked.
+            if paid_toward_next_payment > 0:
                 partially_paid_due_date = first_due_date
-                outstanding_rows[0] = {**outstanding_rows[0], 'payment': _float(first_outstanding)}
-            else:
-                outstanding_rows = outstanding_rows[1:]
+                scheduled_amount = _decimal(scheduled_amount + paid_toward_next_payment)
 
         if schedule is not None:
             monthly_amount = _decimal(sum(
