@@ -381,6 +381,14 @@ html[data-theme="dark"] .admin-login-page {
     font-weight: 680;
 }
 
+/* An icon and its label are centred together on both axes. */
+.admin-page .btn:has(> .admin-icon) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+}
+
 .admin-page .btn-primary {
     color: #fff;
     background: #2563eb;
