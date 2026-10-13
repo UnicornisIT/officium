@@ -1,0 +1,7 @@
+# Deployment scripts run on Linux; keep them LF in every checkout, including
+# Windows clones with core.autocrlf=true.
+*.sh text eol=lf
+*.bats text eol=lf
+*.in text eol=lf
+deployment/** text eol=lf
+scripts/officium-update text eol=lf
