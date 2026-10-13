@@ -94,7 +94,11 @@ class ServerUpdateServiceTestCase(unittest.TestCase):
             'https://api.github.com/repos/example-owner/officium/releases/latest',
         )
         self.assertNotIn('example-owner', get.call_args.kwargs['headers'].get('Authorization', ''))
-        self.assertEqual(release['notes'], 'Security fixes and deployment hardening.')
+        self.assertEqual(
+            str(release['notes_html']),
+            '<p>Security fixes</p>\n<p>and deployment hardening.</p>',
+        )
+        self.assertFalse(release['notes_truncated'])
 
     def test_newer_installed_release_supersedes_only_an_older_failed_status(self):
         failed = {'state': 'failed', 'tag': 'v1.1.0', 'error_code': 'restart_failed'}

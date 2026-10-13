@@ -11,6 +11,8 @@ from urllib.parse import quote
 
 import requests
 
+from app.services.release_notes_service import render_release_notes
+
 
 class ServerUpdateError(RuntimeError):
     """A safe, user-facing server update error."""
@@ -110,11 +112,12 @@ def fetch_latest_release(config):
     tag = validate_release_tag(payload.get('tag_name'))
     release_name = str(payload.get('name') or tag).strip()[:160]
     published_at = str(payload.get('published_at') or '').strip()[:40]
-    release_notes = ' '.join(str(payload.get('body') or '').split())[:500]
+    notes_html, notes_truncated = render_release_notes(payload.get('body'))
     return {
         'tag': tag,
         'name': release_name,
-        'notes': release_notes,
+        'notes_html': notes_html,
+        'notes_truncated': notes_truncated,
         'published_at': published_at,
         'url': f'https://github.com/{repository}/releases/tag/{quote(tag, safe="")}',
     }
