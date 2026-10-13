@@ -42,6 +42,13 @@ from app.services.debt_math_service import calculate_interest_segments, days_in_
 MONEY = Decimal('0.01')
 ZERO = Decimal('0.00')
 MAX_CYCLES = 1200
+DEFAULT_PENALTY_RATE = Decimal('20.00')
+MAX_PENALTY_RATE = Decimal('100.00')
+
+
+def default_penalty_rate(debt_type):
+    """New loans and cards get 20% a year (353-FZ cap while interest runs)."""
+    return None if debt_type == 'split' else DEFAULT_PENALTY_RATE
 
 
 def money(value):

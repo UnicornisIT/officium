@@ -12,6 +12,7 @@ from flask import current_app
 from sqlalchemy.exc import IntegrityError
 
 from app.models import Debt, Expense, Income, TelegramConversationState, TelegramProcessedUpdate, User
+from app.services.debt_accrual_service import accrual_start_date, default_penalty_rate
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import add_payment
 from app.time_utils import as_utc, utc_now
@@ -917,9 +918,11 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
             interest_rate=interest_rate,
             next_payment_date=next_payment_date,
             is_payment_recurring=bool(next_payment_date),
+            penalty_rate=default_penalty_rate(data['debt_type']),
             status='active',
             comment='Telegram',
         )
+        debt.accrual_start_date = accrual_start_date(debt)
         db.session.add(debt)
         _clear_state(user)
         db.session.commit()

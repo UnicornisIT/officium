@@ -4,7 +4,14 @@ from flask import current_app, jsonify, request
 from flask_login import current_user
 from app.models import Debt, SplitPurchase
 from app.services.debt_service import get_demo_debts, get_user_debt
+from app.services.debt_accrual_service import (
+    MAX_PENALTY_RATE,
+    accrual_start_date,
+    default_penalty_rate,
+)
+from app.services.debt_calendar_service import previous_payment_due_date
 from app.services.debt_schedule_service import build_debt_payment_schedule
+from app.services.payment_service import recalculate_debt
 from app.time_utils import utc_now
 from app.utils import get_setting, is_local_test_user, parse_date, parse_decimal
 from extensions import db
@@ -93,6 +100,14 @@ def init_app(app):
             loan_term_months = _parse_positive_int(data.get('loan_term_months'), 'Срок в месяцах')
             monthly_fee_amount = parse_decimal(data.get('monthly_fee_amount'), 'Ежемесячные комиссии', required=False) or 0
             bank_remaining_amount = parse_decimal(data.get('bank_remaining_amount'), 'Остаток по банку', required=False)
+            if 'penalty_rate' in data:
+                penalty_rate = _parse_penalty_rate(data.get('penalty_rate'))
+            else:
+                penalty_rate = default_penalty_rate(debt_type)
+            capitalize_interest = bool(data.get('capitalize_interest')) and debt_type != 'split'
+            grace_period_end_date = _parse_grace_period_end(
+                data.get('grace_period_end_date'), debt_type, interest_period_start_date,
+            )
 
             _validate_debt_amounts(total_amount, remaining_amount)
             if not is_local_test_user():
@@ -127,9 +142,13 @@ def init_app(app):
                 loan_term_months=loan_term_months,
                 monthly_fee_amount=monthly_fee_amount,
                 bank_remaining_amount=bank_remaining_amount,
+                penalty_rate=penalty_rate,
+                capitalize_interest=capitalize_interest,
+                grace_period_end_date=grace_period_end_date,
                 comment=_optional_text(data.get('comment'), 2000, 'Комментарий'),
                 status='archived' if remaining_amount == Decimal('0.00') else 'active',
             )
+            debt.accrual_start_date = accrual_start_date(debt)
             db.session.add(debt)
             db.session.commit()
             return jsonify({'success': True, 'debt': debt.to_dict()}), 201
@@ -228,6 +247,12 @@ def init_app(app):
             return jsonify({'success': False, 'error': 'Нет данных'}), 400
 
         try:
+            # Pin the accrual start from the settings as they were, so the
+            # edit below cannot move it implicitly.
+            if debt.accrual_start_date is None:
+                debt.accrual_start_date = accrual_start_date(debt)
+            previous_next_payment_date = debt.next_payment_date
+
             if 'bank_name' in data:
                 bank_name = str(data['bank_name']).strip()
                 if not bank_name:
@@ -305,13 +330,27 @@ def init_app(app):
                 debt.bank_remaining_amount = parse_decimal(data.get('bank_remaining_amount'), 'Остаток по банку', required=False)
             if 'comment' in data:
                 debt.comment = _optional_text(data['comment'], 2000, 'Комментарий')
+            if 'penalty_rate' in data:
+                debt.penalty_rate = _parse_penalty_rate(data.get('penalty_rate'))
+            if 'capitalize_interest' in data:
+                debt.capitalize_interest = bool(data.get('capitalize_interest'))
+            if debt.debt_type == 'split':
+                debt.capitalize_interest = False
+            if 'grace_period_end_date' in data or debt.debt_type != 'credit_card':
+                debt.grace_period_end_date = _parse_grace_period_end(
+                    data.get('grace_period_end_date', debt.grace_period_end_date),
+                    debt.debt_type,
+                    debt.interest_period_start_date,
+                )
 
             _validate_debt_amounts(debt.total_amount, debt.remaining_amount)
             if debt.next_payment_date and debt.interest_period_start_date and debt.interest_period_start_date >= debt.next_payment_date:
                 raise ValueError('Начало процентного периода должно быть раньше даты платежа')
+            _move_accrual_start(debt, previous_next_payment_date)
 
             debt.updated_at = utc_now()
             if not is_local_test_user():
+                recalculate_debt(debt)
                 db.session.commit()
             return jsonify({'success': True, 'debt': debt.to_dict()})
 
@@ -364,6 +403,41 @@ def init_app(app):
             from app.services.debt_service import delete_demo_debt
             delete_demo_debt(debt_id)
         return jsonify({'success': True, 'message': 'Карточка удалена'})
+
+
+def _parse_penalty_rate(value):
+    rate = parse_decimal(value, 'Ставка неустойки', required=False)
+    if rate is not None and not (Decimal('0') <= rate <= MAX_PENALTY_RATE):
+        raise ValueError('Ставка неустойки должна быть от 0 до 100% годовых')
+    return rate
+
+
+def _parse_grace_period_end(value, debt_type, interest_period_start_date):
+    if debt_type != 'credit_card':
+        return None
+    grace_end = parse_date(value, 'Конец льготного периода')
+    if grace_end and interest_period_start_date and grace_end <= interest_period_start_date:
+        raise ValueError('Конец льготного периода должен быть позже начала периода процентов')
+    return grace_end
+
+
+def _move_accrual_start(debt, previous_next_payment_date):
+    """Apply manual date changes to the accrual start.
+
+    Moving the next payment date forward closes the skipped cycles, and a
+    later interest period start (e.g. the loan issue date) starts accruals
+    there. Moving dates back never reopens settled history.
+    """
+    start = debt.accrual_start_date
+    next_date = debt.next_payment_date
+    if next_date and previous_next_payment_date and next_date > previous_next_payment_date:
+        cycle_start = previous_payment_due_date(debt, next_date)
+        if start is None or cycle_start > start:
+            start = cycle_start
+    period_start = debt.interest_period_start_date
+    if period_start and (start is None or period_start > start) and (next_date is None or period_start < next_date):
+        start = period_start
+    debt.accrual_start_date = start
 
 
 def _validate_interest_rate_change(interest_rate_after_change, interest_rate_change_date):

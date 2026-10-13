@@ -642,6 +642,34 @@ function syncCardLimitHelperVisibility() {
     if (isSplit && firstPaymentInput) firstPaymentInput.value = '';
 }
 
+const DEFAULT_PENALTY_RATE = '20';
+
+function syncAccrualSettings({ applyDefaults = false } = {}) {
+    const debtType = document.getElementById('f_debt_type');
+    const penaltyInput = document.getElementById('f_penalty_rate');
+    const graceGroup = document.getElementById('grace_period_group');
+    const graceInput = document.getElementById('f_grace_period_end_date');
+    const capitalizeGroup = document.getElementById('capitalize_interest_group');
+    const capitalizeInput = document.getElementById('f_capitalize_interest');
+    if (!debtType || !penaltyInput || !graceGroup || !graceInput || !capitalizeGroup || !capitalizeInput) return;
+
+    const isCard = debtType.value === 'credit_card';
+    const isSplit = debtType.value === 'split';
+    graceGroup.classList.toggle('d-none', !isCard);
+    if (!isCard) graceInput.value = '';
+    capitalizeGroup.classList.toggle('d-none', isSplit);
+    if (isSplit) capitalizeInput.checked = false;
+    // A new debt gets the default penalty; a split has none unless entered.
+    if (applyDefaults) penaltyInput.value = isSplit ? '' : DEFAULT_PENALTY_RATE;
+}
+
+function setupAccrualSettings() {
+    const debtType = document.getElementById('f_debt_type');
+    if (!debtType) return;
+    debtType.addEventListener('change', () => syncAccrualSettings({ applyDefaults: !currentDebtId }));
+    syncAccrualSettings();
+}
+
 function setupCardLimitCalculator() {
     const debtType = document.getElementById('f_debt_type');
     const totalInput = document.getElementById('f_total_amount');
@@ -756,6 +784,13 @@ function clearDebtForm() {
     if (recurring) recurring.checked = false;
     const includePaymentDay = document.getElementById('f_include_payment_day');
     if (includePaymentDay) includePaymentDay.checked = false;
+    ['f_penalty_rate', 'f_grace_period_end_date'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    const capitalizeInterest = document.getElementById('f_capitalize_interest');
+    if (capitalizeInterest) capitalizeInterest.checked = false;
+    syncAccrualSettings();
     document.getElementById('debtFormError').classList.add('d-none');
     currentDebtId = null;
 
@@ -771,6 +806,7 @@ function clearDebtForm() {
 
 function openAddModal() {
     clearDebtForm();
+    syncAccrualSettings({ applyDefaults: true });
     document.getElementById('debtModalTitle').textContent = 'Новый долг';
     document.getElementById('debtSaveBtn').textContent = 'Добавить';
     debtModal.show();
@@ -849,8 +885,12 @@ async function openEditModal(debtId) {
         document.getElementById('f_monthly_fee_amount').value = d.monthly_fee_amount || '';
         document.getElementById('f_bank_remaining_amount').value = d.bank_remaining_amount || '';
         document.getElementById('f_comment').value           = d.comment || '';
+        document.getElementById('f_penalty_rate').value = d.penalty_rate ?? '';
+        document.getElementById('f_capitalize_interest').checked = Boolean(d.capitalize_interest);
+        document.getElementById('f_grace_period_end_date').value = d.grace_period_end_date || '';
         syncCardLimitHelperVisibility();
         syncConsumerEarlyRepaymentSettings();
+        syncAccrualSettings();
 
         debtModal.show();
     } catch (err) {
@@ -903,6 +943,9 @@ async function saveDebt() {
         loan_term_months: document.getElementById('f_loan_term_months').value || null,
         monthly_fee_amount: document.getElementById('f_monthly_fee_amount').value || null,
         bank_remaining_amount: document.getElementById('f_bank_remaining_amount').value || null,
+        penalty_rate: document.getElementById('f_penalty_rate').value || null,
+        capitalize_interest: document.getElementById('f_capitalize_interest').checked,
+        grace_period_end_date: document.getElementById('f_grace_period_end_date').value || null,
         comment:           document.getElementById('f_comment').value.trim() || null,
     };
 
@@ -1238,7 +1281,11 @@ async function openHistoryModal(debtId, title) {
                 if (p.breakdown_source === 'manual') splitParts.push('вручную');
             }
             if (p.bank_remaining_after_payment !== null && p.bank_remaining_after_payment !== undefined) {
-                splitParts.push(`банк ${formatMoney(p.bank_remaining_after_payment)}`);
+                const bankDelta = Math.abs(Number(p.bank_remaining_after_payment) - Number(p.remaining_after_payment));
+                const acceptButton = bankDelta >= 0.01
+                    ? ` <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="acceptBankRemaining(${debtId}, ${p.id})" title="Подобрать разбивку платежа так, чтобы остаток совпал с банком">принять</button>`
+                    : '';
+                splitParts.push(`банк ${formatMoney(p.bank_remaining_after_payment)}${acceptButton}`);
             }
             if (Number(p.scheduled_payment_amount || 0) > 0) {
                 splitParts.push(`обяз. ${formatMoney(p.scheduled_payment_amount)}`);
@@ -1391,6 +1438,24 @@ function syncEditBreakdownInputs() {
     ['ep_principal_amount', 'ep_interest_amount', 'ep_penalty_amount'].forEach(id => {
         document.getElementById(id).disabled = !manual;
     });
+}
+
+async function acceptBankRemaining(debtId, paymentId) {
+    if (!confirm('Принять остаток банка? Разбивка платежа станет ручной, следующие платежи будут пересчитаны.')) return;
+
+    try {
+        const resp = await jsonFetch(`/api/debts/${debtId}/payments/${paymentId}/accept-bank-remaining`, { method: 'POST' });
+        const data = await resp.json();
+        if (!data.success) {
+            showToast(data.error || 'Не удалось принять остаток банка', 'danger');
+            return;
+        }
+        historyModal.hide();
+        showToast('Остаток банка принят', 'success');
+        setTimeout(() => location.reload(), 650);
+    } catch (err) {
+        showToast('Ошибка сети: ' + err.message, 'danger');
+    }
 }
 
 async function deletePayment(debtId, paymentId) {
@@ -1684,6 +1749,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupRecurringPaymentToggle();
     setupCardLimitCalculator();
     setupConsumerEarlyRepaymentSettings();
+    setupAccrualSettings();
 
     const requestedDebtId = new URLSearchParams(window.location.search).get('edit_debt');
     if (requestedDebtId && /^\d+$/.test(requestedDebtId)) {

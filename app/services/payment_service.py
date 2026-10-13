@@ -168,7 +168,7 @@ def _recalculate(debt, principal_before_payments):
     # sends them to principal, as before.
     running = principal_before_payments
     for payment in settled:
-        if payment.breakdown_source != 'manual':
+        if _needs_settled_split(payment):
             payment.principal_amount = (_money(payment.amount, 'Сумма платежа') - _payment_fee(payment)).quantize(MONEY)
             payment.interest_amount = ZERO
             payment.penalty_amount = ZERO
@@ -203,6 +203,56 @@ def _recalculate(debt, principal_before_payments):
         current = get_debt_state(debt, as_of=as_of, payments=payments)
         if current['next_due_date']:
             debt.next_payment_date = current['next_due_date']
+
+
+def _needs_settled_split(payment):
+    # A new or edited automatic payment carries an empty split; one that was
+    # split while it was tracked keeps its parts when the start moves past it.
+    return payment.breakdown_source != 'manual' and not any(
+        Decimal(str(value or 0)) != 0
+        for value in (payment.principal_amount, payment.interest_amount, payment.penalty_amount)
+    )
+
+
+def recalculate_debt(debt):
+    """Re-split all payments after the debt settings changed. Does not commit."""
+    principal_before_payments = _principal_before_payments(debt)
+    _pin_accrual_start(debt)
+    _recalculate(debt, principal_before_payments)
+
+
+def accept_bank_remaining(debt, payment):
+    """Turn the payment into a manual split that leaves the bank's balance."""
+    if payment.debt_id != debt.id:
+        raise ValueError('Платеж не найден')
+    if payment.bank_remaining_after_payment is None:
+        raise ValueError('Для платежа не указан остаток банка')
+
+    try:
+        principal_before_payments = _principal_before_payments(debt)
+        _pin_accrual_start(debt)
+        difference = (
+            Decimal(str(payment.remaining_after_payment or 0))
+            - Decimal(str(payment.bank_remaining_after_payment))
+        ).quantize(MONEY)
+        principal = (_payment_principal(payment) + difference).quantize(MONEY)
+        available = (
+            _money(payment.amount, 'Сумма платежа')
+            - _payment_fee(payment)
+            - Decimal(str(payment.penalty_amount or 0))
+        ).quantize(MONEY)
+        if principal < 0 or principal > available:
+            raise ValueError('Остаток банка нельзя получить разбивкой этого платежа: проверьте сумму и дату')
+        payment.breakdown_source = 'manual'
+        payment.principal_amount = principal
+        payment.interest_amount = (available - principal).quantize(MONEY)
+        _recalculate(debt, principal_before_payments)
+        debt.updated_at = utc_now()
+        db.session.commit()
+    except ValueError:
+        db.session.rollback()
+        raise
+    return payment
 
 
 def _raise_on_excess(payment, allocation):

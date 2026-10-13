@@ -433,6 +433,30 @@
                         </div>
                     </div>
                     <div class="col-12">
+                        <div class="bank-calc-settings" id="accrual_settings">
+                            <div class="bank-calc-settings__title">Просрочка и неустойка</div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label" for="f_penalty_rate">Неустойка (%/год)</label>
+                                    <input type="number" class="form-control" id="f_penalty_rate" min="0" max="100" step="0.01" placeholder="не начисляется">
+                                    <small class="text-muted">На просроченную сумму за каждый день просрочки. По закону — не больше 20% годовых, пока идут проценты. Пусто — не начисляется.</small>
+                                </div>
+                                <div class="col-md-6" id="grace_period_group">
+                                    <label class="form-label" for="f_grace_period_end_date">Льготный период до</label>
+                                    <input type="date" class="form-control" id="f_grace_period_end_date">
+                                    <small class="text-muted">Погасите долг к этой дате — проценты не начислятся. Иначе они начисляются с «Начала периода процентов». Пусто — проценты по карте не считаются.</small>
+                                </div>
+                                <div class="col-12" id="capitalize_interest_group">
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="f_capitalize_interest">
+                                        <label class="form-check-label" for="f_capitalize_interest">Капитализировать проценты</label>
+                                    </div>
+                                    <small class="text-muted">Неоплаченные проценты в дату платежа добавляются к основному долгу. Обычно выключено; неустойка не капитализируется никогда.</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
                         <div class="bank-calc-settings early-repayment-settings-block">
                             <div class="bank-calc-settings__title">Досрочное погашение</div>
                             <div class="row g-3">
