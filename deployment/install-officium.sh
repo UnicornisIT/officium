@@ -356,8 +356,8 @@ if [ "$MODE" = upgrade ] && { [ -d "$APP_DIR/.git" ] || [ -f "$APP_DIR/.git" ]; 
     info "Migrating legacy in-place checkout to managed release directories"
     [ -f "$APP_DIR/.env" ] || fail "Legacy checkout has no .env; refusing an unsafe migration."
     grep -Eq '^APP_TIMEZONE=.+$' "$APP_DIR/.env" || fail "Add an explicit APP_TIMEZONE before migration."
-    git -C "$APP_DIR" diff --quiet --ignore-submodules -- || fail "Tracked local changes exist; they are preserved, but migration requires owner review."
-    git -C "$APP_DIR" diff --cached --quiet --ignore-submodules -- || fail "Staged local changes exist; migration requires owner review."
+    git -c "safe.directory=$APP_DIR" -C "$APP_DIR" diff --quiet --ignore-submodules -- || fail "Tracked local changes exist; they are preserved, but migration requires owner review."
+    git -c "safe.directory=$APP_DIR" -C "$APP_DIR" diff --cached --quiet --ignore-submodules -- || fail "Staged local changes exist; migration requires owner review."
 
     APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" SERVICE_NAME="$SERVICE_NAME" \
         SOURCE_URL="$SOURCE_URL" GITHUB_API_URL="$GITHUB_API_URL" \

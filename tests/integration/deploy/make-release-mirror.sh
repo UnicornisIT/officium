@@ -32,6 +32,7 @@ rm -rf "$mirror"
 install -d -m 0755 "$(dirname "$mirror")"
 git clone --quiet --bare "$work" "$mirror"
 chmod -R a+rX /srv/qa-git
-# The application user clones the root-owned mirror over file://.
-git config --system --add safe.directory '*'
+# The application user clones the root-owned mirror over file://. Only the
+# mirror is trusted, so ownership checks elsewhere still behave as on a server.
+git config --system --add safe.directory "$mirror"
 git ls-remote --tags "file://$mirror"
