@@ -96,15 +96,20 @@ dump_is_complete() {
     [ -s "$1" ] && tail -n 1 "$1" | grep -q '^-- Dump completed'
 }
 
-# The newest completed release other than the current one.
+# The newest completed release built before the current one. A newer release
+# (for example one whose update was just rolled back) is never picked.
 previous_release() {
-    local releases="$1" current="$2" marker
-    while IFS= read -r marker; do
-        marker="${marker#* }"
-        [ "$(dirname "$marker")" = "$current" ] && continue
-        dirname "$marker"
+    local releases="$1" current="$2" line built current_built
+    current_built=$(stat -c '%Y' "$current/.officium-release-ready" 2>/dev/null || echo 0)
+    while IFS= read -r line; do
+        built="${line%% *}"
+        line="${line#* }"
+        [ "$(dirname "$line")" = "$current" ] && continue
+        [ "$built" -lt "$current_built" ] || continue
+        dirname "$line"
         return 0
-    done < <(find "$releases" -mindepth 2 -maxdepth 2 -name .officium-release-ready -printf '%T@ %p\n' 2>/dev/null | sort -rn)
+    done < <(find "$releases" -mindepth 2 -maxdepth 2 -name .officium-release-ready -printf '%T@ %p\n' 2>/dev/null | \
+        sed -E 's/^([0-9]+)[.][0-9]* /\1 /' | sort -rn)
     return 1
 }
 

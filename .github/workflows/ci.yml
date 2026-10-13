@@ -35,7 +35,7 @@ jobs:
           python -m pip install --disable-pip-version-check
           -r requirements.txt coverage unittest-xml-reporting==3.2.0
       - name: Compile Python sources
-        run: python -m compileall -q app tests config.py run.py deployment/officium-update-runner deployment/officium-update-client
+        run: python -m compileall -q app tests config.py run.py deployment/officium-update-runner deployment/officium-update-client deployment/systemd_units.py deployment/nginx_legacy_static.py
       - name: Run unit and SQLite integration tests
         run: |
           mkdir -p test-results
@@ -61,6 +61,21 @@ jobs:
           path: |
             test-results/
             .coverage
+
+  deployment-scripts:
+    name: Deployment scripts (shellcheck, bats)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck and bats
+        run: sudo apt-get update && sudo apt-get install -y shellcheck bats
+      - name: shellcheck
+        run: >-
+          shellcheck deployment/*.sh deployment/deploy-release scripts/deploy.sh
+          scripts/officium-update tests/integration/deploy/*.sh
+      - name: bats
+        run: bats tests/bats
 
   mysql-backup-restore:
     name: MySQL migrations and backup restore without PROCESS

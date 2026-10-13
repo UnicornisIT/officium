@@ -73,17 +73,19 @@ ENV
     [ "$status" -ne 0 ]
 }
 
-@test "rollback picks the newest completed release that is not current" {
-    for name in v1-a v2-b v3-c; do mkdir -p "$TMP/releases/$name"; done
-    mkdir -p "$TMP/releases/.build-x/v4-d"
+@test "rollback picks the newest completed release built before the current one" {
+    for name in v1-a v2-b v3-c v4-broken; do mkdir -p "$TMP/releases/$name"; done
+    mkdir -p "$TMP/releases/.build-x/v5-d"
     touch -d '2026-10-01' "$TMP/releases/v1-a/.officium-release-ready"
     touch -d '2026-10-05' "$TMP/releases/v2-b/.officium-release-ready"
     touch -d '2026-10-09' "$TMP/releases/v3-c/.officium-release-ready"
+    # A newer release whose update was rolled back is never the target.
+    touch -d '2026-10-12' "$TMP/releases/v4-broken/.officium-release-ready"
     run previous_release "$TMP/releases" "$TMP/releases/v3-c"
     [ "$status" -eq 0 ]
     [ "$output" = "$TMP/releases/v2-b" ]
     run previous_release "$TMP/releases" "$TMP/releases/v1-a"
-    [ "$output" = "$TMP/releases/v3-c" ]
+    [ "$status" -ne 0 ]
     rm "$TMP/releases/v1-a/.officium-release-ready" "$TMP/releases/v2-b/.officium-release-ready"
     run previous_release "$TMP/releases" "$TMP/releases/v3-c"
     [ "$status" -ne 0 ]
