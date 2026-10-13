@@ -60,3 +60,38 @@ teardown() {
     [ "$status" -eq 1 ]
     [[ "$output" == *"link is broken"* ]]
 }
+
+@test "an explicit .env link to the permanent shared file is kept" {
+    run environment_link_target "/opt/officium.managed.42/shared/.env" "/opt/officium/shared/.env"
+    [ "$status" -eq 0 ]
+    [ "$output" = "/opt/officium/shared/.env" ]
+}
+
+@test "a .env link through current/ is refused" {
+    run environment_link_target "$TMP/x" "/opt/officium/current/.env"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"current/"* ]]
+}
+
+@test "a .env link into the temporary migration tree is refused" {
+    run environment_link_target "$TMP/x" "/opt/officium.managed.42/shared/.env"
+    [ "$status" -eq 1 ]
+}
+
+@test "a .env link that is not <APP_ROOT>/shared/.env is refused" {
+    run environment_link_target "$TMP/x" "/opt/officium/.env"
+    [ "$status" -eq 1 ]
+    run environment_link_target "$TMP/x" "shared/.env"
+    [ "$status" -eq 1 ]
+}
+
+@test "without an explicit link the build file is resolved to its real path" {
+    mkdir -p "$TMP/app/shared" "$TMP/app/releases/v1"
+    printf 'SECRET_KEY=x\n' >"$TMP/app/shared/.env"
+    ln -s "$TMP/app/shared/.env" "$TMP/app/releases/v1/.env" || skip "symlinks are not available"
+    [ -L "$TMP/app/releases/v1/.env" ] || skip "symlinks are emulated on this platform"
+    ln -s "$TMP/app/releases/v1" "$TMP/app/current"
+    run environment_link_target "$TMP/app/current/.env" ""
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(realpath -e "$TMP/app/shared/.env")" ]
+}

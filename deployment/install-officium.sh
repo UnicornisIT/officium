@@ -65,6 +65,14 @@ configure_managed_env() {
     set_env_value "$managed_env" SERVER_UPDATE_STATUS_PATH "$STATE_DIR/server-update-status.json"
     set_env_value "$managed_env" SERVER_UPDATE_SOCKET "$UPDATE_SOCKET"
 }
+# realpath -e current/.env must be the permanent shared file.
+verify_current_environment() {
+    current_env=$(realpath -e "$APP_DIR/current/.env" 2>/dev/null) || {
+        printf 'ERROR: %s/current/.env does not resolve to a file.\n' "$APP_DIR" >&2; return 1; }
+    [ "$current_env" = "$(realpath -e "$APP_DIR/shared/.env")" ] || {
+        printf 'ERROR: %s/current/.env resolves to %s, not %s/shared/.env.\n' \
+            "$APP_DIR" "$current_env" "$APP_DIR" >&2; return 1; }
+}
 seal_release() {
     release_path="$1"
     expected_tag="$2"
@@ -283,7 +291,8 @@ PY
     runuser -u "$APP_USER" -- /usr/local/lib/officium/deploy-release \
         --release "$RELEASE_TAG" --repository "$REPOSITORY" \
         --releases-dir "$build_root" --current-link "$APP_DIR/current" \
-        --environment-file "$managed_root/shared/.env" --stage-file "$stage_file" \
+        --environment-file "$managed_root/shared/.env" \
+        --environment-link "$APP_DIR/shared/.env" --stage-file "$stage_file" \
         --result-file "$result_file" --venv-name "$VENV_NAME"
     built_release=$(sed -n '1p' "$result_file")
     release_name=$(basename "$built_release")
@@ -310,7 +319,9 @@ PY
     release_script_dir="$APP_DIR/releases/$release_name/deployment"
     [ -d "$release_script_dir" ] || fail "Target release has no deployment bundle."
     if ! {
-        /usr/local/sbin/officium-update-runner --verify-release "$APP_DIR/releases/$release_name" &&
+        /usr/local/sbin/officium-update-runner --verify-release \
+            "$APP_DIR/releases/$release_name" "$APP_DIR/shared/.env" &&
+        verify_current_environment &&
         render "$release_script_dir/officium.service.in" "/etc/systemd/system/$SERVICE_NAME.service" &&
         render "$release_script_dir/officium-monthly-expenses.service" "/etc/systemd/system/$MONTHLY_SERVICE.service" &&
         render "$release_script_dir/officium-monthly-expenses.timer" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
@@ -403,7 +414,8 @@ chmod 0600 "$stage_file" "$result_file"
 runuser -u "$APP_USER" -- /usr/local/lib/officium/deploy-release \
     --release "$RELEASE_TAG" --repository "$REPOSITORY" \
     --releases-dir "$build_root" --current-link "$APP_DIR/current" \
-    --environment-file "$APP_DIR/shared/.env" --stage-file "$stage_file" \
+    --environment-file "$APP_DIR/shared/.env" \
+    --environment-link "$APP_DIR/shared/.env" --stage-file "$stage_file" \
     --result-file "$result_file" --venv-name "$VENV_NAME"
 build_release=$(sed -n '1p' "$result_file")
 release_commit=$(sed -n '2p' "$result_file")
@@ -418,7 +430,7 @@ else
     /usr/local/sbin/officium-update-runner --relocate-venv "$release_path" "$build_release" "$release_path"
 fi
 rm -rf -- "$build_root"
-/usr/local/sbin/officium-update-runner --verify-release "$release_path"
+/usr/local/sbin/officium-update-runner --verify-release "$release_path" "$APP_DIR/shared/.env"
 seal_release "$release_path" "$RELEASE_TAG"
 ln -s "$release_path" "$APP_DIR/.current.initial"
 mv -Tf "$APP_DIR/.current.initial" "$APP_DIR/current"
@@ -441,6 +453,7 @@ if ! (
     systemctl daemon-reload
     systemctl enable --now "$SERVICE_NAME.service" "$MONTHLY_SERVICE.timer" officium-updater.socket
     systemctl is-active --quiet "$SERVICE_NAME.service" || fail "Application service is not active."
+    verify_current_environment || fail "current/.env is not the shared environment file."
     systemctl is-active --quiet "$MONTHLY_SERVICE.timer" || fail "Monthly timer is not active."
     if [ "$ENABLE_NGINX" = true ]; then
         systemctl reload nginx

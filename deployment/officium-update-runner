@@ -39,6 +39,7 @@ ALLOWED_CONFIG_KEYS = {
     'APP_USER',
     'BACKUP_DIR',
     'DEPLOY_SCRIPT',
+    'ENV_FILE',
     'GIT_REMOTE',
     'HEALTHCHECK_URL',
     'REPOSITORY',
@@ -155,7 +156,10 @@ def load_runner_config():
         'STATUS_FILE': configured.get('STATUS_FILE', '/var/lib/officium/server-update-status.json'),
         'STALE_MINUTES': configured.get('STALE_MINUTES', '120'),
         'VENV_NAME': configured.get('VENV_NAME', 'venv'),
+        'ENV_FILE': configured.get('ENV_FILE', ''),
     }
+    if values['ENV_FILE'] and not Path(values['ENV_FILE']).is_absolute():
+        raise UpdateFailure('ENV_FILE must be an absolute path.')
     for key in ('APP_DIR', 'BACKUP_DIR', 'DEPLOY_SCRIPT', 'RELEASES_DIR', 'STATUS_FILE'):
         if not Path(values[key]).is_absolute():
             raise UpdateFailure(f'{key} must be an absolute path.')
@@ -295,8 +299,45 @@ def verify_git_remote(config):
         raise UpdateFailure('Git remote does not match the configured GitHub repository.')
 
 
-def database_settings(app_dir):
-    env_path = app_dir / '.env'
+def application_env_path(config):
+    """The permanent application .env file.
+
+    Managed installs keep it in <APP_ROOT>/shared/.env next to the current
+    symlink; it is never read through current/.env, whose link the release
+    being installed may not have yet. Legacy checkouts keep it in APP_DIR.
+    """
+    if config.get('ENV_FILE'):
+        return Path(config['ENV_FILE'])
+    app_dir = Path(config['APP_DIR'])
+    if app_dir.is_symlink():
+        return app_dir.parent / 'shared' / '.env'
+    return app_dir / '.env'
+
+
+def verify_release_environment_link(release_path, env_path):
+    """A release's .env must be an absolute link to the permanent shared file."""
+    link = Path(release_path) / '.env'
+    if not link.is_symlink() or os.readlink(link) != str(env_path):
+        raise UpdateFailure(
+            f'Release .env must be a symlink to {env_path}.', 'deployment_failed'
+        )
+
+
+def verify_current_environment(config):
+    """After activation, realpath(current/.env) must be the shared .env file."""
+    env_path = application_env_path(config)
+    try:
+        resolved = (Path(config['APP_DIR']) / '.env').resolve(strict=True)
+        expected = env_path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise UpdateFailure('current/.env does not resolve to a file.', 'healthcheck_failed') from exc
+    if resolved != expected:
+        raise UpdateFailure(
+            f'current/.env resolves to {resolved}, not {expected}.', 'healthcheck_failed'
+        )
+
+
+def database_settings(env_path, app_dir):
     values = parse_key_value_file(env_path)
     database_url = values.get('DATABASE_URL', '').strip()
     if database_url:
@@ -409,7 +450,7 @@ def backup_database(config, tag):
     app_dir = Path(config['APP_DIR'])
     backup_dir = Path(config['BACKUP_DIR'])
     backup_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
-    settings = database_settings(app_dir)
+    settings = database_settings(application_env_path(config), app_dir)
     timestamp = utc_now().strftime('%Y%m%dT%H%M%SZ')
     safe_tag = re.sub(r'[^A-Za-z0-9._+-]', '_', tag)
 
@@ -500,7 +541,7 @@ def backup_configuration(config, tag):
     destination = backup_dir / f'officium-{safe_tag}-{timestamp}-config'
     destination.mkdir(mode=0o700)
     sources = (
-        (Path(config['APP_DIR']) / '.env', 'app.env'),
+        (application_env_path(config), 'app.env'),
         (CONFIG_PATH, 'updater.env'),
     )
     copied = 0
@@ -534,8 +575,35 @@ def create_backups(config, tag):
     return database_path, configuration_path
 
 
+def deploy_command(config, tag, *, runuser, deploy_script, build_root, stage_path, result_path):
+    """The unprivileged release build command.
+
+    deploy-release reads the shared .env while it builds and links the release
+    to that same permanent file: never to current/.env, which becomes a
+    self-reference as soon as current points at the new release.
+    """
+    env_path = application_env_path(config)
+    if env_path.parts[-2:] != ('shared', '.env'):
+        raise UpdateFailure('Managed releases need the shared .env file.', 'configuration_invalid')
+    return [
+        runuser,
+        '-u',
+        config['APP_USER'],
+        '--',
+        str(deploy_script),
+        '--release', tag,
+        '--repository', config['REPOSITORY'],
+        '--releases-dir', str(build_root),
+        '--current-link', str(config['APP_DIR']),
+        '--environment-file', str(env_path),
+        '--environment-link', str(env_path),
+        '--stage-file', str(stage_path),
+        '--result-file', str(result_path),
+        '--venv-name', config['VENV_NAME'],
+    ]
+
+
 def run_deployment(config, tag):
-    app_dir = Path(config['APP_DIR'])
     deploy_source = Path(config['DEPLOY_SCRIPT'])
     if not deploy_source.is_file():
         raise UpdateFailure('Root-owned deployment script is missing.')
@@ -572,21 +640,10 @@ def run_deployment(config, tag):
             result_path = Path(result_file.name)
         os.chown(result_path, account.pw_uid, account.pw_gid)
         result_path.chmod(0o600)
-        command = [
-            runuser,
-            '-u',
-            config['APP_USER'],
-            '--',
-            str(deploy_source),
-            '--release', tag,
-            '--repository', config['REPOSITORY'],
-            '--releases-dir', str(build_root),
-            '--current-link', str(app_dir),
-            '--environment-file', str(app_dir / '.env'),
-            '--stage-file', str(stage_path),
-            '--result-file', str(result_path),
-            '--venv-name', config['VENV_NAME'],
-        ]
+        command = deploy_command(
+            config, tag, runuser=runuser, deploy_script=deploy_source,
+            build_root=build_root, stage_path=stage_path, result_path=result_path,
+        )
         process = subprocess.Popen(command, start_new_session=True)
         deadline = time.monotonic() + 900
         last_stage = ''
@@ -751,6 +808,7 @@ def seal_and_verify_release(config, release_path, tag, release_commit):
     marker = (candidate / '.officium-release-ready').read_text(encoding='utf-8').strip()
     if marker != release_commit or not re.fullmatch(r'[0-9a-f]{40,64}', release_commit):
         raise UpdateFailure('Candidate release commit marker is invalid.', 'deployment_failed')
+    verify_release_environment_link(candidate, application_env_path(config))
 
     group_id = grp.getgrnam(config['APP_GROUP']).gr_gid
     for directory, dirnames, filenames in os.walk(candidate, followlinks=False):
@@ -1029,10 +1087,11 @@ def check_readiness(*, emit=True):
         shutil.rmtree(probe_root, ignore_errors=True)
     if probe.returncode != 0:
         raise UpdateFailure('APP_USER cannot create a nested release directory.')
-    env_values = parse_key_value_file(current_link / '.env')
+    env_path = application_env_path(config)
+    env_values = parse_key_value_file(env_path)
     if not env_values.get('APP_TIMEZONE', '').strip():
         raise UpdateFailure('APP_TIMEZONE must be explicit before updates are enabled.')
-    db_settings = database_settings(current_link)
+    db_settings = database_settings(env_path, current_link)
     if db_settings['engine'] == 'mysql' and not shutil.which('mysqldump'):
         raise UpdateFailure('mysqldump is not installed.', 'configuration_invalid')
     if db_settings['engine'] == 'sqlite':
@@ -1116,6 +1175,7 @@ def perform_update(tag):
 
                 write_status(config, 'verifying', tag, 'Проверка работоспособности новой версии.')
                 verify_service_health(config)
+                verify_current_environment(config)
                 install_privileged_bundle(config, release_path)
             except Exception as exc:
                 if not isinstance(exc, UpdateFailure):
@@ -1407,14 +1467,16 @@ def main(argv):
         release = Path(argv[2])
         relocate_release_venv(release, argv[3], argv[4], release_venv_name(release))
         return 0
-    if len(argv) == 3 and argv[1] == '--verify-release':
+    if len(argv) in (3, 4) and argv[1] == '--verify-release':
         release = Path(argv[2])
         verify_release_venv(release, release_venv_name(release))
+        if len(argv) == 4:
+            verify_release_environment_link(release, Path(argv[3]))
         emit_result(True, code='release_verified')
         return 0
     raise UpdateFailure(
         'Usage: officium-update-runner --serve|--check|--start-latest|--start TAG|--perform TAG'
-        '|--backup-only LABEL|--relocate-venv RELEASE OLD_ROOT NEW_ROOT|--verify-release RELEASE'
+        '|--backup-only LABEL|--relocate-venv RELEASE OLD_ROOT NEW_ROOT|--verify-release RELEASE [ENV_FILE]'
     )
 
 

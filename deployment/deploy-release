@@ -8,6 +8,7 @@ REPOSITORY=""
 RELEASES_DIR=""
 CURRENT_LINK=""
 ENVIRONMENT_FILE=""
+ENVIRONMENT_LINK=""
 STAGE_FILE=""
 RESULT_FILE=""
 VENV_NAME="venv"
@@ -36,6 +37,25 @@ verify_venv_paths() {
     done
 }
 
+# The release's .env symlink must name the permanent <APP_ROOT>/shared/.env.
+# A path through current/ turns into a self-reference once current points at
+# this release, and a legacy migration builds from a temporary tree that is
+# renamed afterwards. Without an explicit link the readable build file is
+# resolved, which turns current/.env into the shared file it points at.
+environment_link_target() {
+    local environment_file="$1" requested="$2" target
+    if [ -n "$requested" ]; then
+        target="$requested"
+    else
+        target=$(realpath -e -- "$environment_file") || fail "Cannot resolve the environment file."
+    fi
+    [[ "$target" = /* ]] || fail "The release .env link must be absolute."
+    [[ "$target" != */current/* && "$target" != *.managed.* && "$target" != *..* ]] || \
+        fail "The release .env link must not go through current/ or a temporary tree."
+    [[ "$target" = */shared/.env ]] || fail "The release .env link must point to <APP_ROOT>/shared/.env."
+    printf '%s\n' "$target"
+}
+
 main() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -44,6 +64,7 @@ main() {
             --releases-dir) RELEASES_DIR="${2:-}"; shift 2 ;;
             --current-link) CURRENT_LINK="${2:-}"; shift 2 ;;
             --environment-file) ENVIRONMENT_FILE="${2:-}"; shift 2 ;;
+            --environment-link) ENVIRONMENT_LINK="${2:-}"; shift 2 ;;
             --stage-file) STAGE_FILE="${2:-}"; shift 2 ;;
             --result-file) RESULT_FILE="${2:-}"; shift 2 ;;
             --venv-name) VENV_NAME="${2:-}"; shift 2 ;;
@@ -59,6 +80,7 @@ main() {
         [ -n "$required_path" ] && [[ "$required_path" = /* ]] || fail "All deployment paths must be absolute."
     done
     [ -r "$ENVIRONMENT_FILE" ] || fail "Application environment file is not readable."
+    environment_link=$(environment_link_target "$ENVIRONMENT_FILE" "$ENVIRONMENT_LINK")
     [ -w "$RELEASES_DIR" ] || fail "Release directory is not writable by the application user."
 
     available_kb=$(df -Pk "$RELEASES_DIR" | awk 'NR==2 {print $4}')
@@ -113,6 +135,7 @@ main() {
     mv -- "$stage_dir/source" "$final_dir"
     release_moved=true
 
+    # Migrations read the build-time file; the permanent link is set below.
     ln -s "$ENVIRONMENT_FILE" "$final_dir/.env"
 
     report dependencies
@@ -143,6 +166,8 @@ main() {
             'from run import app; assert app is not None; print("run:app import OK")'
     )
 
+    ln -sfn -- "$environment_link" "$final_dir/.env"
+    [ "$(readlink -- "$final_dir/.env")" = "$environment_link" ] || fail "Release .env link was not written."
     printf '%s\n' "$release_commit" >"$final_dir/.officium-release-ready"
     printf '%s\n%s\n' "$final_dir" "$release_commit" >"$RESULT_FILE"
     release_moved=false

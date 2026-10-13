@@ -74,3 +74,95 @@ class VenvRelocationTestCase(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def _symlinks_supported():
+    with tempfile.TemporaryDirectory() as directory:
+        try:
+            os.symlink(directory, Path(directory) / 'probe', target_is_directory=True)
+        except (OSError, NotImplementedError):
+            return False
+    return True
+
+
+class ReleaseEnvironmentLinkTestCase(unittest.TestCase):
+    def managed_config(self, app_root):
+        return {
+            'APP_DIR': f'{app_root}/current', 'APP_USER': 'officium', 'REPOSITORY': 'owner/officium',
+            'VENV_NAME': 'venv', 'ENV_FILE': '',
+        }
+
+    def test_managed_installs_read_the_shared_env_file(self):
+        config = self.managed_config('/opt/officium')
+        with mock.patch.object(runner.Path, 'is_symlink', return_value=True):
+            self.assertEqual(runner.application_env_path(config), Path('/opt/officium/shared/.env'))
+        with mock.patch.object(runner.Path, 'is_symlink', return_value=False):
+            legacy = {**config, 'APP_DIR': '/opt/officium'}
+            self.assertEqual(runner.application_env_path(legacy), Path('/opt/officium/.env'))
+        self.assertEqual(
+            runner.application_env_path({**config, 'ENV_FILE': '/etc/officium/app.env'}),
+            Path('/etc/officium/app.env'),
+        )
+
+    def test_build_command_links_the_release_to_the_shared_file_not_current(self):
+        config = self.managed_config('/opt/officium')
+        with mock.patch.object(runner.Path, 'is_symlink', return_value=True):
+            command = runner.deploy_command(
+                config, 'v1.2.3', runuser='/usr/sbin/runuser',
+                deploy_script=Path('/usr/local/lib/officium/deploy-release'),
+                build_root=Path('/opt/officium/releases/.build-x'),
+                stage_path=Path('/tmp/stage'), result_path=Path('/tmp/result'),
+            )
+        option = {command[index]: command[index + 1] for index in range(5, len(command) - 1, 2)}
+        self.assertEqual(Path(option['--environment-file']), Path('/opt/officium/shared/.env'))
+        self.assertEqual(option['--environment-link'], option['--environment-file'])
+        self.assertNotIn('current', option['--environment-link'])
+        self.assertEqual(command[:4], ['/usr/sbin/runuser', '-u', 'officium', '--'])
+
+    def test_build_command_refuses_an_env_file_outside_shared(self):
+        config = {**self.managed_config('/opt/officium'), 'ENV_FILE': '/opt/officium/current/.env'}
+        with self.assertRaises(runner.UpdateFailure):
+            runner.deploy_command(
+                config, 'v1.2.3', runuser='runuser', deploy_script=Path('/x'), build_root=Path('/b'),
+                stage_path=Path('/s'), result_path=Path('/r'),
+            )
+
+    @unittest.skipUnless(_symlinks_supported(), 'symlinks are not available')
+    def test_two_successive_updates_keep_current_env_resolvable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / 'shared').mkdir()
+            (root / 'shared' / '.env').write_text('SECRET_KEY=x\n', encoding='utf-8')
+            (root / 'releases').mkdir()
+            config = self.managed_config(str(root))
+            current = root / 'current'
+
+            def install(name, env_link):
+                release = root / 'releases' / name
+                release.mkdir()
+                os.symlink(env_link, release / '.env')
+                runner.verify_release_environment_link(release, runner.application_env_path(config))
+                temporary = root / '.current.next'
+                os.symlink(release, temporary, target_is_directory=True)
+                os.replace(temporary, current)
+
+            # N -> N+1 -> N+2 with the link the runner now passes.
+            os.symlink(root / 'releases' / 'missing', current, target_is_directory=True)
+            for name in ('v1', 'v2', 'v3'):
+                install(name, str(root / 'shared' / '.env'))
+                runner.verify_current_environment(config)
+                self.assertEqual((current / '.env').resolve(strict=True), root / 'shared' / '.env')
+
+            # The previous builder linked the release to current/.env: once
+            # current points at that release the link refers to itself.
+            release = root / 'releases' / 'v4'
+            release.mkdir()
+            os.symlink(str(current / '.env'), release / '.env')
+            with self.assertRaises(runner.UpdateFailure):
+                runner.verify_release_environment_link(release, runner.application_env_path(config))
+            temporary = root / '.current.next'
+            os.symlink(release, temporary, target_is_directory=True)
+            os.replace(temporary, current)
+            with self.assertRaises(runner.UpdateFailure) as caught:
+                runner.verify_current_environment(config)
+            self.assertEqual(caught.exception.code, 'healthcheck_failed')
