@@ -1,4 +1,5 @@
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -24,6 +25,20 @@ class DeploymentContractTestCase(unittest.TestCase):
         self.assertIn('ProtectSystem=strict', unit)
         self.assertIn('ProtectHome=read-only', unit)
         self.assertIn('--listen=@@HOST@@:@@PORT@@', exec_start)
+        self.assertTrue(exec_start.startswith('ExecStart=@@VENV_DIR@@/bin/python -m waitress '))
+
+    def test_no_unit_or_script_runs_a_venv_console_script(self):
+        # Console scripts carry the absolute path of the build directory; after
+        # the release moves they fail with 203/EXEC. Only venv/bin/python is
+        # path-independent, so everything runs as `venv/bin/python -m <module>`.
+        console_script = re.compile(r'(?:VENV_DIR@@|venv|\$VENV_NAME|\{venv\})/bin/(?!python\b)[A-Za-z]')
+        checked = [path for path in (PROJECT_ROOT / 'deployment').iterdir() if path.is_file()]
+        checked += [PROJECT_ROOT / 'scripts' / 'deploy.sh']
+        for path in checked:
+            with self.subTest(path=path.name):
+                text = path.read_text(encoding='utf-8')
+                self.assertIsNone(console_script.search(text), console_script.search(text))
+                self.assertNotIn('waitress-serve', text)
 
     def test_updater_uses_credential_checked_socket_and_not_sudo(self):
         runner = (PROJECT_ROOT / 'deployment' / 'officium-update-runner').read_text(encoding='utf-8')
@@ -119,12 +134,6 @@ class DeploymentContractTestCase(unittest.TestCase):
             with socket.socket() as probe:
                 probe.bind(('127.0.0.1', 0))
                 port = probe.getsockname()[1]
-            scripts_dir = Path(sys.executable).parent
-            if os.name == 'nt':
-                waitress = scripts_dir / 'waitress-serve.exe'
-            else:
-                waitress = scripts_dir / 'waitress-serve'
-            self.assertTrue(waitress.exists(), f'waitress executable missing: {waitress}')
             env = os.environ.copy()
             env.update({
                 'OFFICIUM_ENV': 'development',
@@ -134,8 +143,9 @@ class DeploymentContractTestCase(unittest.TestCase):
                 'SESSION_COOKIE_SECURE': 'false',
                 'SERVER_UPDATE_ENABLED': 'false',
             })
+            # Same invocation as the systemd unit: python -m waitress.
             command = [
-                str(waitress), f'--listen=127.0.0.1:{port}', '--threads=1',
+                sys.executable, '-m', 'waitress', f'--listen=127.0.0.1:{port}', '--threads=1',
                 '--trusted-proxy=127.0.0.1',
                 '--trusted-proxy-headers=x-forwarded-for x-forwarded-host x-forwarded-proto x-forwarded-port',
                 'run:app',

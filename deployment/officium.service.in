@@ -10,7 +10,7 @@ User=@@APP_USER@@
 Group=@@APP_GROUP@@
 WorkingDirectory=@@APP_ROOT@@/current
 EnvironmentFile=@@APP_ROOT@@/shared/.env
-ExecStart=@@VENV_DIR@@/bin/waitress-serve --listen=@@HOST@@:@@PORT@@ --threads=@@THREADS@@ --trusted-proxy=@@TRUSTED_PROXY@@ "--trusted-proxy-headers=@@TRUSTED_PROXY_HEADERS@@" run:app
+ExecStart=@@VENV_DIR@@/bin/python -m waitress --listen=@@HOST@@:@@PORT@@ --threads=@@THREADS@@ --trusted-proxy=@@TRUSTED_PROXY@@ "--trusted-proxy-headers=@@TRUSTED_PROXY_HEADERS@@" run:app
 Restart=on-failure
 RestartSec=3s
 TimeoutStartSec=60s

@@ -290,6 +290,9 @@ PY
     staged_release="$managed_root/releases/$release_name"
     [ ! -e "$staged_release" ] && [ ! -L "$staged_release" ] || fail "Managed release path already exists."
     mv -- "$built_release" "$staged_release"
+    # The release moves twice more (here and with the whole managed tree); the
+    # venv scripts are pointed at the final path before the tree is sealed.
+    /usr/local/sbin/officium-update-runner --relocate-venv         "$staged_release" "$built_release" "$APP_DIR/releases/$release_name"
     rm -rf -- "$build_root"
     rm -f "$stage_file" "$result_file"
     [ -f "$staged_release/.officium-release-ready" ] || fail "Managed release build is incomplete."
@@ -307,6 +310,7 @@ PY
     release_script_dir="$APP_DIR/releases/$release_name/deployment"
     [ -d "$release_script_dir" ] || fail "Target release has no deployment bundle."
     if ! {
+        /usr/local/sbin/officium-update-runner --verify-release "$APP_DIR/releases/$release_name" &&
         render "$release_script_dir/officium.service.in" "/etc/systemd/system/$SERVICE_NAME.service" &&
         render "$release_script_dir/officium-monthly-expenses.service" "/etc/systemd/system/$MONTHLY_SERVICE.service" &&
         render "$release_script_dir/officium-monthly-expenses.timer" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
@@ -411,8 +415,10 @@ if [ -e "$release_path" ] || [ -L "$release_path" ]; then
         fail "Existing release commit marker differs."
 else
     mv -- "$build_release" "$release_path"
+    /usr/local/sbin/officium-update-runner --relocate-venv "$release_path" "$build_release" "$release_path"
 fi
 rm -rf -- "$build_root"
+/usr/local/sbin/officium-update-runner --verify-release "$release_path"
 seal_release "$release_path" "$RELEASE_TAG"
 ln -s "$release_path" "$APP_DIR/.current.initial"
 mv -Tf "$APP_DIR/.current.initial" "$APP_DIR/current"

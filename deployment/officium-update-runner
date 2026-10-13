@@ -654,6 +654,9 @@ def run_deployment(config, tag):
                 raise UpdateFailure('Existing release directory is unsafe.', 'deployment_failed')
         else:
             os.replace(release_path, destination)
+            for built_root in {result_lines[0], str(release_path)}:
+                relocate_release_venv(destination, built_root, destination, config['VENV_NAME'])
+            verify_release_venv(destination, config['VENV_NAME'])
         return destination, result_lines[1]
     finally:
         if stage_path:
@@ -662,6 +665,78 @@ def run_deployment(config, tag):
             result_path.unlink(missing_ok=True)
         if build_root:
             shutil.rmtree(build_root, ignore_errors=True)
+
+
+def _venv_reference_pattern(venv_name):
+    return re.compile(
+        rb'(?:/[A-Za-z0-9_.@+-]+)+/' + re.escape(venv_name.encode('ascii')) + rb'(?=[/"\x27]|$)',
+        re.MULTILINE,
+    )
+
+
+def release_venv_name(release_path):
+    for name in ('venv', '.venv'):
+        if (Path(release_path) / name / 'bin').is_dir():
+            return name
+    raise UpdateFailure('Release has no virtualenv.', 'deployment_failed')
+
+
+def relocate_release_venv(release_path, old_root, new_root, venv_name):
+    """Rewrite the absolute build path that venv scripts embed after a move.
+
+    Console scripts (and activate) carry the path the venv was created at, so
+    every move of a built release would otherwise leave them pointing at a
+    directory that no longer exists (systemd then fails with 203/EXEC).
+    """
+    old = (str(old_root).rstrip('/') + '/').encode()
+    new = (str(new_root).rstrip('/') + '/').encode()
+    if old == new:
+        return
+    venv_dir = Path(release_path) / venv_name
+    for path in [*sorted((venv_dir / 'bin').iterdir()), venv_dir / 'pyvenv.cfg']:
+        if path.is_symlink() or not path.is_file():
+            continue
+        data = path.read_bytes()
+        if old not in data:
+            continue
+        info = path.stat()
+        temporary = path.with_name(f'.{path.name}.relocate-{os.getpid()}')
+        try:
+            temporary.write_bytes(data.replace(old, new))
+            os.chown(temporary, info.st_uid, info.st_gid)
+            temporary.chmod(stat.S_IMODE(info.st_mode))
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def verify_release_venv(release_path, venv_name, expected_root=None):
+    """Fail unless every path a venv/bin file mentions is inside the release.
+
+    ``expected_root`` is the path the release will finally live at when it is
+    checked before its last move; it defaults to where it is now.
+    """
+    release = str(expected_root or Path(release_path)).rstrip('/').encode()
+    pattern = _venv_reference_pattern(venv_name)
+    suffix_length = len(venv_name) + 1
+    problems = []
+    for path in sorted((Path(release_path) / venv_name / 'bin').iterdir()):
+        if path.is_symlink():
+            if not path.exists():
+                problems.append(f'{path.name} is a broken link')
+            continue
+        if not path.is_file():
+            continue
+        for match in pattern.finditer(path.read_bytes()):
+            prefix = match.group(0)[:-suffix_length]
+            if prefix != release:
+                problems.append(f'{path.name} -> {prefix.decode(errors="replace")}')
+                break
+    if problems:
+        raise UpdateFailure(
+            'Virtualenv references paths outside the release: ' + ', '.join(problems[:5]),
+            'deployment_failed',
+        )
 
 
 def seal_and_verify_release(config, release_path, tag, release_commit):
@@ -1328,8 +1403,18 @@ def main(argv):
     if len(argv) == 3 and argv[1] == '--backup-only':
         backup_only(validate_tag(argv[2]))
         return 0
+    if len(argv) == 5 and argv[1] == '--relocate-venv':
+        release = Path(argv[2])
+        relocate_release_venv(release, argv[3], argv[4], release_venv_name(release))
+        return 0
+    if len(argv) == 3 and argv[1] == '--verify-release':
+        release = Path(argv[2])
+        verify_release_venv(release, release_venv_name(release))
+        emit_result(True, code='release_verified')
+        return 0
     raise UpdateFailure(
-        'Usage: officium-update-runner --serve|--check|--start-latest|--start TAG|--perform TAG|--backup-only LABEL'
+        'Usage: officium-update-runner --serve|--check|--start-latest|--start TAG|--perform TAG'
+        '|--backup-only LABEL|--relocate-venv RELEASE OLD_ROOT NEW_ROOT|--verify-release RELEASE'
     )
 
 
