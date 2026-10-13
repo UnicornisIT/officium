@@ -142,8 +142,9 @@ class DeploymentContractTestCase(unittest.TestCase):
         # nginx (www-data) cannot read the root:officium 0750 release tree;
         # Flask serves /static/ through the proxy.
         for template in (production, staging_tls):
-            self.assertNotIn('location /static/', template)
-            self.assertNotIn('alias ', template)
+            code = '\n'.join(line for line in template.splitlines() if not line.lstrip().startswith('#'))
+            self.assertNotIn('location /static/', code)
+            self.assertNotIn('alias ', code)
         installer = (PROJECT_ROOT / 'deployment' / 'install-officium.sh').read_text(encoding='utf-8')
         self.assertIn('check_nginx_app_paths "$release_script_dir"', installer)
         self.assertIn('if [ "$FIX_NGINX" = true ]; then', installer)
