@@ -187,6 +187,7 @@ class _AccrualEngine:
         )
         self.grace_start, self.grace_end = self._grace_window()
         self.split_anchor = None
+        self.split_plan = None
         self.periods = []
         self.cycles = []
         self.allocations = {}
@@ -274,6 +275,10 @@ class _AccrualEngine:
                 else:
                     ledger.current_interest += segment['interest']
                 self._record_period('grace_interest' if in_grace else 'interest', segment, ledger.principal)
+        self._accrue_penalty(ledger, until)
+        ledger.cursor = until
+
+    def _accrue_penalty(self, ledger, until):
         if self.penalty_rate > 0 and ledger.overdue_total > 0:
             base = ledger.overdue_total
             day = ledger.cursor
@@ -292,7 +297,6 @@ class _AccrualEngine:
                     'interest': amount,
                 }, base)
                 day = segment_end
-        ledger.cursor = until
 
     def _record_period(self, kind, segment, base):
         self.periods.append({
@@ -476,9 +480,63 @@ class _AccrualEngine:
             return anchor
         return next_payment_due_date(self.debt, max(paid_dates))
 
+    def _split_plan(self, as_of):
+        """Unpaid split installments from the split schedule, or None.
+
+        The schedule already matches recorded payments to installments of
+        the split and of each purchase, so whatever it still plans is what
+        is owed, and a planned date before today is overdue.
+        """
+        if getattr(self.debt, 'id', None):
+            state = sa_inspect(self.debt, raiseerr=False)
+            if state is None or not state.persistent:
+                return None
+        from app.services.debt_schedule_service import split_schedule_rows
+
+        try:
+            plan = split_schedule_rows(self.debt, today=as_of)
+        except (ValueError, ArithmeticError):
+            return None
+        if plan is None:
+            return []
+        return [
+            (date.fromisoformat(row['payment_date']), money(row['payment']))
+            for row in plan['rows']
+            if row.get('status') != 'paid' and row['payment'] > 0
+        ]
+
+    def _apply_split_plan(self, ledger, as_of):
+        ledger.overdue = []
+        self.cycles = []
+        principal_left = ledger.principal
+        for due, amount in self.split_plan:
+            if due >= as_of or principal_left <= 0:
+                continue
+            amount = min(amount, principal_left)
+            principal_left -= amount
+            ledger.overdue.append(_OverdueItem(due, ZERO, amount))
+            self.cycles.append({
+                'due_date': due, 'required': amount, 'paid': ZERO,
+                'shortfall': amount, 'interest_due': ZERO, 'on_time': False,
+            })
+        if self.penalty_rate > 0:
+            penalty = Decimal('0')
+            for item in ledger.overdue:
+                saved_cursor, saved_overdue = ledger.cursor, ledger.overdue
+                ledger.overdue, ledger.cursor = [item], item.due_date
+                before = ledger.penalty
+                self._accrue_penalty(ledger, as_of)
+                penalty += ledger.penalty - before
+                ledger.penalty = before
+                ledger.cursor, ledger.overdue = saved_cursor, saved_overdue
+            paid_penalty = sum((money(getattr(p, 'penalty_amount', None)) for p in self.payments
+                                if p.payment_date <= as_of), ZERO)
+            ledger.penalty = max(penalty - paid_penalty, ZERO)
+
     def run(self, as_of):
         if self.debt_type == 'split':
             self.split_anchor = self._split_calendar_anchor(as_of)
+            self.split_plan = self._split_plan(as_of)
         opening = opening_principal(self.debt, self.all_payments)
         start = self.start or as_of
         ledger = _Ledger(principal=opening, cursor=min(start, as_of))
@@ -490,7 +548,7 @@ class _AccrualEngine:
                 self._record_period('grace_interest', segment, opening)
 
         events = [(payment.payment_date, 1, payment) for payment in self.payments if payment.payment_date <= as_of]
-        for index, due in enumerate(self._due_dates(self.start, as_of)):
+        for index, due in enumerate(() if self.split_plan is not None else self._due_dates(self.start, as_of)):
             if due >= as_of:
                 break
             events.append((due, 2, index))
@@ -513,12 +571,17 @@ class _AccrualEngine:
                 self._close_cycle(ledger, event_date, payload, cycle_opening_principal)
                 cycle_opening_principal = ledger.principal
         self._accrue(ledger, as_of)
+        if self.split_plan is not None:
+            self._apply_split_plan(ledger, as_of)
         return self._result(ledger, as_of, opening)
 
     def _next_due(self, ledger, as_of):
         if ledger.overdue:
             item = ledger.overdue[0]
             return item.due_date, money(item.interest + item.principal)
+        if self.split_plan is not None:
+            upcoming = [(due, amount) for due, amount in self.split_plan if due >= as_of]
+            return upcoming[0] if upcoming else (None, ZERO)
         cycle_index = len(self.cycles)
         for due in self._due_dates(self.start, date.max):
             if due < as_of:

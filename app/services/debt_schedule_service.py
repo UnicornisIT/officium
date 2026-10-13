@@ -25,25 +25,31 @@ def build_debt_payment_schedule(debt, today=None):
     if monthly_payment <= 0 and not (getattr(debt, 'repayment_type', 'annuity') == 'differentiated' and getattr(debt, 'loan_term_months', None)):
         raise ValueError('Укажите минимальный платеж, чтобы построить график.')
 
-    remaining = Decimal(str(debt.remaining_amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP)
-    if remaining <= 0:
+    start = _schedule_start(debt, today)
+    remaining = start['principal']
+    if remaining <= 0 and not start['rows']:
         return _schedule_result(debt, [], Decimal('0.00'), Decimal('0.00'))
 
-    rows = []
-    total_payments = Decimal('0.00')
-    total_interest = Decimal('0.00')
+    rows = list(start['rows'])
+    total_payments = sum((Decimal(str(row['payment'])) for row in rows), Decimal('0.00'))
+    total_interest = sum((Decimal(str(row['interest'])) for row in rows), Decimal('0.00'))
     total_fees = Decimal('0.00')
-    payment_date = debt.next_payment_date
-    period_start = debt.interest_period_start_date or (payment_date - relativedelta(months=1))
+    if remaining <= 0:
+        return _schedule_result(debt, rows, total_payments, total_interest, total_fees)
+    payment_date = start['first_due']
+    period_start = start['period_start']
+    first_interest = start['first_interest']
+    carried_interest = start['carried_interest']
+    accrues_interest = start['accrues_interest']
     months_left = _schedule_term_months(debt, remaining)
     monthly_fee = Decimal(str(getattr(debt, 'monthly_fee_amount', 0) or 0)).quantize(MONEY, rounding=ROUND_HALF_UP)
     first_payment = (
         Decimal(str(debt.first_payment_amount)).quantize(MONEY, rounding=ROUND_HALF_UP)
-        if getattr(debt, 'is_first_payment_pending', lambda: False)()
+        if getattr(debt, 'is_first_payment_pending', lambda: False)() and not rows
         else None
     )
 
-    for number in range(1, MAX_SCHEDULE_ROWS + 1):
+    for number in range(len(rows) + 1, MAX_SCHEDULE_ROWS + 1):
         uses_custom_first_payment = number == 1 and first_payment is not None
         scheduled_payment_without_fee = monthly_payment
         if uses_custom_first_payment:
@@ -52,15 +58,33 @@ def build_debt_payment_schedule(debt, today=None):
                 raise ValueError('Первый платеж должен быть больше ежемесячной комиссии.')
 
         annual_rate = Decimal(str(debt.interest_rate_for(payment_date) or 0))
-        interest = calculate_period_interest(
-            debt,
-            principal_balance=remaining,
-            period_start=period_start,
-            period_end=payment_date,
-        ).quantize(MONEY, rounding=ROUND_HALF_UP)
+        if first_interest is not None:
+            # The engine's figure for this cycle: it already includes payments
+            # made in the cycle and interest left unpaid from before.
+            interest = first_interest
+            first_interest = None
+        elif not accrues_interest:
+            # A card without a grace period end, as in the accrual engine.
+            interest = carried_interest
+        else:
+            interest = (carried_interest + calculate_period_interest(
+                debt,
+                principal_balance=remaining,
+                period_start=period_start,
+                period_end=payment_date,
+            )).quantize(MONEY, rounding=ROUND_HALF_UP)
+        carried_interest = Decimal('0.00')
         if uses_custom_first_payment:
             interest = min(interest, scheduled_payment_without_fee).quantize(MONEY, rounding=ROUND_HALF_UP)
             principal = (scheduled_payment_without_fee - interest).quantize(MONEY, rounding=ROUND_HALF_UP)
+        elif interest >= scheduled_payment_without_fee and _period_interest_fits(
+            debt, remaining, payment_date, scheduled_payment_without_fee,
+        ):
+            # Interest left unpaid from earlier periods is larger than the
+            # payment: the payment goes to interest and the rest carries on.
+            carried_interest = (interest - scheduled_payment_without_fee).quantize(MONEY, rounding=ROUND_HALF_UP)
+            interest = scheduled_payment_without_fee
+            principal = Decimal('0.00')
         else:
             principal = _schedule_principal(
                 debt,
@@ -70,7 +94,7 @@ def build_debt_payment_schedule(debt, today=None):
                 months_left=months_left,
             )
 
-        if principal < 0 or (principal == 0 and not uses_custom_first_payment):
+        if principal < 0 or (principal == 0 and not uses_custom_first_payment and carried_interest <= 0):
             raise ValueError('Минимальный платеж не покрывает проценты. Увеличьте платеж или проверьте ставку.')
 
         payment_without_fee = (principal + interest).quantize(MONEY, rounding=ROUND_HALF_UP)
@@ -111,7 +135,119 @@ def build_debt_payment_schedule(debt, today=None):
     return _schedule_result(debt, rows, total_payments, total_interest, total_fees)
 
 
+def _period_interest_fits(debt, remaining, payment_date, payment_without_fee):
+    """Whether one ordinary month of interest is below the payment."""
+    if getattr(debt, 'repayment_type', 'annuity') != 'annuity':
+        return False
+    month_interest = calculate_period_interest(
+        debt,
+        principal_balance=remaining,
+        period_start=payment_date - relativedelta(months=1),
+        period_end=payment_date,
+    )
+    return month_interest < payment_without_fee
+
+
+def _schedule_start(debt, today):
+    """Where the schedule starts: today's principal, an overdue row if any,
+    and the first regular due date with the interest it will carry."""
+    payment_date = debt.next_payment_date
+    fallback = {
+        'principal': Decimal(str(debt.remaining_amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP),
+        'rows': [],
+        'first_due': payment_date,
+        'period_start': debt.interest_period_start_date or (payment_date - relativedelta(months=1)),
+        'first_interest': None,
+        'carried_interest': Decimal('0.00'),
+        'accrues_interest': True,
+    }
+    state = _accrual_state(debt, today)
+    if state is None:
+        return fallback
+
+    principal = state['principal']
+    if not state['is_overdue']:
+        due = state['next_due_date'] or payment_date
+        at_due = _accrual_state(debt, due) if due > today else state
+        if at_due is None:
+            return fallback
+        cycle_start = due - relativedelta(months=1)
+        accrual_start = state['accrual_start_date']
+        return {
+            'principal': principal,
+            'rows': [],
+            'first_due': due,
+            'period_start': max(cycle_start, accrual_start) if accrual_start else cycle_start,
+            'first_interest': at_due['current_interest'] + at_due['overdue_interest'],
+            'carried_interest': Decimal('0.00'),
+            'accrues_interest': state['accrues_interest'],
+        }
+
+    overdue_since = state['overdue_since']
+    overdue_row = {
+        'number': 1,
+        'payment_date': overdue_since.isoformat(),
+        'payment_date_display': overdue_since.strftime('%d.%m.%Y'),
+        'payment': float(state['amount_to_clear_overdue']),
+        'payment_without_fee': float(state['amount_to_clear_overdue']),
+        'interest': float(state['overdue_interest']),
+        'principal': float(state['overdue_principal']),
+        'penalty': float(state['penalty']),
+        'fee': 0.0,
+        'remaining': float(principal - state['overdue_principal']),
+        'rate': float(debt.interest_rate_for(overdue_since) or 0),
+        'interest_days': 0,
+        'status': 'overdue',
+        'status_label': 'просрочен',
+    }
+    months = 1
+    due = overdue_since + relativedelta(months=months)
+    while due < today and months < MAX_SCHEDULE_ROWS:
+        months += 1
+        due = overdue_since + relativedelta(months=months)
+    return {
+        'principal': principal - state['overdue_principal'],
+        'rows': [overdue_row],
+        'first_due': due,
+        'period_start': today,
+        'first_interest': None,
+        # Interest of the current period that is not overdue yet; the
+        # overdue part is paid in the overdue row.
+        'carried_interest': state['current_interest'],
+        'accrues_interest': state['accrues_interest'],
+    }
+
+
+def _accrual_state(debt, as_of):
+    from app.services.debt_accrual_service import get_debt_state
+
+    try:
+        if hasattr(debt, 'accrual_state'):
+            return debt.accrual_state(as_of)
+        return get_debt_state(debt, as_of=as_of)
+    except (ValueError, ArithmeticError):
+        return None
+
+
 def _build_split_payment_schedule(debt, today=None):
+    plan = split_schedule_rows(debt, today=today)
+    if plan is None:
+        return _schedule_result(debt, [], Decimal('0.00'), Decimal('0.00'), kind='split')
+    return _schedule_result(
+        debt,
+        plan['rows'],
+        plan['total_paid'] + plan['total_planned'],
+        Decimal('0.00'),
+        Decimal('0.00'),
+        kind='split',
+        interval_label='раз в 2 недели',
+        total_paid=plan['total_paid'],
+        total_planned=plan['total_planned'],
+    )
+
+
+def split_schedule_rows(debt, today=None):
+    """Paid and planned split installments; None when there is nothing."""
     remaining = Decimal(str(debt.remaining_amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP)
     today = today or date.today()
     paid_payments = _split_paid_payments(debt, today=today)
@@ -122,7 +258,7 @@ def _build_split_payment_schedule(debt, today=None):
     purchases_total = sum((Decimal(str(purchase.amount or 0)) for purchase in purchases), Decimal('0.00')).quantize(MONEY)
 
     if remaining <= 0 and not paid_payments and not future_payments and not purchases:
-        return _schedule_result(debt, [], Decimal('0.00'), Decimal('0.00'), kind='split')
+        return None
 
     rows = []
     payment_days = _split_payment_days(debt, paid_payments)
@@ -215,17 +351,7 @@ def _build_split_payment_schedule(debt, today=None):
         if planned_remaining <= 0:
             break
 
-    return _schedule_result(
-        debt,
-        rows,
-        paid_total + planned_total,
-        Decimal('0.00'),
-        Decimal('0.00'),
-        kind='split',
-        interval_label='раз в 2 недели',
-        total_paid=paid_total,
-        total_planned=planned_total,
-    )
+    return {'rows': rows, 'total_paid': paid_total, 'total_planned': planned_total}
 
 
 def _split_paid_payments(debt, today=None):

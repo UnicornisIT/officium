@@ -1524,8 +1524,11 @@ async function openScheduleModal(debtId, title) {
         ` : `
             <tr>
                 <td>${row.number}</td>
-                <td>${row.payment_date_display}</td>
-                <td>${formatMoney(row.payment)}</td>
+                <td>${row.payment_date_display}${row.status === 'overdue' ? ' <span class="schedule-status schedule-status--overdue">просрочен</span>' : ''}</td>
+                <td>
+                    <div>${formatMoney(row.payment)}</div>
+                    ${Number(row.penalty || 0) > 0 ? `<div class="small text-muted">в т. ч. неустойка ${formatMoney(row.penalty)}</div>` : ''}
+                </td>
                 <td>${formatMoney(row.interest)}</td>
                 <td>${formatMoney(row.principal)}</td>
                 <td>${formatMoney(row.fee)}</td>

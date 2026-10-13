@@ -613,7 +613,9 @@ def _build_debt_items(debts, today, planning_horizon_end):
                 payments=payments,
             )
             cycle_opening_balance = _decimal(debt.remaining_amount) + principal_paid_in_cycle
-            if minimum_payment <= 0 or cycle_opening_balance > minimum_payment:
+            # Overdue rows are already net of recorded payments; only a cycle
+            # that is not due yet takes credit for payments made in it.
+            if first_due_date >= today and (minimum_payment <= 0 or cycle_opening_balance > minimum_payment):
                 applied_payment_credit = paid_toward_next_payment
             first_outstanding = _decimal(
                 _decimal(outstanding_rows[0].get('payment')) - applied_payment_credit

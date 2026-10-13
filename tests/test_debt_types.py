@@ -203,7 +203,9 @@ class DebtTypesTestCase(unittest.TestCase):
             db.session.commit()
             debt_id = debt.id
 
-        response = self.client.get(f'/api/debts/{debt_id}/schedule')
+        # Before the due date: the schedule starts from today's state.
+        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+            response = self.client.get(f'/api/debts/{debt_id}/schedule')
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
@@ -237,7 +239,9 @@ class DebtTypesTestCase(unittest.TestCase):
             db.session.commit()
             debt_id = debt.id
 
-        response = self.client.get(f'/api/debts/{debt_id}/schedule')
+        # Before the due date: the schedule starts from today's state.
+        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+            response = self.client.get(f'/api/debts/{debt_id}/schedule')
 
         self.assertEqual(response.status_code, 200)
         rows = response.get_json()['schedule']['rows']
@@ -267,7 +271,9 @@ class DebtTypesTestCase(unittest.TestCase):
             db.session.commit()
             debt_id = debt.id
 
-        response = self.client.get(f'/api/debts/{debt_id}/schedule')
+        # Before the due date: the schedule starts from today's state.
+        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+            response = self.client.get(f'/api/debts/{debt_id}/schedule')
 
         self.assertEqual(response.status_code, 200)
         rows = response.get_json()['schedule']['rows']
@@ -410,7 +416,9 @@ class DebtTypesTestCase(unittest.TestCase):
             db.session.commit()
             debt_id = debt.id
 
-        response = self.client.get(f'/api/debts/{debt_id}/schedule')
+        # Before the due date: the schedule starts from today's state.
+        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+            response = self.client.get(f'/api/debts/{debt_id}/schedule')
 
         self.assertEqual(response.status_code, 200)
         first_row = response.get_json()['schedule']['rows'][0]
