@@ -37,6 +37,11 @@ cd /
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 info() { printf '==> %s\n' "$*"; }
+# The same health check as the runner: active, NRestarts stable for 10 s and
+# HTTP 200. A lone is-active probe passes a 203/EXEC crash loop.
+service_is_healthy() {
+    /usr/local/sbin/officium-update-runner --verify-health "$SERVICE_NAME" "http://$HOST:$PORT/login"
+}
 valid_name() { [[ "$1" =~ ^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,127}$ ]]; }
 render() {
     sed \
@@ -179,7 +184,7 @@ if [ "$MODE" = recover ]; then
     previous=$(realpath -e "$APP_DIR/current")
     ln -s "$rollback_real" "$APP_DIR/.current.rollback"
     mv -Tf "$APP_DIR/.current.rollback" "$APP_DIR/current"
-    if ! systemctl restart "$SERVICE_NAME" || ! systemctl is-active --quiet "$SERVICE_NAME"; then
+    if ! systemctl restart "$SERVICE_NAME" || ! service_is_healthy; then
         ln -s "$previous" "$APP_DIR/.current.restore"
         mv -Tf "$APP_DIR/.current.restore" "$APP_DIR/current"
         systemctl restart "$SERVICE_NAME"
@@ -332,7 +337,7 @@ PY
         render "$release_script_dir/officium-monthly-expenses.timer" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
         systemd-analyze verify "/etc/systemd/system/$SERVICE_NAME.service" "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
         systemctl daemon-reload && systemctl restart "$SERVICE_NAME.service" &&
-        systemctl is-active --quiet "$SERVICE_NAME.service";
+        service_is_healthy;
     }; then
         systemctl stop "$SERVICE_NAME.service" || true
         mv -- "$APP_DIR" "$failed_root"
@@ -457,7 +462,7 @@ if ! (
 
     systemctl daemon-reload
     systemctl enable --now "$SERVICE_NAME.service" "$MONTHLY_SERVICE.timer" officium-updater.socket
-    systemctl is-active --quiet "$SERVICE_NAME.service" || fail "Application service is not active."
+    service_is_healthy || fail "Application service is not healthy."
     verify_current_environment || fail "current/.env is not the shared environment file."
     systemctl is-active --quiet "$MONTHLY_SERVICE.timer" || fail "Monthly timer is not active."
     if [ "$ENABLE_NGINX" = true ]; then

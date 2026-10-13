@@ -891,46 +891,94 @@ def seal_and_verify_release(config, release_path, tag, release_commit):
             raise UpdateFailure('Privileged bundle source is not immutable.', 'deployment_failed')
 
 
-def verify_service_health(config):
+DEFAULT_HEALTHCHECK_URL = 'http://127.0.0.1:5000/login'
+HEALTH_STABLE_SECONDS = 10
+
+
+def read_service_properties(service):
     systemctl = shutil.which('systemctl')
     if not systemctl:
         raise UpdateFailure('systemctl is not installed.', 'restart_failed')
+    result = subprocess.run(
+        [systemctl, 'show', service,
+         '--property=ActiveState', '--property=SubState', '--property=NRestarts',
+         '--property=InvocationID', '--property=Result'],
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+    properties = {}
+    for line in result.stdout.splitlines():
+        key, _separator, value = line.partition('=')
+        properties[key] = value
+    return properties
 
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        result = subprocess.run(
-            [systemctl, 'is-active', '--quiet', config['SERVICE_NAME']],
-            timeout=10,
-            check=False,
-        )
-        if result.returncode == 0:
-            break
-        time.sleep(1)
-    else:
-        raise UpdateFailure('Application service did not become active.', 'healthcheck_failed')
 
-    healthcheck_url = config.get('HEALTHCHECK_URL', '').strip()
-    if not healthcheck_url:
-        return
-    parsed = urlsplit(healthcheck_url)
+def fetch_http_status(url):
+    request = Request(url, headers={'User-Agent': 'officium-server-updater-healthcheck'}, method='GET')
+    try:
+        with urlopen(request, timeout=5) as response:
+            return response.status
+    except HTTPError as exc:
+        return exc.code
+    except (URLError, OSError):
+        return None
+
+
+def verify_service_health(service, url=None, *, stable_seconds=HEALTH_STABLE_SECONDS,
+                          start_timeout=30, http_timeout=30, read_properties=read_service_properties,
+                          fetch_status=fetch_http_status, clock=time.monotonic, sleep=time.sleep):
+    """Healthy means: active, not restarting for ``stable_seconds``, and HTTP 200.
+
+    With Type=simple and Restart=on-failure a unit whose ExecStart cannot run
+    (203/EXEC) still flips to "active" between restarts, so a single
+    is-active probe passes a crash loop. NRestarts and InvocationID must stay
+    the same for the whole window, and again after the HTTP probe.
+    """
+    url = (url or '').strip() or DEFAULT_HEALTHCHECK_URL
+    parsed = urlsplit(url)
     if parsed.scheme not in ('http', 'https') or not parsed.hostname:
         raise UpdateFailure('HEALTHCHECK_URL is invalid.', 'configuration_invalid')
 
-    request = Request(
-        healthcheck_url,
-        headers={'User-Agent': 'officium-server-updater-healthcheck'},
-        method='GET',
-    )
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        try:
-            with urlopen(request, timeout=5) as response:
-                if 200 <= response.status < 400:
-                    return
-        except (HTTPError, URLError, OSError):
-            pass
-        time.sleep(1)
-    raise UpdateFailure('Application HTTP health check failed.', 'healthcheck_failed')
+    deadline = clock() + start_timeout
+    while True:
+        properties = read_properties(service)
+        if properties.get('ActiveState') == 'active':
+            break
+        if clock() >= deadline:
+            raise UpdateFailure(
+                f'{service} did not become active ({properties.get("ActiveState", "?")}/'
+                f'{properties.get("SubState", "?")}, result {properties.get("Result", "?")}).',
+                'healthcheck_failed',
+            )
+        sleep(1)
+    baseline = (properties.get('NRestarts'), properties.get('InvocationID'))
+
+    def assert_not_restarted():
+        current = read_properties(service)
+        restarted = (current.get('NRestarts'), current.get('InvocationID')) != baseline
+        if current.get('ActiveState') != 'active' or restarted:
+            raise UpdateFailure(
+                f'{service} is restarting: NRestarts {baseline[0]} -> {current.get("NRestarts")}, '
+                f'state {current.get("ActiveState")}/{current.get("SubState")}, '
+                f'result {current.get("Result")}.',
+                'healthcheck_failed',
+            )
+
+    stable_until = clock() + stable_seconds
+    while clock() < stable_until:
+        sleep(1)
+        assert_not_restarted()
+
+    deadline = clock() + http_timeout
+    status = None
+    while clock() < deadline:
+        status = fetch_status(url)
+        if status == 200:
+            break
+        sleep(1)
+    else:
+        raise UpdateFailure(f'{url} answered {status or "nothing"} instead of HTTP 200.', 'healthcheck_failed')
+    assert_not_restarted()
+    return {'service': service, 'url': url, 'restarts': baseline[0]}
 
 
 def install_privileged_bundle(config, release_path):
@@ -1221,7 +1269,7 @@ def perform_update(tag):
                     raise UpdateFailure('Application service restart failed.', 'restart_failed')
 
                 write_status(config, 'verifying', tag, 'Проверка работоспособности новой версии.')
-                verify_service_health(config)
+                verify_service_health(config['SERVICE_NAME'], config['HEALTHCHECK_URL'])
                 verify_current_environment(config)
                 install_privileged_bundle(config, release_path)
             except Exception as exc:
@@ -1239,8 +1287,13 @@ def perform_update(tag):
                         check=False,
                     )
                     rollback_performed = rollback_result.returncode == 0
+                    if rollback_performed:
+                        try:
+                            verify_service_health(config['SERVICE_NAME'], config['HEALTHCHECK_URL'])
+                        except UpdateFailure:
+                            rollback_performed = False
                     if not rollback_performed:
-                        failure = UpdateFailure('Previous release restart failed.', 'rollback_failed')
+                        failure = UpdateFailure('Previous release did not come back healthy.', 'rollback_failed')
                 except Exception:
                     log_unexpected_failure('automatic rollback', operation_id)
                     failure = UpdateFailure('Automatic release rollback failed.', 'rollback_failed')
@@ -1511,6 +1564,17 @@ def main(argv):
     if len(argv) == 3 and argv[1] == '--backup-only':
         backup_only(validate_tag(argv[2]))
         return 0
+    if 2 <= len(argv) <= 4 and argv[1] == '--verify-health':
+        if len(argv) >= 3:
+            service = argv[2]
+            url = argv[3] if len(argv) == 4 else ''
+        else:
+            config = load_runner_config()
+            service, url = config['SERVICE_NAME'], config['HEALTHCHECK_URL']
+        if not NAME_RE.fullmatch(service):
+            raise UpdateFailure('Service name is invalid.')
+        emit_result(True, code='healthy', **verify_service_health(service, url))
+        return 0
     if len(argv) == 5 and argv[1] == '--relocate-venv':
         release = Path(argv[2])
         relocate_release_venv(release, argv[3], argv[4], release_venv_name(release))
@@ -1524,7 +1588,7 @@ def main(argv):
         return 0
     raise UpdateFailure(
         'Usage: officium-update-runner --serve|--check|--start-latest|--start TAG|--perform TAG'
-        '|--backup-only LABEL|--relocate-venv RELEASE OLD_ROOT NEW_ROOT|--verify-release RELEASE [ENV_FILE]'
+        '|--backup-only LABEL|--verify-health [SERVICE [URL]]|--relocate-venv RELEASE OLD_ROOT NEW_ROOT|--verify-release RELEASE [ENV_FILE]'
     )
 
 

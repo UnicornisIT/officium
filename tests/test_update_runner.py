@@ -224,3 +224,93 @@ class UpdaterSocketAccessTestCase(unittest.TestCase):
         source = Path(runner.__file__).read_text(encoding='utf-8')
         self.assertIn('check_readiness(probe_socket=True)', source)
         self.assertIn('result = check_readiness(emit=False)', source)
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+class ServiceHealthTestCase(unittest.TestCase):
+    def check(self, states, statuses=(200,), **kwargs):
+        clock = FakeClock()
+        states = list(states)
+        statuses = list(statuses)
+
+        def read_properties(_service):
+            # Each probe sees the next state; the last one repeats.
+            return dict(states.pop(0) if len(states) > 1 else states[0])
+
+        def fetch_status(_url):
+            return statuses.pop(0) if len(statuses) > 1 else statuses[0]
+
+        return runner.verify_service_health(
+            'officium', '', read_properties=read_properties, fetch_status=fetch_status,
+            clock=clock, sleep=clock.sleep, **kwargs,
+        )
+
+    def test_stable_service_answering_200_is_healthy(self):
+        stable = {'ActiveState': 'active', 'SubState': 'running', 'NRestarts': '0', 'InvocationID': 'a'}
+        result = self.check([stable], statuses=(None, 502, 200))
+        self.assertEqual(result['url'], 'http://127.0.0.1:5000/login')
+
+    def test_crash_loop_that_is_briefly_active_is_not_healthy(self):
+        # 203/EXEC with Restart=on-failure: "active" between restarts.
+        states = [
+            {'ActiveState': 'active', 'SubState': 'running', 'NRestarts': '3', 'InvocationID': 'a'},
+            {'ActiveState': 'activating', 'SubState': 'auto-restart', 'NRestarts': '4', 'InvocationID': 'a',
+             'Result': 'exit-code'},
+            {'ActiveState': 'active', 'SubState': 'running', 'NRestarts': '4', 'InvocationID': 'b'},
+        ]
+        with self.assertRaises(runner.UpdateFailure) as caught:
+            self.check(states)
+        self.assertEqual(caught.exception.code, 'healthcheck_failed')
+        self.assertIn('NRestarts 3 -> 4', str(caught.exception))
+
+    def test_restart_with_the_same_counter_is_caught_by_the_invocation_id(self):
+        states = [
+            {'ActiveState': 'active', 'NRestarts': '0', 'InvocationID': 'a'},
+            {'ActiveState': 'active', 'NRestarts': '0', 'InvocationID': 'b'},
+        ]
+        with self.assertRaises(runner.UpdateFailure):
+            self.check(states)
+
+    def test_restart_during_the_http_probe_is_caught(self):
+        before = {'ActiveState': 'active', 'NRestarts': '0', 'InvocationID': 'a'}
+        after = {'ActiveState': 'active', 'NRestarts': '1', 'InvocationID': 'b'}
+        with self.assertRaises(runner.UpdateFailure):
+            self.check([before] * 11 + [after])
+
+    def test_the_stable_window_lasts_at_least_ten_seconds(self):
+        stable = {'ActiveState': 'active', 'NRestarts': '0', 'InvocationID': 'a'}
+        clock = FakeClock()
+        runner.verify_service_health(
+            'officium', '', read_properties=lambda _service: stable, fetch_status=lambda _url: 200,
+            clock=clock, sleep=clock.sleep,
+        )
+        self.assertGreaterEqual(clock.now, 10)
+
+    def test_http_errors_fail_the_check(self):
+        stable = {'ActiveState': 'active', 'NRestarts': '0', 'InvocationID': 'a'}
+        with self.assertRaises(runner.UpdateFailure) as caught:
+            self.check([stable], statuses=(500,))
+        self.assertIn('500', str(caught.exception))
+        with self.assertRaises(runner.UpdateFailure):
+            self.check([stable], statuses=(302,))
+
+    def test_service_that_never_becomes_active_fails(self):
+        failed = {'ActiveState': 'failed', 'SubState': 'failed', 'Result': 'exit-code'}
+        with self.assertRaises(runner.UpdateFailure) as caught:
+            self.check([failed])
+        self.assertIn('failed/failed', str(caught.exception))
+
+    def test_invalid_url_is_a_configuration_error(self):
+        with self.assertRaises(runner.UpdateFailure) as caught:
+            runner.verify_service_health('officium', 'ftp://example.org/')
+        self.assertEqual(caught.exception.code, 'configuration_invalid')

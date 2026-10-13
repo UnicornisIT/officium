@@ -68,6 +68,12 @@ class DeploymentContractTestCase(unittest.TestCase):
                         installer.index('systemctl enable --now officium-updater.socket'))
         self.assertIn('systemctl stop officium-updater.service officium-updater.socket', installer)
 
+    def test_installer_uses_the_runner_health_check_not_a_single_is_active(self):
+        installer = (PROJECT_ROOT / 'deployment' / 'install-officium.sh').read_text(encoding='utf-8')
+        self.assertIn('/usr/local/sbin/officium-update-runner --verify-health "$SERVICE_NAME"', installer)
+        self.assertNotIn('is-active --quiet "$SERVICE_NAME', installer)
+        self.assertGreaterEqual(installer.count('service_is_healthy'), 4)
+
     def test_mysql_backup_avoids_process_privilege_and_command_line_password(self):
         runner = (PROJECT_ROOT / 'deployment' / 'officium-update-runner').read_text(encoding='utf-8')
         for option in ('--single-transaction', '--quick', '--no-tablespaces', '--routines', '--triggers', '--events'):
