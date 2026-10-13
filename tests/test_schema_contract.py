@@ -90,6 +90,27 @@ class SchemaContractTestCase(unittest.TestCase):
         self.assertFalse(columns.interest_amount.nullable)
         self.assertFalse(columns.fee_amount.nullable)
 
+    def test_debt_contains_accrual_settings(self):
+        columns = Debt.__table__.c
+
+        for column_name in (
+            'penalty_rate',
+            'capitalize_interest',
+            'grace_period_end_date',
+            'accrual_start_date',
+        ):
+            self.assertIn(column_name, columns)
+        self.assertTrue(columns.penalty_rate.nullable)
+        self.assertFalse(columns.capitalize_interest.nullable)
+
+    def test_payment_records_penalty_and_breakdown_source(self):
+        columns = Payment.__table__.c
+
+        self.assertIn('penalty_amount', columns)
+        self.assertFalse(columns.penalty_amount.nullable)
+        self.assertEqual(set(columns.breakdown_source.type.enums), {'auto', 'manual'})
+        self.assertFalse(columns.breakdown_source.nullable)
+
     def test_split_purchase_schema_tracks_purchases_inside_common_split(self):
         columns = SplitPurchase.__table__.c
 
