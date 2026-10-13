@@ -45,6 +45,11 @@ install -o root -g root -m 0755 \
     "$SCRIPT_DIR/deploy-release" /usr/local/lib/officium/deploy-release
 install -o root -g root -m 0755 \
     "$SCRIPT_DIR/officium-update-client" /usr/local/bin/officium-update-client
+# The operator command; the runner refreshes it with the rest of the bundle.
+if [ -f "$SCRIPT_DIR/../scripts/officium-update" ]; then
+    install -o root -g root -m 0755 \
+        "$SCRIPT_DIR/../scripts/officium-update" /usr/local/sbin/officium-update
+fi
 
 install -d -o root -g root -m 0750 /etc/officium
 install -d -o root -g "$APP_GROUP" -m 0750 "$STATE_DIR"

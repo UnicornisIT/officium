@@ -344,3 +344,90 @@ class ReleaseSourceTestCase(unittest.TestCase):
         )
         self.assertEqual(runner.normalize_github_remote('https://github.com/o/officium.git'), 'o/officium')
         self.assertEqual(runner.normalize_github_remote('file:///elsewhere/o/officium.git'), '')
+
+
+class PrivilegedComponentTestCase(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.release = root / 'release'
+        (self.release / 'deployment').mkdir(parents=True)
+        self.installed = root / 'installed'
+        self.installed.mkdir()
+        components = (
+            ('deployment/officium-update-runner', self.installed / 'officium-update-runner', 'python', True),
+            ('deployment/deploy-release', self.installed / 'deploy-release', 'shell', True),
+            ('scripts/officium-update', self.installed / 'officium-update', 'shell', False),
+        )
+        patcher = mock.patch.object(runner, 'PRIVILEGED_COMPONENTS', components)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write(self, path, text):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding='utf-8')
+
+    def test_current_differs_and_missing_components_are_reported(self):
+        self.write(self.release / 'deployment' / 'officium-update-runner', 'new runner')
+        self.write(self.installed / 'officium-update-runner', 'old runner')
+        self.write(self.release / 'deployment' / 'deploy-release', 'deploy')
+        states = {item['component']: item['state'] for item in runner.component_status(self.release)}
+        self.assertEqual(states, {'officium-update-runner': 'differs', 'deploy-release': 'missing'})
+
+    def test_optional_operator_command_is_checked_only_when_shipped(self):
+        for name in ('officium-update-runner', 'deploy-release'):
+            self.write(self.release / 'deployment' / name, name)
+            self.write(self.installed / name, name)
+        self.assertEqual([item['state'] for item in runner.component_status(self.release)], ['current', 'current'])
+        self.write(self.release / 'scripts' / 'officium-update', 'operator')
+        states = {item['component']: item['state'] for item in runner.component_status(self.release)}
+        self.assertEqual(states['officium-update'], 'missing')
+        self.assertEqual(len(runner.release_components(self.release)), 3)
+
+
+class RequestedReleaseTestCase(unittest.TestCase):
+    def test_button_path_still_requires_the_latest_release(self):
+        with mock.patch.object(runner, 'latest_release_tag', return_value='v2.0.0'):
+            with self.assertRaises(runner.UpdateFailure) as caught:
+                runner.verify_requested_release({}, 'v1.0.0', True)
+        self.assertEqual(caught.exception.code, 'release_rejected')
+
+    def test_pinned_root_update_only_needs_a_published_tag(self):
+        with mock.patch.object(runner, 'latest_release_tag') as latest, \
+                mock.patch.object(runner, 'verify_tag_published') as published:
+            runner.verify_requested_release({}, 'v1.0.0', False)
+        latest.assert_not_called()
+        published.assert_called_once_with({}, 'v1.0.0')
+
+    def test_cli_start_tag_schedules_a_pinned_update(self):
+        with mock.patch.object(runner.os, 'chdir'), \
+                mock.patch.object(runner.os, 'geteuid', create=True, return_value=0), \
+                mock.patch.object(runner, 'request_background_update') as request:
+            self.assertEqual(runner.main(['runner', '--start-tag', 'v1.2.3']), 0)
+        request.assert_called_once_with('v1.2.3', require_latest=False)
+
+    def test_ipc_start_keeps_the_latest_only_rule(self):
+        source = Path(runner.__file__).read_text(encoding='utf-8')
+        ipc = source[source.index('def handle_ipc_request'):source.index('def send_ipc_response')]
+        self.assertNotIn('require_latest=False', ipc)
+
+
+@unittest.skipUnless(_symlinks_supported(), 'symlinks are not available')
+class RollbackEnvironmentRepairTestCase(unittest.TestCase):
+    def test_old_release_link_through_current_is_repaired(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / 'shared').mkdir()
+            (root / 'shared' / '.env').write_text('SECRET_KEY=x\n', encoding='utf-8')
+            release = root / 'releases' / 'v0.0.9-8d77b3168898'
+            release.mkdir(parents=True)
+            os.symlink(str(root / 'current' / '.env'), release / '.env')
+            config = {'APP_DIR': str(root / 'current'), 'ENV_FILE': '', 'APP_GROUP': 'officium'}
+            os.symlink(release, root / 'current', target_is_directory=True)
+            with mock.patch.object(runner.grp, 'getgrnam', create=True,
+                                   return_value=mock.Mock(gr_gid=os.getgid())), \
+                    mock.patch.object(runner.os, 'lchown'):
+                self.assertTrue(runner.repair_release_environment_link(config, release))
+                self.assertFalse(runner.repair_release_environment_link(config, release))
+            runner.verify_current_environment(config)
