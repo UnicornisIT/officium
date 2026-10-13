@@ -1,4 +1,5 @@
 import importlib.util
+import io
 from datetime import date
 from pathlib import Path
 import unittest
@@ -8,17 +9,27 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, inspect, text
 
 
-MIGRATION_PATH = (
-    Path(__file__).resolve().parents[1]
-    / 'migrations' / 'versions' / '20261014_debt_accrual.py'
-)
+VERSIONS = Path(__file__).resolve().parents[1] / 'migrations' / 'versions'
+MIGRATION_PATH = VERSIONS / '20261014_debt_accrual.py'
 
 
-def load_migration():
-    spec = importlib.util.spec_from_file_location('migration_20261014_debt_accrual', MIGRATION_PATH)
+def load_migration(path=MIGRATION_PATH):
+    spec = importlib.util.spec_from_file_location(f'migration_{path.stem}', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def mysql_sql(module, step):
+    """Offline (as_sql) MySQL DDL of a migration step, without a server."""
+    buffer = io.StringIO()
+    context = MigrationContext.configure(dialect_name='mysql', opts={'as_sql': True, 'output_buffer': buffer})
+    module._column_exists = lambda table_name, column_name: step == 'downgrade'
+    if hasattr(module, '_backfill'):
+        module._backfill = lambda: None  # needs a live connection
+    with Operations.context(context):
+        getattr(module, step)()
+    return buffer.getvalue()
 
 
 class DebtAccrualMigrationTestCase(unittest.TestCase):
@@ -103,6 +114,28 @@ class DebtAccrualMigrationTestCase(unittest.TestCase):
 
         self.assertIn('accrual_start_date', self.columns('debts'))
 
+
+
+class DebtAccrualMigrationMySqlTestCase(unittest.TestCase):
+    def test_accrual_columns_compile_for_mysql(self):
+        sql = mysql_sql(load_migration(), 'upgrade')
+
+        self.assertIn('ALTER TABLE debts ADD COLUMN penalty_rate NUMERIC(5, 2)', sql)
+        self.assertIn('ALTER TABLE debts ADD COLUMN capitalize_interest BOOL NOT NULL DEFAULT false', sql)
+        self.assertIn("ALTER TABLE payments ADD COLUMN breakdown_source ENUM('auto','manual') NOT NULL DEFAULT 'auto'", sql)
+        self.assertIn('ALTER TABLE payments ALTER COLUMN breakdown_source DROP DEFAULT', sql)
+        downgrade = mysql_sql(load_migration(), 'downgrade')
+        self.assertIn('ALTER TABLE payments DROP COLUMN breakdown_source', downgrade)
+        self.assertIn('ALTER TABLE debts DROP COLUMN accrual_start_date', downgrade)
+
+    def test_opening_balance_columns_compile_for_mysql(self):
+        module = load_migration(VERSIONS / '20261015_accrual_opening_balance.py')
+
+        sql = mysql_sql(module, 'upgrade')
+
+        self.assertIn("ALTER TABLE debts ADD COLUMN opening_interest_amount NUMERIC(12, 2) NOT NULL DEFAULT '0'", sql)
+        self.assertIn('ALTER TABLE debts ALTER COLUMN opening_penalty_amount DROP DEFAULT', sql)
+        self.assertIn('ALTER TABLE debts DROP COLUMN opening_interest_amount', mysql_sql(module, 'downgrade'))
 
 if __name__ == '__main__':
     unittest.main()
