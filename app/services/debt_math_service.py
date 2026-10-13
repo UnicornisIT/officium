@@ -19,13 +19,17 @@ def calculate_period_interest(debt, principal_balance, period_start, period_end)
 
 
 def calculate_interest_segments(debt, principal_balance, period_start, period_end):
-    """Return unrounded interest segments split by rate and calendar year."""
+    """Return unrounded interest segments split by rate and calendar year.
+
+    A period covers the days [period_start, period_end). With
+    include_payment_day it covers (period_start, period_end] instead: the
+    same number of days shifted by one, so back-to-back periods never count
+    a payment day twice.
+    """
     if not period_start or not period_end or period_end <= period_start:
         return []
 
-    effective_end = _effective_period_end(debt, period_start, period_end)
-    if effective_end <= period_start:
-        return []
+    period_start, effective_end = _effective_period(debt, period_start, period_end)
 
     balance = Decimal(str(principal_balance or 0))
     if not balance.is_finite() or balance <= 0:
@@ -62,8 +66,7 @@ def calculate_interest_segments(debt, principal_balance, period_start, period_en
 def interest_days(period_start, period_end, debt=None):
     if not period_start or not period_end or period_end <= period_start:
         return 0
-    effective_end = _effective_period_end(debt, period_start, period_end)
-    return max((effective_end - period_start).days, 0)
+    return (period_end - period_start).days
 
 
 def _next_interest_segment_end(debt, cursor, period_end):
@@ -74,10 +77,10 @@ def _next_interest_segment_end(debt, cursor, period_end):
     return min(candidates)
 
 
-def _effective_period_end(debt, period_start, period_end):
+def _effective_period(debt, period_start, period_end):
     if debt is not None and getattr(debt, 'include_payment_day', False):
-        return period_end + timedelta(days=1)
-    return period_end
+        return period_start + timedelta(days=1), period_end + timedelta(days=1)
+    return period_start, period_end
 
 
 def days_in_year(debt, year):

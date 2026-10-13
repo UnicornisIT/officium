@@ -414,7 +414,9 @@ class DebtTypesTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         first_row = response.get_json()['schedule']['rows'][0]
-        self.assertEqual(first_row['interest_days'], 32)
+        # 15.07-15.08 with the payment day included is (15.07, 15.08]: 31 days,
+        # not 32 - the next period starts after 15.08.
+        self.assertEqual(first_row['interest_days'], 31)
         self.assertEqual(first_row['fee'], 250.0)
         self.assertEqual(first_row['payment'], 10250.0)
 

@@ -81,7 +81,9 @@ class DebtMathIntegrityTestCase(unittest.TestCase):
             date(2024, 1, 2),
         )
 
-        self.assertEqual(interest, Decimal('54.79'))
+        # (01.01, 02.01] is one day: 100000 * 10% / 365 = 27.40. The payment
+        # day moves the period by a day instead of adding one.
+        self.assertEqual(interest, Decimal('27.40'))
 
     def test_decimal_parser_rounds_half_up_and_rejects_non_finite_values(self):
         self.assertEqual(parse_decimal('10.005', 'Сумма'), Decimal('10.01'))
