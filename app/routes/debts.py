@@ -2,12 +2,14 @@ from decimal import Decimal
 
 from flask import current_app, jsonify, request
 from flask_login import current_user
-from app.models import Debt, SplitPurchase
+from app.models import Debt, Payment, SplitPurchase
 from app.services.debt_service import get_demo_debts, get_user_debt
 from app.services.debt_accrual_service import (
     MAX_PENALTY_RATE,
+    DebtView,
     accrual_start_date,
     default_penalty_rate,
+    get_debt_state,
 )
 from app.services.debt_calendar_service import previous_payment_due_date
 from app.services.debt_schedule_service import build_debt_payment_schedule
@@ -148,7 +150,10 @@ def init_app(app):
                 comment=_optional_text(data.get('comment'), 2000, 'Комментарий'),
                 status='archived' if remaining_amount == Decimal('0.00') else 'active',
             )
-            debt.accrual_start_date = accrual_start_date(debt)
+            explicit_start = parse_date(data.get('accrual_start_date'), 'Расчёт ведётся с')
+            if explicit_start and next_payment_date and explicit_start >= next_payment_date:
+                raise ValueError('Дата начала расчёта должна быть раньше даты платежа')
+            debt.accrual_start_date = explicit_start or accrual_start_date(debt)
             db.session.add(debt)
             db.session.commit()
             return jsonify({'success': True, 'debt': debt.to_dict()}), 201
@@ -252,6 +257,8 @@ def init_app(app):
             if debt.accrual_start_date is None:
                 debt.accrual_start_date = accrual_start_date(debt)
             previous_next_payment_date = debt.next_payment_date
+            previous_start = debt.accrual_start_date
+            previous_period_start = debt.interest_period_start_date
 
             if 'bank_name' in data:
                 bank_name = str(data['bank_name']).strip()
@@ -346,7 +353,15 @@ def init_app(app):
             _validate_debt_amounts(debt.total_amount, debt.remaining_amount)
             if debt.next_payment_date and debt.interest_period_start_date and debt.interest_period_start_date >= debt.next_payment_date:
                 raise ValueError('Начало процентного периода должно быть раньше даты платежа')
-            _move_accrual_start(debt, previous_next_payment_date)
+            explicit_start = parse_date(data.get('accrual_start_date'), 'Расчёт ведётся с') if 'accrual_start_date' in data else None
+            _update_accrual_start(
+                debt,
+                previous_next_payment_date,
+                previous_start,
+                period_start_changed=debt.interest_period_start_date != previous_period_start,
+                explicit='accrual_start_date' in data and explicit_start != previous_start,
+                explicit_start=explicit_start,
+            )
 
             debt.updated_at = utc_now()
             if not is_local_test_user():
@@ -421,22 +436,52 @@ def _parse_grace_period_end(value, debt_type, interest_period_start_date):
     return grace_end
 
 
-def _move_accrual_start(debt, previous_next_payment_date):
-    """Apply manual date changes to the accrual start.
+def _update_accrual_start(debt, previous_next_payment_date, previous_start, period_start_changed, explicit=False, explicit_start=None):
+    """Move the accrual start after an edit.
 
-    Moving the next payment date forward closes the skipped cycles, and a
-    later interest period start (e.g. the loan issue date) starts accruals
-    there. Moving dates back never reopens settled history.
+    - an explicit start from the form wins; moving it back re-splits the
+      older payments, moving it forward closes the cycles before it;
+    - moving the next payment date forward closes the skipped cycles;
+    - a newly entered interest period start inside the current cycle (the
+      issue date) starts the accruals there.
+    Interest and penalty still unpaid when cycles are closed are carried
+    over as opening amounts instead of being dropped.
     """
-    start = debt.accrual_start_date
     next_date = debt.next_payment_date
-    if next_date and previous_next_payment_date and next_date > previous_next_payment_date:
-        cycle_start = previous_payment_due_date(debt, next_date)
-        if start is None or cycle_start > start:
-            start = cycle_start
-    period_start = debt.interest_period_start_date
-    if period_start and (start is None or period_start > start) and (next_date is None or period_start < next_date):
-        start = period_start
+    start = previous_start
+    carry = False
+    if explicit:
+        if explicit_start is None:
+            raise ValueError('Укажите дату, с которой вести расчёт')
+        if next_date and explicit_start >= next_date:
+            raise ValueError('Дата начала расчёта должна быть раньше даты платежа')
+        start = explicit_start
+        carry = previous_start is not None and start > previous_start
+    else:
+        if next_date and previous_next_payment_date and next_date > previous_next_payment_date:
+            cycle_start = previous_payment_due_date(debt, next_date)
+            if start is None or cycle_start > start:
+                start = cycle_start
+                carry = True
+        period_start = debt.interest_period_start_date
+        if (
+            period_start_changed and period_start
+            and (start is None or period_start > start)
+            and (next_date is None or period_start < next_date)
+        ):
+            start = period_start
+            carry = False
+    if start == previous_start:
+        return
+
+    if carry:
+        view = DebtView(debt, next_payment_date=previous_next_payment_date, accrual_start_date=previous_start)
+        state = get_debt_state(view, as_of=start, payments=Payment.query.filter_by(debt_id=debt.id).all())
+        debt.opening_interest_amount = state['accrued_interest']
+        debt.opening_penalty_amount = state['penalty']
+    else:
+        debt.opening_interest_amount = Decimal('0.00')
+        debt.opening_penalty_amount = Decimal('0.00')
     debt.accrual_start_date = start
 
 

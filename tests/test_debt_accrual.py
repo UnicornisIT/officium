@@ -131,19 +131,58 @@ class ConsumerCreditTestCase(unittest.TestCase):
 
         state = get_debt_state(debt, as_of=date(2026, 8, 26), payments=payments[:1])
         # The late 5000 closed the 15.08 overdue, the 15.09 payment is still due.
+        # It includes the unpaid 27.40 penalty, which is repaid first.
         self.assertEqual(state['next_due_date'], date(2026, 9, 15))
-        self.assertEqual(state['next_due_amount'], D('5000.00'))
+        self.assertEqual(state['next_due_amount'], D('5027.40'))
 
         state = get_debt_state(debt, as_of=date(2026, 9, 16), payments=payments)
         # 25.08 money went to the 15.08 overdue, so it is not credited to the
-        # 15.09 cycle. The 15.09 payment first pays the 27.40 penalty left from
-        # August (legal order), so 4972.60 reaches the installment and 27.40 of
-        # it becomes overdue.
+        # 15.09 cycle. Paying only 5000 instead of the suggested 5027.40: the
+        # penalty left from August goes first (legal order), so 4972.60 reaches
+        # the installment and 27.40 of it becomes overdue.
         self.assertEqual(state['cycles'][1]['paid'], D('4972.60'))
         self.assertEqual(state['cycles'][1]['shortfall'], D('27.40'))
         self.assertTrue(state['is_overdue'])
         self.assertEqual(state['next_due_date'], date(2026, 9, 15))
         self.assertEqual(state['next_due_amount'], D('27.40'))
+
+    def test_paying_the_suggested_amount_leaves_no_overdue(self):
+        debt = make_debt()
+        payments = [pay(date(2026, 8, 25), '5000'), pay(date(2026, 9, 15), '5027.40')]
+
+        state = get_debt_state(debt, as_of=date(2026, 9, 16), payments=payments)
+
+        # 27.40 settles the penalty, 5000 covers the 15.09 installment.
+        self.assertEqual(state['allocations'][payments[1].id]['penalty'], D('27.40'))
+        self.assertTrue(state['cycles'][1]['on_time'])
+        self.assertFalse(state['is_overdue'])
+        self.assertEqual(state['penalty'], D('0.00'))
+
+    def test_opening_interest_and_penalty_are_carried_from_the_start(self):
+        debt = make_debt(opening_interest_amount=D('120.00'), opening_penalty_amount=D('10.00'))
+        payment = pay(date(2026, 8, 15), '5000')
+
+        state = get_debt_state(debt, as_of=date(2026, 8, 16), payments=[payment])
+
+        # Penalty 10 first, then interest 120 + 1528.77 = 1648.77, principal 3341.23.
+        allocation = state['allocations'][payment.id]
+        self.assertEqual(allocation['penalty'], D('10.00'))
+        self.assertEqual(allocation['interest'], D('1648.77'))
+        self.assertEqual(allocation['principal'], D('3341.23'))
+
+    def test_custom_first_payment_suggests_the_issue_date(self):
+        debt = make_debt(
+            remaining_amount=D('500000.00'), interest_rate=D('30.90'), first_payment_amount=D('2539.73'),
+            minimum_payment=D('16454.19'), next_payment_date=date(2026, 8, 28),
+            accrual_start_date=date(2026, 7, 28), day_count_convention='fixed_365',
+        )
+
+        state = get_debt_state(debt, as_of=date(2026, 8, 20), payments=[])
+
+        # 500000 * 30.9% / 365 = 423.29 a day; 2539.73 / 423.29 = 6 days -> 22.08
+        self.assertEqual(state['suggested_interest_start'], date(2026, 8, 22))
+        debt.accrual_start_date = date(2026, 8, 22)
+        self.assertIsNone(get_debt_state(debt, as_of=date(2026, 8, 20), payments=[])['suggested_interest_start'])
 
     def test_two_partial_payments_before_due_date_are_on_time(self):
         debt = make_debt()
@@ -313,6 +352,26 @@ class ConsumerCreditTestCase(unittest.TestCase):
         self.assertFalse(state['is_overdue'])
         # 528.77 + one day on 96000: 96000 * 18% / 365 = 47.342 -> 576.11
         self.assertEqual(state['current_interest'], D('576.11'))
+
+    def test_manual_split_covering_the_overdue_closes_it(self):
+        debt = make_debt()
+        # 5000 paid ten days late; the bank split it 1600 interest / 3400
+        # principal, while the engine's overdue is 1528.77 + 3471.23.
+        payment = pay(
+            date(2026, 8, 25), '5000',
+            principal_amount=D('3400.00'), interest_amount=D('1600.00'), breakdown_source='manual',
+        )
+        debt.remaining_amount = D('96600.00')
+
+        state = get_debt_state(debt, as_of=date(2026, 8, 26), payments=[payment])
+
+        # The 5000 covers the 5000 overdue: nothing stays overdue. The extra
+        # 71.23 of interest the bank took is simply less principal repaid.
+        self.assertFalse(state['is_overdue'])
+        self.assertEqual(state['principal'], D('96600.00'))
+        self.assertEqual(state['penalty'], D('27.40'))
+        # None of the 5000 is credited to the 15.09 cycle: 5000 + 27.40 is due.
+        self.assertEqual(state['next_due_amount'], D('5027.40'))
 
     def test_early_repayment_goes_to_principal_and_does_not_cover_the_cycle(self):
         debt = make_debt()

@@ -34,6 +34,14 @@
 </div>
 {% endif %}
 
+{% if state.suggested_interest_start %}
+<div class="alert alert-warning mb-4" data-testid="suggested-interest-start">
+    <i class="bi bi-lightbulb me-1"></i>
+    Похоже, кредит выдан {{ state.suggested_interest_start.strftime('%d.%m.%Y') }}: первый платёж {{ debt.first_payment_amount|money }} покрывает проценты только за {{ (debt.next_payment_date - state.suggested_interest_start).days }} дн., а расчёт сейчас ведётся с {{ state.accrual_start_date.strftime('%d.%m.%Y') }}.
+    Если это так, укажите дату выдачи в поле «Начало периода процентов» — <a href="/?edit_debt={{ debt.id }}">открыть долг</a>.
+</div>
+{% endif %}
+
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="card p-3 h-100">

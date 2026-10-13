@@ -106,6 +106,8 @@ class Debt(db.Model):
     capitalize_interest = db.Column(db.Boolean, default=False, nullable=False)
     grace_period_end_date = db.Column(db.Date, nullable=True)
     accrual_start_date = db.Column(db.Date, nullable=True)
+    opening_interest_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    opening_penalty_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     comment = db.Column(db.Text, nullable=True)
     status = db.Column(db.Enum('active', 'archived'), nullable=False, default='active')
     created_at = db.Column(db.DateTime, default=utc_now)
@@ -263,6 +265,9 @@ class Debt(db.Model):
             'capitalize_interest': bool(self.capitalize_interest),
             'grace_period_end_date': self.grace_period_end_date.strftime('%Y-%m-%d') if self.grace_period_end_date else None,
             'accrual_start_date': self.accrual_start_date.strftime('%Y-%m-%d') if self.accrual_start_date else None,
+            'opening_interest_amount': float(self.opening_interest_amount or 0),
+            'opening_penalty_amount': float(self.opening_penalty_amount or 0),
+            'suggested_interest_start': accrual['suggested_interest_start'].strftime('%Y-%m-%d') if accrual['suggested_interest_start'] else None,
             'paid_percent': round((1 - float(self.remaining_amount) / float(self.total_amount)) * 100, 1) if float(self.total_amount) > 0 else 100,
             'created_at': self.created_at.strftime('%d.%m.%Y') if self.created_at else None,
         }

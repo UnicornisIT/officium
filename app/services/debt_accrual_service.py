@@ -46,6 +46,19 @@ DEFAULT_PENALTY_RATE = Decimal('20.00')
 MAX_PENALTY_RATE = Decimal('100.00')
 
 
+class DebtView:
+    """Read-only stand-in for a debt with some attributes replaced."""
+
+    def __init__(self, debt, **overrides):
+        self._debt = debt
+        self._overrides = overrides
+
+    def __getattr__(self, name):
+        if name in self._overrides:
+            return self._overrides[name]
+        return getattr(self._debt, name)
+
+
 def default_penalty_rate(debt_type):
     """New loans and cards get 20% a year (353-FZ cap while interest runs)."""
     return None if debt_type == 'split' else DEFAULT_PENALTY_RATE
@@ -449,12 +462,25 @@ class _AccrualEngine:
         interest = money(payment.interest_amount)
         principal = min(_stored_principal(payment), ledger.principal)
         penalty = money(getattr(payment, 'penalty_amount', None))
+        overdue_before = ledger.overdue_total
         paid_overdue_interest, interest_left = self._pay_overdue(ledger, 'interest', interest)
         current_interest = money(ledger.current_interest)
         ledger.current_interest = max(current_interest - interest_left, ZERO)
         paid_overdue_principal, _ = self._pay_overdue(ledger, 'principal', principal)
         ledger.principal -= principal
         ledger.penalty = max(money(ledger.penalty) - penalty, ZERO)
+        if ledger.overdue and interest + principal >= overdue_before:
+            # The payment covered the whole overdue; what is left comes from
+            # the bank splitting it differently, so it stays owed but is no
+            # longer overdue: unpaid interest becomes current interest and
+            # the principal part is already in the balance.
+            cleared_interest = sum((item.interest for item in ledger.overdue), ZERO)
+            cleared_principal = sum((item.principal for item in ledger.overdue), ZERO)
+            ledger.current_interest += cleared_interest
+            ledger.overdue = []
+            # The whole payment went to the overdue: none of it pays the cycle.
+            paid_overdue_interest += cleared_interest
+            paid_overdue_principal += cleared_principal
         return {
             'principal': principal,
             'interest': interest,
@@ -552,6 +578,9 @@ class _AccrualEngine:
         opening = opening_principal(self.debt, self.all_payments)
         start = self.start or as_of
         ledger = _Ledger(principal=opening, cursor=min(start, as_of))
+        # Interest and penalty left unpaid when the start was moved forward.
+        ledger.current_interest = Decimal(str(getattr(self.debt, 'opening_interest_amount', None) or 0))
+        ledger.penalty = Decimal(str(getattr(self.debt, 'opening_penalty_amount', None) or 0))
         if self.grace_start is not None and self.grace_start < start and self._accrues_interest():
             # The grace period began before accruals are tracked; the balance
             # on the start date stands in for the earlier days.
@@ -587,6 +616,27 @@ class _AccrualEngine:
             self._apply_split_plan(ledger, as_of)
         return self._result(ledger, as_of, opening)
 
+    def _suggested_interest_start(self, opening):
+        """The issue date implied by a custom first payment, when it is later
+        than the accrual start: a first payment covering a few days of
+        interest means the loan was issued those days before it."""
+        first_payment = money(getattr(self.debt, 'first_payment_amount', None))
+        due = getattr(self.debt, 'next_payment_date', None)
+        if (
+            first_payment <= 0 or not due or self.start is None or opening <= 0
+            or not self._accrues_interest() or self._required_payment_before_start()
+            or any(payment.payment_date <= due for payment in self.payments)
+        ):
+            return None
+        rate = Decimal(str(self.debt.interest_rate_for(due) or 0))
+        if rate <= 0:
+            return None
+        daily = opening * rate / Decimal('100') / Decimal(days_in_year(self.debt, due.year))
+        days = int((first_payment / daily).to_integral_value(rounding=ROUND_HALF_UP))
+        if days < 1 or days > (due - self.start).days - 3:
+            return None
+        return due - timedelta(days=days)
+
     def _next_due(self, ledger, as_of):
         if ledger.overdue:
             item = ledger.overdue[0]
@@ -621,6 +671,10 @@ class _AccrualEngine:
         accrued_interest = current_interest + overdue_interest
         overdue_since = ledger.overdue[0].due_date if ledger.overdue else None
         next_due_date, next_due_amount = self._next_due(ledger, as_of) if principal > 0 or ledger.overdue else (None, ZERO)
+        if overdue_since is None and next_due_date and penalty > 0:
+            # The penalty is repaid before the installment (353-FZ), so the
+            # next payment must cover it too, or part of it becomes overdue.
+            next_due_amount = money(next_due_amount + penalty)
         return {
             'as_of': as_of,
             'accrual_start_date': self.start,
@@ -653,6 +707,7 @@ class _AccrualEngine:
             'accrues_interest': self._accrues_interest(),
             'grace_interest_pending': money(ledger.grace_interest),
             'grace_period_end_date': self.grace_end,
+            'suggested_interest_start': self._suggested_interest_start(opening),
             'penalty_rate': self.penalty_rate if self.penalty_rate > 0 else None,
             'next_due_date': next_due_date,
             'next_due_amount': next_due_amount,

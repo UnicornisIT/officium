@@ -2486,6 +2486,19 @@ html[data-theme="dark"] .navbar {
     text-decoration: underline;
 }
 
+.debt-card__hint {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    margin: -2px 0 10px;
+}
+
+.debt-card__hint:hover,
+.debt-card__hint:focus {
+    text-decoration: underline;
+}
+
 /* Details */
 .debt-card__details {
     display: flex;

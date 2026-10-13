@@ -145,12 +145,55 @@ class DebtAccrualSettingsTestCase(unittest.TestCase):
         debt = response.get_json()['debt']
         self.assertEqual(debt['accrual_start_date'], '2026-08-15')
         self.assertFalse(debt['is_overdue'])
-        # Interest since the new start: 100000 * 18% * 10 / 365 = 493.15
-        self.assertEqual(debt['total_debt'], 100493.15)
+        # The closed cycle's interest 15.07-15.08 (1528.77) is carried over,
+        # plus 100000 * 18% * 10 / 365 = 493.15 since the new start.
+        self.assertEqual(debt['opening_interest_amount'], 1528.77)
+        self.assertEqual(debt['accrued_interest'], 2021.92)
+        self.assertEqual(debt['total_debt'], 102021.92)
 
         response = self.client.put(f'/api/debts/{debt_id}', json={'next_payment_date': '2026-08-15'})
         # Moving it back does not reopen the closed history.
         self.assertEqual(response.get_json()['debt']['accrual_start_date'], '2026-08-15')
+
+    def test_carry_over_keeps_the_penalty_of_a_closed_overdue(self):
+        debt_id = self.debt_id(next_payment_date='2026-07-15')
+        # Due 15.07 (start 15.06) is overdue: by 15.08 the 5000 shortfall has
+        # 31 days of penalty: 5000 * 20% * 31 / 365 = 84.93.
+        response = self.client.put(f'/api/debts/{debt_id}', json={'next_payment_date': '2026-09-15'})
+
+        debt = response.get_json()['debt']
+        self.assertEqual(debt['accrual_start_date'], '2026-08-15')
+        self.assertEqual(debt['opening_penalty_amount'], 84.93)
+        self.assertEqual(debt['penalty'], 84.93)
+        self.assertFalse(debt['is_overdue'])
+
+    def test_explicit_start_recomputes_older_payments(self):
+        debt_id = self.debt_id(next_payment_date='2026-09-15')
+        self.assertEqual(self.stored(debt_id).accrual_start_date, date(2026, 8, 15))
+        payment = self.client.post(f'/api/debts/{debt_id}/payments', json={
+            'amount': '5000', 'payment_date': '2026-08-15',
+        }).get_json()['payment']
+        # On the start date the payment is settled history: all principal.
+        self.assertEqual(payment['principal_amount'], 5000.0)
+
+        response = self.client.put(f'/api/debts/{debt_id}', json={'accrual_start_date': '2026-07-15'})
+
+        self.assertEqual(response.status_code, 200, response.get_json())
+        with self.app.app_context():
+            stored = db.session.get(Payment, payment['id'])
+            # Now tracked: 31 days of interest 1528.77 come first.
+            self.assertEqual(stored.interest_amount, Decimal('1528.77'))
+        bad = self.client.put(f'/api/debts/{debt_id}', json={'accrual_start_date': '2026-09-15'})
+        self.assertEqual(bad.status_code, 422)
+
+    def test_suggested_issue_date_is_exposed(self):
+        debt = self.create(
+            remaining_amount='500000', total_amount='500000', interest_rate='30.9',
+            minimum_payment='16454.19', first_payment_amount='2539.73',
+            next_payment_date='2026-08-28', day_count_convention='fixed_365',
+        ).get_json()['debt']
+
+        self.assertEqual(debt['suggested_interest_start'], '2026-08-22')
 
     def test_later_interest_period_start_moves_the_accrual_start(self):
         debt_id = self.debt_id(

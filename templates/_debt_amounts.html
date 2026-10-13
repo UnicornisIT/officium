@@ -20,4 +20,10 @@
     Просрочено {{ accrual.overdue_amount|money }}, {{ accrual.overdue_days }} дн. — к оплате {{ accrual.amount_to_clear_overdue|money }}
 </a>
 {% endif %}
+{% if accrual.suggested_interest_start %}
+<a class="debt-card__hint" href="/?edit_debt={{ debt.id }}">
+    <i class="bi bi-lightbulb"></i>
+    Похоже, кредит выдан {{ accrual.suggested_interest_start.strftime('%d.%m.%Y') }}: первый платёж покрывает проценты только за {{ (debt.next_payment_date - accrual.suggested_interest_start).days }} дн. Укажите эту дату в «Начале периода процентов».
+</a>
+{% endif %}
 {% endmacro %}

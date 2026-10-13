@@ -22,19 +22,6 @@ from decimal import Decimal
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-class DebtView:
-    """Read-only stand-in for a debt with some attributes replaced."""
-
-    def __init__(self, debt, **overrides):
-        self._debt = debt
-        self._overrides = overrides
-
-    def __getattr__(self, name):
-        if name in self._overrides:
-            return self._overrides[name]
-        return getattr(self._debt, name)
-
-
 def full_history_start(debt, payments):
     from app.services.debt_accrual_service import accrual_start_date
     from app.services.debt_calendar_service import previous_payment_due_date
@@ -60,7 +47,7 @@ def main():
 
     from app import create_app
     from app.models import Debt, Payment
-    from app.services.debt_accrual_service import get_debt_state
+    from app.services.debt_accrual_service import DebtView, get_debt_state
     from extensions import db
 
     app = create_app()

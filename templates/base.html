@@ -32,7 +32,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=6" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=7" rel="stylesheet">
     {% block extra_css %}{% endblock %}
 </head>
 <body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
@@ -446,6 +446,11 @@
                                     <input type="date" class="form-control" id="f_grace_period_end_date">
                                     <small class="text-muted">Погасите долг к этой дате — проценты не начислятся. Иначе они начисляются с «Начала периода процентов». Пусто — проценты по карте не считаются.</small>
                                 </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="f_accrual_start_date">Расчёт ведётся с</label>
+                                    <input type="date" class="form-control" id="f_accrual_start_date">
+                                    <small class="text-muted">Платежи до этой даты — закрытая история, их разбивка не меняется. Укажите дату раньше, чтобы пересчитать старые платежи; позже — чтобы закрыть прошлые циклы (неоплаченные проценты и неустойка сохранятся). Пусто — с начала текущего цикла.</small>
+                                </div>
                                 <div class="col-12" id="capitalize_interest_group">
                                     <div class="form-check form-switch mb-0">
                                         <input class="form-check-input" type="checkbox" id="f_capitalize_interest">
@@ -766,7 +771,7 @@
 
 {% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=4"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=5"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const params = new URLSearchParams(window.location.search);

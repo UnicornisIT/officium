@@ -784,7 +784,7 @@ function clearDebtForm() {
     if (recurring) recurring.checked = false;
     const includePaymentDay = document.getElementById('f_include_payment_day');
     if (includePaymentDay) includePaymentDay.checked = false;
-    ['f_penalty_rate', 'f_grace_period_end_date'].forEach(id => {
+    ['f_penalty_rate', 'f_grace_period_end_date', 'f_accrual_start_date'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -888,6 +888,7 @@ async function openEditModal(debtId) {
         document.getElementById('f_penalty_rate').value = d.penalty_rate ?? '';
         document.getElementById('f_capitalize_interest').checked = Boolean(d.capitalize_interest);
         document.getElementById('f_grace_period_end_date').value = d.grace_period_end_date || '';
+        document.getElementById('f_accrual_start_date').value = d.accrual_start_date || '';
         syncCardLimitHelperVisibility();
         syncConsumerEarlyRepaymentSettings();
         syncAccrualSettings();
@@ -946,6 +947,7 @@ async function saveDebt() {
         penalty_rate: document.getElementById('f_penalty_rate').value || null,
         capitalize_interest: document.getElementById('f_capitalize_interest').checked,
         grace_period_end_date: document.getElementById('f_grace_period_end_date').value || null,
+        accrual_start_date: document.getElementById('f_accrual_start_date').value || null,
         comment:           document.getElementById('f_comment').value.trim() || null,
     };
 
@@ -1030,18 +1032,27 @@ async function openPaymentModal(debtId) {
             : minimumPayment > 0 && remainingAmount > 0
                 ? Math.min(minimumPayment, remainingAmount)
                 : minimumPayment;
+        const nextDueAmount = Number(d.next_due_amount || 0);
+        const restOfCycle = !d.is_overdue && nextDueAmount > 0
+            && Math.abs(nextDueAmount - currentMinimumPaymentAmount) >= 0.01;
         if (d.is_overdue && Number(d.amount_to_clear_overdue) > 0) {
             // Overdue first: the preset closes the overdue and its penalty today.
             currentMinimumPaymentAmount = parseNumberInputValue(d.amount_to_clear_overdue);
+        } else if (restOfCycle) {
+            // What is still due in this cycle: net of payments already made,
+            // plus an unpaid penalty that is repaid before the installment.
+            currentMinimumPaymentAmount = nextDueAmount;
         }
         currentMinimumPaymentDate = d.is_overdue
             ? today
             : d.effective_next_payment_date || d.next_payment_date || null;
         document.getElementById('pm_required_payment_label').textContent = d.is_overdue
             ? 'Закрыть просрочку'
-            : d.is_first_payment_pending
-                ? 'Первый платёж'
-                : 'Минимальный платёж';
+            : restOfCycle
+                ? (Number(d.penalty || 0) > 0 ? 'Платёж с неустойкой' : 'Остаток платежа')
+                : d.is_first_payment_pending
+                    ? 'Первый платёж'
+                    : 'Минимальный платёж';
         const plannedTotalPayment = parseNumberInputValue(d.planned_early_repayment_amount);
         const earlyRepaymentAvailable = (
             d.debt_type === 'consumer_credit'
