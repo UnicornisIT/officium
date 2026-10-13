@@ -55,6 +55,19 @@ class DeploymentContractTestCase(unittest.TestCase):
         self.assertNotIn('sudo', web_client.lower())
         self.assertFalse((PROJECT_ROOT / 'deployment' / 'officium-updater.sudoers').exists())
 
+    def test_updater_socket_directory_is_reachable_by_the_app_group(self):
+        installer = (PROJECT_ROOT / 'deployment' / 'install-officium-updater.sh').read_text(encoding='utf-8')
+        self.assertIn(
+            r'''printf 'd %s 0750 root %s -\n' "$SOCKET_DIR" "$APP_GROUP" >/etc/tmpfiles.d/officium.conf''',
+            installer,
+        )
+        self.assertIn('systemd-tmpfiles --create /etc/tmpfiles.d/officium.conf', installer)
+        self.assertIn('chown root:"$APP_GROUP" "$SOCKET_DIR"', installer)
+        # The socket is recreated inside the corrected directory.
+        self.assertLess(installer.index('systemd-tmpfiles --create'),
+                        installer.index('systemctl enable --now officium-updater.socket'))
+        self.assertIn('systemctl stop officium-updater.service officium-updater.socket', installer)
+
     def test_mysql_backup_avoids_process_privilege_and_command_line_password(self):
         runner = (PROJECT_ROOT / 'deployment' / 'officium-update-runner').read_text(encoding='utf-8')
         for option in ('--single-transaction', '--quick', '--no-tablespaces', '--routines', '--triggers', '--events'):

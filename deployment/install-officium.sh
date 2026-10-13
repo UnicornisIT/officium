@@ -199,7 +199,7 @@ if [ "$MODE" = upgrade ] && { [ -d "$APP_DIR/.git" ] || [ -f "$APP_DIR/.git" ]; 
     git -C "$APP_DIR" diff --quiet --ignore-submodules -- || fail "Tracked local changes exist; they are preserved, but migration requires owner review."
     git -C "$APP_DIR" diff --cached --quiet --ignore-submodules -- || fail "Staged local changes exist; migration requires owner review."
 
-    APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" \
+    APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" SERVICE_NAME="$SERVICE_NAME" \
         /bin/sh "$SCRIPT_DIR/install-officium-updater.sh" "$APP_USER" "$APP_GROUP"
     sed -i \
         -e "s|^APP_DIR=.*|APP_DIR=$APP_DIR|" \
@@ -343,7 +343,7 @@ PY
         fail "Managed service failed; legacy checkout and unit were restored. Database backup is in $BACKUP_DIR."
     fi
 
-    APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" \
+    APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" SERVICE_NAME="$SERVICE_NAME" \
         /bin/sh "$release_script_dir/install-officium-updater.sh" "$APP_USER" "$APP_GROUP"
     sed -i \
         -e "s|^APP_DIR=.*|APP_DIR=$APP_DIR/current|" \
@@ -384,7 +384,7 @@ elif [ -f "$APP_DIR/shared/.env" ]; then
 fi
 
 info "Installing restricted updater"
-APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" \
+APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" SERVICE_NAME="$SERVICE_NAME" \
     /bin/sh "$SCRIPT_DIR/install-officium-updater.sh" "$APP_USER" "$APP_GROUP"
 sed -i \
     -e "s|^APP_DIR=.*|APP_DIR=$APP_DIR/current|" \

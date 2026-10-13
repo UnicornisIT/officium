@@ -198,3 +198,29 @@ class AppUserWorkingDirectoryTestCase(unittest.TestCase):
             with self.assertRaises(runner.UpdateFailure):
                 runner.main(['officium-update-runner', '--check'])
         chdir.assert_called_once_with('/')
+
+
+class UpdaterSocketAccessTestCase(unittest.TestCase):
+    config = {
+        'APP_USER': 'officium', 'APP_GROUP': 'officium', 'UPDATE_SOCKET': '/run/officium/updater.sock',
+    }
+
+    def test_probe_connects_as_the_app_user_through_the_real_client(self):
+        command = runner.app_user_socket_probe_command(self.config, '/usr/sbin/runuser')
+        self.assertEqual(command[:4], ['/usr/sbin/runuser', '-u', 'officium', '--'])
+        self.assertIn('OFFICIUM_UPDATE_SOCKET=/run/officium/updater.sock', command)
+        self.assertEqual(command[-2:], ['/usr/local/bin/officium-update-client', 'get_status'])
+
+    def test_failed_probe_names_the_directory_permissions(self):
+        failed = mock.Mock(returncode=1, stderr='PermissionError: [Errno 13]')
+        with mock.patch.object(runner.shutil, 'which', return_value='/usr/sbin/runuser'), \
+                mock.patch.object(runner.subprocess, 'run', return_value=failed) as run:
+            with self.assertRaises(runner.UpdateFailure) as caught:
+                runner.verify_app_user_can_reach_updater(self.config)
+        self.assertIn('root:officium 0750', str(caught.exception))
+        self.assertEqual(run.call_args.kwargs['cwd'], '/')
+
+    def test_only_the_cli_check_probes_the_socket(self):
+        source = Path(runner.__file__).read_text(encoding='utf-8')
+        self.assertIn('check_readiness(probe_socket=True)', source)
+        self.assertIn('result = check_readiness(emit=False)', source)

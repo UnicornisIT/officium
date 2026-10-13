@@ -78,7 +78,8 @@ ensure_setting() {
 ensure_setting APP_DIR "$APP_ROOT/current"
 ensure_setting APP_USER "$APP_USER"
 ensure_setting APP_GROUP "$APP_GROUP"
-ensure_setting SERVICE_NAME officium
+ensure_setting SERVICE_NAME "${SERVICE_NAME:-officium}"
+ensure_setting UPDATE_SOCKET "$UPDATE_SOCKET"
 ensure_setting STATUS_FILE "$STATE_DIR/server-update-status.json"
 ensure_setting STALE_MINUTES 120
 ensure_setting BACKUP_DIR "$BACKUP_DIR"
@@ -110,10 +111,23 @@ if [ -f /etc/sudoers.d/officium-updater ]; then
     chmod 0600 /etc/sudoers.d/officium-updater.disabled
 fi
 
+# systemd creates a missing socket parent directory as root:root 0750, which
+# the web process cannot traverse (PermissionError on connect). tmpfiles.d
+# creates it for the application group at boot, before sockets are started.
+SOCKET_DIR=$(dirname "$UPDATE_SOCKET")
+printf 'd %s 0750 root %s -\n' "$SOCKET_DIR" "$APP_GROUP" >/etc/tmpfiles.d/officium.conf
+chown root:root /etc/tmpfiles.d/officium.conf
+chmod 0644 /etc/tmpfiles.d/officium.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/officium.conf
+chown root:"$APP_GROUP" "$SOCKET_DIR"
+chmod 0750 "$SOCKET_DIR"
+
 systemd-analyze verify \
     /etc/systemd/system/officium-updater.socket \
     /etc/systemd/system/officium-updater.service
 systemctl daemon-reload
+# Recreate the socket so it is bound inside the corrected directory.
+systemctl stop officium-updater.service officium-updater.socket 2>/dev/null || true
 systemctl enable --now officium-updater.socket
 
 echo "Updater socket installed. Validate the actual web-process path with:"

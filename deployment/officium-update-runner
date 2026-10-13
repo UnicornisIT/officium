@@ -47,6 +47,7 @@ ALLOWED_CONFIG_KEYS = {
     'SERVICE_NAME',
     'STATUS_FILE',
     'STALE_MINUTES',
+    'UPDATE_SOCKET',
     'VENV_NAME',
 }
 ACTIVE_STATES = {
@@ -160,7 +161,10 @@ def load_runner_config():
         'STALE_MINUTES': configured.get('STALE_MINUTES', '120'),
         'VENV_NAME': configured.get('VENV_NAME', 'venv'),
         'ENV_FILE': configured.get('ENV_FILE', ''),
+        'UPDATE_SOCKET': configured.get('UPDATE_SOCKET', '/run/officium/updater.sock'),
     }
+    if not Path(values['UPDATE_SOCKET']).is_absolute():
+        raise UpdateFailure('UPDATE_SOCKET must be an absolute path.')
     if values['ENV_FILE'] and not Path(values['ENV_FILE']).is_absolute():
         raise UpdateFailure('ENV_FILE must be an absolute path.')
     for key in ('APP_DIR', 'BACKUP_DIR', 'DEPLOY_SCRIPT', 'RELEASES_DIR', 'STATUS_FILE'):
@@ -1054,7 +1058,7 @@ def restore_release_link(config, previous_release):
         temporary_link.unlink(missing_ok=True)
 
 
-def check_readiness(*, emit=True):
+def check_readiness(*, emit=True, probe_socket=False):
     config = load_runner_config()
     verify_git_remote(config)
     for command in ('git', 'runuser', 'systemctl', 'systemd-run'):
@@ -1127,16 +1131,52 @@ def check_readiness(*, emit=True):
     )
     if service_security.returncode != 0 or service_security.stdout.strip().lower() != 'yes':
         raise UpdateFailure('Application service must keep NoNewPrivileges=true.')
-    result = {
-        'code': 'ready',
-        'checks': [
-            'repository', 'release_directory', 'timezone', 'database_backup_access',
-            'backup_directory', 'no_new_privileges',
-        ],
-    }
+    checks = [
+        'repository', 'release_directory', 'timezone', 'database_backup_access',
+        'backup_directory', 'no_new_privileges',
+    ]
+    if probe_socket:
+        verify_app_user_can_reach_updater(config)
+        checks.append('updater_socket')
+    result = {'code': 'ready', 'checks': checks}
     if emit:
         emit_result(True, **result)
     return result
+
+
+def app_user_socket_probe_command(config, runuser, client='/usr/local/bin/officium-update-client'):
+    return [
+        runuser, '-u', config['APP_USER'], '--', '/usr/bin/env',
+        f'OFFICIUM_UPDATE_SOCKET={config["UPDATE_SOCKET"]}', client, 'get_status',
+    ]
+
+
+def verify_app_user_can_reach_updater(config):
+    """Connect to the updater socket exactly as the web process does.
+
+    Only the CLI runs this: inside the single-threaded socket service a
+    connection to itself would wait for its own reply.
+    """
+    runuser = shutil.which('runuser')
+    if not runuser:
+        raise UpdateFailure('runuser is not installed.', 'configuration_invalid')
+    result = subprocess.run(
+        app_user_socket_probe_command(config, runuser),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=APP_USER_CWD,
+        timeout=20,
+        check=False,
+    )
+    if result.returncode != 0:
+        socket_dir = Path(config['UPDATE_SOCKET']).parent
+        raise UpdateFailure(
+            f'{config["APP_USER"]} cannot use {config["UPDATE_SOCKET"]}. Check that {socket_dir} is '
+            f'root:{config["APP_GROUP"]} 0750 (/etc/tmpfiles.d/officium.conf) and run '
+            'install-officium-updater.sh again.',
+            'configuration_invalid',
+        )
 
 
 def perform_update(tag):
@@ -1456,7 +1496,7 @@ def main(argv):
         serve_socket()
         return 0
     if len(argv) == 2 and argv[1] == '--check':
-        check_readiness()
+        check_readiness(probe_socket=True)
         return 0
     if len(argv) == 2 and argv[1] == '--start-latest':
         config = load_runner_config()
