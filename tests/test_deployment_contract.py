@@ -32,13 +32,21 @@ class DeploymentContractTestCase(unittest.TestCase):
         # the release moves they fail with 203/EXEC. Only venv/bin/python is
         # path-independent, so everything runs as `venv/bin/python -m <module>`.
         console_script = re.compile(r'(?:VENV_DIR@@|venv|\$VENV_NAME|\{venv\})/bin/(?!python\b)[A-Za-z]')
-        checked = [path for path in (PROJECT_ROOT / 'deployment').iterdir() if path.is_file()]
+        # systemd_units.py and nginx_legacy_static.py only *detect* old setups.
+        detectors = {'systemd_units.py', 'nginx_legacy_static.py'}
+        checked = [
+            path for path in (PROJECT_ROOT / 'deployment').iterdir()
+            if path.is_file() and path.name not in detectors
+        ]
         checked += [PROJECT_ROOT / 'scripts' / 'deploy.sh']
         for path in checked:
             with self.subTest(path=path.name):
-                text = path.read_text(encoding='utf-8')
-                self.assertIsNone(console_script.search(text), console_script.search(text))
-                self.assertNotIn('waitress-serve', text)
+                code = '\n'.join(
+                    line for line in path.read_text(encoding='utf-8').splitlines()
+                    if not line.lstrip().startswith('#')
+                )
+                self.assertIsNone(console_script.search(code), console_script.search(code))
+                self.assertNotIn('waitress-serve', code)
 
     def test_updater_uses_credential_checked_socket_and_not_sudo(self):
         runner = (PROJECT_ROOT / 'deployment' / 'officium-update-runner').read_text(encoding='utf-8')
@@ -128,7 +136,23 @@ class DeploymentContractTestCase(unittest.TestCase):
         self.assertIn('systemctl reload nginx', installer)
         self.assertNotIn('SCRIPT_DIR="$legacy_root/deployment"', installer)
         self.assertIn('/bin/sh "$release_script_dir/install-officium-updater.sh"', installer)
-        self.assertIn('/bin/bash "$release_script_dir/post-deploy-smoke.sh"', installer)
+        self.assertIn('finish_with_summary "Legacy migration" "$release_script_dir" "$legacy_root"', installer)
+
+    def test_legacy_migration_finishes_with_health_smoke_ipc_and_a_summary(self):
+        installer = (PROJECT_ROOT / 'deployment' / 'install-officium.sh').read_text(encoding='utf-8')
+        summary = installer[installer.index('finish_with_summary() {'):installer.index('seal_release() {')]
+        # Smoke test before the IPC check; an IPC failure only warns.
+        self.assertLess(summary.index('post-deploy-smoke.sh'), summary.index('integration_check'))
+        self.assertIn('button_status="NOT ready"', summary)
+        for field in ('Version:', 'current:', 'Site:', 'Update button:', 'Backups:', 'Legacy checkout:'):
+            self.assertIn(field, summary)
+        self.assertIn('[ "$smoke_status" = PASS ] || exit 2', summary)
+        legacy = installer[installer.index('# Legacy in-place checkouts'):]
+        self.assertLess(legacy.index('service_is_healthy;'), legacy.index('finish_with_summary'))
+        self.assertIn('restore_units "$unit_backup"', legacy)
+        self.assertIn('retire_stale_dropins "$release_script_dir" "$unit_backup"', legacy)
+        self.assertIn('exit 10', legacy)
+        self.assertNotIn('\n    runuser -u "$APP_USER" -- /usr/local/bin/officium-update-client integration_check\n', legacy)
         self.assertNotIn('/var/www/debt_manager', installer)
 
     def test_nginx_templates_keep_waitress_private_and_forward_https_metadata(self):

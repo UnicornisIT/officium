@@ -114,6 +114,90 @@ Backup: $nginx_backup
 Fix (comments out those location blocks; static files come from the application):
   sudo python3 $helper disable $APP_DIR ${nginx_files[*]} && sudo nginx -t && sudo systemctl reload nginx"
 }
+unit_files() {
+    printf '%s\n' "/etc/systemd/system/$SERVICE_NAME.service" \
+        "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer"
+}
+dropin_dir() { printf '%s\n' "/etc/systemd/system/$SERVICE_NAME.service.d"; }
+# Copies the units and every drop-in, so a failed activation can put them back.
+backup_units() {
+    install -d -o root -g root -m 0700 "$1"
+    while IFS= read -r unit_file; do
+        if [ -e "$unit_file" ]; then cp -a --parents -- "$unit_file" "$1"; fi
+    done < <(unit_files)
+    if [ -d "$(dropin_dir)" ]; then cp -a --parents -- "$(dropin_dir)" "$1"; fi
+}
+restore_units() {
+    while IFS= read -r unit_file; do
+        if [ -e "$1$unit_file" ]; then cp -a -- "$1$unit_file" "$unit_file"; else rm -f -- "$unit_file"; fi
+    done < <(unit_files)
+    rm -rf -- "$(dropin_dir)"
+    if [ -d "$1$(dropin_dir)" ]; then cp -a -- "$1$(dropin_dir)" "$(dropin_dir)"; fi
+}
+render_units() {
+    render "$1/officium.service.in" "/etc/systemd/system/$SERVICE_NAME.service" &&
+        render "$1/officium-monthly-expenses.service" "/etc/systemd/system/$MONTHLY_SERVICE.service" &&
+        render "$1/officium-monthly-expenses.timer" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
+        chmod 0644 "/etc/systemd/system/$SERVICE_NAME.service" \
+            "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer"
+}
+# A drop-in ExecStart (for example a manual work-around pointing at
+# venv/bin/waitress-serve of the old checkout) silently overrides the new
+# unit. Drop-ins that only re-run what the new unit runs, or run a program
+# that cannot work any more, are removed (their copy is in the unit backup);
+# anything else is kept and reported.
+retire_stale_dropins() {
+    [ -d "$(dropin_dir)" ] || return 0
+    DROPINS_REMOVED=0
+    while IFS=$'\t' read -r decision dropin reason; do
+        case "$decision" in
+            remove)
+                rm -f -- "$dropin"
+                DROPINS_REMOVED=$((DROPINS_REMOVED + 1))
+                info "Removed drop-in $dropin: $reason. Its copy is in $2."
+                ;;
+            keep)
+                warn "Kept drop-in $dropin: $reason. Review it with: systemctl cat $SERVICE_NAME"
+                ;;
+        esac
+    done < <(python3 "$1/systemd_units.py" dropins "/etc/systemd/system/$SERVICE_NAME.service" \
+        "$(dropin_dir)" "$APP_DIR")
+    rmdir -- "$(dropin_dir)" 2>/dev/null || true
+}
+# After a healthy activation: smoke test first, then the update-button IPC.
+# Neither rolls back a site that is already serving; both end in the summary.
+# Exit 0 when everything passed, 2 when the smoke test needs attention.
+finish_with_summary() {
+    title="$1"
+    smoke_script="$2/post-deploy-smoke.sh"
+    legacy_path="${3:-}"
+    smoke_status=PASS
+    if ! /bin/bash "$smoke_script" --service "$SERVICE_NAME" --app-dir "$APP_DIR/current" \
+            --url "http://$HOST:$PORT/login" --timer "$MONTHLY_SERVICE.timer"; then
+        smoke_status=FAIL
+        warn "The post-deploy smoke test failed (see its FAIL line). The site runs the new release. Rerun: sudo bash $smoke_script --service $SERVICE_NAME --app-dir $APP_DIR/current --url http://$HOST:$PORT/login --timer $MONTHLY_SERVICE.timer"
+    fi
+    button_status="ready"
+    if ! runuser -u "$APP_USER" -- /usr/local/bin/officium-update-client integration_check >/dev/null 2>&1; then
+        button_status="NOT ready"
+        warn "The admin update button is not ready (integration_check failed); the site itself is fine. Diagnose: sudo /usr/local/sbin/officium-update-runner --check ; repair: sudo APP_ROOT=$APP_DIR /bin/sh $APP_DIR/current/deployment/install-officium-updater.sh $APP_USER $APP_GROUP"
+    fi
+    printf '\n==== %s summary ====\n' "$title"
+    printf 'Version:         %s\n' "$(tr -d '\r\n' <"$APP_DIR/current/VERSION" 2>/dev/null || echo unknown)"
+    printf 'current:         %s\n' "$(realpath -e "$APP_DIR/current" 2>/dev/null || echo missing)"
+    printf 'Site:            healthy at http://%s:%s/login, smoke test %s\n' "$HOST" "$PORT" "$smoke_status"
+    printf 'Update button:   %s\n' "$button_status"
+    printf 'Backups:         %s\n' "$BACKUP_DIR"
+    if [ -n "$legacy_path" ]; then
+        printf 'Legacy checkout: %s (kept; remove it only after review)\n' "$legacy_path"
+    fi
+    if [ "${#WARNINGS[@]}" -gt 0 ]; then
+        printf 'Warnings:\n'
+        printf '  - %s\n' "${WARNINGS[@]}"
+    fi
+    [ "$smoke_status" = PASS ] || exit 2
+    exit 0
+}
 seal_release() {
     release_path="$1"
     expected_tag="$2"
@@ -149,7 +233,7 @@ seal_release() {
 }
 
 [ "$(id -u)" -eq 0 ] || fail "Run with sudo/root."
-case "$MODE" in install|upgrade|recover|preflight) ;; *) fail "Usage: $0 install|upgrade|recover|preflight" ;; esac
+case "$MODE" in install|upgrade|recover|preflight|units) ;; *) fail "Usage: $0 install|upgrade|recover|preflight|units" ;; esac
 for name in "$APP_USER" "$APP_GROUP" "$SERVICE_NAME" "$MONTHLY_SERVICE"; do
     valid_name "$name" || fail "Unsafe user, group, or service name: $name"
 done
@@ -180,7 +264,7 @@ getent group "$APP_GROUP" >/dev/null 2>&1 || fail "Create APP_GROUP before insta
 id -nG "$APP_USER" | tr ' ' '\n' | grep -qx "$APP_GROUP" || fail "APP_USER is not a member of APP_GROUP."
 available_kb=$(df -Pk "$(dirname "$APP_DIR")" | awk 'NR==2 {print $4}')
 [[ "$available_kb" =~ ^[0-9]+$ ]] && [ "$available_kb" -ge 1048576 ] || fail "At least 1 GiB free space is required."
-if [ "$MODE" != recover ]; then
+if [ "$MODE" != recover ] && [ "$MODE" != units ]; then
     [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ ]] || fail "Set exact RELEASE_TAG."
     [[ "$RELEASE_TAG" != *..* && "$RELEASE_TAG" != *@\{* && "$RELEASE_TAG" != *.lock ]] || fail "Unsafe RELEASE_TAG."
     git ls-remote --exit-code "https://github.com/$REPOSITORY.git" "refs/tags/$RELEASE_TAG" >/dev/null || fail "Release tag does not exist in configured repository."
@@ -222,6 +306,40 @@ if [ "$MODE" = recover ]; then
         fail "Rollback code failed health activation; previous code link restored. Database was not modified."
     fi
     info "Code rolled back. Database restore is intentionally separate; see docs/DEPLOYMENT.md."
+    exit 0
+fi
+
+# Re-render the service and timer units of a managed install from this
+# release's templates (for example the move from waitress-serve to
+# python -m waitress) and retire drop-ins that would override them. The
+# previous units and drop-ins come back if the service is not healthy.
+if [ "$MODE" = units ]; then
+    [ -L "$APP_DIR/current" ] || fail "Mode units needs a managed install with $APP_DIR/current."
+    unit_backup="$BACKUP_DIR/units.$(date -u +%Y%m%dT%H%M%SZ)"
+    backup_units "$unit_backup"
+    render_units "$SCRIPT_DIR" || { restore_units "$unit_backup"; fail "Cannot render the units."; }
+    retire_stale_dropins "$SCRIPT_DIR" "$unit_backup"
+    units_changed=false
+    while IFS= read -r unit_file; do
+        cmp -s -- "$unit_backup$unit_file" "$unit_file" || units_changed=true
+    done < <(unit_files)
+    [ "${DROPINS_REMOVED:-0}" -eq 0 ] || units_changed=true
+    if [ "$units_changed" = false ]; then
+        info "Units are already current; nothing restarted. Backup: $unit_backup"
+        exit 0
+    fi
+    if ! {
+        systemd-analyze verify "/etc/systemd/system/$SERVICE_NAME.service" \
+            "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
+        systemctl daemon-reload && systemctl restart "$SERVICE_NAME.service" && service_is_healthy;
+    }; then
+        restore_units "$unit_backup"
+        systemctl daemon-reload
+        systemctl restart "$SERVICE_NAME.service" || true
+        printf 'ERROR: %s\n' "The service was not healthy with the new units; the previous units and drop-ins were restored from $unit_backup." >&2
+        exit 10
+    fi
+    info "Units updated and the service is healthy. Previous units and drop-ins: $unit_backup"
     exit 0
 fi
 
@@ -349,57 +467,58 @@ PY
     seal_release "$staged_release" "$RELEASE_TAG"
     ln -s "$APP_DIR/releases/$release_name" "$managed_root/current"
 
-    old_unit_backup=""
-    if [ -f "/etc/systemd/system/$SERVICE_NAME.service" ]; then
-        old_unit_backup="$BACKUP_DIR/$SERVICE_NAME.service.legacy"
-        cp -a "/etc/systemd/system/$SERVICE_NAME.service" "$old_unit_backup"
-    fi
+    unit_backup="$BACKUP_DIR/units.legacy.$(date -u +%Y%m%dT%H%M%SZ)"
+    backup_units "$unit_backup"
     systemctl stop "$SERVICE_NAME.service"
     mv -- "$APP_DIR" "$legacy_root"
     mv -- "$managed_root" "$APP_DIR"
     release_script_dir="$APP_DIR/releases/$release_name/deployment"
-    [ -d "$release_script_dir" ] || fail "Target release has no deployment bundle."
     if ! {
+        [ -d "$release_script_dir" ] &&
         /usr/local/sbin/officium-update-runner --verify-release \
             "$APP_DIR/releases/$release_name" "$APP_DIR/shared/.env" &&
         verify_current_environment &&
-        render "$release_script_dir/officium.service.in" "/etc/systemd/system/$SERVICE_NAME.service" &&
-        render "$release_script_dir/officium-monthly-expenses.service" "/etc/systemd/system/$MONTHLY_SERVICE.service" &&
-        render "$release_script_dir/officium-monthly-expenses.timer" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
-        systemd-analyze verify "/etc/systemd/system/$SERVICE_NAME.service" "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
+        render_units "$release_script_dir" &&
+        retire_stale_dropins "$release_script_dir" "$unit_backup" &&
+        systemd-analyze verify "/etc/systemd/system/$SERVICE_NAME.service" \
+            "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
         systemctl daemon-reload && systemctl restart "$SERVICE_NAME.service" &&
         service_is_healthy;
     }; then
         systemctl stop "$SERVICE_NAME.service" || true
         mv -- "$APP_DIR" "$failed_root"
         mv -- "$legacy_root" "$APP_DIR"
-        if [ -n "$old_unit_backup" ]; then cp -a "$old_unit_backup" "/etc/systemd/system/$SERVICE_NAME.service"; fi
+        restore_units "$unit_backup"
         systemctl daemon-reload
-        systemctl restart "$SERVICE_NAME.service"
-        fail "Managed service failed; legacy checkout and unit were restored. Database backup is in $BACKUP_DIR."
+        systemctl restart "$SERVICE_NAME.service" || true
+        printf 'ERROR: %s\n' "The managed service was not healthy. The legacy checkout, its unit and drop-ins were restored; the failed tree is $failed_root, the database backup is in $BACKUP_DIR." >&2
+        exit 10
     fi
 
-    APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" SERVICE_NAME="$SERVICE_NAME" \
-        /bin/sh "$release_script_dir/install-officium-updater.sh" "$APP_USER" "$APP_GROUP"
-    sed -i \
-        -e "s|^APP_DIR=.*|APP_DIR=$APP_DIR/current|" \
-        -e "s|^APP_USER=.*|APP_USER=$APP_USER|" \
-        -e "s|^APP_GROUP=.*|APP_GROUP=$APP_GROUP|" \
-        -e "s|^BACKUP_DIR=.*|BACKUP_DIR=$BACKUP_DIR|" \
-        -e "s|^REPOSITORY=.*|REPOSITORY=$REPOSITORY|" \
-        -e "s|^RELEASES_DIR=.*|RELEASES_DIR=$APP_DIR/releases|" \
-        -e "s|^SERVICE_NAME=.*|SERVICE_NAME=$SERVICE_NAME|" \
-        -e "s|^STATUS_FILE=.*|STATUS_FILE=$STATE_DIR/server-update-status.json|" \
-        -e "s|^STALE_MINUTES=.*|STALE_MINUTES=120|" \
-        -e "s|^HEALTHCHECK_URL=.*|HEALTHCHECK_URL=http://$HOST:$PORT/login|" \
-        -e "s|^VENV_NAME=.*|VENV_NAME=$VENV_NAME|" \
-        /etc/officium/updater.env
-    systemctl enable --now "$MONTHLY_SERVICE.timer" officium-updater.socket
+    # The site runs the new release from here on. Later problems are reported
+    # in the summary instead of aborting halfway with a traceback.
+    if ! {
+        APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" SERVICE_NAME="$SERVICE_NAME" \
+            /bin/sh "$release_script_dir/install-officium-updater.sh" "$APP_USER" "$APP_GROUP" &&
+        sed -i \
+            -e "s|^APP_DIR=.*|APP_DIR=$APP_DIR/current|" \
+            -e "s|^APP_USER=.*|APP_USER=$APP_USER|" \
+            -e "s|^APP_GROUP=.*|APP_GROUP=$APP_GROUP|" \
+            -e "s|^BACKUP_DIR=.*|BACKUP_DIR=$BACKUP_DIR|" \
+            -e "s|^REPOSITORY=.*|REPOSITORY=$REPOSITORY|" \
+            -e "s|^RELEASES_DIR=.*|RELEASES_DIR=$APP_DIR/releases|" \
+            -e "s|^SERVICE_NAME=.*|SERVICE_NAME=$SERVICE_NAME|" \
+            -e "s|^STATUS_FILE=.*|STATUS_FILE=$STATE_DIR/server-update-status.json|" \
+            -e "s|^STALE_MINUTES=.*|STALE_MINUTES=120|" \
+            -e "s|^HEALTHCHECK_URL=.*|HEALTHCHECK_URL=http://$HOST:$PORT/login|" \
+            -e "s|^VENV_NAME=.*|VENV_NAME=$VENV_NAME|" \
+            /etc/officium/updater.env &&
+        systemctl enable --now "$MONTHLY_SERVICE.timer" officium-updater.socket;
+    }; then
+        warn "The updater or the monthly timer could not be set up. Rerun: sudo APP_ROOT=$APP_DIR /bin/sh $release_script_dir/install-officium-updater.sh $APP_USER $APP_GROUP"
+    fi
     check_nginx_app_paths "$release_script_dir"
-    runuser -u "$APP_USER" -- /usr/local/bin/officium-update-client integration_check
-    /bin/bash "$release_script_dir/post-deploy-smoke.sh" --service "$SERVICE_NAME" --app-dir "$APP_DIR/current" --url "http://$HOST:$PORT/login" --timer "$MONTHLY_SERVICE.timer"
-    info "Legacy migration PASS. Preserved previous checkout at $legacy_root; remove only after backup/rollback review."
-    exit 0
+    finish_with_summary "Legacy migration" "$release_script_dir" "$legacy_root"
 fi
 
 info "Creating managed directories"
@@ -479,10 +598,7 @@ mv -Tf "$APP_DIR/.current.initial" "$APP_DIR/current"
 
 if ! (
     info "Rendering systemd units"
-    render "$SCRIPT_DIR/officium.service.in" "/etc/systemd/system/$SERVICE_NAME.service"
-    render "$SCRIPT_DIR/officium-monthly-expenses.service" "/etc/systemd/system/$MONTHLY_SERVICE.service"
-    render "$SCRIPT_DIR/officium-monthly-expenses.timer" "/etc/systemd/system/$MONTHLY_SERVICE.timer"
-    chmod 0644 "/etc/systemd/system/$SERVICE_NAME.service" "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer"
+    render_units "$SCRIPT_DIR"
     systemd-analyze verify "/etc/systemd/system/$SERVICE_NAME.service" "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer"
 
     if [ "$ENABLE_NGINX" = true ]; then
@@ -500,8 +616,6 @@ if ! (
     if [ "$ENABLE_NGINX" = true ]; then
         systemctl reload nginx
     fi
-    runuser -u "$APP_USER" -- /usr/local/bin/officium-update-client integration_check
-    /bin/bash "$SCRIPT_DIR/post-deploy-smoke.sh" --service "$SERVICE_NAME" --app-dir "$APP_DIR/current" --url "http://$HOST:$PORT/login" --timer "$MONTHLY_SERVICE.timer"
 ); then
     systemctl disable --now "$SERVICE_NAME.service" "$MONTHLY_SERVICE.timer" >/dev/null 2>&1 || true
     current_target=$(realpath -e "$APP_DIR/current" 2>/dev/null || true)
@@ -516,4 +630,4 @@ if ! (
     fi
     fail "Initial activation failed; no current release is active. Fix the reported cause and rerun install."
 fi
-info "Installation completed without changing production outside the selected APP_DIR/services."
+finish_with_summary "Installation" "$SCRIPT_DIR"
