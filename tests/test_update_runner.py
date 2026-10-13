@@ -1,3 +1,4 @@
+import ast
 import os
 import tempfile
 import unittest
@@ -166,3 +167,34 @@ class ReleaseEnvironmentLinkTestCase(unittest.TestCase):
             with self.assertRaises(runner.UpdateFailure) as caught:
                 runner.verify_current_environment(config)
             self.assertEqual(caught.exception.code, 'healthcheck_failed')
+
+
+class AppUserWorkingDirectoryTestCase(unittest.TestCase):
+    def test_every_command_run_as_the_app_user_starts_in_root(self):
+        """runuser keeps the caller's cwd; an unreadable one breaks git and pip."""
+        source = Path(runner.__file__).read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr in ('run', 'Popen')
+            and isinstance(node.func.value, ast.Name) and node.func.value.id == 'subprocess'
+        ]
+        app_user_calls = []
+        for call in calls:
+            segment = ast.get_source_segment(source, call)
+            arguments = ast.get_source_segment(source, call.args[0]) if call.args else ''
+            if 'runuser' in arguments or arguments == 'command':
+                app_user_calls.append(segment)
+                keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+                self.assertIn('cwd', keywords, segment)
+                self.assertEqual(ast.get_source_segment(source, keywords['cwd']), 'APP_USER_CWD')
+        self.assertGreaterEqual(len(app_user_calls), 5)
+        self.assertEqual(runner.APP_USER_CWD, '/')
+
+    def test_cli_entry_point_leaves_the_operator_directory(self):
+        with mock.patch.object(runner.os, 'chdir') as chdir, \
+                mock.patch.object(runner.os, 'geteuid', create=True, return_value=1000):
+            with self.assertRaises(runner.UpdateFailure):
+                runner.main(['officium-update-runner', '--check'])
+        chdir.assert_called_once_with('/')

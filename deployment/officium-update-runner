@@ -56,6 +56,9 @@ ACTIVE_STATES = {
 OPERATION_ID_RE = re.compile(r'^upd-[0-9a-f]{12}$')
 MAX_REQUEST_BYTES = 4096
 RESULT_PREFIX = 'OFFICIUM_UPDATE_RESULT='
+# runuser keeps the caller's working directory; git, pip and Python fail when
+# APP_USER cannot stat it (an operator running the CLI from /root/<dir>).
+APP_USER_CWD = '/'
 PUBLIC_MESSAGES = {
     'authorization_failed': 'Недостаточно прав для запуска серверного помощника.',
     'backup_failed': 'Не удалось создать резервную копию. Обновление не начато.',
@@ -436,6 +439,7 @@ def verify_database_backup_access(config, settings):
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
+            cwd=APP_USER_CWD,
             timeout=60,
             check=False,
         )
@@ -520,6 +524,7 @@ def backup_database(config, tag):
                 command,
                 stdout=output,
                 stderr=subprocess.PIPE,
+                cwd=APP_USER_CWD,
                 timeout=180,
                 check=False,
             )
@@ -644,7 +649,7 @@ def run_deployment(config, tag):
             config, tag, runuser=runuser, deploy_script=deploy_source,
             build_root=build_root, stage_path=stage_path, result_path=result_path,
         )
-        process = subprocess.Popen(command, start_new_session=True)
+        process = subprocess.Popen(command, cwd=APP_USER_CWD, start_new_session=True)
         deadline = time.monotonic() + 900
         last_stage = ''
         stage_messages = {
@@ -988,6 +993,7 @@ def install_privileged_bundle(config, release_path):
              '/usr/local/bin/officium-update-client', 'integration_check'],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            cwd=APP_USER_CWD,
             timeout=30,
             check=False,
         )
@@ -1080,6 +1086,7 @@ def check_readiness(*, emit=True):
                 shutil.which('runuser'), '-u', config['APP_USER'], '--',
                 '/bin/mkdir', str(probe_dir),
             ],
+            cwd=APP_USER_CWD,
             timeout=10,
             check=False,
         )
@@ -1439,6 +1446,7 @@ def serve_socket():
 
 
 def main(argv):
+    os.chdir(APP_USER_CWD)
     if os.geteuid() != 0:
         raise UpdateFailure(
             'This updater is a root-owned system service; use the Unix socket from the web app.',

@@ -22,7 +22,8 @@ done
 id "$APP_USER" >/dev/null 2>&1 || { echo "Unknown user: $APP_USER" >&2; exit 2; }
 getent group "$APP_GROUP" >/dev/null 2>&1 || { echo "Unknown group: $APP_GROUP" >&2; exit 2; }
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+cd /
 APP_ROOT="${APP_ROOT:-/opt/officium}"
 STATE_DIR="${STATE_DIR:-/var/lib/officium}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/officium}"

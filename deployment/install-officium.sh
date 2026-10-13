@@ -28,7 +28,12 @@ ENV_FILE_SOURCE="${ENV_FILE_SOURCE:-}"
 SERVER_NAME="${SERVER_NAME:-_}"
 ROLLBACK_RELEASE="${ROLLBACK_RELEASE:-}"
 ENABLE_NGINX="${ENABLE_NGINX:-false}"
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+# Commands run as APP_USER inherit the working directory; one it cannot stat
+# (for example /root/officium-vX.Y.Z) makes git fail with "Permission denied".
+case "$ENV_FILE_SOURCE" in ''|/*) ;; *) ENV_FILE_SOURCE="$PWD/$ENV_FILE_SOURCE" ;; esac
+case "$ROLLBACK_RELEASE" in ''|/*) ;; *) ROLLBACK_RELEASE="$PWD/$ROLLBACK_RELEASE" ;; esac
+cd /
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 info() { printf '==> %s\n' "$*"; }
