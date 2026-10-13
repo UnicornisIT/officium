@@ -5,7 +5,9 @@
 <div class="d-flex align-items-center justify-content-between gap-3 mb-4">
     <div>
         <h1 class="page-title mb-1"><i class="bi bi-clock-history text-danger me-2"></i>Просрочка по долгу</h1>
-        <p class="text-muted mb-0">Расчёт санкций по процентам за каждый день просрочки.</p>
+        {% if not error %}
+        <p class="text-muted mb-0">{{ debt.bank_name }} — {{ debt.product_name }}. Проценты и неустойка начислены по {{ accrued_through.strftime('%d.%m.%Y') }} включительно.</p>
+        {% endif %}
     </div>
     <a class="btn btn-outline-secondary" href="/">
         <i class="bi bi-arrow-left me-1"></i>Назад к долгам
@@ -15,93 +17,170 @@
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
 {% else %}
-<div class="card p-4 mb-4">
-    <div class="row g-3">
-        <div class="col-12 col-md-6">
-            <div class="info-box">
-                <div class="info-box-title">Банк / продукт</div>
-                <div class="info-box-value">{{ debt.bank_name }} — {{ debt.product_name }}</div>
-            </div>
+
+{% if state.is_overdue %}
+<div class="alert alert-danger d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4" data-testid="overdue-clear-amount">
+    <div>
+        <div class="fw-semibold">Чтобы закрыть просрочку сегодня, внесите {{ state.amount_to_clear_overdue|money }}</div>
+        <div class="small">Просрочено {{ state.overdue_amount|money }}{% if state.penalty > 0 %} и неустойка {{ state.penalty|money }}{% endif %}. Платёж сначала погасит просроченные проценты, затем просроченный долг и неустойку.</div>
+    </div>
+    <span class="badge text-bg-danger fs-6">{{ state.overdue_days }} дн. просрочки</span>
+</div>
+{% else %}
+<div class="alert alert-success mb-4" data-testid="overdue-none">
+    <i class="bi bi-check2-circle me-1"></i>Просрочки нет.
+    {% if state.next_due_date %}Следующий платёж {{ state.next_due_date.strftime('%d.%m.%Y') }}{% if state.next_due_amount > 0 %} — {{ state.next_due_amount|money }}{% endif %}.{% endif %}
+    {% if state.penalty > 0 %}Осталась неоплаченная неустойка {{ state.penalty|money }}.{% endif %}
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Общая задолженность</div>
+            <div class="fs-4 fw-semibold">{{ state.total|money }}</div>
         </div>
-        <div class="col-12 col-md-6">
-            <div class="info-box">
-                <div class="info-box-title">Остаток задолженности</div>
-                <div class="info-box-value">{{ debt.remaining_amount|money }}</div>
-            </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Просрочено</div>
+            <div class="fs-4 fw-semibold {{ 'text-danger' if state.is_overdue else '' }}">{{ state.overdue_amount|money }}</div>
+            {% if state.overdue_since %}<div class="small text-muted">с {{ state.overdue_since.strftime('%d.%m.%Y') }}</div>{% endif %}
         </div>
-        <div class="col-12 col-md-6">
-            <div class="info-box">
-                <div class="info-box-title">Процентная ставка</div>
-                <div class="info-box-value">{{ annual_rate }}% годовых</div>
-            </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Неустойка</div>
+            <div class="fs-4 fw-semibold">{{ state.penalty|money }}</div>
+            <div class="small text-muted">{% if state.penalty_rate %}{{ '%.2f'|format(state.penalty_rate)|replace('.', ',') }}% годовых на просроченную сумму{% else %}ставка не задана — не начисляется{% endif %}</div>
         </div>
-        <div class="col-12 col-md-6">
-            <div class="info-box">
-                <div class="info-box-title">Дней просрочки</div>
-                <div class="info-box-value">{{ overdue_days }} дн.</div>
-            </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card p-3 h-100">
+            <div class="text-muted small">Процентная ставка</div>
+            {% if state.accrues_interest and interest_rate is not none %}
+            <div class="fs-4 fw-semibold">{{ '%.2f'|format(interest_rate)|replace('.', ',') }}%</div>
+            <div class="small text-muted">годовых, на весь основной долг</div>
+            {% else %}
+            <div class="fs-4 fw-semibold">—</div>
+            <div class="small text-muted">{% if debt.debt_type == 'split' %}по сплиту проценты не начисляются{% elif debt.debt_type == 'credit_card' %}льготный период не задан — проценты не начисляются{% else %}ставка не задана{% endif %}</div>
+            {% endif %}
         </div>
     </div>
 </div>
 
 <div class="card p-4 mb-4">
-    <h5>Начисление процентов</h5>
-    <p>В соответствии с установленной ставкой {{ annual_rate }}% годовых, расчёт ведётся по дневной ставке <strong>{{ daily_rate|round(4) }}%</strong> от остатка задолженности.</p>
-    <div class="row g-3 mt-3">
-        <div class="col-12 col-md-4">
-            <div class="info-box">
-                <div class="info-box-title">Начислено в день</div>
-                <div class="info-box-value">{{ interest_per_day|money }}</div>
-            </div>
-        </div>
-        <div class="col-12 col-md-4">
-            <div class="info-box">
-                <div class="info-box-title">Всего начислено</div>
-                <div class="info-box-value">{{ total_overdue_interest|money }}</div>
-            </div>
-        </div>
-        <div class="col-12 col-md-4">
-            <div class="info-box">
-                <div class="info-box-title">Итого к оплате</div>
-                <div class="info-box-value">{{ total_with_overdue|money }}</div>
-            </div>
-        </div>
+    <h5 class="mb-3">Состав задолженности</h5>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <tbody>
+                <tr>
+                    <td>Основной долг</td>
+                    <td class="text-end">{{ state.principal|money }}</td>
+                </tr>
+                <tr>
+                    <td class="ps-4 text-muted">в т. ч. просроченный</td>
+                    <td class="text-end text-muted">{{ state.overdue_principal|money }}</td>
+                </tr>
+                <tr>
+                    <td>Просроченные проценты</td>
+                    <td class="text-end">{{ state.overdue_interest|money }}</td>
+                </tr>
+                <tr>
+                    <td>Проценты текущего периода</td>
+                    <td class="text-end">{{ state.current_interest|money }}</td>
+                </tr>
+                {% if state.grace_interest_pending > 0 %}
+                <tr>
+                    <td class="text-muted">Проценты льготного периода (не начислятся, если погасить долг до {{ state.grace_period_end_date.strftime('%d.%m.%Y') }})</td>
+                    <td class="text-end text-muted">{{ state.grace_interest_pending|money }}</td>
+                </tr>
+                {% endif %}
+                <tr>
+                    <td>Неустойка</td>
+                    <td class="text-end">{{ state.penalty|money }}</td>
+                </tr>
+                <tr class="fw-semibold">
+                    <td>Итого</td>
+                    <td class="text-end">{{ state.total|money }}</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
-    <div class="alert alert-warning mt-4">
-        <strong>Важно:</strong> за каждый день просрочки применяется ежедневная часть годовой ставки. Размер санкций рассчитывается как <em>остаток × {{ daily_rate|round(4) }}% × количество дней просрочки</em>.
-    </div>
-    {% if interest_periods and interest_periods|length > 1 %}
-    <div class="mt-4">
-        <h6>Смена ставки в период просрочки</h6>
-        <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Период</th>
-                        <th>Дней</th>
-                        <th>Ставка</th>
-                        <th>Начислено</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for period in interest_periods %}
-                    <tr>
-                        <td>{{ period.start.strftime('%d.%m.%Y') }} — {{ period.end.strftime('%d.%m.%Y') }}</td>
-                        <td>{{ period.days }}</td>
-                        <td>{{ period.rate }}%</td>
-                        <td>{{ period.interest|money }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% endif %}
 </div>
+
+{% if state.overdue_items %}
+<div class="card p-4 mb-4">
+    <h5 class="mb-3">Неоплаченные платежи</h5>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Срок</th>
+                    <th class="text-end">Дней</th>
+                    <th class="text-end">Проценты</th>
+                    <th class="text-end">Основной долг</th>
+                    <th class="text-end">Всего</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in state.overdue_items %}
+                <tr>
+                    <td>{{ item.due_date.strftime('%d.%m.%Y') }}</td>
+                    <td class="text-end">{{ item.days }}</td>
+                    <td class="text-end">{{ item.interest|money }}</td>
+                    <td class="text-end">{{ item.principal|money }}</td>
+                    <td class="text-end">{{ item.amount|money }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% if overdue_periods %}
+<div class="card p-4 mb-4">
+    <h5 class="mb-1">Начисления за время просрочки</h5>
+    <p class="text-muted small">Каждая строка — отрезок с постоянной базой и ставкой: новая строка начинается при платеже, смене ставки или с 1 января.</p>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Начисление</th>
+                    <th>Период</th>
+                    <th class="text-end">Дней</th>
+                    <th class="text-end">База</th>
+                    <th class="text-end">Ставка</th>
+                    <th class="text-end">Начислено</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for period in overdue_periods %}
+                <tr>
+                    <td>{{ 'Неустойка' if period.kind == 'penalty' else 'Проценты' }}</td>
+                    <td>{{ period.start.strftime('%d.%m.%Y') }} — {{ period.last_day.strftime('%d.%m.%Y') }}</td>
+                    <td class="text-end">{{ period.days }}</td>
+                    <td class="text-end">{{ period.base|money }}</td>
+                    <td class="text-end">{{ '%.2f'|format(period.rate)|replace('.', ',') }}% / {{ period.days_in_year }}</td>
+                    <td class="text-end">{{ period.amount|money }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 
 <div class="card p-4">
-    <h5>Условия</h5>
-    <p class="text-muted mb-0">Этот расчёт предназначен для демонстрационного стенда. В реальном договоре условия могут определяться отдельно и зависеть от правил кредитора и закона о потребительском кредитовании.</p>
+    <h5>Как считается</h5>
+    <ul class="text-muted mb-0">
+        <li>Платёж считается внесённым в срок, если сумма платежей с прошлой даты платежа по текущую включительно не меньше обязательного платежа.</li>
+        <li>Просрочка — это недоплаченная часть обязательного платежа, а не весь остаток долга. Сначала в неё попадают проценты периода, затем основной долг.</li>
+        <li>Обычные проценты продолжают начисляться на весь основной долг. Неустойка начисляется только на просроченную сумму за каждый день просрочки; на неустойку ничего не начисляется.</li>
+        <li>Платёж гасит задолженность в порядке ч. 20 ст. 5 закона 353-ФЗ: просроченные проценты, просроченный основной долг, неустойка, текущие проценты, основной долг.</li>
+        <li>Расчёт строится по введённым параметрам долга и истории платежей. Точные суммы по договору сверяйте с банком.</li>
+    </ul>
 </div>
 {% endif %}
 {% endblock %}

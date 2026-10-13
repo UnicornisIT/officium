@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from app import create_app
 from app.models import Debt, Payment, SplitPurchase, User
-from app.services.debt_interest_service import calculate_overdue_interest
 from extensions import db
 
 
@@ -809,30 +808,6 @@ class DebtTypesTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
         self.assertIn('дату смены ставки', response.get_json()['error'])
-
-    def test_overdue_interest_is_split_by_scheduled_rate_change(self):
-        debt = Debt(
-            user_id=self.user_id,
-            bank_name='Сбербанк',
-            debt_type='consumer_credit',
-            product_name='Потребительский кредит',
-            total_amount=Decimal('100000.00'),
-            remaining_amount=Decimal('100000.00'),
-            interest_rate=Decimal('10.00'),
-            interest_rate_after_change=Decimal('20.00'),
-            interest_rate_change_date=date(2026, 7, 15),
-            next_payment_date=date(2026, 7, 10),
-            status='active',
-        )
-
-        summary = calculate_overdue_interest(debt, today=date(2026, 7, 20))
-
-        self.assertEqual(len(summary['periods']), 2)
-        self.assertEqual(summary['periods'][0]['days'], 5)
-        self.assertEqual(summary['periods'][0]['rate'], 10.0)
-        self.assertEqual(summary['periods'][1]['days'], 5)
-        self.assertEqual(summary['periods'][1]['rate'], 20.0)
-        self.assertEqual(summary['total_overdue_interest'], 410.96)
 
     def test_recurring_payment_date_advances_after_required_payment(self):
         self.login()

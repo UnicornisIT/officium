@@ -23,7 +23,7 @@ from app.services.financial_plan_service import (
     get_financial_goal_balance,
     get_financial_plan_preference,
 )
-from app.services.debt_interest_service import calculate_overdue_interest
+from app.services.debt_accrual_service import get_debt_state
 from app.services.debt_service import get_user_debt
 from app.utils import get_setting, income_source_suggestions, parse_date, parse_decimal
 
@@ -614,25 +614,21 @@ def init_app(app):
         if not debt:
             return render_template('overdue_interest.html', error='Долг не найден.'), 404
 
-        if not debt.next_payment_date or debt.next_payment_date >= today:
-            return render_template('overdue_interest.html', error='Для этого долга нет просрочки.'), 400
-
-        interest_summary = calculate_overdue_interest(debt, today=today)
-        if not interest_summary:
-            return render_template('overdue_interest.html', error='Для этого долга не указана процентная ставка.'), 400
-
-        overdue_days = (today - debt.next_payment_date).days
+        state = get_debt_state(debt, as_of=today)
+        overdue_periods = [
+            {**period, 'last_day': period['end'] - timedelta(days=1)}
+            for period in state['periods']
+            if state['overdue_since'] and period['kind'] in ('interest', 'penalty')
+            and period['end'] > state['overdue_since']
+        ]
 
         return render_template('overdue_interest.html',
             debt=debt,
             today=today,
-            overdue_days=overdue_days,
-            annual_rate=interest_summary['annual_rate'],
-            daily_rate=interest_summary['daily_rate'],
-            interest_per_day=interest_summary['interest_per_day'],
-            total_overdue_interest=interest_summary['total_overdue_interest'],
-            total_with_overdue=interest_summary['total_with_overdue'],
-            interest_periods=interest_summary['periods'],
+            state=state,
+            accrued_through=today - timedelta(days=1),
+            interest_rate=debt.interest_rate_for(today),
+            overdue_periods=overdue_periods,
         )
 
     @app.route('/archive')
