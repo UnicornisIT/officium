@@ -1,6 +1,6 @@
 {% macro icon(name, size=20, class_name='') -%}
 <svg class="admin-icon {{ class_name }}" width="{{ size }}" height="{{ size }}" aria-hidden="true" focusable="false">
-    <use href="{{ url_for('static', filename='images/icons/admin-icons.svg') }}#{{ name }}"></use>
+    <use href="{{ url_for('static', filename='images/icons/admin-icons.svg') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=2#{{ name }}"></use>
 </svg>
 {%- endmacro %}
 

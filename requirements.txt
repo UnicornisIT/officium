@@ -13,3 +13,5 @@ Authlib==1.7.2
 requests==2.33.0
 python-dateutil==2.8.2
 pypdf==6.19.0
+markdown-it-py==4.2.0
+nh3==0.3.7

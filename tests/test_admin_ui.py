@@ -1,9 +1,11 @@
+import re
 import unittest
 from datetime import date, datetime
 from pathlib import Path
 
 from app import create_app
 from app.admin_presenters import (
+    admin_event_icon,
     admin_event_label,
     admin_field_label,
     admin_role_label,
@@ -249,8 +251,25 @@ class AdminInterfaceTestCase(unittest.TestCase):
         self.assertIn('.admin-content > .admin-panel + .admin-panel', css)
         self.assertNotIn('\n.admin-panel + .admin-panel {', css)
         self.assertIn('.admin-control.admin-control--search .admin-input-icon > input[type="search"] { padding-left: 46px; }', css)
-        self.assertIn('favicon.svg', base)
-        self.assertIn('apple-touch-icon.png', base)
+        favicons = (repository_root / 'templates' / '_favicons.html').read_text(encoding='utf-8')
+        self.assertIn("{% include '_favicons.html' %}", base)
+        self.assertIn('favicon.svg', favicons)
+        self.assertIn('apple-touch-icon.png', favicons)
+
+    def test_every_admin_icon_used_in_templates_exists_in_the_sprite(self):
+        repository_root = Path(__file__).resolve().parents[1]
+        sprite = (repository_root / 'static' / 'images' / 'icons' / 'admin-icons.svg').read_text(encoding='utf-8')
+        symbols = set(re.findall(r'<symbol id="([^"]+)"', sprite))
+        used = set()
+        for template in (repository_root / 'templates').rglob('*.html'):
+            used.update(re.findall(r"icon\('([a-z0-9-]+)'", template.read_text(encoding='utf-8')))
+        used.update(re.findall(
+            r"\('admin_[a-z_]+', '([a-z0-9-]+)'",
+            (repository_root / 'templates' / 'admin_base.html').read_text(encoding='utf-8'),
+        ))
+        used.update(admin_event_icon(value) for value in ('user', 'update', 'настройки', 'справочник', 'failed', 'other'))
+        self.assertIn('plus', used)
+        self.assertEqual(used - symbols, set())
 
     def test_zoom_layout_contract_prevents_wrapping_clipping_and_nested_empty_cards(self):
         repository_root = Path(__file__).resolve().parents[1]
