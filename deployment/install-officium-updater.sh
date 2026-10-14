@@ -22,7 +22,8 @@ done
 id "$APP_USER" >/dev/null 2>&1 || { echo "Unknown user: $APP_USER" >&2; exit 2; }
 getent group "$APP_GROUP" >/dev/null 2>&1 || { echo "Unknown group: $APP_GROUP" >&2; exit 2; }
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+cd /
 APP_ROOT="${APP_ROOT:-/opt/officium}"
 STATE_DIR="${STATE_DIR:-/var/lib/officium}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/officium}"
@@ -44,6 +45,11 @@ install -o root -g root -m 0755 \
     "$SCRIPT_DIR/deploy-release" /usr/local/lib/officium/deploy-release
 install -o root -g root -m 0755 \
     "$SCRIPT_DIR/officium-update-client" /usr/local/bin/officium-update-client
+# The operator command; the runner refreshes it with the rest of the bundle.
+if [ -f "$SCRIPT_DIR/../scripts/officium-update" ]; then
+    install -o root -g root -m 0755 \
+        "$SCRIPT_DIR/../scripts/officium-update" /usr/local/sbin/officium-update
+fi
 
 install -d -o root -g root -m 0750 /etc/officium
 install -d -o root -g "$APP_GROUP" -m 0750 "$STATE_DIR"
@@ -77,7 +83,10 @@ ensure_setting() {
 ensure_setting APP_DIR "$APP_ROOT/current"
 ensure_setting APP_USER "$APP_USER"
 ensure_setting APP_GROUP "$APP_GROUP"
-ensure_setting SERVICE_NAME officium
+ensure_setting SERVICE_NAME "${SERVICE_NAME:-officium}"
+ensure_setting UPDATE_SOCKET "$UPDATE_SOCKET"
+ensure_setting SOURCE_URL "${SOURCE_URL:-https://github.com}"
+ensure_setting GITHUB_API_URL "${GITHUB_API_URL:-https://api.github.com}"
 ensure_setting STATUS_FILE "$STATE_DIR/server-update-status.json"
 ensure_setting STALE_MINUTES 120
 ensure_setting BACKUP_DIR "$BACKUP_DIR"
@@ -109,10 +118,23 @@ if [ -f /etc/sudoers.d/officium-updater ]; then
     chmod 0600 /etc/sudoers.d/officium-updater.disabled
 fi
 
+# systemd creates a missing socket parent directory as root:root 0750, which
+# the web process cannot traverse (PermissionError on connect). tmpfiles.d
+# creates it for the application group at boot, before sockets are started.
+SOCKET_DIR=$(dirname "$UPDATE_SOCKET")
+printf 'd %s 0750 root %s -\n' "$SOCKET_DIR" "$APP_GROUP" >/etc/tmpfiles.d/officium.conf
+chown root:root /etc/tmpfiles.d/officium.conf
+chmod 0644 /etc/tmpfiles.d/officium.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/officium.conf
+chown root:"$APP_GROUP" "$SOCKET_DIR"
+chmod 0750 "$SOCKET_DIR"
+
 systemd-analyze verify \
     /etc/systemd/system/officium-updater.socket \
     /etc/systemd/system/officium-updater.service
 systemctl daemon-reload
+# Recreate the socket so it is bound inside the corrected directory.
+systemctl stop officium-updater.service officium-updater.socket 2>/dev/null || true
 systemctl enable --now officium-updater.socket
 
 echo "Updater socket installed. Validate the actual web-process path with:"

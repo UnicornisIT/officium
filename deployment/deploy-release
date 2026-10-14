@@ -3,14 +3,14 @@
 # The privileged updater performs the final atomic symlink switch only after
 # this script has completed successfully.
 
-set -euo pipefail
-umask 027
-
 RELEASE_TAG=""
 REPOSITORY=""
+# GitHub in production; integration tests use a local file:/// mirror.
+SOURCE_URL="https://github.com"
 RELEASES_DIR=""
 CURRENT_LINK=""
 ENVIRONMENT_FILE=""
+ENVIRONMENT_LINK=""
 STAGE_FILE=""
 RESULT_FILE=""
 VENV_NAME="venv"
@@ -19,102 +19,174 @@ MIN_FREE_MB="${MIN_FREE_MB:-512}"
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 report() { printf '%s\n' "$1" >"$STAGE_FILE"; }
 
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --release) RELEASE_TAG="${2:-}"; shift 2 ;;
-        --repository) REPOSITORY="${2:-}"; shift 2 ;;
-        --releases-dir) RELEASES_DIR="${2:-}"; shift 2 ;;
-        --current-link) CURRENT_LINK="${2:-}"; shift 2 ;;
-        --environment-file) ENVIRONMENT_FILE="${2:-}"; shift 2 ;;
-        --stage-file) STAGE_FILE="${2:-}"; shift 2 ;;
-        --result-file) RESULT_FILE="${2:-}"; shift 2 ;;
-        --venv-name) VENV_NAME="${2:-}"; shift 2 ;;
-        *) fail "Unknown deploy option: $1" ;;
-    esac
-done
+# Every absolute path that a venv/bin file mentions (shebangs, activate
+# scripts) must stay inside the release: console scripts otherwise point at a
+# build directory that no longer exists once the release has been moved.
+verify_venv_paths() {
+    local release="$1" venv="$2" venv_re file reference prefix
+    venv_re=${venv//./\\.}
+    for file in "$release/$venv/bin/"*; do
+        if [ -L "$file" ]; then
+            [ -e "$file" ] || fail "Virtualenv link is broken: $file"
+            continue
+        fi
+        [ -f "$file" ] || continue
+        while IFS= read -r reference; do
+            prefix=$(printf '%s' "$reference" | sed -E "s#/${venv_re}[/\"']?\$##")
+            [ "$prefix" = "$release" ] || \
+                fail "Virtualenv file ${file##*/} references $prefix instead of $release."
+        done < <(grep -aoE "(/[A-Za-z0-9_.@+-]+)+/${venv_re}([/\"']|\$)" "$file" || true)
+    done
+}
 
-[[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ ]] || fail "Invalid release tag."
-[[ "$RELEASE_TAG" != *..* && "$RELEASE_TAG" != *@\{* && "$RELEASE_TAG" != *.lock ]] || fail "Unsafe release tag."
-[[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "Invalid repository."
-case "$VENV_NAME" in venv|.venv) ;; *) fail "Venv name must be venv or .venv." ;; esac
-for required_path in "$RELEASES_DIR" "$CURRENT_LINK" "$ENVIRONMENT_FILE" "$STAGE_FILE" "$RESULT_FILE"; do
-    [ -n "$required_path" ] && [[ "$required_path" = /* ]] || fail "All deployment paths must be absolute."
-done
-[ -r "$ENVIRONMENT_FILE" ] || fail "Application environment file is not readable."
-[ -w "$RELEASES_DIR" ] || fail "Release directory is not writable by the application user."
+# The release's .env symlink must name the permanent <APP_ROOT>/shared/.env.
+# A path through current/ turns into a self-reference once current points at
+# this release, and a legacy migration builds from a temporary tree that is
+# renamed afterwards. Without an explicit link the readable build file is
+# resolved, which turns current/.env into the shared file it points at.
+environment_link_target() {
+    local environment_file="$1" requested="$2" target
+    if [ -n "$requested" ]; then
+        target="$requested"
+    else
+        target=$(realpath -e -- "$environment_file") || fail "Cannot resolve the environment file."
+    fi
+    [[ "$target" = /* ]] || fail "The release .env link must be absolute."
+    [[ "$target" != */current/* && "$target" != *.managed.* && "$target" != *..* ]] || \
+        fail "The release .env link must not go through current/ or a temporary tree."
+    [[ "$target" = */shared/.env ]] || fail "The release .env link must point to <APP_ROOT>/shared/.env."
+    printf '%s\n' "$target"
+}
 
-available_kb=$(df -Pk "$RELEASES_DIR" | awk 'NR==2 {print $4}')
-[[ "$available_kb" =~ ^[0-9]+$ ]] || fail "Cannot determine free disk space."
-[ "$available_kb" -ge $((MIN_FREE_MB * 1024)) ] || fail "Insufficient free disk space."
+main() {
+    # runuser keeps the caller's directory; git and pip fail when this user
+    # cannot stat it (an installer started from /root/<dir>).
+    cd /
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --release) RELEASE_TAG="${2:-}"; shift 2 ;;
+            --repository) REPOSITORY="${2:-}"; shift 2 ;;
+            --source-url) SOURCE_URL="${2:-}"; shift 2 ;;
+            --releases-dir) RELEASES_DIR="${2:-}"; shift 2 ;;
+            --current-link) CURRENT_LINK="${2:-}"; shift 2 ;;
+            --environment-file) ENVIRONMENT_FILE="${2:-}"; shift 2 ;;
+            --environment-link) ENVIRONMENT_LINK="${2:-}"; shift 2 ;;
+            --stage-file) STAGE_FILE="${2:-}"; shift 2 ;;
+            --result-file) RESULT_FILE="${2:-}"; shift 2 ;;
+            --venv-name) VENV_NAME="${2:-}"; shift 2 ;;
+            *) fail "Unknown deploy option: $1" ;;
+        esac
+    done
 
-stage_dir=$(mktemp -d "$RELEASES_DIR/.staging-${RELEASE_TAG}.XXXXXX")
-cleanup() { rm -rf -- "$stage_dir"; }
-trap cleanup EXIT HUP INT TERM
+    [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ ]] || fail "Invalid release tag."
+    [[ "$RELEASE_TAG" != *..* && "$RELEASE_TAG" != *@\{* && "$RELEASE_TAG" != *.lock ]] || fail "Unsafe release tag."
+    [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "Invalid repository."
+    [[ "$SOURCE_URL" = https://github.com || "$SOURCE_URL" =~ ^file:///[A-Za-z0-9_./-]+$ ]] || \
+        fail "Source must be https://github.com or a local file:/// mirror."
+    repository_url="${SOURCE_URL%/}/${REPOSITORY}.git"
+    case "$VENV_NAME" in venv|.venv) ;; *) fail "Venv name must be venv or .venv." ;; esac
+    for required_path in "$RELEASES_DIR" "$CURRENT_LINK" "$ENVIRONMENT_FILE" "$STAGE_FILE" "$RESULT_FILE"; do
+        [ -n "$required_path" ] && [[ "$required_path" = /* ]] || fail "All deployment paths must be absolute."
+    done
+    [ -r "$ENVIRONMENT_FILE" ] || fail "Application environment file is not readable."
+    environment_link=$(environment_link_target "$ENVIRONMENT_FILE" "$ENVIRONMENT_LINK")
+    [ -w "$RELEASES_DIR" ] || fail "Release directory is not writable by the application user."
 
-report installing
-git clone --quiet --no-checkout "https://github.com/${REPOSITORY}.git" "$stage_dir/source"
-git -C "$stage_dir/source" fetch --quiet --force origin \
-    "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
-release_commit=$(git -C "$stage_dir/source" rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")
-remote_commit=$(git ls-remote --exit-code "https://github.com/${REPOSITORY}.git" \
-    "refs/tags/${RELEASE_TAG}^{}" "refs/tags/${RELEASE_TAG}" | \
-    awk '$2 ~ /\^\{\}$/ {peeled=$1} NR==1 {direct=$1} END {print peeled ? peeled : direct}')
-[ -n "$remote_commit" ] || fail "Release tag is missing from the configured repository."
-[ "$remote_commit" = "$release_commit" ] || fail "Fetched release does not match the remote tag."
-# Lightweight tags point directly to the commit; annotated tags are resolved by
-# the local rev-parse above. A fetched tag is never selected by a branch name.
-git -C "$stage_dir/source" checkout --quiet --detach "$release_commit"
-[ "$(git -C "$stage_dir/source" rev-parse HEAD)" = "$release_commit" ] || fail "Release checkout mismatch."
-[ -f "$stage_dir/source/run.py" ] || fail "Release is missing run.py."
-[ -f "$stage_dir/source/requirements.txt" ] || fail "Release is missing requirements.txt."
-[ -f "$stage_dir/source/requirements-build.txt" ] || fail "Release is missing requirements-build.txt."
-[ -d "$stage_dir/source/migrations" ] || fail "Release is missing migrations."
+    available_kb=$(df -Pk "$RELEASES_DIR" | awk 'NR==2 {print $4}')
+    [[ "$available_kb" =~ ^[0-9]+$ ]] || fail "Cannot determine free disk space."
+    [ "$available_kb" -ge $((MIN_FREE_MB * 1024)) ] || fail "Insufficient free disk space."
 
-ln -s "$ENVIRONMENT_FILE" "$stage_dir/source/.env"
+    stage_dir=$(mktemp -d "$RELEASES_DIR/.staging-${RELEASE_TAG}.XXXXXX")
+    final_dir=""
+    release_moved=false
+    cleanup() {
+        rm -rf -- "$stage_dir"
+        if [ "$release_moved" = true ] && [ -n "$final_dir" ]; then rm -rf -- "$final_dir"; fi
+    }
+    trap cleanup EXIT HUP INT TERM
 
-report dependencies
-python3 -m venv "$stage_dir/source/$VENV_NAME"
-"$stage_dir/source/$VENV_NAME/bin/python" -m pip install \
-    --disable-pip-version-check --requirement "$stage_dir/source/requirements-build.txt"
-"$stage_dir/source/$VENV_NAME/bin/python" -m pip install \
-    --disable-pip-version-check --requirement "$stage_dir/source/requirements.txt"
+    report installing
+    git clone --quiet --no-checkout "$repository_url" "$stage_dir/source"
+    git -C "$stage_dir/source" fetch --quiet --force origin \
+        "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+    release_commit=$(git -C "$stage_dir/source" rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")
+    remote_commit=$(git ls-remote --exit-code "$repository_url" \
+        "refs/tags/${RELEASE_TAG}^{}" "refs/tags/${RELEASE_TAG}" | \
+        awk '$2 ~ /\^\{\}$/ {peeled=$1} NR==1 {direct=$1} END {print peeled ? peeled : direct}')
+    [ -n "$remote_commit" ] || fail "Release tag is missing from the configured repository."
+    [ "$remote_commit" = "$release_commit" ] || fail "Fetched release does not match the remote tag."
+    # Lightweight tags point directly to the commit; annotated tags are resolved by
+    # the local rev-parse above. A fetched tag is never selected by a branch name.
+    git -C "$stage_dir/source" checkout --quiet --detach "$release_commit"
+    [ "$(git -C "$stage_dir/source" rev-parse HEAD)" = "$release_commit" ] || fail "Release checkout mismatch."
+    [ -f "$stage_dir/source/run.py" ] || fail "Release is missing run.py."
+    [ -f "$stage_dir/source/requirements.txt" ] || fail "Release is missing requirements.txt."
+    [ -f "$stage_dir/source/requirements-build.txt" ] || fail "Release is missing requirements-build.txt."
+    [ -d "$stage_dir/source/migrations" ] || fail "Release is missing migrations."
 
-report migrating
-(
-    cd "$stage_dir/source"
-    export FLASK_APP=run.py
-    migration_state=$("$stage_dir/source/$VENV_NAME/bin/python" -m flask db-preflight)
-    case "$migration_state" in
-        empty) ;;
-        stamp_baseline)
-            baseline=$("$stage_dir/source/$VENV_NAME/bin/python" -m flask db-baseline-revision)
-            "$stage_dir/source/$VENV_NAME/bin/python" -m flask db stamp "$baseline"
-            ;;
-        ready) ;;
-        *) fail "Unsupported migration preflight state: $migration_state" ;;
-    esac
-    "$stage_dir/source/$VENV_NAME/bin/python" -m flask db upgrade
-    "$stage_dir/source/$VENV_NAME/bin/python" -m flask db current
-    "$stage_dir/source/$VENV_NAME/bin/python" -c \
-        'from run import app; assert app is not None; print("run:app import OK")'
-)
+    final_dir="$RELEASES_DIR/${RELEASE_TAG}-${release_commit:0:12}"
+    if [ -e "$final_dir" ]; then
+        [ -d "$final_dir" ] && [ ! -L "$final_dir" ] || fail "Existing release path is unsafe."
+        [ "$(tr -d '\r\n' <"$final_dir/.officium-release-ready")" = "$release_commit" ] || \
+            fail "Existing release has a different commit marker."
+        [ "$(stat -c '%u' "$final_dir")" -eq 0 ] || fail "Existing release is not root-owned."
+        existing_mode=$(stat -c '%a' "$final_dir")
+        [ $((8#$existing_mode & 8#222)) -eq 0 ] || fail "Existing release is writable."
+        git --no-replace-objects -c "safe.directory=$final_dir" -c core.hooksPath=/dev/null \
+            -C "$final_dir" diff --no-ext-diff --quiet "$release_commit" -- || \
+            fail "Existing release differs from the verified commit."
+        printf '%s\n%s\n' "$final_dir" "$release_commit" >"$RESULT_FILE"
+        exit 0
+    fi
+    # The virtualenv is created where the release stays for the rest of this
+    # build: console scripts embed the absolute path they were created at. The
+    # root updater rewrites and re-verifies those paths after its own move.
+    mv -- "$stage_dir/source" "$final_dir"
+    release_moved=true
 
-final_dir="$RELEASES_DIR/${RELEASE_TAG}-${release_commit:0:12}"
-if [ -e "$final_dir" ]; then
-    [ -d "$final_dir" ] && [ ! -L "$final_dir" ] || fail "Existing release path is unsafe."
-    [ "$(tr -d '\r\n' <"$final_dir/.officium-release-ready")" = "$release_commit" ] || \
-        fail "Existing release has a different commit marker."
-    [ "$(stat -c '%u' "$final_dir")" -eq 0 ] || fail "Existing release is not root-owned."
-    existing_mode=$(stat -c '%a' "$final_dir")
-    [ $((8#$existing_mode & 8#222)) -eq 0 ] || fail "Existing release is writable."
-    git --no-replace-objects -c "safe.directory=$final_dir" -c core.hooksPath=/dev/null \
-        -C "$final_dir" diff --no-ext-diff --quiet "$release_commit" -- || \
-        fail "Existing release differs from the verified commit."
+    # Migrations read the build-time file; the permanent link is set below.
+    ln -s "$ENVIRONMENT_FILE" "$final_dir/.env"
+
+    report dependencies
+    python3 -m venv "$final_dir/$VENV_NAME"
+    "$final_dir/$VENV_NAME/bin/python" -m pip install \
+        --disable-pip-version-check --requirement "$final_dir/requirements-build.txt"
+    "$final_dir/$VENV_NAME/bin/python" -m pip install \
+        --disable-pip-version-check --requirement "$final_dir/requirements.txt"
+    verify_venv_paths "$final_dir" "$VENV_NAME"
+
+    report migrating
+    (
+        cd "$final_dir"
+        export FLASK_APP=run.py
+        migration_state=$("$final_dir/$VENV_NAME/bin/python" -m flask db-preflight)
+        case "$migration_state" in
+            empty) ;;
+            stamp_baseline)
+                baseline=$("$final_dir/$VENV_NAME/bin/python" -m flask db-baseline-revision)
+                "$final_dir/$VENV_NAME/bin/python" -m flask db stamp "$baseline"
+                ;;
+            ready) ;;
+            *) fail "Unsupported migration preflight state: $migration_state" ;;
+        esac
+        "$final_dir/$VENV_NAME/bin/python" -m flask db upgrade
+        "$final_dir/$VENV_NAME/bin/python" -m flask db current
+        "$final_dir/$VENV_NAME/bin/python" -c \
+            'from run import app; assert app is not None; print("run:app import OK")'
+    )
+
+    ln -sfn -- "$environment_link" "$final_dir/.env"
+    [ "$(readlink -- "$final_dir/.env")" = "$environment_link" ] || fail "Release .env link was not written."
+    printf '%s\n' "$release_commit" >"$final_dir/.officium-release-ready"
     printf '%s\n%s\n' "$final_dir" "$release_commit" >"$RESULT_FILE"
-    exit 0
+    release_moved=false
+    trap - EXIT HUP INT TERM
+    rm -rf -- "$stage_dir"
+}
+
+# Sourcing the script (bats tests) only defines the helpers above.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    set -euo pipefail
+    umask 027
+    main "$@"
 fi
-printf '%s\n' "$release_commit" >"$stage_dir/source/.officium-release-ready"
-mv -- "$stage_dir/source" "$final_dir"
-printf '%s\n%s\n' "$final_dir" "$release_commit" >"$RESULT_FILE"
-trap - EXIT HUP INT TERM
-rm -rf -- "$stage_dir"

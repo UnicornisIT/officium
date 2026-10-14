@@ -1,0 +1,122 @@
+name: Deployment integration
+
+# Real installs and updates on a disposable Ubuntu VM with systemd, MySQL 8.4
+# and nginx. Releases come from a local mirror of the code under test
+# (tests/integration/deploy/make-release-mirror.sh) and a loopback stand-in
+# for the GitHub "latest release" API; production never accepts either.
+
+on:
+  push:
+    branches: [master, 'feat/**']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: ${{ matrix.scenario }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [managed, legacy]
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: qa-root-password
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pqa-root-password"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ubuntu packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client python3-venv nginx sqlite3
+          sudo systemctl enable --now nginx
+      - name: Application user and restricted MySQL account
+        run: |
+          sudo groupadd --system officium
+          sudo useradd --system --gid officium --home /opt/officium --shell /usr/sbin/nologin officium
+          mysql -h127.0.0.1 -uroot -pqa-root-password <<'SQL'
+          CREATE DATABASE officium CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE USER 'officium'@'%' IDENTIFIED BY 'qa-db-password';
+          GRANT ALL PRIVILEGES ON officium.* TO 'officium'@'%';
+          FLUSH PRIVILEGES;
+          SQL
+      - name: Application configuration
+        run: |
+          mkdir -p "$RUNNER_TEMP/qa"
+          cat >"$RUNNER_TEMP/qa/app.env" <<'EOF'
+          OFFICIUM_ENV=staging
+          SECRET_KEY=qa-only-secret-that-is-longer-than-thirty-two-characters
+          SESSION_COOKIE_SECURE=true
+          APP_TIMEZONE=Europe/Moscow
+          DB_ENGINE=mysql
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_USER=officium
+          DB_PASSWORD=qa-db-password
+          DB_NAME=officium
+          SERVER_UPDATE_ENABLED=true
+          SERVER_UPDATE_REPOSITORY=qa/officium
+          SERVER_UPDATE_SOCKET=/run/officium/updater.sock
+          SERVER_UPDATE_APP_DIR=/opt/officium/current
+          SERVER_UPDATE_STATUS_PATH=/var/lib/officium/server-update-status.json
+          EOF
+          sed -i 's/^ *//' "$RUNNER_TEMP/qa/app.env"
+      - name: Release mirror and release API
+        run: |
+          sudo bash tests/integration/deploy/make-release-mirror.sh "$GITHUB_WORKSPACE"
+          sudo install -d -m 0755 /srv/qa-api
+          echo v90.0.1 | sudo tee /srv/qa-api/latest
+          sudo systemd-run --unit=qa-release-api \
+            python3 "$GITHUB_WORKSPACE/tests/integration/deploy/qa_release_api.py" /srv/qa-api/latest 8765
+          sleep 1
+          curl --fail http://127.0.0.1:8765/repos/qa/officium/releases/latest
+      - name: Run the ${{ matrix.scenario }} scenario
+        run: |
+          set -o pipefail
+          sudo bash tests/integration/deploy/scenario-${{ matrix.scenario }}.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/qa/app.env" 2>&1 \
+            | tee "$RUNNER_TEMP/scenario.log"
+      - name: Report the failure as annotations
+        if: failure()
+        # Job logs need a signed-in viewer; annotations are public. Only QA
+        # credentials exist on this machine.
+        run: |
+          # The API shows about 4 KB per annotation: post the tail in chunks.
+          annotate() {
+            python3 -c '
+          import sys
+          text = sys.stdin.read().replace("\r", "")[-10500:]
+          for start in range(0, len(text), 3500):
+              chunk = text[start:start + 3500].replace("%", "%25").replace("\n", "%0A")
+              print(f"::error title={sys.argv[1]} {start // 3500 + 1}::{chunk}")
+          ' "$1"
+          }
+          grep -v 'INFO  \[alembic' "$RUNNER_TEMP/scenario.log" | tail -n 60 | annotate "scenario output"
+          sudo journalctl -u officium.service -u officium-updater.service -u 'officium-update-*' --no-pager -n 80 \
+            | annotate "journal (tail)" || true
+      - name: Collect evidence
+        if: always()
+        run: |
+          mkdir -p evidence
+          sudo journalctl -u officium.service -u officium-updater.service -u 'officium-update-*' \
+            --no-pager --output=short-iso | sed -E 's/(password|token|secret)=[^ ]+/\1=[REDACTED]/Ig' >evidence/journal.log || true
+          sudo sh -c 'cat /var/log/officium/*.log' >evidence/update.log 2>/dev/null || true
+          sudo sh -c 'systemctl cat officium.service; ls -la /opt/officium /opt/officium/releases /run/officium' >evidence/layout.txt 2>&1 || true
+          sudo cp /var/lib/officium/server-update-status.json evidence/ 2>/dev/null || true
+          sudo chown -R "$USER" evidence
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-${{ matrix.scenario }}-evidence
+          path: evidence/
+          retention-days: 14

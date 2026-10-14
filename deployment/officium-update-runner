@@ -31,6 +31,12 @@ LOCK_PATH = Path('/run/lock/officium-update.lock')
 REQUEST_LOCK_PATH = Path('/run/lock/officium-update-request.lock')
 TAG_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$')
 REPOSITORY_RE = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
+# Release sources. Production uses GitHub; a root-owned updater.env may point
+# at a local file:// mirror and a loopback release API for integration tests.
+DEFAULT_SOURCE_URL = 'https://github.com'
+DEFAULT_GITHUB_API_URL = 'https://api.github.com'
+TEST_SOURCE_URL_RE = re.compile(r'^file:///[A-Za-z0-9_./-]+$')
+TEST_API_URL_RE = re.compile(r'^http://127\.0\.0\.1:[0-9]{2,5}$')
 USER_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
 NAME_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,127}$')
 ALLOWED_CONFIG_KEYS = {
@@ -39,13 +45,17 @@ ALLOWED_CONFIG_KEYS = {
     'APP_USER',
     'BACKUP_DIR',
     'DEPLOY_SCRIPT',
+    'ENV_FILE',
     'GIT_REMOTE',
+    'GITHUB_API_URL',
     'HEALTHCHECK_URL',
     'REPOSITORY',
     'RELEASES_DIR',
     'SERVICE_NAME',
+    'SOURCE_URL',
     'STATUS_FILE',
     'STALE_MINUTES',
+    'UPDATE_SOCKET',
     'VENV_NAME',
 }
 ACTIVE_STATES = {
@@ -55,6 +65,9 @@ ACTIVE_STATES = {
 OPERATION_ID_RE = re.compile(r'^upd-[0-9a-f]{12}$')
 MAX_REQUEST_BYTES = 4096
 RESULT_PREFIX = 'OFFICIUM_UPDATE_RESULT='
+# runuser keeps the caller's working directory; git, pip and Python fail when
+# APP_USER cannot stat it (an operator running the CLI from /root/<dir>).
+APP_USER_CWD = '/'
 PUBLIC_MESSAGES = {
     'authorization_failed': 'Недостаточно прав для запуска серверного помощника.',
     'backup_failed': 'Не удалось создать резервную копию. Обновление не начато.',
@@ -155,7 +168,16 @@ def load_runner_config():
         'STATUS_FILE': configured.get('STATUS_FILE', '/var/lib/officium/server-update-status.json'),
         'STALE_MINUTES': configured.get('STALE_MINUTES', '120'),
         'VENV_NAME': configured.get('VENV_NAME', 'venv'),
+        'ENV_FILE': configured.get('ENV_FILE', ''),
+        'UPDATE_SOCKET': configured.get('UPDATE_SOCKET', '/run/officium/updater.sock'),
+        'SOURCE_URL': configured.get('SOURCE_URL', '') or DEFAULT_SOURCE_URL,
+        'GITHUB_API_URL': configured.get('GITHUB_API_URL', '') or DEFAULT_GITHUB_API_URL,
     }
+    validate_release_sources(values)
+    if not Path(values['UPDATE_SOCKET']).is_absolute():
+        raise UpdateFailure('UPDATE_SOCKET must be an absolute path.')
+    if values['ENV_FILE'] and not Path(values['ENV_FILE']).is_absolute():
+        raise UpdateFailure('ENV_FILE must be an absolute path.')
     for key in ('APP_DIR', 'BACKUP_DIR', 'DEPLOY_SCRIPT', 'RELEASES_DIR', 'STATUS_FILE'):
         if not Path(values[key]).is_absolute():
             raise UpdateFailure(f'{key} must be an absolute path.')
@@ -186,6 +208,21 @@ def load_runner_config():
     except KeyError as exc:
         raise UpdateFailure('APP_GROUP does not exist.') from exc
     return values
+
+
+def validate_release_sources(values):
+    source = values['SOURCE_URL'].rstrip('/')
+    api = values['GITHUB_API_URL'].rstrip('/')
+    if source != DEFAULT_SOURCE_URL and not TEST_SOURCE_URL_RE.fullmatch(source):
+        raise UpdateFailure('SOURCE_URL must be https://github.com or a local file:/// mirror.')
+    if api != DEFAULT_GITHUB_API_URL and not TEST_API_URL_RE.fullmatch(api):
+        raise UpdateFailure('GITHUB_API_URL must be https://api.github.com or a loopback test API.')
+    values['SOURCE_URL'] = source
+    values['GITHUB_API_URL'] = api
+
+
+def repository_url(config):
+    return f'{config.get("SOURCE_URL") or DEFAULT_SOURCE_URL}/{config["REPOSITORY"]}.git'
 
 
 def read_status(status_path):
@@ -239,7 +276,7 @@ def latest_release_tag(config):
         'User-Agent': 'officium-server-updater',
     }
     request = Request(
-        f'https://api.github.com/repos/{repository}/releases/latest',
+        f'{config.get("GITHUB_API_URL") or DEFAULT_GITHUB_API_URL}/repos/{repository}/releases/latest',
         headers=headers,
         method='GET',
     )
@@ -261,8 +298,11 @@ def latest_release_tag(config):
     return validate_tag(str(payload.get('tag_name') or ''))
 
 
-def normalize_github_remote(remote):
+def normalize_github_remote(remote, source_url=DEFAULT_SOURCE_URL):
     value = remote.strip()
+    if source_url != DEFAULT_SOURCE_URL and value.startswith(source_url + '/'):
+        value = value[len(source_url) + 1:]
+        return value[:-4] if value.endswith('.git') else value
     prefixes = (
         'https://github.com/',
         'http://github.com/',
@@ -291,12 +331,49 @@ def verify_git_remote(config):
     )
     if result.returncode != 0:
         raise UpdateFailure('Cannot read the configured Git remote.')
-    if normalize_github_remote(result.stdout) != config['REPOSITORY']:
+    if normalize_github_remote(result.stdout, config.get('SOURCE_URL', DEFAULT_SOURCE_URL)) != config['REPOSITORY']:
         raise UpdateFailure('Git remote does not match the configured GitHub repository.')
 
 
-def database_settings(app_dir):
-    env_path = app_dir / '.env'
+def application_env_path(config):
+    """The permanent application .env file.
+
+    Managed installs keep it in <APP_ROOT>/shared/.env next to the current
+    symlink; it is never read through current/.env, whose link the release
+    being installed may not have yet. Legacy checkouts keep it in APP_DIR.
+    """
+    if config.get('ENV_FILE'):
+        return Path(config['ENV_FILE'])
+    app_dir = Path(config['APP_DIR'])
+    if app_dir.is_symlink():
+        return app_dir.parent / 'shared' / '.env'
+    return app_dir / '.env'
+
+
+def verify_release_environment_link(release_path, env_path):
+    """A release's .env must be an absolute link to the permanent shared file."""
+    link = Path(release_path) / '.env'
+    if not link.is_symlink() or os.readlink(link) != str(env_path):
+        raise UpdateFailure(
+            f'Release .env must be a symlink to {env_path}.', 'deployment_failed'
+        )
+
+
+def verify_current_environment(config):
+    """After activation, realpath(current/.env) must be the shared .env file."""
+    env_path = application_env_path(config)
+    try:
+        resolved = (Path(config['APP_DIR']) / '.env').resolve(strict=True)
+        expected = env_path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise UpdateFailure('current/.env does not resolve to a file.', 'healthcheck_failed') from exc
+    if resolved != expected:
+        raise UpdateFailure(
+            f'current/.env resolves to {resolved}, not {expected}.', 'healthcheck_failed'
+        )
+
+
+def database_settings(env_path, app_dir):
     values = parse_key_value_file(env_path)
     database_url = values.get('DATABASE_URL', '').strip()
     if database_url:
@@ -395,6 +472,7 @@ def verify_database_backup_access(config, settings):
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
+            cwd=APP_USER_CWD,
             timeout=60,
             check=False,
         )
@@ -409,7 +487,7 @@ def backup_database(config, tag):
     app_dir = Path(config['APP_DIR'])
     backup_dir = Path(config['BACKUP_DIR'])
     backup_dir.mkdir(parents=True, exist_ok=True, mode=0o750)
-    settings = database_settings(app_dir)
+    settings = database_settings(application_env_path(config), app_dir)
     timestamp = utc_now().strftime('%Y%m%dT%H%M%SZ')
     safe_tag = re.sub(r'[^A-Za-z0-9._+-]', '_', tag)
 
@@ -479,6 +557,7 @@ def backup_database(config, tag):
                 command,
                 stdout=output,
                 stderr=subprocess.PIPE,
+                cwd=APP_USER_CWD,
                 timeout=180,
                 check=False,
             )
@@ -500,7 +579,7 @@ def backup_configuration(config, tag):
     destination = backup_dir / f'officium-{safe_tag}-{timestamp}-config'
     destination.mkdir(mode=0o700)
     sources = (
-        (Path(config['APP_DIR']) / '.env', 'app.env'),
+        (application_env_path(config), 'app.env'),
         (CONFIG_PATH, 'updater.env'),
     )
     copied = 0
@@ -534,8 +613,38 @@ def create_backups(config, tag):
     return database_path, configuration_path
 
 
+def deploy_command(config, tag, *, runuser, deploy_script, build_root, stage_path, result_path):
+    """The unprivileged release build command.
+
+    deploy-release reads the shared .env while it builds and links the release
+    to that same permanent file: never to current/.env, which becomes a
+    self-reference as soon as current points at the new release.
+    """
+    env_path = application_env_path(config)
+    if env_path.parts[-2:] != ('shared', '.env'):
+        raise UpdateFailure('Managed releases need the shared .env file.', 'configuration_invalid')
+    source_url = config.get('SOURCE_URL') or DEFAULT_SOURCE_URL
+    source = [] if source_url == DEFAULT_SOURCE_URL else ['--source-url', source_url]
+    return [
+        runuser,
+        '-u',
+        config['APP_USER'],
+        '--',
+        str(deploy_script),
+        '--release', tag,
+        '--repository', config['REPOSITORY'],
+        *source,
+        '--releases-dir', str(build_root),
+        '--current-link', str(config['APP_DIR']),
+        '--environment-file', str(env_path),
+        '--environment-link', str(env_path),
+        '--stage-file', str(stage_path),
+        '--result-file', str(result_path),
+        '--venv-name', config['VENV_NAME'],
+    ]
+
+
 def run_deployment(config, tag):
-    app_dir = Path(config['APP_DIR'])
     deploy_source = Path(config['DEPLOY_SCRIPT'])
     if not deploy_source.is_file():
         raise UpdateFailure('Root-owned deployment script is missing.')
@@ -572,22 +681,11 @@ def run_deployment(config, tag):
             result_path = Path(result_file.name)
         os.chown(result_path, account.pw_uid, account.pw_gid)
         result_path.chmod(0o600)
-        command = [
-            runuser,
-            '-u',
-            config['APP_USER'],
-            '--',
-            str(deploy_source),
-            '--release', tag,
-            '--repository', config['REPOSITORY'],
-            '--releases-dir', str(build_root),
-            '--current-link', str(app_dir),
-            '--environment-file', str(app_dir / '.env'),
-            '--stage-file', str(stage_path),
-            '--result-file', str(result_path),
-            '--venv-name', config['VENV_NAME'],
-        ]
-        process = subprocess.Popen(command, start_new_session=True)
+        command = deploy_command(
+            config, tag, runuser=runuser, deploy_script=deploy_source,
+            build_root=build_root, stage_path=stage_path, result_path=result_path,
+        )
+        process = subprocess.Popen(command, cwd=APP_USER_CWD, start_new_session=True)
         deadline = time.monotonic() + 900
         last_stage = ''
         stage_messages = {
@@ -654,6 +752,9 @@ def run_deployment(config, tag):
                 raise UpdateFailure('Existing release directory is unsafe.', 'deployment_failed')
         else:
             os.replace(release_path, destination)
+            for built_root in {result_lines[0], str(release_path)}:
+                relocate_release_venv(destination, built_root, destination, config['VENV_NAME'])
+            verify_release_venv(destination, config['VENV_NAME'])
         return destination, result_lines[1]
     finally:
         if stage_path:
@@ -662,6 +763,78 @@ def run_deployment(config, tag):
             result_path.unlink(missing_ok=True)
         if build_root:
             shutil.rmtree(build_root, ignore_errors=True)
+
+
+def _venv_reference_pattern(venv_name):
+    return re.compile(
+        rb'(?:/[A-Za-z0-9_.@+-]+)+/' + re.escape(venv_name.encode('ascii')) + rb'(?=[/"\x27]|$)',
+        re.MULTILINE,
+    )
+
+
+def release_venv_name(release_path):
+    for name in ('venv', '.venv'):
+        if (Path(release_path) / name / 'bin').is_dir():
+            return name
+    raise UpdateFailure('Release has no virtualenv.', 'deployment_failed')
+
+
+def relocate_release_venv(release_path, old_root, new_root, venv_name):
+    """Rewrite the absolute build path that venv scripts embed after a move.
+
+    Console scripts (and activate) carry the path the venv was created at, so
+    every move of a built release would otherwise leave them pointing at a
+    directory that no longer exists (systemd then fails with 203/EXEC).
+    """
+    old = (str(old_root).rstrip('/') + '/').encode()
+    new = (str(new_root).rstrip('/') + '/').encode()
+    if old == new:
+        return
+    venv_dir = Path(release_path) / venv_name
+    for path in [*sorted((venv_dir / 'bin').iterdir()), venv_dir / 'pyvenv.cfg']:
+        if path.is_symlink() or not path.is_file():
+            continue
+        data = path.read_bytes()
+        if old not in data:
+            continue
+        info = path.stat()
+        temporary = path.with_name(f'.{path.name}.relocate-{os.getpid()}')
+        try:
+            temporary.write_bytes(data.replace(old, new))
+            os.chown(temporary, info.st_uid, info.st_gid)
+            temporary.chmod(stat.S_IMODE(info.st_mode))
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def verify_release_venv(release_path, venv_name, expected_root=None):
+    """Fail unless every path a venv/bin file mentions is inside the release.
+
+    ``expected_root`` is the path the release will finally live at when it is
+    checked before its last move; it defaults to where it is now.
+    """
+    release = str(expected_root or Path(release_path)).rstrip('/').encode()
+    pattern = _venv_reference_pattern(venv_name)
+    suffix_length = len(venv_name) + 1
+    problems = []
+    for path in sorted((Path(release_path) / venv_name / 'bin').iterdir()):
+        if path.is_symlink():
+            if not path.exists():
+                problems.append(f'{path.name} is a broken link')
+            continue
+        if not path.is_file():
+            continue
+        for match in pattern.finditer(path.read_bytes()):
+            prefix = match.group(0)[:-suffix_length]
+            if prefix != release:
+                problems.append(f'{path.name} -> {prefix.decode(errors="replace")}')
+                break
+    if problems:
+        raise UpdateFailure(
+            'Virtualenv references paths outside the release: ' + ', '.join(problems[:5]),
+            'deployment_failed',
+        )
 
 
 def seal_and_verify_release(config, release_path, tag, release_commit):
@@ -676,6 +849,7 @@ def seal_and_verify_release(config, release_path, tag, release_commit):
     marker = (candidate / '.officium-release-ready').read_text(encoding='utf-8').strip()
     if marker != release_commit or not re.fullmatch(r'[0-9a-f]{40,64}', release_commit):
         raise UpdateFailure('Candidate release commit marker is invalid.', 'deployment_failed')
+    verify_release_environment_link(candidate, application_env_path(config))
 
     group_id = grp.getgrnam(config['APP_GROUP']).gr_gid
     for directory, dirnames, filenames in os.walk(candidate, followlinks=False):
@@ -697,7 +871,7 @@ def seal_and_verify_release(config, release_path, tag, release_commit):
     remote = subprocess.run(
         [
             git, 'ls-remote', '--exit-code',
-            f'https://github.com/{config["REPOSITORY"]}.git',
+            repository_url(config),
             f'refs/tags/{tag}^{{}}', f'refs/tags/{tag}',
         ],
         capture_output=True,
@@ -737,11 +911,7 @@ def seal_and_verify_release(config, release_path, tag, release_commit):
             or tree_check.returncode != 0:
         raise UpdateFailure('Tracked release files differ from the verified commit.', 'deployment_failed')
 
-    for relative in (
-        'deployment/officium-update-runner',
-        'deployment/officium-update-client',
-        'deployment/deploy-release',
-    ):
+    for relative, _target, _component_type in release_components(candidate):
         source = candidate / relative
         source_info = source.lstat()
         if not stat.S_ISREG(source_info.st_mode) or source.is_symlink() \
@@ -749,56 +919,151 @@ def seal_and_verify_release(config, release_path, tag, release_commit):
             raise UpdateFailure('Privileged bundle source is not immutable.', 'deployment_failed')
 
 
-def verify_service_health(config):
+DEFAULT_HEALTHCHECK_URL = 'http://127.0.0.1:5000/login'
+HEALTH_STABLE_SECONDS = 10
+
+
+def read_service_properties(service):
     systemctl = shutil.which('systemctl')
     if not systemctl:
         raise UpdateFailure('systemctl is not installed.', 'restart_failed')
+    result = subprocess.run(
+        [systemctl, 'show', service,
+         '--property=ActiveState', '--property=SubState', '--property=NRestarts',
+         '--property=InvocationID', '--property=Result'],
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+    properties = {}
+    for line in result.stdout.splitlines():
+        key, _separator, value = line.partition('=')
+        properties[key] = value
+    return properties
 
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        result = subprocess.run(
-            [systemctl, 'is-active', '--quiet', config['SERVICE_NAME']],
-            timeout=10,
-            check=False,
-        )
-        if result.returncode == 0:
-            break
-        time.sleep(1)
-    else:
-        raise UpdateFailure('Application service did not become active.', 'healthcheck_failed')
 
-    healthcheck_url = config.get('HEALTHCHECK_URL', '').strip()
-    if not healthcheck_url:
-        return
-    parsed = urlsplit(healthcheck_url)
+def fetch_http_status(url):
+    request = Request(url, headers={'User-Agent': 'officium-server-updater-healthcheck'}, method='GET')
+    try:
+        with urlopen(request, timeout=5) as response:
+            return response.status
+    except HTTPError as exc:
+        return exc.code
+    except (URLError, OSError):
+        return None
+
+
+def verify_service_health(service, url=None, *, stable_seconds=HEALTH_STABLE_SECONDS,
+                          start_timeout=30, http_timeout=30, read_properties=read_service_properties,
+                          fetch_status=fetch_http_status, clock=time.monotonic, sleep=time.sleep):
+    """Healthy means: active, not restarting for ``stable_seconds``, and HTTP 200.
+
+    With Type=simple and Restart=on-failure a unit whose ExecStart cannot run
+    (203/EXEC) still flips to "active" between restarts, so a single
+    is-active probe passes a crash loop. NRestarts and InvocationID must stay
+    the same for the whole window, and again after the HTTP probe.
+    """
+    url = (url or '').strip() or DEFAULT_HEALTHCHECK_URL
+    parsed = urlsplit(url)
     if parsed.scheme not in ('http', 'https') or not parsed.hostname:
         raise UpdateFailure('HEALTHCHECK_URL is invalid.', 'configuration_invalid')
 
-    request = Request(
-        healthcheck_url,
-        headers={'User-Agent': 'officium-server-updater-healthcheck'},
-        method='GET',
-    )
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        try:
-            with urlopen(request, timeout=5) as response:
-                if 200 <= response.status < 400:
-                    return
-        except (HTTPError, URLError, OSError):
-            pass
-        time.sleep(1)
-    raise UpdateFailure('Application HTTP health check failed.', 'healthcheck_failed')
+    deadline = clock() + start_timeout
+    while True:
+        properties = read_properties(service)
+        if properties.get('ActiveState') == 'active':
+            break
+        if clock() >= deadline:
+            raise UpdateFailure(
+                f'{service} did not become active ({properties.get("ActiveState", "?")}/'
+                f'{properties.get("SubState", "?")}, result {properties.get("Result", "?")}).',
+                'healthcheck_failed',
+            )
+        sleep(1)
+    baseline = (properties.get('NRestarts'), properties.get('InvocationID'))
+
+    def assert_not_restarted():
+        current = read_properties(service)
+        restarted = (current.get('NRestarts'), current.get('InvocationID')) != baseline
+        if current.get('ActiveState') != 'active' or restarted:
+            raise UpdateFailure(
+                f'{service} is restarting: NRestarts {baseline[0]} -> {current.get("NRestarts")}, '
+                f'state {current.get("ActiveState")}/{current.get("SubState")}, '
+                f'result {current.get("Result")}.',
+                'healthcheck_failed',
+            )
+
+    stable_until = clock() + stable_seconds
+    while clock() < stable_until:
+        sleep(1)
+        assert_not_restarted()
+
+    deadline = clock() + http_timeout
+    status = None
+    while clock() < deadline:
+        status = fetch_status(url)
+        if status == 200:
+            break
+        sleep(1)
+    else:
+        raise UpdateFailure(f'{url} answered {status or "nothing"} instead of HTTP 200.', 'healthcheck_failed')
+    assert_not_restarted()
+    return {'service': service, 'url': url, 'restarts': baseline[0]}
+
+
+# (source in a release, installed path, type, required). officium-update is
+# optional so that releases built before it existed can still be installed.
+PRIVILEGED_COMPONENTS = (
+    ('deployment/officium-update-runner', Path('/usr/local/sbin/officium-update-runner'), 'python', True),
+    ('deployment/officium-update-client', Path('/usr/local/bin/officium-update-client'), 'python', True),
+    ('deployment/deploy-release', Path('/usr/local/lib/officium/deploy-release'), 'shell', True),
+    ('scripts/officium-update', Path('/usr/local/sbin/officium-update'), 'shell', False),
+)
+
+
+def release_components(release_path):
+    """The privileged components a release ships, as (relative, target, type)."""
+    release_path = Path(release_path)
+    return [
+        (relative, target, component_type)
+        for relative, target, component_type, required in PRIVILEGED_COMPONENTS
+        if required or os.path.lexists(release_path / relative)
+    ]
+
+
+def _sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as handle:
+        for chunk in iter(lambda: handle.read(65536), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def component_status(release_path):
+    """Compare installed privileged components with the copies in a release.
+
+    An old runner once rejected a valid tag and an old install lacked the
+    client entirely; --check reports both instead of failing mid-update.
+    """
+    report = []
+    for relative, target, _component_type, required in PRIVILEGED_COMPONENTS:
+        source = Path(release_path) / relative
+        if not source.is_file():
+            if required:
+                report.append({'component': target.name, 'state': 'not in release'})
+            continue
+        if not target.is_file():
+            state, installed = 'missing', ''
+        else:
+            installed = _sha256(target)
+            state = 'current' if installed == _sha256(source) else 'differs'
+        report.append({'component': target.name, 'path': str(target), 'state': state,
+                       'sha256': installed[:12]})
+    return report
 
 
 def install_privileged_bundle(config, release_path):
     """Atomically refresh fixed root-owned components from the verified release."""
-    components = (
-        ('deployment/officium-update-runner', Path('/usr/local/sbin/officium-update-runner'), 'python'),
-        ('deployment/officium-update-client', Path('/usr/local/bin/officium-update-client'), 'python'),
-        ('deployment/deploy-release', Path('/usr/local/lib/officium/deploy-release'), 'shell'),
-    )
     release_path = Path(release_path).resolve(strict=True)
+    components = release_components(release_path)
     for relative, _target, component_type in components:
         source = release_path / relative
         try:
@@ -855,6 +1120,7 @@ def install_privileged_bundle(config, release_path):
              '/usr/local/bin/officium-update-client', 'integration_check'],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            cwd=APP_USER_CWD,
             timeout=30,
             check=False,
         )
@@ -915,7 +1181,61 @@ def restore_release_link(config, previous_release):
         temporary_link.unlink(missing_ok=True)
 
 
-def check_readiness(*, emit=True):
+def repair_release_environment_link(config, release_path):
+    """Point an older release's .env at the shared file; True if it was changed.
+
+    Releases built before the link fix point at current/.env (a self-reference
+    once active) or at a temporary migration tree.
+    """
+    env_path = application_env_path(config)
+    link = Path(release_path) / '.env'
+    if link.is_symlink() and os.readlink(link) == str(env_path):
+        return False
+    temporary = link.with_name(f'.env.repair-{os.getpid()}')
+    temporary.unlink(missing_ok=True)
+    temporary.symlink_to(env_path)
+    os.lchown(temporary, 0, grp.getgrnam(config['APP_GROUP']).gr_gid)
+    os.replace(temporary, link)
+    return True
+
+
+def rollback_to_release(config, target):
+    """Switch current to an earlier release; the database is not touched."""
+    releases_dir = Path(config['RELEASES_DIR']).resolve(strict=True)
+    candidate = Path(target).resolve(strict=True)
+    if candidate.parent != releases_dir or not (candidate / '.officium-release-ready').is_file():
+        raise UpdateFailure('Rollback target is not a completed release in RELEASES_DIR.', 'release_rejected')
+    if candidate == Path(config['APP_DIR']).resolve(strict=True):
+        raise UpdateFailure('Rollback target is already the current release.', 'release_rejected')
+    systemctl = shutil.which('systemctl') or '/bin/false'
+    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with LOCK_PATH.open('w', encoding='utf-8') as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise UpdateFailure('Another server update is already running.', 'update_busy') from exc
+        repaired = repair_release_environment_link(config, candidate)
+        previous = atomic_switch_release(config, candidate)
+        try:
+            restart = subprocess.run([systemctl, 'restart', config['SERVICE_NAME']], timeout=60, check=False)
+            if restart.returncode != 0:
+                raise UpdateFailure('Application service restart failed.', 'restart_failed')
+            verify_service_health(config['SERVICE_NAME'], config['HEALTHCHECK_URL'])
+            verify_current_environment(config)
+        except UpdateFailure as exc:
+            restore_release_link(config, previous)
+            subprocess.run([systemctl, 'restart', config['SERVICE_NAME']], timeout=60, check=False)
+            raise UpdateFailure(
+                f'{candidate.name} did not start healthy ({exc}); {previous.name} was restored.',
+                'rollback_failed',
+            ) from exc
+    return {
+        'code': 'rolled_back', 'release': str(candidate), 'previous': str(previous),
+        'env_link_repaired': repaired,
+    }
+
+
+def check_readiness(*, emit=True, probe_socket=False):
     config = load_runner_config()
     verify_git_remote(config)
     for command in ('git', 'runuser', 'systemctl', 'systemd-run'):
@@ -947,6 +1267,7 @@ def check_readiness(*, emit=True):
                 shutil.which('runuser'), '-u', config['APP_USER'], '--',
                 '/bin/mkdir', str(probe_dir),
             ],
+            cwd=APP_USER_CWD,
             timeout=10,
             check=False,
         )
@@ -954,10 +1275,11 @@ def check_readiness(*, emit=True):
         shutil.rmtree(probe_root, ignore_errors=True)
     if probe.returncode != 0:
         raise UpdateFailure('APP_USER cannot create a nested release directory.')
-    env_values = parse_key_value_file(current_link / '.env')
+    env_path = application_env_path(config)
+    env_values = parse_key_value_file(env_path)
     if not env_values.get('APP_TIMEZONE', '').strip():
         raise UpdateFailure('APP_TIMEZONE must be explicit before updates are enabled.')
-    db_settings = database_settings(current_link)
+    db_settings = database_settings(env_path, current_link)
     if db_settings['engine'] == 'mysql' and not shutil.which('mysqldump'):
         raise UpdateFailure('mysqldump is not installed.', 'configuration_invalid')
     if db_settings['engine'] == 'sqlite':
@@ -986,19 +1308,91 @@ def check_readiness(*, emit=True):
     )
     if service_security.returncode != 0 or service_security.stdout.strip().lower() != 'yes':
         raise UpdateFailure('Application service must keep NoNewPrivileges=true.')
-    result = {
-        'code': 'ready',
-        'checks': [
-            'repository', 'release_directory', 'timezone', 'database_backup_access',
-            'backup_directory', 'no_new_privileges',
-        ],
-    }
+    checks = [
+        'repository', 'release_directory', 'timezone', 'database_backup_access',
+        'backup_directory', 'no_new_privileges',
+    ]
+    result = {'code': 'ready', 'checks': checks}
+    if probe_socket:
+        verify_app_user_can_reach_updater(config)
+        checks.append('updater_socket')
+        components = component_status(current_link.resolve(strict=True))
+        result['components'] = components
+        stale = [item for item in components if item['state'] != 'current']
+        for item in stale:
+            print(f'officium updater: {item["component"]} is {item["state"]} compared with '
+                  f'{current_link}/{item.get("path", "")}', file=sys.stderr)
+        if any(item['state'] in ('missing', 'not in release') for item in stale):
+            raise UpdateFailure(
+                'Updater components are missing; install them with '
+                f'install-officium-updater.sh from {current_link}/deployment or run officium-update.',
+                'configuration_invalid',
+            )
     if emit:
         emit_result(True, **result)
     return result
 
 
-def perform_update(tag):
+def app_user_socket_probe_command(config, runuser, client='/usr/local/bin/officium-update-client'):
+    return [
+        runuser, '-u', config['APP_USER'], '--', '/usr/bin/env',
+        f'OFFICIUM_UPDATE_SOCKET={config["UPDATE_SOCKET"]}', client, 'get_status',
+    ]
+
+
+def verify_app_user_can_reach_updater(config):
+    """Connect to the updater socket exactly as the web process does.
+
+    Only the CLI runs this: inside the single-threaded socket service a
+    connection to itself would wait for its own reply.
+    """
+    runuser = shutil.which('runuser')
+    if not runuser:
+        raise UpdateFailure('runuser is not installed.', 'configuration_invalid')
+    result = subprocess.run(
+        app_user_socket_probe_command(config, runuser),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=APP_USER_CWD,
+        timeout=20,
+        check=False,
+    )
+    if result.returncode != 0:
+        socket_dir = Path(config['UPDATE_SOCKET']).parent
+        raise UpdateFailure(
+            f'{config["APP_USER"]} cannot use {config["UPDATE_SOCKET"]}. Check that {socket_dir} is '
+            f'root:{config["APP_GROUP"]} 0750 (/etc/tmpfiles.d/officium.conf) and run '
+            'install-officium-updater.sh again.',
+            'configuration_invalid',
+        )
+
+
+def verify_tag_published(config, tag):
+    """The tag must exist in the configured repository (for pinned root updates)."""
+    git = shutil.which('git')
+    if not git:
+        raise UpdateFailure('git is not installed.', 'configuration_invalid')
+    result = subprocess.run(
+        [git, 'ls-remote', '--exit-code', repository_url(config), f'refs/tags/{tag}'],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    if result.returncode != 0:
+        raise UpdateFailure('Requested tag does not exist in the configured repository.', 'release_rejected')
+
+
+def verify_requested_release(config, tag, require_latest):
+    if require_latest:
+        if latest_release_tag(config) != tag:
+            raise UpdateFailure(
+                'Requested tag is not the latest published GitHub release.',
+                'release_rejected',
+            )
+    else:
+        verify_tag_published(config, tag)
+
+
+def perform_update(tag, *, require_latest=True):
     config = load_runner_config()
     LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
     with LOCK_PATH.open('w', encoding='utf-8') as lock_file:
@@ -1010,11 +1404,7 @@ def perform_update(tag):
         operation_id = str(read_status(Path(config['STATUS_FILE'])).get('operation_id') or '')
         try:
             write_status(config, 'checking', tag, 'Проверка релиза и конфигурации сервера.')
-            if latest_release_tag(config) != tag:
-                raise UpdateFailure(
-                    'Requested tag is not the latest published GitHub release.',
-                    'release_rejected',
-                )
+            verify_requested_release(config, tag, require_latest)
             verify_git_remote(config)
 
             write_status(config, 'preparing', tag, 'Подготовка сервера к обновлению.')
@@ -1040,7 +1430,8 @@ def perform_update(tag):
                     raise UpdateFailure('Application service restart failed.', 'restart_failed')
 
                 write_status(config, 'verifying', tag, 'Проверка работоспособности новой версии.')
-                verify_service_health(config)
+                verify_service_health(config['SERVICE_NAME'], config['HEALTHCHECK_URL'])
+                verify_current_environment(config)
                 install_privileged_bundle(config, release_path)
             except Exception as exc:
                 if not isinstance(exc, UpdateFailure):
@@ -1057,8 +1448,13 @@ def perform_update(tag):
                         check=False,
                     )
                     rollback_performed = rollback_result.returncode == 0
+                    if rollback_performed:
+                        try:
+                            verify_service_health(config['SERVICE_NAME'], config['HEALTHCHECK_URL'])
+                        except UpdateFailure:
+                            rollback_performed = False
                     if not rollback_performed:
-                        failure = UpdateFailure('Previous release restart failed.', 'rollback_failed')
+                        failure = UpdateFailure('Previous release did not come back healthy.', 'rollback_failed')
                 except Exception:
                     log_unexpected_failure('automatic rollback', operation_id)
                     failure = UpdateFailure('Automatic release rollback failed.', 'rollback_failed')
@@ -1128,14 +1524,11 @@ def status_is_active(status, stale_minutes=120):
     return (utc_now() - updated_at).total_seconds() < stale_minutes * 60
 
 
-def request_background_update(tag, *, operation_id=None, requested_by='manual', emit=True):
+def request_background_update(tag, *, operation_id=None, requested_by='manual', emit=True,
+                              require_latest=True):
     config = load_runner_config()
     # Fail before scheduling if the release or repository cannot be verified.
-    if latest_release_tag(config) != tag:
-        raise UpdateFailure(
-            'Requested tag is not the latest published GitHub release.',
-            'release_rejected',
-        )
+    verify_requested_release(config, tag, require_latest)
     verify_git_remote(config)
 
     systemd_run = shutil.which('systemd-run')
@@ -1172,7 +1565,7 @@ def request_background_update(tag, *, operation_id=None, requested_by='manual', 
                 f'--unit={unit_name}',
                 '--property=Type=exec',
                 str(Path(__file__).resolve()),
-                '--perform',
+                '--perform' if require_latest else '--perform-pinned',
                 tag,
             ],
             timeout=15,
@@ -1304,6 +1697,7 @@ def serve_socket():
 
 
 def main(argv):
+    os.chdir(APP_USER_CWD)
     if os.geteuid() != 0:
         raise UpdateFailure(
             'This updater is a root-owned system service; use the Unix socket from the web app.',
@@ -1313,7 +1707,7 @@ def main(argv):
         serve_socket()
         return 0
     if len(argv) == 2 and argv[1] == '--check':
-        check_readiness()
+        check_readiness(probe_socket=True)
         return 0
     if len(argv) == 2 and argv[1] == '--start-latest':
         config = load_runner_config()
@@ -1325,11 +1719,53 @@ def main(argv):
     if len(argv) == 3 and argv[1] == '--perform':
         perform_update(validate_tag(argv[2]))
         return 0
+    if len(argv) == 3 and argv[1] == '--start-tag':
+        # Root CLI only: an exact published tag, not necessarily the latest.
+        request_background_update(validate_tag(argv[2]), require_latest=False)
+        return 0
+    if len(argv) == 3 and argv[1] == '--perform-pinned':
+        perform_update(validate_tag(argv[2]), require_latest=False)
+        return 0
+    if len(argv) == 2 and argv[1] == '--latest-tag':
+        emit_result(True, code='latest', tag=latest_release_tag(load_runner_config()))
+        return 0
+    if len(argv) == 3 and argv[1] == '--rollback-to':
+        emit_result(True, **rollback_to_release(load_runner_config(), argv[2]))
+        return 0
+    if len(argv) == 2 and argv[1] == '--components':
+        config = load_runner_config()
+        emit_result(True, code='components',
+                    components=component_status(Path(config['APP_DIR']).resolve(strict=True)))
+        return 0
     if len(argv) == 3 and argv[1] == '--backup-only':
         backup_only(validate_tag(argv[2]))
         return 0
+    if 2 <= len(argv) <= 4 and argv[1] == '--verify-health':
+        if len(argv) >= 3:
+            service = argv[2]
+            url = argv[3] if len(argv) == 4 else ''
+        else:
+            config = load_runner_config()
+            service, url = config['SERVICE_NAME'], config['HEALTHCHECK_URL']
+        if not NAME_RE.fullmatch(service):
+            raise UpdateFailure('Service name is invalid.')
+        emit_result(True, code='healthy', **verify_service_health(service, url))
+        return 0
+    if len(argv) == 5 and argv[1] == '--relocate-venv':
+        release = Path(argv[2])
+        relocate_release_venv(release, argv[3], argv[4], release_venv_name(release))
+        return 0
+    if len(argv) in (3, 4) and argv[1] == '--verify-release':
+        release = Path(argv[2])
+        verify_release_venv(release, release_venv_name(release))
+        if len(argv) == 4:
+            verify_release_environment_link(release, Path(argv[3]))
+        emit_result(True, code='release_verified')
+        return 0
     raise UpdateFailure(
-        'Usage: officium-update-runner --serve|--check|--start-latest|--start TAG|--perform TAG|--backup-only LABEL'
+        'Usage: officium-update-runner --serve|--check|--start-latest|--start TAG|--start-tag TAG'
+        '|--perform TAG|--latest-tag|--rollback-to RELEASE|--components'
+        '|--backup-only LABEL|--verify-health [SERVICE [URL]]|--relocate-venv RELEASE OLD_ROOT NEW_ROOT|--verify-release RELEASE [ENV_FILE]'
     )
 
 
