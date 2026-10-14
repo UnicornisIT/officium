@@ -724,8 +724,9 @@ main() {
         LOG_FILE="$LOG_DIR/update-$(date -u +%Y%m%dT%H%M%SZ).log"
         # Secrets never reach the output: the database password stays in a
         # 0600 option file and is not printed by any step.
+        # Created first: tee opens it asynchronously after exec.
+        install -o root -g root -m 0640 /dev/null "$LOG_FILE"
         exec > >(tee -a "$LOG_FILE") 2>&1
-        chmod 0640 "$LOG_FILE"
     fi
     local status=0
     case "$COMMAND" in
