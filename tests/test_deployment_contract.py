@@ -133,7 +133,7 @@ class DeploymentContractTestCase(unittest.TestCase):
         self.assertIn('install -d -o root -g "$APP_GROUP" -m 0750 "$APP_DIR/releases"', installer)
         self.assertIn('Initial activation failed; no current release is active.', installer)
         self.assertIn('unlink "$APP_DIR/current"', installer)
-        self.assertIn('systemctl reload nginx', installer)
+        self.assertIn('systemctl reload-or-restart nginx', installer)
         self.assertNotIn('SCRIPT_DIR="$legacy_root/deployment"', installer)
         self.assertIn('/bin/sh "$release_script_dir/install-officium-updater.sh"', installer)
         self.assertIn('finish_with_summary "Legacy migration" "$release_script_dir" "$legacy_root"', installer)
