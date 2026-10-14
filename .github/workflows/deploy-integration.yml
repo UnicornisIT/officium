@@ -39,6 +39,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mysql-client python3-venv nginx sqlite3
+          sudo systemctl enable --now nginx
       - name: Application user and restricted MySQL account
         run: |
           sudo groupadd --system officium

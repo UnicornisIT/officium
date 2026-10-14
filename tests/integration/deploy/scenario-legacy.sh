@@ -57,7 +57,7 @@ server {
 }
 NGINX
 ln -sfn /etc/nginx/sites-available/officium /etc/nginx/sites-enabled/officium
-nginx -t && systemctl reload nginx
+nginx -t && systemctl restart nginx
 systemctl daemon-reload
 systemctl enable --now officium.service
 sleep 5

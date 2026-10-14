@@ -104,19 +104,19 @@ check_nginx_app_paths() {
     for nginx_file in "${nginx_files[@]}"; do cp -a --parents -- "$nginx_file" "$nginx_backup"; done
     if [ "$FIX_NGINX" = true ]; then
         python3 "$helper" disable "$APP_DIR" "${nginx_files[@]}"
-        if nginx -t && systemctl reload nginx; then
+        if nginx -t && systemctl reload-or-restart nginx; then
             info "Disabled nginx locations that served files from $APP_DIR; backup: $nginx_backup"
             return 0
         fi
         cp -a "$nginx_backup/." /
-        { nginx -t && systemctl reload nginx; } || true
+        { nginx -t && systemctl reload-or-restart nginx; } || true
         warn "nginx rejected the edited configuration; the backup from $nginx_backup was restored."
     fi
     warn "nginx serves files from $APP_DIR directly (CSS breaks or answers 403):
 $findings
 Backup: $nginx_backup
 Fix (comments out those location blocks; static files come from the application):
-  sudo python3 $helper disable $APP_DIR ${nginx_files[*]} && sudo nginx -t && sudo systemctl reload nginx"
+  sudo python3 $helper disable $APP_DIR ${nginx_files[*]} && sudo nginx -t && sudo systemctl reload-or-restart nginx"
 }
 unit_files() {
     printf '%s\n' "/etc/systemd/system/$SERVICE_NAME.service" \
@@ -623,7 +623,7 @@ if ! (
     verify_current_environment || fail "current/.env is not the shared environment file."
     systemctl is-active --quiet "$MONTHLY_SERVICE.timer" || fail "Monthly timer is not active."
     if [ "$ENABLE_NGINX" = true ]; then
-        systemctl reload nginx
+        systemctl enable --now nginx && systemctl reload-or-restart nginx
     fi
 ); then
     systemctl disable --now "$SERVICE_NAME.service" "$MONTHLY_SERVICE.timer" >/dev/null 2>&1 || true
@@ -635,7 +635,7 @@ if ! (
     if [ -L "/etc/nginx/sites-enabled/$SERVICE_NAME" ] && \
             [ "$(readlink "/etc/nginx/sites-enabled/$SERVICE_NAME")" = "/etc/nginx/sites-available/$SERVICE_NAME" ]; then
         unlink "/etc/nginx/sites-enabled/$SERVICE_NAME"
-        nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
+        nginx -t >/dev/null 2>&1 && systemctl reload-or-restart nginx || true
     fi
     fail "Initial activation failed; no current release is active. Fix the reported cause and rerun install."
 fi
