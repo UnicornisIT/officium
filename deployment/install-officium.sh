@@ -331,6 +331,9 @@ if [ "$MODE" = units ]; then
     done < <(unit_files)
     [ "${DROPINS_REMOVED:-0}" -eq 0 ] || units_changed=true
     if [ "$units_changed" = false ]; then
+        # The files were rewritten with identical content; reload so systemd
+        # does not report them as changed on disk.
+        systemctl daemon-reload
         info "Units are already current; nothing restarted. Backup: $unit_backup"
         exit 0
     fi

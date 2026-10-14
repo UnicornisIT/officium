@@ -497,7 +497,9 @@ wait_for_update() {
             success) return 0 ;;
             failed)
                 if [ "$rollback" = true ]; then return "$EXIT_ROLLED_BACK"; fi
-                return "$EXIT_MANUAL"
+                # Failed without a rollback: either before activation or the
+                # rollback itself failed; the caller checks current/.
+                return 3
                 ;;
         esac
         # A unit that ended without a final status crashed; allow a moment
@@ -554,7 +556,7 @@ print_summary() {
 }
 
 command_update() {
-    local current tag status=0 runner_output unit=""
+    local current tag status=0 runner_output unit="" release_before=""
     discover
     require_parameters
     if [ "$COMMAND" = latest ]; then
@@ -621,6 +623,7 @@ command_update() {
         [ "$status" = 10 ] && return "$EXIT_ROLLED_BACK"
         return "$EXIT_MANUAL"
     fi
+    release_before=$(realpath -e "$APP_ROOT/current")
     info "Starting the update through officium-update-runner"
     if [ "$COMMAND" = latest ]; then
         runner_output=$("$RUNNER" --start "$tag") || status=$?
@@ -634,6 +637,15 @@ command_update() {
     fi
     [[ "$runner_output" =~ \"unit\":\"([A-Za-z0-9_.@-]+)\" ]] && unit="${BASH_REMATCH[1]}.service"
     wait_for_update "$tag" "$unit" || status=$?
+    if [ "$status" = 3 ]; then
+        # Failed before activation (build, dependencies, migrations): if the
+        # old release is still current and healthy, nothing was changed.
+        if [ "$(realpath -e "$APP_ROOT/current" 2>/dev/null)" = "$release_before" ] && verify_after_update; then
+            print_summary "the update of $tag failed before activation ($(status_fields | cut -d' ' -f3-)); the previous release keeps running unchanged"
+            return "$EXIT_ROLLED_BACK"
+        fi
+        status=$EXIT_MANUAL
+    fi
     case "$status" in
         0)
             verify_after_update || status=$EXIT_MANUAL

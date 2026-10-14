@@ -144,7 +144,7 @@ ENV
     [ "$status" -eq 1 ]
     printf '{"state":"failed","error_code":"rollback_failed","rollback_performed":false}' >"$STATUS_FILE"
     run wait_for_update v2 officium-update-x.service
-    [ "$status" -eq 2 ]
+    [ "$status" -eq 3 ]  # failed without rollback: the caller checks current/
     printf '{"state":"installing"}' >"$STATUS_FILE"
     systemctl() { echo failed; }
     run wait_for_update v2 officium-update-x.service
