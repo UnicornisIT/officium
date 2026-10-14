@@ -89,11 +89,17 @@ jobs:
         # Job logs need a signed-in viewer; annotations are public. Only QA
         # credentials exist on this machine.
         run: |
+          # The API shows about 4 KB per annotation: post the tail in chunks.
           annotate() {
-            local title="$1"
-            python3 -c 'import sys; t=sys.stdin.read()[-15000:]; print("::error title=" + sys.argv[1] + "::" + t.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))' "$title"
+            python3 -c '
+          import sys
+          text = sys.stdin.read().replace("\r", "")[-10500:]
+          for start in range(0, len(text), 3500):
+              chunk = text[start:start + 3500].replace("%", "%25").replace("\n", "%0A")
+              print(f"::error title={sys.argv[1]} {start // 3500 + 1}::{chunk}")
+          ' "$1"
           }
-          tail -n 120 "$RUNNER_TEMP/scenario.log" | annotate "scenario output (tail)"
+          grep -v 'INFO  \[alembic' "$RUNNER_TEMP/scenario.log" | tail -n 60 | annotate "scenario output"
           sudo journalctl -u officium.service -u officium-updater.service -u 'officium-update-*' --no-pager -n 80 \
             | annotate "journal (tail)" || true
       - name: Collect evidence
