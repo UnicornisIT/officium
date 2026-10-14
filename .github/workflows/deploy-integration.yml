@@ -80,7 +80,22 @@ jobs:
           sleep 1
           curl --fail http://127.0.0.1:8765/repos/qa/officium/releases/latest
       - name: Run the ${{ matrix.scenario }} scenario
-        run: sudo bash tests/integration/deploy/scenario-${{ matrix.scenario }}.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/qa/app.env"
+        run: |
+          set -o pipefail
+          sudo bash tests/integration/deploy/scenario-${{ matrix.scenario }}.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/qa/app.env" 2>&1 \
+            | tee "$RUNNER_TEMP/scenario.log"
+      - name: Report the failure as annotations
+        if: failure()
+        # Job logs need a signed-in viewer; annotations are public. Only QA
+        # credentials exist on this machine.
+        run: |
+          annotate() {
+            local title="$1"
+            python3 -c 'import sys; t=sys.stdin.read()[-15000:]; print("::error title=" + sys.argv[1] + "::" + t.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))' "$title"
+          }
+          tail -n 120 "$RUNNER_TEMP/scenario.log" | annotate "scenario output (tail)"
+          sudo journalctl -u officium.service -u officium-updater.service -u 'officium-update-*' --no-pager -n 80 \
+            | annotate "journal (tail)" || true
       - name: Collect evidence
         if: always()
         run: |
