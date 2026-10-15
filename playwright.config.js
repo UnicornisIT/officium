@@ -12,6 +12,9 @@ module.exports = defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: [
+    // GitHub annotations show failed tests on the public run page without
+    // signing in to read the job log.
+    ...(process.env.CI ? [['github']] : []),
     ['line'],
     ['junit', { outputFile: 'test-results/playwright-junit.xml' }],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
