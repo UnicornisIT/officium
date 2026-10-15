@@ -107,9 +107,6 @@ function applyTelegramTheme() {
         if (value) rootStyle.setProperty(name, value);
     });
 
-    if (webApp.viewportHeight) rootStyle.setProperty('--tg-viewport-height', `${webApp.viewportHeight}px`);
-    if (webApp.viewportStableHeight) rootStyle.setProperty('--tg-viewport-stable-height', `${webApp.viewportStableHeight}px`);
-
     try {
         if (params.header_bg_color) webApp.setHeaderColor(params.header_bg_color);
         if (params.bg_color) webApp.setBackgroundColor(params.bg_color);
@@ -119,15 +116,50 @@ function applyTelegramTheme() {
     }
 }
 
+let telegramViewportFrame = null;
+let telegramStableHeightPending = false;
+
+function writeTelegramViewport() {
+    telegramViewportFrame = null;
+    const webApp = getTelegramWebApp();
+    if (!webApp) return;
+
+    const rootStyle = document.documentElement.style;
+    if (webApp.viewportHeight) rootStyle.setProperty('--tg-viewport-height', `${webApp.viewportHeight}px`);
+    if (telegramStableHeightPending && webApp.viewportStableHeight) {
+        rootStyle.setProperty('--tg-viewport-stable-height', `${webApp.viewportStableHeight}px`);
+    }
+    telegramStableHeightPending = false;
+}
+
+// viewportChanged fires many times per gesture. Only the height is synced here,
+// at most once per frame, and the stable height (which drives the page
+// min-height) only once Telegram reports the viewport as settled.
+function syncTelegramViewport(event) {
+    if (!event || event.isStateStable === true) telegramStableHeightPending = true;
+
+    if (!event) {
+        // Initial call: write synchronously so initMobileViewport() can read it.
+        if (telegramViewportFrame !== null) cancelAnimationFrame(telegramViewportFrame);
+        writeTelegramViewport();
+        return;
+    }
+    if (telegramViewportFrame === null) {
+        telegramViewportFrame = requestAnimationFrame(writeTelegramViewport);
+    }
+}
+
 function initTelegramMiniApp() {
     const webApp = getTelegramWebApp();
     if (!webApp) return;
 
     webApp.ready();
     webApp.expand();
+    if (typeof webApp.disableVerticalSwipes === 'function') webApp.disableVerticalSwipes();
     applyTelegramTheme();
+    syncTelegramViewport();
     webApp.onEvent('themeChanged', applyTelegramTheme);
-    webApp.onEvent('viewportChanged', applyTelegramTheme);
+    webApp.onEvent('viewportChanged', syncTelegramViewport);
 
     let activeOverlay = null;
     const hasPageBackTarget = window.location.pathname !== '/';
