@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+## [0.0.12] - 2026-10-15
+
+### Не проверено перед выпуском
+
+CI проверил unit/integration на Python 3.10 и 3.13, MySQL 8.4, Playwright в
+Chromium, Firefox и WebKit (включая эмуляцию Telegram Mini App на iPhone 13 и
+Pixel 7 с подменённым `window.Telegram.WebApp`), аудит зависимостей,
+shellcheck/bats и установку/обновление сервера на Ubuntu. Не проверялись
+настоящий Telegram на Android, iOS, Desktop и Web (нативный выбор даты,
+iframe Telegram Web) и обновление настоящего production.
+
 ### Исправлено
 
 - Расход или доход с датой в другом месяце (например, запланированная трата
