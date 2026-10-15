@@ -15,13 +15,13 @@
     </div>
     <div class="admin-user-hero__actions">
         <a class="btn btn-outline-secondary" href="{{ url_for('admin_users') }}">Назад к списку</a>
-        {% if current_user.is_superadmin and not user.is_blocked and not user.is_superadmin %}
+        {% if current_user.is_superadmin and not user.is_blocked and not user.is_admin %}
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#impersonateModal">{{ icon('user', 17) }} Войти как пользователь</button>
         {% endif %}
     </div>
 </header>
 
-{% if current_user.is_superadmin and not user.is_blocked and not user.is_superadmin %}
+{% if current_user.is_superadmin and not user.is_blocked and not user.is_admin %}
 <div class="modal fade" id="impersonateModal" tabindex="-1" aria-labelledby="impersonateModalTitle" aria-hidden="true" data-admin-open-on-hash="impersonate">
     <div class="modal-dialog modal-dialog-centered">
         <form class="modal-content" method="post" action="{{ url_for('admin_impersonate_user', user_id=user.id) }}">

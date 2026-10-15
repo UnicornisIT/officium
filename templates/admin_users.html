@@ -72,7 +72,7 @@
                 <td data-label="Дата регистрации"><time datetime="{{ user.created_at.isoformat() if user.created_at else '' }}">{{ user.created_at.strftime('%d.%m.%Y') if user.created_at else '—' }}</time></td>
                 <td class="admin-table__actions" data-label="Действия">
                     <a href="{{ url_for('admin_user_detail', user_id=user.id) }}" class="admin-icon-button" aria-label="Открыть профиль пользователя">{{ icon('chevron-right', 18) }}</a>
-                    {% if current_user.is_superadmin and not user.is_blocked and not user.is_superadmin %}
+                    {% if current_user.is_superadmin and not user.is_blocked and not user.is_admin %}
                     <a href="{{ url_for('admin_user_detail', user_id=user.id) }}#impersonate" class="admin-icon-button" aria-label="Войти как пользователь">{{ icon('user', 18) }}</a>
                     {% endif %}
                 </td>
