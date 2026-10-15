@@ -178,13 +178,15 @@ test.describe('Telegram Mini App date field and keyboard handling', () => {
 
     // The fixed bottom nav may overlap the button at some scroll offsets with
     // or without a picker; the user can scroll, so check it once centred.
-    await submit.evaluate(button => button.scrollIntoView({ block: 'center' }));
-    const hit = await submit.evaluate(button => {
+    // Bootstrap enables smooth scrolling on :root, so scroll instantly.
+    await submit.evaluate(button => button.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await expect.poll(() => submit.evaluate(button => {
       const rect = button.getBoundingClientRect();
       const element = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-      return element === button || button.contains(element);
-    });
-    expect(hit, 'submit button is covered by another element').toBe(true);
+      if (element === button || button.contains(element)) return 'submit button';
+      const name = element ? `${element.tagName.toLowerCase()}.${[...element.classList].join('.')}` : 'nothing';
+      return `${name} at y=${Math.round(rect.top)} of ${window.innerHeight}`;
+    }), { message: 'element on top of the submit button' }).toBe('submit button');
   });
 });
 
