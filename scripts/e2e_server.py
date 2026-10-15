@@ -21,6 +21,12 @@ os.environ.update({
     'SESSION_COOKIE_SECURE': 'false',
     'SERVER_UPDATE_ENABLED': 'false',
     'APP_TIMEZONE': 'Europe/Moscow',
+    # Placeholder bot settings so /telegram-app can flag a dev-login session
+    # as Mini App; Telegram itself is never contacted.
+    'TELEGRAM_BOT_TOKEN': '123456:playwright-placeholder-token',
+    'TELEGRAM_BOT_USERNAME': 'officium_playwright_bot',
+    'TELEGRAM_LOGIN_ENABLED': 'true',
+    'TELEGRAM_MINI_APP_ENABLED': 'true',
 })
 
 from waitress import serve  # noqa: E402

@@ -3,6 +3,7 @@ from flask import abort, current_app, redirect, render_template, request, url_fo
 from flask_login import current_user
 from app.models import Income
 from app.services.goal_cashflow_service import is_goal_income, mark_goal_cashflow_entries
+from app.services.history_month_service import month_key, resolve_active_month
 from app.utils import (
     INCOME_CATEGORIES,
     group_entries_by_month,
@@ -50,7 +51,11 @@ def init_app(app):
                     )
                     db.session.add(income)
                     db.session.commit()
-                    return redirect(url_for('incomes', success='Доход сохранён'))
+                    return redirect(url_for(
+                        'incomes',
+                        success='Доход сохранён',
+                        month=month_key(income.income_date),
+                    ))
                 except ValueError as e:
                     error_message = str(e)
                 except Exception:
@@ -84,9 +89,7 @@ def init_app(app):
             mark_goal_cashflow_entries(incomes=incomes_list)
         source_suggestions = income_source_suggestions(incomes_list)
         groups = group_entries_by_month(incomes_list, 'income_date')
-        active_month = date.today().strftime('%Y-%m')
-        if groups and active_month not in [group['year_month'] for group in groups]:
-            active_month = groups[0]['year_month']
+        active_month = resolve_active_month(groups, request.args.get('month'))
         return render_template('incomes.html', incomes=incomes_list, groups=groups,
                                active_month=active_month, categories=INCOME_CATEGORIES,
                                success_message=success_message, error_message=error_message,
@@ -131,7 +134,11 @@ def init_app(app):
                 income.income_date = income_date
                 income.comment = comment
                 db.session.commit()
-                return redirect(url_for('incomes', success='Доход обновлён'))
+                return redirect(url_for(
+                    'incomes',
+                    success='Доход обновлён',
+                    month=month_key(income.income_date),
+                ))
             except ValueError as e:
                 error_message = str(e)
             except Exception:
@@ -143,8 +150,9 @@ def init_app(app):
         mark_goal_cashflow_entries(incomes=incomes_list)
         source_suggestions = income_source_suggestions(incomes_list)
         groups = group_entries_by_month(incomes_list, 'income_date')
+        active_month = resolve_active_month(groups, month_key(income.income_date))
         return render_template('incomes.html', incomes=incomes_list, groups=groups,
-                               active_month=date.today().strftime('%Y-%m'), categories=INCOME_CATEGORIES,
+                               active_month=active_month, categories=INCOME_CATEGORIES,
                                success_message=success_message, error_message=error_message,
                                edit_income=income, form_data=form_data,
                                source_suggestions=source_suggestions)

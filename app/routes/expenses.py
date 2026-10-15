@@ -11,6 +11,7 @@ from app.models import Expense
 from app.services.bank_statement_import_service import parse_bank_statement
 from app.services.expense_title_service import expense_group_key
 from app.services.goal_cashflow_service import is_goal_expense, mark_goal_cashflow_entries
+from app.services.history_month_service import month_key, resolve_active_month
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
     generate_monthly_expenses_from_start_date,
@@ -80,7 +81,11 @@ def init_app(app):
                     db.session.commit()
                     if expense.is_monthly:
                         generate_monthly_expenses_from_start_date(expense.id)
-                    return redirect(url_for('expenses', success='Расход сохранён'))
+                    return redirect(url_for(
+                        'expenses',
+                        success='Расход сохранён',
+                        month=month_key(expense.expense_date),
+                    ))
                 except ValueError as e:
                     db.session.rollback()
                     error_message = str(e)
@@ -127,9 +132,7 @@ def init_app(app):
         if not is_local_test_user():
             mark_goal_cashflow_entries(expenses=expenses_list)
         groups = group_entries_by_month(expenses_list, 'expense_date')
-        active_month = date.today().strftime('%Y-%m')
-        if groups and active_month not in [group['year_month'] for group in groups]:
-            active_month = groups[0]['year_month']
+        active_month = resolve_active_month(groups, request.args.get('month'))
         return render_template('expenses.html', expenses=expenses_list, groups=groups,
                                active_month=active_month, categories=EXPENSE_CATEGORIES,
                                payment_methods=PAYMENT_METHODS, success_message=success_message,
@@ -351,7 +354,11 @@ def init_app(app):
                 db.session.commit()
                 if expense.is_monthly:
                     generate_monthly_expenses_from_start_date(expense.id)
-                return redirect(url_for('expenses', success='Расход обновлён'))
+                return redirect(url_for(
+                    'expenses',
+                    success='Расход обновлён',
+                    month=month_key(expense.expense_date),
+                ))
             except ValueError as e:
                 db.session.rollback()
                 error_message = str(e)
@@ -363,8 +370,10 @@ def init_app(app):
         expenses_list = Expense.query.filter_by(user_id=current_user.id).order_by(Expense.expense_date.desc()).all()
         mark_goal_cashflow_entries(expenses=expenses_list)
         groups = group_entries_by_month(expenses_list, 'expense_date')
+        # After a failed POST the expense was rolled back, so this is its stored month.
+        active_month = resolve_active_month(groups, month_key(expense.expense_date))
         return render_template('expenses.html', expenses=expenses_list, groups=groups,
-                               active_month=date.today().strftime('%Y-%m'), categories=EXPENSE_CATEGORIES,
+                               active_month=active_month, categories=EXPENSE_CATEGORIES,
                                payment_methods=PAYMENT_METHODS, success_message=success_message,
                                error_message=error_message, edit_expense=expense, form_data=form_data)
 
