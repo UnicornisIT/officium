@@ -16,6 +16,7 @@ from app.services.contact_service import (
     load_contacts,
     save_contact,
 )
+from app.services.installed_release_service import get_installed_release
 from app.services.server_update_service import (
     ServerUpdateError,
     check_update_readiness,
@@ -393,6 +394,9 @@ def init_app(app):
                 readiness['error'] = str(exc)
 
         current_release = get_current_release(current_app.config)
+        installed_release = get_installed_release(
+            current_app.config, current_release, engine=db.engine
+        )
         update_status = reconcile_update_status(
             get_update_status(current_app.config), current_release
         )
@@ -406,6 +410,7 @@ def init_app(app):
             enabled=enabled,
             repository=current_app.config.get('SERVER_UPDATE_REPOSITORY'),
             current_release=current_release,
+            installed_release=installed_release,
             latest_release=latest_release,
             release_error=release_error,
             update_status=update_status,

@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 _REPOSITORY_RE = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 _RELEASE_TAG_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$')
+_COMMIT_RE = re.compile(r'^[0-9a-f]{7,40}$')
 _ACTIVE_STATES = {
     'queued',
     'checking',
@@ -146,6 +147,64 @@ def fetch_latest_release(config):
     }
 
 
+def format_release_day(value):
+    """Format a ``date`` as "15 октября 2026"."""
+    return f'{value.day} {_MONTHS_GENITIVE[value.month - 1]} {value.year}'
+
+
+def _run_git(app_dir, *args):
+    try:
+        result = subprocess.run(
+            [
+                'git', '--no-replace-objects', '-c', f'safe.directory={app_dir}',
+                '-C', str(app_dir), *args,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    return result.stdout.strip() if result.returncode == 0 else ''
+
+
+def get_commit_details(config, commit):
+    """Return the HEAD commit date and its GitHub link; each field may be empty."""
+    details = {'date': '', 'date_label': '', 'url': ''}
+    if not commit or not _COMMIT_RE.fullmatch(str(commit)):
+        return details
+    app_dir = Path(config.get('SERVER_UPDATE_APP_DIR') or '.').resolve()
+    if (app_dir / '.git').exists():
+        committed_at = _run_git(app_dir, 'log', '-1', '--format=%cI', 'HEAD')[:40]
+        label = format_release_date(committed_at, config.get('APP_TIMEZONE', 'UTC'))
+        if label:
+            details.update(date=committed_at, date_label=label)
+    try:
+        repository = validate_repository(config.get('SERVER_UPDATE_REPOSITORY'))
+    except ServerUpdateError:
+        return details
+    details['url'] = f'https://github.com/{repository}/commit/{commit}'
+    return details
+
+
+def get_last_successful_update(config):
+    """Return the tag and time of the update recorded as successful, if any."""
+    status = read_update_status(config)
+    if not status or status.get('state') != 'success':
+        return None
+    try:
+        tag = validate_release_tag(status.get('tag'))
+    except ServerUpdateError:
+        return None
+    updated_at = str(status.get('updated_at') or '').strip()[:40]
+    return {
+        'tag': tag,
+        'at': updated_at,
+        'label': format_release_date(updated_at, config.get('APP_TIMEZONE', 'UTC')),
+    }
+
+
 def get_current_release(config):
     configured_version = str(config.get('APP_VERSION') or '').strip()
     app_dir = Path(config.get('SERVER_UPDATE_APP_DIR') or '.').resolve()
@@ -157,24 +216,8 @@ def get_current_release(config):
             'commit': None,
         }
 
-    def run_git(*args):
-        try:
-            result = subprocess.run(
-                [
-                    'git', '--no-replace-objects', '-c', f'safe.directory={app_dir}',
-                    '-C', str(app_dir), *args,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=3,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return ''
-        return result.stdout.strip() if result.returncode == 0 else ''
-
-    tags = [tag for tag in run_git('tag', '--points-at', 'HEAD').splitlines() if tag]
-    commit = run_git('rev-parse', '--short=12', 'HEAD')
+    tags = [tag for tag in _run_git(app_dir, 'tag', '--points-at', 'HEAD').splitlines() if tag]
+    commit = _run_git(app_dir, 'rev-parse', '--short=12', 'HEAD')
     if tags:
         return {'label': tags[0], 'tag': tags[0], 'tags': tags, 'commit': commit or None}
     if commit:

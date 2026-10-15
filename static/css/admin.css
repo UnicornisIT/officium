@@ -1535,6 +1535,12 @@ html[data-theme="dark"] .admin-login-page {
 .admin-release-card small,
 .admin-release-card span { color: var(--admin-text-soft); font-size: 0.71rem; }
 .admin-release-card a { color: var(--admin-primary); font-size: 0.72rem; text-decoration: none; }
+.admin-release-meta { display: grid; width: 100%; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 6px 0 4px; padding: 9px 11px; background: var(--admin-surface-soft); border: 1px solid var(--admin-border); border-radius: 10px; font-size: 0.72rem; line-height: 1.4; }
+.admin-release-meta > div { display: contents; }
+.admin-release-meta dt { color: var(--admin-text-soft); font-weight: 500; }
+.admin-release-meta dd { min-width: 0; margin: 0; color: var(--admin-text); overflow-wrap: anywhere; }
+.admin-release-meta :is(a, span) { font-size: inherit; }
+.admin-release-meta span { color: inherit; }
 .admin-release-notes { width: 100%; margin: 4px 0 2px; color: var(--admin-text-soft); font-size: 0.74rem; line-height: 1.5; overflow-wrap: anywhere; }
 .admin-release-notes > :first-child { margin-top: 0; }
 .admin-release-notes > :last-child { margin-bottom: 0; }
@@ -1792,6 +1798,8 @@ html[data-theme="dark"] .admin-login-page {
     .admin-contact-modal .modal-footer { padding: 13px 16px 16px; }
     .admin-contact-modal .modal-footer .btn { flex: 1 1 0; }
     .admin-location-grid { grid-template-columns: 1fr; }
+    .admin-release-meta { grid-template-columns: 1fr; gap: 0; }
+    .admin-release-meta dd + dt { margin-top: 6px; }
 }
 
 /* Empty results remain one centered surface instead of inheriting the labelled

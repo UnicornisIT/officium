@@ -77,6 +77,16 @@ class ReleaseNotesRenderingTestCase(unittest.TestCase):
         self.assertTrue(truncated)
         self.assertEqual(html, f'<p>{paragraph}</p>')
 
+    def test_cut_preview_never_ends_with_an_orphan_heading(self):
+        paragraph = 'Short intro.'
+        html, truncated = render_release_notes(
+            f'### Checked\n\n{paragraph}\n\n### Fixed\n\n- one\n- two\n- three\n- four\n',
+            budget=3,
+        )
+        self.assertTrue(truncated)
+        self.assertTrue(html.endswith('</p>'), html)
+        self.assertNotIn('Fixed', html)
+
     def test_empty_body(self):
         self.assertEqual(render_release_notes(None), (Markup(''), False))
         self.assertEqual(render_release_notes('   '), (Markup(''), False))

@@ -79,6 +79,13 @@ def _preview_tokens(tokens, budget):
     return preview, False
 
 
+def _without_trailing_headings(preview):
+    """Drop headings left at the end of a cut preview without their section."""
+    while len(preview) > 3 and preview[-1].type == 'heading_close':
+        preview = preview[:-3]
+    return preview
+
+
 def _sanitize(html):
     return nh3.clean(
         html,
@@ -102,5 +109,7 @@ def render_release_notes(source, *, budget=PREVIEW_BUDGET):
         if token.type in ('heading_open', 'heading_close'):
             token.tag = _HEADING_TAGS.get(token.tag, token.tag)
     preview, truncated = _preview_tokens(tokens, budget)
+    if truncated:
+        preview = _without_trailing_headings(preview)
     html = _markdown.renderer.render(preview, _markdown.options, env)
     return Markup(_sanitize(html).strip()), truncated
