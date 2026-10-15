@@ -90,7 +90,10 @@ async function addExpense(page, { title, isoDate }) {
   await form.locator('input[name="amount"]').fill('1250');
   await form.locator('input[name="expense_date"]').fill(isoDate);
   await form.getByRole('button', { name: 'Сохранить расход' }).click();
-  await page.waitForLoadState('domcontentloaded');
+  // The current page is already loaded, so waitForLoadState() would return
+  // before the redirect; wait for the URL of the saved record's month.
+  const month = isoDate.slice(0, 7);
+  await page.waitForURL(url => url.pathname === '/expenses' && url.searchParams.get('month') === month);
 }
 
 async function expectSavedAndVisible(page, title, isoDate, testInfo) {
@@ -141,8 +144,6 @@ for (const scenario of scenarios) {
       const title = `Запланированная трата ${suffix}`;
       await addExpense(page, { title, isoDate: futureDate });
 
-      const month = futureDate.slice(0, 7);
-      await expect(page).toHaveURL(new RegExp(`[?&]month=${month}(&|$)`));
       await expectSavedAndVisible(page, title, futureDate, testInfo);
     });
   });
