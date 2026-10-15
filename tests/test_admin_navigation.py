@@ -97,10 +97,16 @@ class AdminNavigationTestCase(unittest.TestCase):
 
         self.assertIn('Аварийный вход', html)
 
-    def test_return_to_app_link_is_hidden_outside_dev_mode(self):
-        html = self._client('superadmin').get('/admin').get_data(as_text=True)
+    def test_personal_cabinet_link_is_shown_to_database_admins_only(self):
+        for role in ('superadmin', 'admin'):
+            with self.subTest(role=role):
+                html = self._client(role).get('/admin').get_data(as_text=True)
+                self.assertIn('Мой кабинет', html)
+                self.assertNotIn('Вернуться в приложение', html)
 
-        self.assertNotIn('Вернуться в приложение', html)
+        html = self._client('emergency').get('/admin').get_data(as_text=True)
+        self.assertNotIn('Мой кабинет', html)
+        self.assertNotIn('data-admin-personal-link', html)
 
 
     def test_database_failure_shows_admin_error_page(self):

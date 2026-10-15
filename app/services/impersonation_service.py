@@ -31,6 +31,7 @@ END_REASON_LABELS = {
     'logout': 'выход из аккаунта',
     'blocked': 'пользователь заблокирован',
     'invalid': 'сеанс недействителен',
+    'role_changed': 'пользователь получил права администратора',
 }
 
 
@@ -58,7 +59,10 @@ def validate_reason(raw_reason):
 def ensure_can_impersonate(admin, target):
     if not getattr(admin, 'is_superadmin', False):
         raise ImpersonationError('Входить от имени пользователя может только супер-администратор.')
-    if target.is_blocked or target.is_superadmin:
+    if target.is_admin:
+        # Administrators have their own personal cabinet; acting as one would mix it with the panel.
+        raise ImpersonationError('Нельзя войти от имени администратора.')
+    if target.is_blocked:
         raise ImpersonationError('Нельзя открыть интерфейс от имени этого пользователя.')
     if str(target.get_id()) == str(admin.get_id()):
         raise ImpersonationError('Нельзя войти от имени самого себя.')

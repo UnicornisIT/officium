@@ -11,6 +11,7 @@ from app import login_manager
 from app.models import ActivityLog, User
 from app.services import impersonation_service as impersonation
 from app.services.contact_service import load_contacts
+from app.services.personal_access_service import can_use_personal_cabinet
 from app.services.telegram_auth_service import (
     verify_telegram_login,
     verify_telegram_web_app_init_data,
@@ -178,9 +179,13 @@ def init_app(app):
         if request.endpoint in allowed_endpoints:
             return
 
-        if getattr(current_user, 'is_authenticated', False) and getattr(current_user, 'is_admin', False):
-            if not request.path.startswith('/admin') and not (app.debug and app.config.get('DEV_LOGIN_ENABLED', False)):
-                return redirect(url_for('admin_dashboard'))
+        # The URL selects the mode: /admin is the panel, everything else is the personal cabinet.
+        if (
+            getattr(current_user, 'is_authenticated', False)
+            and not request.path.startswith('/admin')
+            and not can_use_personal_cabinet(current_user)
+        ):
+            return redirect(url_for('admin_dashboard'))
 
         if getattr(current_user, 'is_authenticated', False) and getattr(current_user, 'is_blocked', False):
             if session.get('original_admin_id'):
@@ -216,6 +221,13 @@ def init_app(app):
         if not valid:
             impersonation.finish('invalid', restore=False, emergency_enabled=_emergency_enabled())
             return _impersonation_reply('Сеанс входа от имени пользователя недействителен. Войдите снова.', 'login')
+        if getattr(current_user, 'is_admin', False):
+            # The target became an administrator: their cabinet must not mix with the panel.
+            admin = impersonation.finish('role_changed', restore=True, emergency_enabled=_emergency_enabled())
+            return _impersonation_reply(
+                'Пользователь получил права администратора, сеанс входа от его имени завершён.',
+                'admin_dashboard' if admin else 'login',
+            )
         if impersonation.is_expired(record):
             admin = impersonation.finish('timeout', restore=True, emergency_enabled=_emergency_enabled())
             return _impersonation_reply(
@@ -287,6 +299,7 @@ def init_app(app):
             test_login_enabled=test_login_enabled,
             dev_login_enabled=dev_login_enabled,
             is_impersonating=is_impersonating,
+            can_use_personal_cabinet=can_use_personal_cabinet(current_user),
             impersonation_banner=impersonation_banner,
             archive_enabled=setting_enabled('archive_enabled', True),
             payment_days=payment_thresholds(),
@@ -365,10 +378,14 @@ def init_app(app):
         login_user(user)
         return user, None
 
+    def _landing_url():
+        # Web sign-in opens the admin panel for administrators, as before personal access existed.
+        return url_for('admin_dashboard' if getattr(current_user, 'is_admin', False) else 'index')
+
     @app.route('/login')
     def login():
         if current_user.is_authenticated:
-            return redirect(url_for('index'))
+            return redirect(_landing_url())
         telegram_allowed = telegram_feature_states(app.config)['login']['effective']
         return render_template(
             'login.html',
@@ -565,7 +582,7 @@ def init_app(app):
                 admin_login_enabled=app.config.get('ADMIN_LOGIN_ENABLED', False),
             )
         session.pop('telegram_mini_app', None)
-        return redirect(url_for('index'))
+        return redirect(_landing_url())
 
     @app.route('/auth/google')
     def google_login():
@@ -638,7 +655,7 @@ def init_app(app):
         db.session.commit()
         record_activity('Вход через Google', user, description=f'Google ID={google_id}, email={email}', ip_address=client_ip(), user_agent=request.headers.get('User-Agent'))
         login_user(user)
-        return redirect(url_for('index'))
+        return redirect(_landing_url())
 
     @app.route('/admin/login', methods=['GET', 'POST'])
     def admin_login():

@@ -78,8 +78,8 @@
                 <i class="bi bi-journal-text"></i><span>Помощь</span>
             </a>
             {% if current_user.is_admin %}
-            <a href="{{ url_for('admin_dashboard') }}" aria-label="Административная панель">
-                <i class="bi bi-shield-lock"></i><span>Административная панель</span>
+            <a href="{{ url_for('admin_dashboard') }}" data-admin-panel-link>
+                <i class="bi bi-shield-lock"></i><span>Админ-панель</span>
             </a>
             {% endif %}
             <a href="{{ url_for('logout') }}" class="telegram-more-menu__logout">
@@ -157,9 +157,9 @@
                 {% endif %}
                 {% if current_user.is_authenticated and current_user.is_admin %}
                 <li class="nav-item">
-                    <a class="nav-link nav-expand {% if request.path.startswith('/admin') %}active{% endif %}" href="{{ url_for('admin_dashboard') }}">
-                        <span class="nav-expand__compact"><i class="bi bi-shield-lock me-1"></i>Административная панель</span>
-                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock"></i>Административная панель</span>
+                    <a class="nav-link nav-expand {% if request.path.startswith('/admin') %}active{% endif %}" href="{{ url_for('admin_dashboard') }}" data-admin-panel-link>
+                        <span class="nav-expand__compact"><i class="bi bi-shield-lock me-1"></i>Админ-панель</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock"></i>Админ-панель</span>
                     </a>
                 </li>
                 {% endif %}
