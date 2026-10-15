@@ -214,6 +214,43 @@ class TelegramMiniAppRouteTestCase(unittest.TestCase):
         self.assertIn('inputmode="decimal"', income_template)
         self.assertIn('inputmode="decimal"', expense_template)
 
+    @staticmethod
+    def _js_function_body(script, name):
+        start = script.index(f'function {name}(')
+        next_function = script.find('\nfunction ', start + 1)
+        return script[start:next_function if next_function != -1 else len(script)]
+
+    def test_mini_app_disables_telegram_vertical_swipes_when_supported(self):
+        script = (PROJECT_ROOT / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+        init_body = self._js_function_body(script, 'initTelegramMiniApp')
+
+        self.assertIn(
+            "if (typeof webApp.disableVerticalSwipes === 'function') webApp.disableVerticalSwipes();",
+            init_body,
+        )
+        self.assertLess(init_body.index('webApp.expand();'), init_body.index('disableVerticalSwipes'))
+
+    def test_viewport_changes_do_not_reapply_the_telegram_theme(self):
+        script = (PROJECT_ROOT / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+        init_body = self._js_function_body(script, 'initTelegramMiniApp')
+        theme_body = self._js_function_body(script, 'applyTelegramTheme')
+
+        self.assertNotIn("onEvent('viewportChanged', applyTelegramTheme)", script)
+        self.assertIn("webApp.onEvent('viewportChanged', syncTelegramViewport);", init_body)
+        self.assertIn("webApp.onEvent('themeChanged', applyTelegramTheme);", init_body)
+        self.assertNotIn('--tg-viewport', theme_body)
+
+    def test_viewport_sync_waits_for_stable_state_and_batches_per_frame(self):
+        script = (PROJECT_ROOT / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+        sync_body = self._js_function_body(script, 'syncTelegramViewport')
+        write_body = self._js_function_body(script, 'writeTelegramViewport')
+
+        self.assertIn('event.isStateStable === true', sync_body)
+        self.assertIn('requestAnimationFrame(writeTelegramViewport)', sync_body)
+        self.assertIn('telegramViewportFrame === null', sync_body)
+        self.assertIn('telegramStableHeightPending &&', write_body)
+        self.assertIn("'--tg-viewport-stable-height'", write_body)
+
 
 if __name__ == '__main__':
     unittest.main()
