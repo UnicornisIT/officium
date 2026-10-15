@@ -32,6 +32,14 @@
                 </a>
             </div>
 
+            {% if can_use_personal_cabinet %}
+            <div class="admin-nav__group">
+                <a href="{{ url_for('index') }}" data-admin-personal-link>
+                    {{ icon('home') }}<span>Мой кабинет</span>
+                </a>
+            </div>
+            {% endif %}
+
             {% if current_user.is_superadmin %}
             <div class="admin-nav__group">
                 <span class="admin-nav__eyebrow">Система</span>
@@ -51,7 +59,6 @@
         </nav>
 
         <div class="admin-sidebar__footer">
-            {% if dev_login_enabled %}<a href="{{ url_for('index') }}">{{ icon('home') }}<span>Вернуться в приложение</span></a>{% endif %}
             <a href="{{ url_for('logout') }}">{{ icon('logout') }}<span>Выйти</span></a>
         </div>
     </aside>
