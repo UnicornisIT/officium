@@ -183,6 +183,18 @@ test('server update readiness checks render as separate non-overlapping cards', 
   }
 });
 
+test('installed release card shows local details within a phone width', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/admin/server-update');
+  const card = page.locator('.admin-release-card--installed');
+  await expect(card).toBeVisible();
+  // Updates are disabled in e2e, yet the card is filled from local data.
+  await expect(card.locator('[data-release-notes="installed"], .admin-release-card__empty')).toHaveCount(1);
+  await expect(page.locator('[data-release-notes="latest"]')).toHaveCount(0);
+  const overflow = await card.evaluate(element => element.scrollWidth - element.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
 test('paired release cards and search filters keep equal geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/admin/server-update');
