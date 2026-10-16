@@ -1,4 +1,4 @@
-{% from '_brand.html' import brand_mark %}<!DOCTYPE html>
+{% from '_brand.html' import brand_mark %}{% from '_avatar.html' import user_avatar, user_display_name %}<!DOCTYPE html>
 <html lang="ru" data-theme="dark" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
@@ -44,9 +44,9 @@
         </span>
     </a>
     <div class="telegram-app-bar__actions">
-        <span class="telegram-app-bar__avatar" aria-hidden="true">
-            {{ (current_user.first_name or current_user.username or 'O')[:1]|upper }}
-        </span>
+        <a class="telegram-app-bar__profile" href="{{ url_for('profile') }}" aria-label="Профиль">
+            {{ user_avatar(current_user, 'telegram-app-bar__avatar') }}
+        </a>
         <button class="telegram-app-bar__menu" type="button" data-bs-toggle="offcanvas"
                 data-bs-target="#telegramMoreMenu" aria-controls="telegramMoreMenu" aria-label="Открыть меню">
             <i class="bi bi-grid"></i>
@@ -77,7 +77,10 @@
             <a href="{{ url_for('documentation') }}">
                 <i class="bi bi-journal-text"></i><span>Помощь</span>
             </a>
-            {% if current_user.is_admin %}
+            <a href="{{ url_for('profile') }}" class="{% if request.path == '/profile' %}active{% endif %}">
+                <i class="bi bi-person-circle"></i><span>Профиль</span>
+            </a>
+            {% if current_user.is_admin and not is_impersonating %}
             <a href="{{ url_for('admin_dashboard') }}" data-admin-panel-link>
                 <i class="bi bi-shield-lock"></i><span>Админ-панель</span>
             </a>
@@ -87,9 +90,9 @@
             </a>
         </nav>
         <div class="telegram-more-menu__profile">
-            <span class="telegram-more-menu__profile-avatar">{{ (current_user.first_name or current_user.username or 'O')[:1]|upper }}</span>
+            {{ user_avatar(current_user, 'telegram-more-menu__profile-avatar') }}
             <span>
-                <strong>{{ current_user.first_name or current_user.username or 'Пользователь' }}</strong>
+                <strong>{{ user_display_name(current_user) }}</strong>
                 <small>Вход выполнен через Telegram</small>
             </span>
         </div>
@@ -155,14 +158,6 @@
                 </li>
                 {% endif %}
                 {% endif %}
-                {% if current_user.is_authenticated and current_user.is_admin %}
-                <li class="nav-item">
-                    <a class="nav-link nav-expand {% if request.path.startswith('/admin') %}active{% endif %}" href="{{ url_for('admin_dashboard') }}" data-admin-panel-link>
-                        <span class="nav-expand__compact"><i class="bi bi-shield-lock me-1"></i>Админ-панель</span>
-                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-shield-lock"></i>Админ-панель</span>
-                    </a>
-                </li>
-                {% endif %}
                 {% if show_user_nav %}
                 <li class="nav-item ms-2">
                     <button class="btn btn-primary btn-sm nav-expand" onclick="openAddModal()">
@@ -179,27 +174,40 @@
                     </a>
                 </li>
                 {% endif %}
+                {% if current_user.is_authenticated %}
+                <li class="nav-item ms-2 dropdown user-menu">
+                    <button class="user-menu__toggle" type="button" id="userMenuToggle"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                            aria-haspopup="true" aria-controls="userMenu" aria-label="Меню профиля: {{ user_display_name(current_user) }}">
+                        {{ user_avatar(current_user, 'user-avatar user-menu__avatar') }}
+                        <span class="user-menu__toggle-name">{{ user_display_name(current_user) }}</span>
+                        <i class="bi bi-chevron-down user-menu__chevron" aria-hidden="true"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end user-menu__panel" id="userMenu" aria-labelledby="userMenuToggle">
+                        <li class="user-menu__header" aria-hidden="true">
+                            {{ user_avatar(current_user, 'user-avatar user-avatar--lg') }}
+                            <strong>{{ user_display_name(current_user) }}</strong>
+                        </li>
+                        <li><a class="dropdown-item {% if request.path == '/profile' %}active{% endif %}" href="{{ url_for('profile') }}"><i class="bi bi-person-circle" aria-hidden="true"></i>Профиль</a></li>
+                        {% if current_user.is_admin and not is_impersonating %}
+                        <li><a class="dropdown-item" href="{{ url_for('admin_dashboard') }}" data-admin-panel-link><i class="bi bi-shield-lock" aria-hidden="true"></i>Админ-панель</a></li>
+                        {% endif %}
+                        <li><button id="themeToggleBtn" class="dropdown-item" type="button" data-theme-toggle-style="menu"><i class="bi bi-circle-half" aria-hidden="true"></i>Сменить тему</button></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item user-menu__logout" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Выйти</a></li>
+                    </ul>
+                </li>
+                {% else %}
                 <li class="nav-item ms-2">
                     <button id="themeToggleBtn" class="btn btn-outline-secondary btn-sm nav-expand" type="button" aria-label="Переключить тему"></button>
                 </li>
                 <li class="nav-item ms-2">
-                    {% if current_user.is_authenticated %}
-                    <span class="nav-link disabled pe-0 nav-identity">{{ current_user.first_name or current_user.username or 'Пользователь' }}</span>
-                    {% endif %}
-                </li>
-                <li class="nav-item ms-2">
-                    {% if current_user.is_authenticated %}
-                    <a class="nav-link nav-expand" href="{{ url_for('logout') }}">
-                        <span class="nav-expand__compact"><i class="bi bi-box-arrow-right me-1"></i>Выйти</span>
-                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-box-arrow-right"></i>Выйти</span>
-                    </a>
-                    {% else %}
                     <a class="nav-link nav-expand" href="{{ url_for('login') }}">
                         <span class="nav-expand__compact"><i class="bi bi-box-arrow-in-right me-1"></i>Войти</span>
                         <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-box-arrow-in-right"></i>Войти</span>
                     </a>
-                    {% endif %}
                 </li>
+                {% endif %}
             </ul>
         </div>
     </div>

@@ -65,6 +65,14 @@ function applyTheme(theme) {
     const btn = document.getElementById('themeToggleBtn');
     if (!btn) return;
 
+    if (btn.dataset.themeToggleStyle === 'menu') {
+        btn.innerHTML = theme === 'dark'
+            ? '<i class="bi bi-sun-fill" aria-hidden="true"></i>Светлая тема'
+            : '<i class="bi bi-moon-fill" aria-hidden="true"></i>Тёмная тема';
+        btn.title = theme === 'dark' ? 'Переключиться в светлую тему' : 'Переключиться в тёмную тему';
+        return;
+    }
+
     if (theme === 'dark') {
         btn.innerHTML = '<span class="nav-expand__compact"><i class="bi bi-sun-fill me-1"></i>Светлая тема</span><span class="nav-expand__full" aria-hidden="true"><i class="bi bi-sun-fill"></i>Светлая тема</span>';
         btn.title = 'Переключиться в светлую тему';
@@ -72,6 +80,23 @@ function applyTheme(theme) {
         btn.innerHTML = '<span class="nav-expand__compact"><i class="bi bi-moon-fill me-1"></i>Тёмная тема</span><span class="nav-expand__full" aria-hidden="true"><i class="bi bi-moon-fill"></i>Тёмная тема</span>';
         btn.title = 'Переключиться в тёмную тему';
     }
+}
+
+// Telegram photo URLs expire; fall back to the initial instead of a broken image.
+function initAvatarFallback() {
+    const useInitial = (img) => {
+        const avatar = img.closest('[data-avatar-initial]');
+        if (!avatar) return;
+        avatar.classList.remove('has-photo');
+        avatar.textContent = avatar.dataset.avatarInitial;
+    };
+    document.querySelectorAll('[data-avatar-initial] img').forEach((img) => {
+        if (img.complete && img.naturalWidth === 0) {
+            useInitial(img);
+        } else {
+            img.addEventListener('error', () => useInitial(img), { once: true });
+        }
+    });
 }
 
 function getTelegramWebApp() {
@@ -1787,6 +1812,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTelegramMiniApp();
     initMobileViewport();
     initThemeToggle();
+    initAvatarFallback();
     initImpersonationBanner();
     initCommentTemplates();
     initNavbarLayout();

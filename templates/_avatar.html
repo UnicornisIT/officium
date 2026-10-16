@@ -1,0 +1,16 @@
+{# Аватар пользователя: фото из Telegram, если оно есть, иначе инициал
+   (first_name → username → 'O'). Один макрос для шапки, Mini App и профиля. #}
+{% macro user_initial(user) -%}
+{{ ((user.first_name if user else None) or (user.username if user else None) or 'O')[:1]|upper }}
+{%- endmacro %}
+
+{% macro user_display_name(user) -%}
+{{ (user.first_name if user else None) or (user.username if user else None) or 'Пользователь' }}
+{%- endmacro %}
+
+{% macro user_avatar(user, class_name='user-avatar') -%}
+{%- set photo = user.photo_url if user and user.photo_url and (user.photo_url|string).startswith('https://') else None -%}
+<span class="{{ class_name }}{% if photo %} has-photo{% endif %}" aria-hidden="true" data-avatar-initial="{{ user_initial(user) }}">
+{%- if photo %}<img src="{{ photo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}{{ user_initial(user) }}{% endif -%}
+</span>
+{%- endmacro %}
