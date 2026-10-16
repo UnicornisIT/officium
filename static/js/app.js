@@ -1337,15 +1337,18 @@ async function openHistoryModal(debtId, title) {
             const splitInfo = splitParts.length
                 ? `<div class="payment-split">${splitParts.join(' · ')}</div>`
                 : '';
+            const comment = p.comment
+                ? `<span class="history-comment" title="${escapeHtml(p.comment)}">${escapeHtml(p.comment)}</span>`
+                : '<span class="empty-value">—</span>';
             return `
                 <tr>
-                    <td>${p.payment_date}</td>
-                    <td>
+                    <td class="payment-history-date">${p.payment_date}</td>
+                    <td class="payment-history-amount">
                         <div class="fw-semibold text-success">+${formatMoney(p.amount)}${earlyBadge}</div>
                         ${splitInfo}
                     </td>
-                    <td>${formatMoney(p.remaining_after_payment)}</td>
-                    <td class="text-muted">${p.comment || '—'}</td>
+                    <td class="payment-history-remaining">${formatMoney(p.remaining_after_payment)}</td>
+                    <td class="payment-history-comment">${comment}</td>
                     <td class="payment-history-actions">
                         <button class="history-icon-btn history-icon-btn-edit" onclick="openEditPaymentModal(${debtId}, ${p.id})" title="Редактировать платеж">
                             <i class="bi bi-pencil"></i>

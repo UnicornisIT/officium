@@ -2942,12 +2942,17 @@ textarea.form-control {
     min-width: 640px;
     font-size: 0.88rem;
 }
+/* overflow-wrap: break-word не влияет на min-content ширину колонок, поэтому
+   дата и числа не рвутся посимвольно, а длинный текст переносится только при
+   реальном переполнении. */
 .history-table th,
 .history-table td {
     white-space: normal;
-    word-break: break-word;
+    word-break: normal;
+    overflow-wrap: break-word;
 }
 .history-table th {
+    white-space: nowrap;
     background: var(--bg-card-2);
     color: var(--text-muted);
     font-weight: 600;
@@ -2986,6 +2991,21 @@ textarea.form-control {
     font-size: 0.72rem;
     font-weight: 600;
     line-height: 1.25;
+}
+.history-table .payment-history-date,
+.history-table .payment-history-amount,
+.history-table .payment-history-remaining {
+    white-space: nowrap;
+}
+.history-table .payment-history-date {
+    min-width: 96px;
+}
+.history-table .payment-history-amount .payment-split {
+    white-space: normal;
+    min-width: 160px;
+}
+.payment-history-comment .history-comment {
+    max-width: 220px;
 }
 .payment-history-actions {
     width: 46px;
@@ -5597,7 +5617,7 @@ body.keyboard-open [contenteditable="true"] {
 }
 
 .history-card .history-table-wrapper {
-    overflow-x: visible;
+    overflow-x: auto;
     width: 100%;
 }
 
@@ -5610,8 +5630,14 @@ body.keyboard-open [contenteditable="true"] {
     line-height: 1.25;
 }
 
+/* Ниже этих ширин колонки становятся уже текста категорий и дат, поэтому
+   таблица прокручивается по горизонтали, а не обрезает всё многоточием. */
+.history-card--expenses .history-table {
+    min-width: 780px;
+}
+
 .history-card--incomes .history-table {
-    min-width: 0;
+    min-width: 680px;
 }
 
 .history-card .history-table th {
@@ -5630,20 +5656,26 @@ body.keyboard-open [contenteditable="true"] {
     text-overflow: ellipsis;
 }
 
-.history-card--expenses .history-col-title { width: 17%; }
-.history-card--expenses .history-col-category { width: 12%; }
-.history-card--expenses .history-col-amount { width: 13%; }
-.history-card--expenses .history-col-date { width: 14%; }
+.history-card--expenses .history-col-title { width: 19%; }
+.history-card--expenses .history-col-category { width: 18%; }
+.history-card--expenses .history-col-amount { width: 12%; }
+.history-card--expenses .history-col-date { width: 12%; }
 .history-card--expenses .history-col-payment { width: 10%; }
-.history-card--expenses .history-col-comment { width: 24%; }
-.history-card--expenses .history-col-actions { width: 12%; }
+.history-card--expenses .history-col-comment { width: 19%; }
+.history-card--expenses .history-col-actions { width: 10%; }
 
-.history-card--incomes .history-col-category { width: 19%; }
+.history-card--incomes .history-col-category { width: 22%; }
 .history-card--incomes .history-col-amount { width: 14%; }
-.history-card--incomes .history-col-date { width: 14%; }
+.history-card--incomes .history-col-date { width: 13%; }
 .history-card--incomes .history-col-source { width: 18%; }
-.history-card--incomes .history-col-comment { width: 24%; }
-.history-card--incomes .history-col-actions { width: 12%; }
+.history-card--incomes .history-col-comment { width: 23%; }
+.history-card--incomes .history-col-actions { width: 10%; }
+
+/* В месячных таблицах ширину комментария задаёт колонка, а не фиксированный
+   max-width, иначе текст обрезается раньше, чем заканчивается место. */
+.history-card .history-comment {
+    max-width: 100%;
+}
 
 .history-title-wrap,
 .history-name {
@@ -5685,7 +5717,11 @@ body.keyboard-open [contenteditable="true"] {
 .history-date,
 .history-category,
 .history-payment-cell,
-.history-actions-cell {
+.history-actions-cell,
+.history-table td.history-amount,
+.history-table td.history-category,
+.history-table td.history-payment-cell,
+.history-table td.history-actions-cell {
     white-space: nowrap;
 }
 
@@ -5723,7 +5759,10 @@ body.keyboard-open [contenteditable="true"] {
 
 .history-category,
 .history-payment-cell,
-.history-comment-cell {
+.history-comment-cell,
+.history-table td.history-category,
+.history-table td.history-payment-cell,
+.history-table td.history-comment-cell {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -6602,15 +6641,6 @@ html[data-theme="dark"] .toast {
     }
     .import-control--meta {
         justify-content: flex-start;
-    }
-    .history-card .history-table-wrapper {
-        overflow-x: auto;
-    }
-    .history-card--expenses .history-table {
-        min-width: 760px;
-    }
-    .history-card--incomes .history-table {
-        min-width: 640px;
     }
 }
 

@@ -20,7 +20,7 @@
 {% endif %}
 
 <div class="row g-4">
-    <div class="col-lg-5">
+    <div class="col-xl-4">
         <div class="card p-4 h-100">
             <h5 class="mb-3">{{ 'Редактировать доход' if edit_income else 'Добавить доход' }}</h5>
             {% set selected_category = form_data.get('category') if form_data else (edit_income.category if edit_income else '') %}
@@ -65,7 +65,7 @@
             </form>
         </div>
     </div>
-    <div class="col-lg-7">
+    <div class="col-xl-8">
         <div class="card p-4 h-100 history-card history-card--incomes">
             <h5 class="history-card-title mb-3">История доходов</h5>
             {% if groups %}
