@@ -91,6 +91,19 @@ class InstalledReleaseServiceTestCase(unittest.TestCase):
         self.assertNotIn('Черновик', notes['notes_html'])
         self.assertNotIn('Страница обновления', notes['notes_html'])
 
+    def test_alpha_tag_finds_its_changelog_section(self):
+        self.write_changelog(
+            '# Changelog\n\n## [Unreleased]\n\n## [0.0.14-alpha] - 2026-10-16\n\n'
+            '### Изменено\n\n- Переводы в цели больше не доходы и не расходы.\n\n'
+            '## [0.0.13] - 2026-10-15\n\n- Старое.\n'
+        )
+        self.assertEqual(changelog_version('v0.0.14-alpha'), '0.0.14-alpha')
+        notes = find_installed_release_notes(self.config, 'v0.0.14-alpha')
+        self.assertEqual(notes['version'], '0.0.14-alpha')
+        self.assertEqual(notes['released_on'], '2026-10-16')
+        self.assertIn('Переводы в цели', notes['notes_html'])
+        self.assertNotIn('Старое', notes['notes_html'])
+
     def test_version_without_section_returns_empty_notes(self):
         self.write_changelog()
         notes = find_installed_release_notes(self.config, 'v0.0.13')

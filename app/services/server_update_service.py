@@ -138,6 +138,7 @@ def fetch_latest_release(config):
     notes_html, notes_truncated = render_release_notes(payload.get('body'))
     return {
         'tag': tag,
+        'stage': release_stage(tag),
         'name': release_name,
         'notes_html': notes_html,
         'notes_truncated': notes_truncated,
@@ -237,6 +238,31 @@ def current_release_has_tag(current_release, tag):
     if isinstance(tags, list):
         return tag in tags
     return current_release.get('tag') == tag
+
+
+_STAGE_LABELS = {
+    'alpha': 'Альфа-версия',
+    'beta': 'Бета-версия',
+    'rc': 'Релиз-кандидат',
+}
+
+
+def release_stage(tag):
+    """Describe a pre-release tag such as ``v0.0.14-alpha``; ``None`` for a stable one.
+
+    Alpha releases are published as ordinary GitHub releases (so that
+    ``/releases/latest`` returns them); the stage comes from the tag suffix.
+    """
+    match = re.fullmatch(
+        r'v?\d+\.\d+\.\d+-([0-9A-Za-z.-]+)(?:\+[0-9A-Za-z.-]+)?',
+        str(tag or '').strip(),
+    )
+    if not match:
+        return None
+    key = re.split(r'[.-]', match.group(1).lower(), maxsplit=1)[0]
+    if key not in _STAGE_LABELS:
+        return {'key': 'prerelease', 'label': 'Предварительная версия'}
+    return {'key': key, 'label': _STAGE_LABELS[key]}
 
 
 def _release_order(value):

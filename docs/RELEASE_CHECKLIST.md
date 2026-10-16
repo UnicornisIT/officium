@@ -1,5 +1,18 @@
 # Release checklist
 
+## Именование альфа-релизов
+
+- Тег: `vX.Y.Z-alpha` (например, `v0.0.14-alpha`); `VERSION` содержит тот же
+  тег, заголовок в `CHANGELOG.md` — `## [X.Y.Z-alpha] - ГГГГ-ММ-ДД`.
+- Заголовок релиза на GitHub: `Release vX.Y.Z-alpha`.
+- Публиковать как обычный релиз, **без** галочки «Set as a pre-release».
+  Кнопка обновления, `officium-update-runner` и `scripts/officium-update`
+  берут релиз из `GET /repos/{owner}/{repo}/releases/latest`, а GitHub не
+  отдаёт через него pre-release: такой релиз сервер не увидит.
+- Стадию сервер определяет по суффиксу тега: на странице обновления
+  показываются метка «Альфа-версия» и предупреждение перед установкой.
+  `vX.Y.Z-alpha` считается новее `vX.Y.(Z-1)` и старше стабильного `vX.Y.Z`.
+
 Stable release запрещён, пока любой критический пункт имеет `FAIL`, `BLOCKED`
 или `NOT RUN`. Release candidate допустим только с явно опубликованными
 ограничениями и без production deployment.

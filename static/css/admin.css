@@ -1535,6 +1535,9 @@ html[data-theme="dark"] .admin-login-page {
 .admin-release-card small,
 .admin-release-card span { color: var(--admin-text-soft); font-size: 0.71rem; }
 .admin-release-card a { color: var(--admin-primary); font-size: 0.72rem; text-decoration: none; }
+/* Alpha/beta releases are ordinary GitHub releases; the tag suffix marks them. */
+.admin-badge--prerelease,
+.admin-release-card .admin-badge--prerelease { color: var(--admin-warning); background: var(--admin-warning-soft); border-color: color-mix(in srgb, var(--admin-warning) 22%, var(--admin-border)); font-size: 0.68rem; }
 .admin-release-meta { display: grid; width: 100%; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 6px 0 4px; padding: 9px 11px; background: var(--admin-surface-soft); border: 1px solid var(--admin-border); border-radius: 10px; font-size: 0.72rem; line-height: 1.4; }
 .admin-release-meta > div { display: contents; }
 .admin-release-meta dt { color: var(--admin-text-soft); font-weight: 500; }
