@@ -145,6 +145,17 @@ class ProfileMenuTestCase(unittest.TestCase):
         self.assertIn('id="userMenuToggle"', html)
         self.assertNotIn('data-admin-panel-link', html)
 
+    def test_analytics_and_plan_links_live_on_the_dashboard_not_in_the_header(self):
+        self._login('member')
+
+        html = self.client.get('/').get_data(as_text=True)
+        navbar = html.split('<nav class="navbar', 1)[1].split('</nav>', 1)[0]
+
+        self.assertNotIn('Куда уходят деньги', navbar)
+        self.assertNotIn('Финансовый план', navbar)
+        self.assertIn('href="/finance" data-dashboard-shortcut="finance"', html)
+        self.assertIn('href="/financial-plan" data-dashboard-shortcut="plan"', html)
+
     def test_mini_app_avatar_links_to_profile_and_hides_admin_for_users(self):
         self._login('member')
         with self.client.session_transaction() as session:

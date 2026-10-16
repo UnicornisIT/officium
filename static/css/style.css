@@ -3334,7 +3334,6 @@ textarea.form-control {
     font-size: 0.94rem;
 }
 
-.dashboard-v2__period,
 .dashboard-v2__add {
     display: inline-flex;
     align-items: center;
@@ -3351,14 +3350,6 @@ textarea.form-control {
     font-weight: 700;
     text-decoration: none;
 }
-
-.dashboard-v2__period {
-    gap: 9px;
-    padding: 0 14px;
-}
-
-.dashboard-v2__period > i:first-child { color: var(--primary); }
-.dashboard-v2__period > i:last-child { color: var(--text-muted); font-size: 0.7rem; }
 
 .balance-hero {
     position: relative;
@@ -3570,7 +3561,7 @@ textarea.form-control {
     background: var(--bg-card);
     box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
     text-decoration: none;
-    transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+    transition: border-color var(--transition), box-shadow var(--transition);
     animation: dashboard-tile-reveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
@@ -3579,11 +3570,11 @@ textarea.form-control {
 .money-flow__item:nth-child(3) { animation-delay: 0.48s; }
 .money-flow__item:nth-child(4) { animation-delay: 0.58s; }
 
-.money-flow__item:hover {
+.money-flow__item:hover,
+.money-flow__item:focus-visible {
     border-color: var(--border-hov);
     color: var(--text);
     box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
-    transform: translateY(-2px);
 }
 
 .money-flow__icon,
@@ -3600,8 +3591,37 @@ textarea.form-control {
     transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), background var(--transition), box-shadow var(--transition);
 }
 
-.money-flow__item:hover .money-flow__icon {
-    transform: translateY(-2px) scale(1.06);
+/* Сама плитка на наведении не двигается: сдвиг уводил её из-под курсора у
+   нижнего края, и наведение мигало. Движется только иконка внутри. */
+.money-flow__icon > i,
+.dashboard-shortcut__icon > i {
+    display: inline-block;
+    transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.money-flow__item:hover .money-flow__icon,
+.money-flow__item:focus-visible .money-flow__icon {
+    transform: scale(1.08);
+}
+
+.money-flow__item--income:hover .money-flow__icon > i,
+.money-flow__item--income:focus-visible .money-flow__icon > i {
+    transform: translate(-2px, 2px);
+}
+
+.money-flow__item--expense:hover .money-flow__icon > i,
+.money-flow__item--expense:focus-visible .money-flow__icon > i {
+    transform: translate(2px, -2px);
+}
+
+.money-flow__item--payment:hover .money-flow__icon > i,
+.money-flow__item--payment:focus-visible .money-flow__icon > i {
+    transform: rotate(-8deg) scale(1.08);
+}
+
+.money-flow__item--goals:hover .money-flow__icon > i,
+.money-flow__item--goals:focus-visible .money-flow__icon > i {
+    transform: translateY(-2px) scale(1.12);
 }
 
 .money-flow__item--income .money-flow__icon {
@@ -3653,7 +3673,8 @@ textarea.form-control {
     transition: color var(--transition), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.money-flow__item:hover .money-flow__chevron {
+.money-flow__item:hover .money-flow__chevron,
+.money-flow__item:focus-visible .money-flow__chevron {
     color: var(--primary);
     transform: translateX(3px);
 }
@@ -3860,6 +3881,7 @@ textarea.form-control {
 
 @media (prefers-reduced-motion: reduce) {
     .money-flow__item,
+    .dashboard-shortcut,
     .debt-overview,
     .next-payment,
     .debt-overview__ring,
@@ -3872,6 +3894,13 @@ textarea.form-control {
     }
 
     .debt-overview__ring { --ring-fill: var(--progress); }
+
+    .money-flow__icon,
+    .money-flow__icon > i,
+    .dashboard-shortcut__icon,
+    .dashboard-shortcut__icon > i {
+        transition: none;
+    }
 }
 
 .dashboard-v2__debts {
@@ -3949,16 +3978,6 @@ textarea.form-control {
         margin-top: 7px;
         font-size: 0.8rem;
         line-height: 1.45;
-    }
-
-    .dashboard-v2__period {
-        width: 44px;
-        padding: 0;
-    }
-
-    .dashboard-v2__period span,
-    .dashboard-v2__period > i:last-child {
-        display: none;
     }
 
     .balance-hero {
@@ -4565,9 +4584,57 @@ body.keyboard-open [contenteditable="true"] {
     background: transparent;
     font: inherit;
     text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--transition), background-color var(--transition), transform 0.16s ease;
 }
 
-.telegram-bottom-nav a i { font-size: 1.18rem; line-height: 1; }
+.telegram-bottom-nav a i {
+    display: inline-block;
+    font-size: 1.18rem;
+    line-height: 1;
+    transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Наведение — только там, где есть мышь: на телефоне :hover залипал бы после касания. */
+@media (hover: hover) {
+    .telegram-bottom-nav a:hover {
+        color: var(--tg-theme-text-color, var(--text));
+        background: color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 7%, transparent);
+    }
+    .telegram-bottom-nav a:hover i {
+        transform: translateY(-3px);
+    }
+    .telegram-bottom-nav a.active:hover {
+        color: var(--tg-theme-button-color, var(--primary));
+    }
+    .telegram-bottom-nav__add:hover > span {
+        transform: translateY(-3px);
+        box-shadow: 0 16px 32px color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 42%, transparent);
+    }
+    .telegram-bottom-nav__add:hover > span i {
+        transform: rotate(90deg);
+    }
+}
+
+.telegram-bottom-nav a:focus-visible,
+.telegram-bottom-nav__add:focus-visible {
+    outline: 2px solid var(--tg-theme-button-color, var(--primary));
+    outline-offset: 2px;
+}
+
+.telegram-bottom-nav a:active {
+    transform: scale(0.94);
+}
+
+.telegram-bottom-nav a:active i {
+    transform: scale(0.82);
+    transition-duration: 0.1s;
+}
+
+.telegram-bottom-nav__add:active > span {
+    transform: scale(0.9);
+    transition-duration: 0.1s;
+}
 
 .telegram-bottom-nav a span,
 .telegram-bottom-nav__add small {
@@ -4602,6 +4669,12 @@ body.keyboard-open [contenteditable="true"] {
     background: var(--tg-theme-button-color, var(--primary));
     box-shadow: 0 12px 28px color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 34%, transparent);
     font-size: 1.25rem;
+    transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow var(--transition);
+}
+
+.telegram-bottom-nav__add > span i {
+    display: inline-block;
+    transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .telegram-bottom-nav__add small { margin-top: 4px; }
@@ -7104,5 +7177,101 @@ html[data-theme="dark"] .toast {
 @media (min-width: 768px) and (max-width: 1199.98px) {
     .money-flow {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ── Ссылки на аналитику и план на дашборде ── */
+.dashboard-shortcuts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+.dashboard-shortcut {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 15px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    color: var(--text);
+    background: var(--bg-card);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+    text-decoration: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+    /* Появляются следом за плитками итогов месяца (их задержки 0.28–0.58s). */
+    animation: dashboard-tile-reveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.dashboard-shortcut:nth-child(1) { animation-delay: 0.68s; }
+.dashboard-shortcut:nth-child(2) { animation-delay: 0.78s; }
+.dashboard-shortcut:hover,
+.dashboard-shortcut:focus-visible {
+    border-color: var(--border-hov);
+    color: var(--text);
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+}
+.dashboard-shortcut:hover .dashboard-shortcut__icon,
+.dashboard-shortcut:focus-visible .dashboard-shortcut__icon {
+    transform: scale(1.08);
+}
+.dashboard-shortcut[data-dashboard-shortcut="finance"]:hover .dashboard-shortcut__icon > i,
+.dashboard-shortcut[data-dashboard-shortcut="finance"]:focus-visible .dashboard-shortcut__icon > i {
+    transform: rotate(35deg);
+}
+.dashboard-shortcut[data-dashboard-shortcut="plan"]:hover .dashboard-shortcut__icon > i,
+.dashboard-shortcut[data-dashboard-shortcut="plan"]:focus-visible .dashboard-shortcut__icon > i {
+    transform: translateX(2px) rotate(-6deg);
+}
+.dashboard-shortcut:hover .dashboard-shortcut__chevron,
+.dashboard-shortcut:focus-visible .dashboard-shortcut__chevron {
+    color: var(--primary);
+    transform: translateX(3px);
+}
+.dashboard-shortcut__icon {
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 15px;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 11%, var(--bg-card));
+    font-size: 1.05rem;
+}
+.dashboard-shortcut__copy {
+    display: grid;
+    min-width: 0;
+}
+.dashboard-shortcut__copy strong {
+    font-weight: 700;
+}
+.dashboard-shortcut__copy small {
+    overflow: hidden;
+    color: var(--text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dashboard-shortcut__chevron {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    transition: color var(--transition), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (max-width: 767.98px) {
+    .dashboard-shortcuts {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    .dashboard-shortcut__copy small {
+        white-space: normal;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .telegram-bottom-nav a,
+    .telegram-bottom-nav a i,
+    .telegram-bottom-nav__add > span,
+    .telegram-bottom-nav__add > span i {
+        transition: none;
     }
 }

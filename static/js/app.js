@@ -82,6 +82,14 @@ function applyTheme(theme) {
     }
 }
 
+// iOS WebView (Safari and Telegram) applies :active only to elements with a touch
+// listener; the bottom nav uses :active for its press animation.
+function initBottomNavPress() {
+    document.querySelectorAll('.telegram-bottom-nav a, .telegram-bottom-nav__add').forEach((control) => {
+        control.addEventListener('touchstart', () => {}, { passive: true });
+    });
+}
+
 // Telegram photo URLs expire; fall back to the initial instead of a broken image.
 function initAvatarFallback() {
     const useInitial = (img) => {
@@ -1813,6 +1821,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initMobileViewport();
     initThemeToggle();
     initAvatarFallback();
+    initBottomNavPress();
     initImpersonationBanner();
     initCommentTemplates();
     initNavbarLayout();

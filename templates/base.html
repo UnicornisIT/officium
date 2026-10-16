@@ -141,18 +141,6 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link nav-expand {% if request.path == '/finance' %}active{% endif %}" href="/finance">
-                        <span class="nav-expand__compact"><i class="bi bi-pie-chart me-1"></i>Куда уходят деньги</span>
-                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-pie-chart"></i>Куда уходят деньги</span>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link nav-expand {% if request.path == '/financial-plan' %}active{% endif %}" href="{{ url_for('financial_plan') }}">
-                        <span class="nav-expand__compact"><i class="bi bi-signpost-split me-1"></i>Финансовый план</span>
-                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-signpost-split"></i>Финансовый план</span>
-                    </a>
-                </li>
-                <li class="nav-item">
                     <a class="nav-link nav-expand {% if request.path.startswith('/goals') %}active{% endif %}" href="{{ url_for('goals') }}">
                         <span class="nav-expand__compact"><i class="bi bi-bullseye me-1"></i>Цели</span>
                         <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-bullseye"></i>Цели</span>
