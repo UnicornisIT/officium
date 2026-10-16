@@ -20,7 +20,7 @@
 {% endif %}
 
 <div class="row g-4">
-    <div class="col-lg-5">
+    <div class="col-xl-4">
         <div class="card p-4 h-100">
             <h5 class="mb-3">{{ 'Редактировать доход' if edit_income else 'Добавить доход' }}</h5>
             {% set selected_category = form_data.get('category') if form_data else (edit_income.category if edit_income else '') %}
@@ -65,7 +65,7 @@
             </form>
         </div>
     </div>
-    <div class="col-lg-7">
+    <div class="col-xl-8">
         <div class="card p-4 h-100 history-card history-card--incomes">
             <h5 class="history-card-title mb-3">История доходов</h5>
             {% if groups %}
@@ -110,10 +110,9 @@
                                     <tbody>
                                         {% for income in group['items'] %}
                                         <tr>
-                                            {% set income_category = dict(categories)[income.category] %}
+                                            {% set income_category = category_labels.get(income.category, income.category) %}
                                             <td class="history-category" title="{{ income_category }}">
                                                 {{ income_category }}
-                                                {% if income.is_goal_transfer %}<i class="bi bi-bullseye ms-1" title="Создано из финансовой цели" aria-label="Создано из финансовой цели"></i>{% endif %}
                                             </td>
                                             <td class="history-amount">{{ income.amount|money }}</td>
                                             <td class="history-date">{{ income.income_date.strftime('%d.%m.%Y') }}</td>
@@ -124,11 +123,6 @@
                                             {% if not current_user.is_local_test_user %}
                                             <td class="history-actions-cell">
                                                 <div class="history-actions">
-                                                    {% if income.is_goal_transfer %}
-                                                    <a href="{{ url_for('financial_plan', year=income.income_date.year, month=income.income_date.month) }}#goals" class="history-icon-btn history-icon-btn-edit" title="Открыть цель" aria-label="Открыть цель">
-                                                        <i class="bi bi-bullseye" aria-hidden="true"></i>
-                                                    </a>
-                                                    {% else %}
                                                     <a href="{{ url_for('edit_income', income_id=income.id) }}" class="history-icon-btn history-icon-btn-edit" title="Редактировать" aria-label="Редактировать">
                                                         <i class="bi bi-pencil" aria-hidden="true"></i>
                                                     </a>
@@ -138,7 +132,6 @@
                                                             <i class="bi bi-trash" aria-hidden="true"></i>
                                                         </button>
                                                     </form>
-                                                    {% endif %}
                                                 </div>
                                             </td>
                                             {% endif %}

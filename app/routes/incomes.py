@@ -2,11 +2,12 @@ from datetime import date
 from flask import abort, current_app, redirect, render_template, request, url_for
 from flask_login import current_user
 from app.models import Income
-from app.services.goal_cashflow_service import is_goal_income, mark_goal_cashflow_entries
 from app.services.history_month_service import month_key, resolve_active_month
 from app.utils import (
     INCOME_CATEGORIES,
+    INCOME_CATEGORY_LABELS,
     group_entries_by_month,
+    income_category_choices,
     income_source_suggestions,
     is_local_test_user,
     parse_date,
@@ -86,12 +87,12 @@ def init_app(app):
             ]
         else:
             incomes_list = Income.query.filter_by(user_id=current_user.id).order_by(Income.income_date.desc()).all()
-            mark_goal_cashflow_entries(incomes=incomes_list)
         source_suggestions = income_source_suggestions(incomes_list)
         groups = group_entries_by_month(incomes_list, 'income_date')
         active_month = resolve_active_month(groups, request.args.get('month'))
         return render_template('incomes.html', incomes=incomes_list, groups=groups,
                                active_month=active_month, categories=INCOME_CATEGORIES,
+                               category_labels=INCOME_CATEGORY_LABELS,
                                success_message=success_message, error_message=error_message,
                                edit_income=None, form_data=form_data,
                                source_suggestions=source_suggestions)
@@ -106,11 +107,7 @@ def init_app(app):
         income = Income.query.filter_by(id=income_id, user_id=current_user.id).first()
         if not income:
             abort(404)
-        if is_goal_income(income.id):
-            return redirect(url_for(
-                'incomes',
-                error='Этот доход связан с финансовой целью. Измените операцию в разделе «Цели».',
-            ))
+        categories = income_category_choices(income.category)
 
         if request.method == 'POST':
             try:
@@ -118,7 +115,7 @@ def init_app(app):
                 if amount <= 0:
                     raise ValueError('Сумма дохода должна быть больше нуля')
                 category = request.form.get('category')
-                if category not in [item[0] for item in INCOME_CATEGORIES]:
+                if category not in [item[0] for item in categories]:
                     raise ValueError('Выберите корректную категорию дохода')
                 income_date = parse_date(request.form.get('income_date'), 'Дата', required=True)
                 source = str(request.form.get('source', '')).strip() or None
@@ -147,12 +144,12 @@ def init_app(app):
                 error_message = 'Не удалось обновить доход'
 
         incomes_list = Income.query.filter_by(user_id=current_user.id).order_by(Income.income_date.desc()).all()
-        mark_goal_cashflow_entries(incomes=incomes_list)
         source_suggestions = income_source_suggestions(incomes_list)
         groups = group_entries_by_month(incomes_list, 'income_date')
         active_month = resolve_active_month(groups, month_key(income.income_date))
         return render_template('incomes.html', incomes=incomes_list, groups=groups,
-                               active_month=active_month, categories=INCOME_CATEGORIES,
+                               active_month=active_month, categories=categories,
+                               category_labels=INCOME_CATEGORY_LABELS,
                                success_message=success_message, error_message=error_message,
                                edit_income=income, form_data=form_data,
                                source_suggestions=source_suggestions)
@@ -164,11 +161,6 @@ def init_app(app):
         income = Income.query.filter_by(id=income_id, user_id=current_user.id).first()
         if not income:
             abort(404)
-        if is_goal_income(income.id):
-            return redirect(url_for(
-                'incomes',
-                error='Этот доход связан с финансовой целью. Удалите операцию в разделе «Цели».',
-            ))
         db.session.delete(income)
         db.session.commit()
         return redirect(url_for('incomes', success='Доход удалён'))

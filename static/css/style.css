@@ -2235,6 +2235,190 @@ html[data-theme="dark"] .navbar {
     }
 }
 
+/* ── Аватар и меню профиля в шапке ── */
+.user-avatar {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    overflow: hidden;
+    border-radius: 50%;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 16%, var(--bg-card-2));
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1;
+}
+.user-avatar--lg {
+    width: 44px;
+    height: 44px;
+    font-size: 1.05rem;
+}
+.user-avatar--xl {
+    width: 88px;
+    height: 88px;
+    font-size: 2rem;
+}
+.user-avatar img,
+.telegram-app-bar__avatar img,
+.telegram-more-menu__profile-avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.telegram-app-bar__avatar.has-photo,
+.telegram-more-menu__profile-avatar.has-photo {
+    overflow: hidden;
+    padding: 0;
+}
+.user-menu__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    color: var(--text);
+    background: transparent;
+    transition: var(--transition);
+}
+.user-menu__toggle:hover,
+.user-menu__toggle[aria-expanded="true"] {
+    border-color: var(--border);
+    background: var(--bg-card-2);
+}
+.user-menu__toggle:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+.user-menu__toggle-name,
+.user-menu__chevron {
+    display: none;
+}
+.user-menu__panel {
+    min-width: 230px;
+    padding: 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+    box-shadow: 0 16px 36px rgba(2, 8, 23, 0.28);
+}
+.user-menu__header {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.45rem 0.6rem 0.65rem;
+    margin-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
+    min-width: 0;
+}
+.user-menu__header strong {
+    overflow: hidden;
+    color: var(--text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.user-menu__panel .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 8px;
+    color: var(--text);
+    font-weight: 500;
+}
+.user-menu__panel .dropdown-item .bi {
+    width: 1.1rem;
+    color: var(--text-muted);
+}
+.user-menu__panel .dropdown-item:hover,
+.user-menu__panel .dropdown-item:focus,
+.user-menu__panel .dropdown-item.active {
+    color: var(--text);
+    background: var(--bg-card-2);
+}
+.user-menu__panel .dropdown-divider {
+    border-color: var(--border);
+    margin: 0.3rem 0;
+}
+.user-menu__panel .user-menu__logout,
+.user-menu__panel .user-menu__logout .bi {
+    color: var(--danger);
+}
+@media (max-width: 991.98px) {
+    /* В раскрытой мобильной навигации меню встраивается в поток. */
+    .navbar .user-menu {
+        width: 100%;
+        margin-left: 0 !important;
+    }
+    .user-menu__toggle {
+        width: 100%;
+        padding: 6px 10px 6px 6px;
+        border-radius: 12px;
+    }
+    .user-menu__toggle-name {
+        display: inline;
+        overflow: hidden;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .user-menu__chevron {
+        display: inline;
+        margin-left: auto;
+        color: var(--text-muted);
+    }
+    .user-menu__panel {
+        width: 100%;
+        box-shadow: none;
+    }
+    .user-menu__header {
+        display: none;
+    }
+}
+
+.telegram-app-bar__profile {
+    display: inline-flex;
+    border-radius: 13px;
+    text-decoration: none;
+}
+.telegram-app-bar__profile:focus-visible {
+    outline: 2px solid var(--tg-theme-button-color, var(--primary));
+    outline-offset: 2px;
+}
+
+/* ── Профиль ── */
+.profile-page {
+    max-width: 640px;
+    margin: 0 auto;
+}
+.profile-card {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--bg-card);
+}
+.profile-card h1 {
+    margin: 0 0 0.35rem;
+    overflow-wrap: anywhere;
+    font-size: 1.5rem;
+}
+.profile-card p {
+    margin: 0;
+    color: var(--text-muted);
+}
+@media (max-width: 576px) {
+    .profile-card {
+        flex-direction: column;
+        text-align: center;
+    }
+}
+
 .app-main {
     padding-top: 2.5rem;
 }
@@ -2942,12 +3126,17 @@ textarea.form-control {
     min-width: 640px;
     font-size: 0.88rem;
 }
+/* overflow-wrap: break-word не влияет на min-content ширину колонок, поэтому
+   дата и числа не рвутся посимвольно, а длинный текст переносится только при
+   реальном переполнении. */
 .history-table th,
 .history-table td {
     white-space: normal;
-    word-break: break-word;
+    word-break: normal;
+    overflow-wrap: break-word;
 }
 .history-table th {
+    white-space: nowrap;
     background: var(--bg-card-2);
     color: var(--text-muted);
     font-weight: 600;
@@ -2986,6 +3175,21 @@ textarea.form-control {
     font-size: 0.72rem;
     font-weight: 600;
     line-height: 1.25;
+}
+.history-table .payment-history-date,
+.history-table .payment-history-amount,
+.history-table .payment-history-remaining {
+    white-space: nowrap;
+}
+.history-table .payment-history-date {
+    min-width: 96px;
+}
+.history-table .payment-history-amount .payment-split {
+    white-space: normal;
+    min-width: 160px;
+}
+.payment-history-comment .history-comment {
+    max-width: 220px;
 }
 .payment-history-actions {
     width: 46px;
@@ -3130,7 +3334,6 @@ textarea.form-control {
     font-size: 0.94rem;
 }
 
-.dashboard-v2__period,
 .dashboard-v2__add {
     display: inline-flex;
     align-items: center;
@@ -3147,14 +3350,6 @@ textarea.form-control {
     font-weight: 700;
     text-decoration: none;
 }
-
-.dashboard-v2__period {
-    gap: 9px;
-    padding: 0 14px;
-}
-
-.dashboard-v2__period > i:first-child { color: var(--primary); }
-.dashboard-v2__period > i:last-child { color: var(--text-muted); font-size: 0.7rem; }
 
 .balance-hero {
     position: relative;
@@ -3349,7 +3544,7 @@ textarea.form-control {
 
 .money-flow {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
 }
 
@@ -3366,19 +3561,20 @@ textarea.form-control {
     background: var(--bg-card);
     box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
     text-decoration: none;
-    transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+    transition: border-color var(--transition), box-shadow var(--transition);
     animation: dashboard-tile-reveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .money-flow__item:nth-child(1) { animation-delay: 0.28s; }
 .money-flow__item:nth-child(2) { animation-delay: 0.38s; }
 .money-flow__item:nth-child(3) { animation-delay: 0.48s; }
+.money-flow__item:nth-child(4) { animation-delay: 0.58s; }
 
-.money-flow__item:hover {
+.money-flow__item:hover,
+.money-flow__item:focus-visible {
     border-color: var(--border-hov);
     color: var(--text);
     box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
-    transform: translateY(-2px);
 }
 
 .money-flow__icon,
@@ -3395,8 +3591,37 @@ textarea.form-control {
     transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), background var(--transition), box-shadow var(--transition);
 }
 
-.money-flow__item:hover .money-flow__icon {
-    transform: translateY(-2px) scale(1.06);
+/* Сама плитка на наведении не двигается: сдвиг уводил её из-под курсора у
+   нижнего края, и наведение мигало. Движется только иконка внутри. */
+.money-flow__icon > i,
+.dashboard-shortcut__icon > i {
+    display: inline-block;
+    transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.money-flow__item:hover .money-flow__icon,
+.money-flow__item:focus-visible .money-flow__icon {
+    transform: scale(1.08);
+}
+
+.money-flow__item--income:hover .money-flow__icon > i,
+.money-flow__item--income:focus-visible .money-flow__icon > i {
+    transform: translate(-2px, 2px);
+}
+
+.money-flow__item--expense:hover .money-flow__icon > i,
+.money-flow__item--expense:focus-visible .money-flow__icon > i {
+    transform: translate(2px, -2px);
+}
+
+.money-flow__item--payment:hover .money-flow__icon > i,
+.money-flow__item--payment:focus-visible .money-flow__icon > i {
+    transform: rotate(-8deg) scale(1.08);
+}
+
+.money-flow__item--goals:hover .money-flow__icon > i,
+.money-flow__item--goals:focus-visible .money-flow__icon > i {
+    transform: translateY(-2px) scale(1.12);
 }
 
 .money-flow__item--income .money-flow__icon {
@@ -3407,6 +3632,11 @@ textarea.form-control {
 .money-flow__item--expense .money-flow__icon {
     color: var(--danger);
     background: color-mix(in srgb, var(--danger) 11%, var(--bg-card));
+}
+
+.money-flow__item--goals .money-flow__icon {
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, var(--bg-card));
 }
 
 .money-flow__item--payment .money-flow__icon {
@@ -3443,7 +3673,8 @@ textarea.form-control {
     transition: color var(--transition), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.money-flow__item:hover .money-flow__chevron {
+.money-flow__item:hover .money-flow__chevron,
+.money-flow__item:focus-visible .money-flow__chevron {
     color: var(--primary);
     transform: translateX(3px);
 }
@@ -3650,6 +3881,7 @@ textarea.form-control {
 
 @media (prefers-reduced-motion: reduce) {
     .money-flow__item,
+    .dashboard-shortcut,
     .debt-overview,
     .next-payment,
     .debt-overview__ring,
@@ -3662,6 +3894,13 @@ textarea.form-control {
     }
 
     .debt-overview__ring { --ring-fill: var(--progress); }
+
+    .money-flow__icon,
+    .money-flow__icon > i,
+    .dashboard-shortcut__icon,
+    .dashboard-shortcut__icon > i {
+        transition: none;
+    }
 }
 
 .dashboard-v2__debts {
@@ -3739,16 +3978,6 @@ textarea.form-control {
         margin-top: 7px;
         font-size: 0.8rem;
         line-height: 1.45;
-    }
-
-    .dashboard-v2__period {
-        width: 44px;
-        padding: 0;
-    }
-
-    .dashboard-v2__period span,
-    .dashboard-v2__period > i:last-child {
-        display: none;
     }
 
     .balance-hero {
@@ -4355,9 +4584,57 @@ body.keyboard-open [contenteditable="true"] {
     background: transparent;
     font: inherit;
     text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--transition), background-color var(--transition), transform 0.16s ease;
 }
 
-.telegram-bottom-nav a i { font-size: 1.18rem; line-height: 1; }
+.telegram-bottom-nav a i {
+    display: inline-block;
+    font-size: 1.18rem;
+    line-height: 1;
+    transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Наведение — только там, где есть мышь: на телефоне :hover залипал бы после касания. */
+@media (hover: hover) {
+    .telegram-bottom-nav a:hover {
+        color: var(--tg-theme-text-color, var(--text));
+        background: color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 7%, transparent);
+    }
+    .telegram-bottom-nav a:hover i {
+        transform: translateY(-3px);
+    }
+    .telegram-bottom-nav a.active:hover {
+        color: var(--tg-theme-button-color, var(--primary));
+    }
+    .telegram-bottom-nav__add:hover > span {
+        transform: translateY(-3px);
+        box-shadow: 0 16px 32px color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 42%, transparent);
+    }
+    .telegram-bottom-nav__add:hover > span i {
+        transform: rotate(90deg);
+    }
+}
+
+.telegram-bottom-nav a:focus-visible,
+.telegram-bottom-nav__add:focus-visible {
+    outline: 2px solid var(--tg-theme-button-color, var(--primary));
+    outline-offset: 2px;
+}
+
+.telegram-bottom-nav a:active {
+    transform: scale(0.94);
+}
+
+.telegram-bottom-nav a:active i {
+    transform: scale(0.82);
+    transition-duration: 0.1s;
+}
+
+.telegram-bottom-nav__add:active > span {
+    transform: scale(0.9);
+    transition-duration: 0.1s;
+}
 
 .telegram-bottom-nav a span,
 .telegram-bottom-nav__add small {
@@ -4392,6 +4669,12 @@ body.keyboard-open [contenteditable="true"] {
     background: var(--tg-theme-button-color, var(--primary));
     box-shadow: 0 12px 28px color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 34%, transparent);
     font-size: 1.25rem;
+    transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow var(--transition);
+}
+
+.telegram-bottom-nav__add > span i {
+    display: inline-block;
+    transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .telegram-bottom-nav__add small { margin-top: 4px; }
@@ -5597,7 +5880,7 @@ body.keyboard-open [contenteditable="true"] {
 }
 
 .history-card .history-table-wrapper {
-    overflow-x: visible;
+    overflow-x: auto;
     width: 100%;
 }
 
@@ -5610,8 +5893,14 @@ body.keyboard-open [contenteditable="true"] {
     line-height: 1.25;
 }
 
+/* Ниже этих ширин колонки становятся уже текста категорий и дат, поэтому
+   таблица прокручивается по горизонтали, а не обрезает всё многоточием. */
+.history-card--expenses .history-table {
+    min-width: 780px;
+}
+
 .history-card--incomes .history-table {
-    min-width: 0;
+    min-width: 680px;
 }
 
 .history-card .history-table th {
@@ -5630,20 +5919,26 @@ body.keyboard-open [contenteditable="true"] {
     text-overflow: ellipsis;
 }
 
-.history-card--expenses .history-col-title { width: 17%; }
-.history-card--expenses .history-col-category { width: 12%; }
-.history-card--expenses .history-col-amount { width: 13%; }
-.history-card--expenses .history-col-date { width: 14%; }
+.history-card--expenses .history-col-title { width: 19%; }
+.history-card--expenses .history-col-category { width: 18%; }
+.history-card--expenses .history-col-amount { width: 12%; }
+.history-card--expenses .history-col-date { width: 12%; }
 .history-card--expenses .history-col-payment { width: 10%; }
-.history-card--expenses .history-col-comment { width: 24%; }
-.history-card--expenses .history-col-actions { width: 12%; }
+.history-card--expenses .history-col-comment { width: 19%; }
+.history-card--expenses .history-col-actions { width: 10%; }
 
-.history-card--incomes .history-col-category { width: 19%; }
+.history-card--incomes .history-col-category { width: 22%; }
 .history-card--incomes .history-col-amount { width: 14%; }
-.history-card--incomes .history-col-date { width: 14%; }
+.history-card--incomes .history-col-date { width: 13%; }
 .history-card--incomes .history-col-source { width: 18%; }
-.history-card--incomes .history-col-comment { width: 24%; }
-.history-card--incomes .history-col-actions { width: 12%; }
+.history-card--incomes .history-col-comment { width: 23%; }
+.history-card--incomes .history-col-actions { width: 10%; }
+
+/* В месячных таблицах ширину комментария задаёт колонка, а не фиксированный
+   max-width, иначе текст обрезается раньше, чем заканчивается место. */
+.history-card .history-comment {
+    max-width: 100%;
+}
 
 .history-title-wrap,
 .history-name {
@@ -5685,7 +5980,11 @@ body.keyboard-open [contenteditable="true"] {
 .history-date,
 .history-category,
 .history-payment-cell,
-.history-actions-cell {
+.history-actions-cell,
+.history-table td.history-amount,
+.history-table td.history-category,
+.history-table td.history-payment-cell,
+.history-table td.history-actions-cell {
     white-space: nowrap;
 }
 
@@ -5723,7 +6022,10 @@ body.keyboard-open [contenteditable="true"] {
 
 .history-category,
 .history-payment-cell,
-.history-comment-cell {
+.history-comment-cell,
+.history-table td.history-category,
+.history-table td.history-payment-cell,
+.history-table td.history-comment-cell {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -6603,15 +6905,6 @@ html[data-theme="dark"] .toast {
     .import-control--meta {
         justify-content: flex-start;
     }
-    .history-card .history-table-wrapper {
-        overflow-x: auto;
-    }
-    .history-card--expenses .history-table {
-        min-width: 760px;
-    }
-    .history-card--incomes .history-table {
-        min-width: 640px;
-    }
 }
 
 @media (max-width: 576px) {
@@ -6745,3 +7038,240 @@ html[data-theme="dark"] .toast {
 
 .comment-templates { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .comment-templates .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Цели ── */
+.goals-page {
+    display: grid;
+    gap: 1.25rem;
+}
+.goals-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.goals-header h1 {
+    margin: 0.2rem 0 0.35rem;
+    overflow-wrap: anywhere;
+}
+.goals-header p {
+    max-width: 640px;
+    margin: 0;
+    color: var(--text-muted);
+}
+.goals-header__actions,
+.plan-goals__header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.goals-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-muted);
+    text-decoration: none;
+}
+.goals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+.goal-card {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1.15rem;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    color: var(--text);
+    background: var(--bg-card);
+    text-decoration: none;
+    transition: var(--transition);
+}
+.goal-card:hover,
+.goal-card:focus-visible {
+    border-color: color-mix(in srgb, var(--primary) 50%, var(--border));
+    color: var(--text);
+}
+.goal-card__head {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+}
+.goal-card__head h2 {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 1.05rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.goal-card__icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 14%, var(--bg-card-2));
+}
+.goal-card__facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+    margin: 0;
+}
+.goal-card__facts dt,
+.goal-forecast span {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+.goal-card__facts dd {
+    margin: 0;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.goal-card__forecast {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+.goal-forecast {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.75rem;
+}
+.goal-forecast > div {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+}
+.goal-forecast strong {
+    white-space: nowrap;
+}
+.history-card .goal-history-table,
+.history-card .goal-months-table {
+    min-width: 640px;
+}
+.goal-amount--deposit { color: var(--success); }
+.goal-amount--withdrawal { color: var(--danger); }
+.plan-goal__details-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+@media (min-width: 768px) and (max-width: 1199.98px) {
+    .money-flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ── Ссылки на аналитику и план на дашборде ── */
+.dashboard-shortcuts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+.dashboard-shortcut {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 15px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    color: var(--text);
+    background: var(--bg-card);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+    text-decoration: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+    /* Появляются следом за плитками итогов месяца (их задержки 0.28–0.58s). */
+    animation: dashboard-tile-reveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.dashboard-shortcut:nth-child(1) { animation-delay: 0.68s; }
+.dashboard-shortcut:nth-child(2) { animation-delay: 0.78s; }
+.dashboard-shortcut:hover,
+.dashboard-shortcut:focus-visible {
+    border-color: var(--border-hov);
+    color: var(--text);
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+}
+.dashboard-shortcut:hover .dashboard-shortcut__icon,
+.dashboard-shortcut:focus-visible .dashboard-shortcut__icon {
+    transform: scale(1.08);
+}
+.dashboard-shortcut[data-dashboard-shortcut="finance"]:hover .dashboard-shortcut__icon > i,
+.dashboard-shortcut[data-dashboard-shortcut="finance"]:focus-visible .dashboard-shortcut__icon > i {
+    transform: rotate(35deg);
+}
+.dashboard-shortcut[data-dashboard-shortcut="plan"]:hover .dashboard-shortcut__icon > i,
+.dashboard-shortcut[data-dashboard-shortcut="plan"]:focus-visible .dashboard-shortcut__icon > i {
+    transform: translateX(2px) rotate(-6deg);
+}
+.dashboard-shortcut:hover .dashboard-shortcut__chevron,
+.dashboard-shortcut:focus-visible .dashboard-shortcut__chevron {
+    color: var(--primary);
+    transform: translateX(3px);
+}
+.dashboard-shortcut__icon {
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 15px;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 11%, var(--bg-card));
+    font-size: 1.05rem;
+}
+.dashboard-shortcut__copy {
+    display: grid;
+    min-width: 0;
+}
+.dashboard-shortcut__copy strong {
+    font-weight: 700;
+}
+.dashboard-shortcut__copy small {
+    overflow: hidden;
+    color: var(--text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dashboard-shortcut__chevron {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    transition: color var(--transition), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (max-width: 767.98px) {
+    .dashboard-shortcuts {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    .dashboard-shortcut__copy small {
+        white-space: normal;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .telegram-bottom-nav a,
+    .telegram-bottom-nav a i,
+    .telegram-bottom-nav__add > span,
+    .telegram-bottom-nav__add > span i {
+        transition: none;
+    }
+}

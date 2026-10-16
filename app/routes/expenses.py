@@ -10,7 +10,6 @@ from sqlalchemy import or_
 from app.models import Expense
 from app.services.bank_statement_import_service import parse_bank_statement
 from app.services.expense_title_service import expense_group_key
-from app.services.goal_cashflow_service import is_goal_expense, mark_goal_cashflow_entries
 from app.services.history_month_service import month_key, resolve_active_month
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
@@ -129,8 +128,6 @@ def init_app(app):
             ]
         else:
             expenses_list = Expense.query.filter_by(user_id=current_user.id).order_by(Expense.expense_date.desc()).all()
-        if not is_local_test_user():
-            mark_goal_cashflow_entries(expenses=expenses_list)
         groups = group_entries_by_month(expenses_list, 'expense_date')
         active_month = resolve_active_month(groups, request.args.get('month'))
         return render_template('expenses.html', expenses=expenses_list, groups=groups,
@@ -288,11 +285,6 @@ def init_app(app):
         expense = Expense.query.filter_by(id=expense_id, user_id=current_user.id).first()
         if not expense:
             abort(404)
-        if is_goal_expense(expense.id):
-            return redirect(url_for(
-                'expenses',
-                error='Этот расход связан с финансовой целью. Измените операцию в разделе «Цели».',
-            ))
 
         if request.method == 'POST':
             try:
@@ -368,7 +360,6 @@ def init_app(app):
                 error_message = 'Не удалось обновить расход'
 
         expenses_list = Expense.query.filter_by(user_id=current_user.id).order_by(Expense.expense_date.desc()).all()
-        mark_goal_cashflow_entries(expenses=expenses_list)
         groups = group_entries_by_month(expenses_list, 'expense_date')
         # After a failed POST the expense was rolled back, so this is its stored month.
         active_month = resolve_active_month(groups, month_key(expense.expense_date))
@@ -384,11 +375,6 @@ def init_app(app):
         expense = Expense.query.filter_by(id=expense_id, user_id=current_user.id).first()
         if not expense:
             abort(404)
-        if is_goal_expense(expense.id):
-            return redirect(url_for(
-                'expenses',
-                error='Этот расход связан с финансовой целью. Удалите операцию в разделе «Цели».',
-            ))
         Expense.query.filter_by(generated_from_id=expense.id).update(
             {Expense.generated_from_id: None},
             synchronize_session=False,

@@ -383,10 +383,15 @@
                     <h2>Цели</h2>
                     <p>Подушка всегда идет первой. Для каждой цели учитываются план месяца, чистое пополнение, остаток до цели и доступная сумма.</p>
                 </div>
-                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#goalModal"
-                        data-goal-mode="create" {% if plan.is_demo %}disabled{% endif %}>
-                    <i class="bi bi-plus-lg me-1"></i>Новая цель
-                </button>
+                <div class="plan-goals__header-actions">
+                    {% if not plan.is_demo %}
+                    <a class="btn btn-outline-secondary" href="{{ url_for('goals') }}"><i class="bi bi-list-ul me-1"></i>Все операции</a>
+                    {% endif %}
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#goalModal"
+                            data-goal-mode="create" {% if plan.is_demo %}disabled{% endif %}>
+                        <i class="bi bi-plus-lg me-1"></i>Новая цель
+                    </button>
+                </div>
             </div>
 
             <div class="plan-goals__grid">
@@ -477,6 +482,11 @@
                             <i class="bi bi-dash-lg me-1"></i>Снять
                         </button>
                     </div>
+                    {% if not plan.is_demo %}
+                    <a class="plan-goal__details-link" href="{{ url_for('goal_detail', key='emergency' if goal.is_system else goal.id) }}">
+                        История, прогноз и помесячная сводка <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                    </a>
+                    {% endif %}
                     <div class="plan-goal__history" data-operation-history>
                         <button type="button" class="plan-goal__history-toggle" aria-expanded="false" aria-controls="goal-history-{{ goal.key }}">
                             <span>История операций</span>

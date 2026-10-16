@@ -26,6 +26,7 @@ from app.services.server_update_service import (
     get_update_status,
     read_update_status,
     reconcile_update_status,
+    release_stage,
     request_server_update,
     update_is_active,
 )
@@ -410,6 +411,7 @@ def init_app(app):
             enabled=enabled,
             repository=current_app.config.get('SERVER_UPDATE_REPOSITORY'),
             current_release=current_release,
+            current_stage=release_stage(current_release.get('tag')),
             installed_release=installed_release,
             latest_release=latest_release,
             release_error=release_error,

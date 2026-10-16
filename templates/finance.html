@@ -48,7 +48,7 @@
             </div>
             <div class="finance-balance-note">
                 {% if free_balance >= 0 %}
-                Осталось после всех расходов и платежей по долгам.
+                Осталось после расходов, платежей по долгам и переводов в цели.
                 {% else %}
                 Расходы и платежи превысили доходы за выбранный месяц.
                 {% endif %}
@@ -68,6 +68,11 @@
             <div class="finance-equation__item">
                 <span>Долги</span>
                 <strong>{{ total_payments|money }}</strong>
+            </div>
+            <i class="bi bi-dash-lg finance-equation__sign"></i>
+            <div class="finance-equation__item" data-goal-transfers>
+                <span>Отложено в цели</span>
+                <strong>{{ goal_transfers.net|money }}</strong>
             </div>
             <i class="bi bi-equals finance-equation__sign"></i>
             <div class="finance-equation__item finance-equation__item--result">

@@ -15,11 +15,6 @@
             <h1>Деньги под контролем</h1>
             <p>Главное за месяц — без лишних цифр и сложных отчётов.</p>
         </div>
-        <a class="dashboard-v2__period" href="{{ url_for('finance') }}" aria-label="Открыть аналитику за текущий месяц">
-            <i class="bi bi-bar-chart-line"></i>
-            <span>Аналитика</span>
-            <i class="bi bi-chevron-right"></i>
-        </a>
     </header>
 
     <section class="balance-hero {% if free_balance < 0 %}balance-hero--negative{% endif %}" aria-label="Свободные средства">
@@ -30,7 +25,7 @@
             <span class="balance-hero__status">{{ 'Дефицит' if free_balance < 0 else 'Доступно' }}</span>
         </div>
         <strong class="balance-hero__amount">{{ free_balance|money }}</strong>
-        <p>{{ 'Расходы превышают доходы — стоит пересмотреть план.' if free_balance < 0 else 'После расходов и обязательных платежей.' }}</p>
+        <p>{{ 'Расходы превышают доходы — стоит пересмотреть план.' if free_balance < 0 else 'После расходов, платежей по долгам и переводов в цели.' }}</p>
         <div class="balance-hero__footer">
             <div>
                 <span>На каждый день</span>
@@ -58,6 +53,30 @@
             <span class="money-flow__icon"><i class="bi bi-credit-card"></i></span>
             <span class="money-flow__copy"><small>Платежи по долгам</small><strong>{{ total_payments|money }}</strong></span>
             <i class="bi bi-chevron-down money-flow__chevron"></i>
+        </a>
+        <a class="money-flow__item money-flow__item--goals" href="{{ url_for('goals') }}" data-goal-transfers>
+            <span class="money-flow__icon"><i class="bi bi-safe2"></i></span>
+            <span class="money-flow__copy"><small>Отложено в цели за месяц</small><strong>{{ goal_transfers_net|money }}</strong></span>
+            <i class="bi bi-chevron-right money-flow__chevron"></i>
+        </a>
+    </nav>
+
+    <nav class="dashboard-shortcuts" aria-label="Разделы для анализа и планирования">
+        <a class="dashboard-shortcut" href="{{ url_for('finance') }}" data-dashboard-shortcut="finance">
+            <span class="dashboard-shortcut__icon"><i class="bi bi-pie-chart" aria-hidden="true"></i></span>
+            <span class="dashboard-shortcut__copy">
+                <strong>Куда уходят деньги</strong>
+                <small>Категории, крупные траты и прогноз остатка</small>
+            </span>
+            <i class="bi bi-chevron-right dashboard-shortcut__chevron" aria-hidden="true"></i>
+        </a>
+        <a class="dashboard-shortcut" href="{{ url_for('financial_plan') }}" data-dashboard-shortcut="plan">
+            <span class="dashboard-shortcut__icon"><i class="bi bi-signpost-split" aria-hidden="true"></i></span>
+            <span class="dashboard-shortcut__copy">
+                <strong>Финансовый план</strong>
+                <small>Распределение дохода, подушка и цели</small>
+            </span>
+            <i class="bi bi-chevron-right dashboard-shortcut__chevron" aria-hidden="true"></i>
         </a>
     </nav>
 

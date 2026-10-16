@@ -30,9 +30,25 @@ INCOME_CATEGORIES = [
     ('bonus', 'Премия'),
     ('scholarship', 'Стипендия'),
     ('vacation_pay', 'Отпускные'),
-    ('goal_withdrawal', 'Снятие с цели'),
     ('other', 'Другое'),
 ]
+
+# Categories that may still exist on old records but can no longer be chosen.
+# 'goal_withdrawal' was set automatically for withdrawals from goals before
+# goal operations became transfers; manually entered records keep it.
+LEGACY_INCOME_CATEGORIES = [
+    ('goal_withdrawal', 'Снятие с цели'),
+]
+INCOME_CATEGORY_LABELS = dict(INCOME_CATEGORIES + LEGACY_INCOME_CATEGORIES)
+
+
+def income_category_choices(current=None):
+    """Form choices; an old record keeps its legacy category selectable."""
+    choices = list(INCOME_CATEGORIES)
+    legacy = dict(LEGACY_INCOME_CATEGORIES)
+    if current in legacy:
+        choices.append((current, legacy[current]))
+    return choices
 
 EXPENSE_CATEGORIES = [
     ('products', 'Продукты'),
@@ -347,6 +363,23 @@ def record_activity(action, user=None, entity_type=None, entity_id=None, descrip
     )
     db.session.add(log)
     db.session.commit()
+
+
+def record_goal_activity(action, ref, transaction_id):
+    """Journal a goal operation without amounts or goal names.
+
+    The admin panel shows the journal and must not learn users' finances, so
+    only the kind of object and its id are stored.
+    """
+    record_activity(
+        action,
+        current_user,
+        entity_type=ref.entity_type,
+        entity_id=transaction_id,
+        description='Финансовая подушка' if ref.is_emergency else 'Финансовая цель',
+        ip_address=client_ip(),
+        user_agent=request.headers.get('User-Agent'),
+    )
 
 
 def admin_required(view):

@@ -23,7 +23,7 @@
 {% endif %}
 
 <div class="row g-4">
-    <div class="col-lg-5">
+    <div class="col-xl-4">
         <div class="card p-4 h-100">
             <h5 class="mb-3">{{ 'Редактировать расход' if edit_expense else 'Добавить расход' }}</h5>
             {% set selected_category = form_data.get('category') if form_data else (edit_expense.category if edit_expense else '') %}
@@ -85,7 +85,7 @@
             </form>
         </div>
     </div>
-    <div class="col-lg-7">
+    <div class="col-xl-8">
         <div class="card p-4 h-100 history-card history-card--expenses">
             <h5 class="history-card-title mb-3">История расходов</h5>
             {% if groups %}
@@ -138,9 +138,6 @@
                                                 {% if expense.is_monthly %}
                                                     <span class="monthly-lock" title="Ежемесячный расход" aria-label="Ежемесячный расход"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
                                                 {% endif %}
-                                                {% if expense.is_goal_transfer %}
-                                                    <span class="monthly-lock" title="Создано из финансовой цели" aria-label="Создано из финансовой цели"><i class="bi bi-bullseye" aria-hidden="true"></i></span>
-                                                {% endif %}
                                                 </div>
                                             </td>
                                             {% set expense_category = dict(categories)[expense.category] %}
@@ -154,11 +151,6 @@
                                             {% if not current_user.is_local_test_user %}
                                             <td class="history-actions-cell">
                                                 <div class="history-actions">
-                                                    {% if expense.is_goal_transfer %}
-                                                    <a href="{{ url_for('financial_plan', year=expense.expense_date.year, month=expense.expense_date.month) }}#goals" class="history-icon-btn history-icon-btn-edit" title="Открыть цель" aria-label="Открыть цель">
-                                                        <i class="bi bi-bullseye" aria-hidden="true"></i>
-                                                    </a>
-                                                    {% else %}
                                                     <a href="{{ url_for('edit_expense', expense_id=expense.id) }}" class="history-icon-btn history-icon-btn-edit" title="Редактировать" aria-label="Редактировать">
                                                         <i class="bi bi-pencil" aria-hidden="true"></i>
                                                     </a>
@@ -168,7 +160,6 @@
                                                             <i class="bi bi-trash" aria-hidden="true"></i>
                                                         </button>
                                                     </form>
-                                                    {% endif %}
                                                 </div>
                                             </td>
                                             {% endif %}

@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from extensions import db
 from app.models import Debt, Income, Expense, Payment
+from app.services.goal_service import empty_goal_transfers, month_transfers
 from app.services.expense_title_service import clean_expense_title, expense_group_key
 from app.services.debt_math_service import calculate_period_interest
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS
@@ -207,11 +208,16 @@ def _with_finance_insights(summary):
     is_current_month = bool(month_start and month_start.year == today.year and month_start.month == today.month)
     average_daily_expenses = total_expenses / elapsed_days if elapsed_days else ZERO
     projected_expenses = average_daily_expenses * month_days if is_current_month and elapsed_days else total_expenses
-    projected_balance = total_incomes - projected_expenses - total_payments if is_current_month else free_balance
+    goal_transfers_net = _money_value((summary.get('goal_transfers') or {}).get('net', 0))
+    projected_balance = (
+        total_incomes - projected_expenses - total_payments - goal_transfers_net
+        if is_current_month else free_balance
+    )
 
     summary.update({
         'cashflow': {
             'total_outflow': total_outflow,
+            'goal_transfers_net': goal_transfers_net,
             'recurring_expenses_total': recurring_expenses_total,
             'one_time_expenses_total': one_time_expenses_total,
             'required_outflow': required_outflow,
@@ -439,6 +445,7 @@ def get_finance_summary(user_id, year=None, month=None):
             'total_incomes': total_incomes,
             'total_expenses': total_expenses,
             'total_payments': total_payments,
+            'goal_transfers': empty_goal_transfers(),
             'free_balance': free_balance,
             'days_left': (month_end - today).days if month_start.year == today.year and month_start.month == today.month else 0,
             'nearest_debt': nearest_debt,
@@ -497,6 +504,7 @@ def get_finance_summary(user_id, year=None, month=None):
             'total_incomes': ZERO,
             'total_expenses': ZERO,
             'total_payments': ZERO,
+            'goal_transfers': empty_goal_transfers(),
             'free_balance': ZERO,
             'days_left': 0,
             'nearest_debt': None,
@@ -526,7 +534,10 @@ def get_finance_summary(user_id, year=None, month=None):
     total_incomes = _money_value(Income.query.with_entities(func.coalesce(func.sum(Income.amount), 0)).filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).scalar())
     total_expenses = _money_value(Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0)).filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).scalar())
     total_payments = _money_value(Payment.query.with_entities(func.coalesce(func.sum(Payment.amount), 0)).join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).scalar())
-    free_balance = total_incomes - total_expenses - total_payments
+    # Transfers to goals and the fund are not expenses, but the money set aside
+    # is no longer free: subtract the month's net transfer separately.
+    goal_transfers = month_transfers(user_id, month_start, month_end)
+    free_balance = total_incomes - total_expenses - total_payments - goal_transfers['net']
     active_debts = sorted(active_debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
     overdue_count = len([d for d in active_debts if _is_overdue(d, today)])
     archived_count = Debt.query.filter_by(status='archived', user_id=user_id).count()
@@ -568,6 +579,7 @@ def get_finance_summary(user_id, year=None, month=None):
         'total_incomes': total_incomes,
         'total_expenses': total_expenses,
         'total_payments': total_payments,
+        'goal_transfers': goal_transfers,
         'free_balance': free_balance,
         'days_left': days_left,
         'nearest_debt': nearest_debt,

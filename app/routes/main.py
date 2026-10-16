@@ -7,25 +7,21 @@ from flask_login import current_user
 from extensions import db
 from app.models import (
     Debt,
-    EmergencyFundTransaction,
     Expense,
     FinancialGoal,
-    FinancialGoalTransaction,
     FinancialPlanPreference,
     Income,
     Payment,
 )
 from app.services.finance_summary_service import get_finance_summary
-from app.services.goal_cashflow_service import create_goal_cashflow_entry, delete_goal_cashflow_entries
+from app.services import goal_service
 from app.services.financial_plan_service import (
     build_financial_plan,
-    get_emergency_fund_balance,
-    get_financial_goal_balance,
     get_financial_plan_preference,
 )
 from app.services.debt_accrual_service import get_debt_state
 from app.services.debt_service import get_user_debt
-from app.utils import get_setting, income_source_suggestions, parse_date, parse_decimal
+from app.utils import get_setting, income_source_suggestions, parse_date, parse_decimal, record_goal_activity
 
 
 def is_local_test_user():
@@ -42,6 +38,66 @@ def _financial_plan_redirect(anchor=None):
     if anchor:
         location += f'#{anchor}'
     return redirect(location)
+
+
+def _goal_ref_or_404(key):
+    try:
+        return goal_service.get_goal_ref(current_user.id, key)
+    except goal_service.GoalNotFound:
+        abort(404)
+
+
+def goal_operation_form_values(form):
+    transaction_type = form.get('transaction_type', 'deposit')
+    amount = parse_decimal(form.get('amount'), 'Сумма')
+    transaction_date = parse_date(form.get('transaction_date'), 'Дата операции', required=True)
+    comment = str(form.get('comment', '')).strip() or None
+    return transaction_type, amount, transaction_date, comment
+
+
+def _goal_operation_redirect(ref):
+    # Operations started on the goals page return there; the plan stays the default.
+    if request.form.get('return_to') == 'goal':
+        return redirect(url_for('goal_detail', key=ref.key))
+    return _financial_plan_redirect('goals')
+
+
+def _add_goal_operation(ref):
+    try:
+        transaction = goal_service.add_operation(ref, *goal_operation_form_values(request.form))
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
+        return None
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Failed to save goal operation')
+        flash('Не удалось сохранить операцию цели.', 'danger')
+        return None
+    record_goal_activity('Добавил операцию цели', ref, transaction.id)
+    action_label = 'Пополнение' if transaction.transaction_type == 'deposit' else 'Снятие'
+    if ref.is_emergency:
+        flash(f'{action_label} финансовой подушки учтено.', 'success')
+    else:
+        flash(f'{action_label} цели «{ref.name}» учтено.', 'success')
+    return transaction
+
+
+def _delete_goal_operation(ref, transaction_id):
+    try:
+        goal_service.delete_operation(ref, transaction_id)
+    except goal_service.GoalNotFound:
+        abort(404)
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
+        return False
+    record_goal_activity('Удалил операцию цели', ref, transaction_id)
+    if ref.is_emergency:
+        flash('Операция финансовой подушки удалена.', 'success')
+    else:
+        flash(f'Операция цели «{ref.name}» удалена.', 'success')
+    return True
 
 
 def _financial_goal_form_values(form):
@@ -122,6 +178,7 @@ def init_app(app):
             total_expenses=total_expenses,
             total_payments=total_payments,
             free_balance=free_balance,
+            goal_transfers_net=summary['goal_transfers']['net'],
             days_left=days_left,
             daily_budget=daily_budget,
         )
@@ -160,6 +217,7 @@ def init_app(app):
             total_expenses=summary['total_expenses'],
             total_payments=summary['total_payments'],
             free_balance=summary['free_balance'],
+            goal_transfers=summary['goal_transfers'],
             days_left=summary['days_left'],
             daily_budget=(summary['free_balance'] / summary['days_left'] if summary['days_left'] > 0 else 0),
             archived_count=summary['archived_count'],
@@ -315,73 +373,17 @@ def init_app(app):
         if is_local_test_user():
             flash('Операции демо-подушки не сохраняются.', 'info')
             return _financial_plan_redirect('goals')
-        try:
-            transaction_type = request.form.get('transaction_type', 'deposit')
-            if transaction_type not in ('deposit', 'withdrawal'):
-                raise ValueError('Выберите корректный тип операции.')
-
-            amount = parse_decimal(request.form.get('amount'), 'Сумма')
-            if amount <= 0:
-                raise ValueError('Сумма операции должна быть больше нуля.')
-            if transaction_type == 'withdrawal' and amount > get_emergency_fund_balance(current_user.id):
-                raise ValueError('Нельзя снять больше, чем сейчас накоплено в подушке.')
-
-            transaction_date = parse_date(
-                request.form.get('transaction_date'),
-                'Дата операции',
-                required=True,
-            )
-            comment = str(request.form.get('comment', '')).strip() or None
-            if comment and len(comment) > 255:
-                raise ValueError('Комментарий не должен превышать 255 символов.')
-
-            cashflow_ids = create_goal_cashflow_entry(
-                current_user.id,
-                'Финансовая подушка',
-                transaction_type,
-                amount,
-                transaction_date,
-                comment,
-            )
-            db.session.add(EmergencyFundTransaction(
-                user_id=current_user.id,
-                transaction_type=transaction_type,
-                amount=amount,
-                transaction_date=transaction_date,
-                comment=comment,
-                **cashflow_ids,
-            ))
-            db.session.commit()
-            action_label = 'Пополнение' if transaction_type == 'deposit' else 'Снятие'
-            flash(f'{action_label} финансовой подушки учтено.', 'success')
-        except ValueError as exc:
-            db.session.rollback()
-            flash(str(exc), 'danger')
-        except Exception:
-            db.session.rollback()
-            current_app.logger.exception('Failed to save emergency fund transaction')
-            flash('Не удалось сохранить операцию финансовой подушки.', 'danger')
-        return _financial_plan_redirect('goals')
+        ref = goal_service.get_goal_ref(current_user.id, goal_service.EMERGENCY_KEY)
+        _add_goal_operation(ref)
+        return _goal_operation_redirect(ref)
 
     @app.route('/financial-plan/emergency-fund/<int:transaction_id>/delete', methods=['POST'])
     def delete_emergency_fund_transaction(transaction_id):
         if is_local_test_user():
             abort(404)
-        transaction = EmergencyFundTransaction.query.filter_by(
-            id=transaction_id,
-            user_id=current_user.id,
-        ).first()
-        if not transaction:
-            abort(404)
-        current_balance = get_emergency_fund_balance(current_user.id)
-        if transaction.transaction_type == 'deposit' and transaction.amount > current_balance:
-            flash('Сначала удалите связанные снятия: без этого остаток станет отрицательным.', 'danger')
-            return _financial_plan_redirect('goals')
-        delete_goal_cashflow_entries([transaction])
-        db.session.delete(transaction)
-        db.session.commit()
-        flash('Операция финансовой подушки удалена.', 'success')
-        return _financial_plan_redirect('goals')
+        ref = goal_service.get_goal_ref(current_user.id, goal_service.EMERGENCY_KEY)
+        _delete_goal_operation(ref, transaction_id)
+        return _goal_operation_redirect(ref)
 
     @app.route('/financial-plan/goals/emergency/edit', methods=['POST'])
     def edit_emergency_goal():
@@ -474,7 +476,6 @@ def init_app(app):
         if goal is None:
             abort(404)
         name = goal.name
-        delete_goal_cashflow_entries(goal.transactions)
         db.session.delete(goal)
         db.session.flush()
         _normalize_financial_goal_priorities(current_user.id)
@@ -514,70 +515,17 @@ def init_app(app):
         if is_local_test_user():
             flash('Операции демо-целей не сохраняются.', 'info')
             return _financial_plan_redirect('goals')
-        goal = FinancialGoal.query.filter_by(id=goal_id, user_id=current_user.id).first()
-        if goal is None:
-            abort(404)
-        try:
-            transaction_type = request.form.get('transaction_type', 'deposit')
-            if transaction_type not in ('deposit', 'withdrawal'):
-                raise ValueError('Выберите корректный тип операции.')
-            amount = parse_decimal(request.form.get('amount'), 'Сумма')
-            if amount <= 0:
-                raise ValueError('Сумма операции должна быть больше нуля.')
-            balance = get_financial_goal_balance(goal.id, current_user.id)
-            if transaction_type == 'withdrawal' and amount > balance:
-                raise ValueError(f'Нельзя снять больше, чем накоплено на цель «{goal.name}».')
-            transaction_date = parse_date(request.form.get('transaction_date'), 'Дата операции', required=True)
-            comment = str(request.form.get('comment', '')).strip() or None
-            if comment and len(comment) > 255:
-                raise ValueError('Комментарий не должен превышать 255 символов.')
-            cashflow_ids = create_goal_cashflow_entry(
-                current_user.id,
-                goal.name,
-                transaction_type,
-                amount,
-                transaction_date,
-                comment,
-            )
-            db.session.add(FinancialGoalTransaction(
-                goal_id=goal.id,
-                transaction_type=transaction_type,
-                amount=amount,
-                transaction_date=transaction_date,
-                comment=comment,
-                **cashflow_ids,
-            ))
-            db.session.commit()
-            action_label = 'Пополнение' if transaction_type == 'deposit' else 'Снятие'
-            flash(f'{action_label} цели «{goal.name}» учтено.', 'success')
-        except ValueError as exc:
-            db.session.rollback()
-            flash(str(exc), 'danger')
-        except Exception:
-            db.session.rollback()
-            current_app.logger.exception('Failed to save financial goal transaction')
-            flash('Не удалось сохранить операцию цели.', 'danger')
-        return _financial_plan_redirect('goals')
+        ref = _goal_ref_or_404(goal_id)
+        _add_goal_operation(ref)
+        return _goal_operation_redirect(ref)
 
     @app.route('/financial-plan/goals/<int:goal_id>/transactions/<int:transaction_id>/delete', methods=['POST'])
     def delete_financial_goal_transaction(goal_id, transaction_id):
         if is_local_test_user():
             abort(404)
-        goal = FinancialGoal.query.filter_by(id=goal_id, user_id=current_user.id).first()
-        if goal is None:
-            abort(404)
-        transaction = FinancialGoalTransaction.query.filter_by(id=transaction_id, goal_id=goal.id).first()
-        if transaction is None:
-            abort(404)
-        balance = get_financial_goal_balance(goal.id, current_user.id)
-        if transaction.transaction_type == 'deposit' and transaction.amount > balance:
-            flash('Сначала удалите связанные снятия: без этого остаток станет отрицательным.', 'danger')
-            return _financial_plan_redirect('goals')
-        delete_goal_cashflow_entries([transaction])
-        db.session.delete(transaction)
-        db.session.commit()
-        flash(f'Операция цели «{goal.name}» удалена.', 'success')
-        return _financial_plan_redirect('goals')
+        ref = _goal_ref_or_404(goal_id)
+        _delete_goal_operation(ref, transaction_id)
+        return _goal_operation_redirect(ref)
 
     @app.route('/mortgages')
     def mortgages():

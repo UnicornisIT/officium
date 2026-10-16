@@ -61,7 +61,7 @@ def create_app(config_overrides=None):
     app.jinja_env.filters['admin_event_tone'] = admin_event_tone
     app.jinja_env.filters['admin_event_icon'] = admin_event_icon
 
-    from app.routes import auth, admin, debts, documentation, payments, incomes, expenses, main, telegram_bot
+    from app.routes import auth, admin, debts, documentation, payments, incomes, expenses, goals, main, profile, telegram_bot
 
     auth.init_app(app)
     admin.init_app(app)
@@ -72,6 +72,8 @@ def create_app(config_overrides=None):
     expenses.init_app(app)
     telegram_bot.init_app(app, csrf=csrf)
     main.init_app(app)
+    profile.init_app(app)
+    goals.init_app(app)
     _register_root_icons(app)
 
     def error_response(status_code):

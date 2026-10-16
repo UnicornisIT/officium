@@ -65,6 +65,14 @@ function applyTheme(theme) {
     const btn = document.getElementById('themeToggleBtn');
     if (!btn) return;
 
+    if (btn.dataset.themeToggleStyle === 'menu') {
+        btn.innerHTML = theme === 'dark'
+            ? '<i class="bi bi-sun-fill" aria-hidden="true"></i>Светлая тема'
+            : '<i class="bi bi-moon-fill" aria-hidden="true"></i>Тёмная тема';
+        btn.title = theme === 'dark' ? 'Переключиться в светлую тему' : 'Переключиться в тёмную тему';
+        return;
+    }
+
     if (theme === 'dark') {
         btn.innerHTML = '<span class="nav-expand__compact"><i class="bi bi-sun-fill me-1"></i>Светлая тема</span><span class="nav-expand__full" aria-hidden="true"><i class="bi bi-sun-fill"></i>Светлая тема</span>';
         btn.title = 'Переключиться в светлую тему';
@@ -72,6 +80,31 @@ function applyTheme(theme) {
         btn.innerHTML = '<span class="nav-expand__compact"><i class="bi bi-moon-fill me-1"></i>Тёмная тема</span><span class="nav-expand__full" aria-hidden="true"><i class="bi bi-moon-fill"></i>Тёмная тема</span>';
         btn.title = 'Переключиться в тёмную тему';
     }
+}
+
+// iOS WebView (Safari and Telegram) applies :active only to elements with a touch
+// listener; the bottom nav uses :active for its press animation.
+function initBottomNavPress() {
+    document.querySelectorAll('.telegram-bottom-nav a, .telegram-bottom-nav__add').forEach((control) => {
+        control.addEventListener('touchstart', () => {}, { passive: true });
+    });
+}
+
+// Telegram photo URLs expire; fall back to the initial instead of a broken image.
+function initAvatarFallback() {
+    const useInitial = (img) => {
+        const avatar = img.closest('[data-avatar-initial]');
+        if (!avatar) return;
+        avatar.classList.remove('has-photo');
+        avatar.textContent = avatar.dataset.avatarInitial;
+    };
+    document.querySelectorAll('[data-avatar-initial] img').forEach((img) => {
+        if (img.complete && img.naturalWidth === 0) {
+            useInitial(img);
+        } else {
+            img.addEventListener('error', () => useInitial(img), { once: true });
+        }
+    });
 }
 
 function getTelegramWebApp() {
@@ -1337,15 +1370,18 @@ async function openHistoryModal(debtId, title) {
             const splitInfo = splitParts.length
                 ? `<div class="payment-split">${splitParts.join(' · ')}</div>`
                 : '';
+            const comment = p.comment
+                ? `<span class="history-comment" title="${escapeHtml(p.comment)}">${escapeHtml(p.comment)}</span>`
+                : '<span class="empty-value">—</span>';
             return `
                 <tr>
-                    <td>${p.payment_date}</td>
-                    <td>
+                    <td class="payment-history-date">${p.payment_date}</td>
+                    <td class="payment-history-amount">
                         <div class="fw-semibold text-success">+${formatMoney(p.amount)}${earlyBadge}</div>
                         ${splitInfo}
                     </td>
-                    <td>${formatMoney(p.remaining_after_payment)}</td>
-                    <td class="text-muted">${p.comment || '—'}</td>
+                    <td class="payment-history-remaining">${formatMoney(p.remaining_after_payment)}</td>
+                    <td class="payment-history-comment">${comment}</td>
                     <td class="payment-history-actions">
                         <button class="history-icon-btn history-icon-btn-edit" onclick="openEditPaymentModal(${debtId}, ${p.id})" title="Редактировать платеж">
                             <i class="bi bi-pencil"></i>
@@ -1784,6 +1820,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initTelegramMiniApp();
     initMobileViewport();
     initThemeToggle();
+    initAvatarFallback();
+    initBottomNavPress();
     initImpersonationBanner();
     initCommentTemplates();
     initNavbarLayout();

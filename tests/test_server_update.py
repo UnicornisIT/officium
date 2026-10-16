@@ -21,6 +21,7 @@ from app.services.server_update_service import (
     get_update_status,
     read_update_status,
     reconcile_update_status,
+    release_stage,
     request_server_update,
     validate_release_tag,
 )
@@ -130,6 +131,42 @@ class ServerUpdateServiceTestCase(unittest.TestCase):
             {'state': 'failed', 'tag': 'v1.3.0'}, current
         )
         self.assertEqual(still_relevant['state'], 'failed')
+
+    def test_alpha_tags_are_valid_ordered_and_labelled(self):
+        self.assertEqual(validate_release_tag('v0.0.14-alpha'), 'v0.0.14-alpha')
+        self.assertEqual(release_stage('v0.0.14-alpha'), {'key': 'alpha', 'label': 'Альфа-версия'})
+        self.assertEqual(release_stage('v0.0.15-alpha.2')['key'], 'alpha')
+        self.assertEqual(release_stage('v1.0.0-beta.1')['key'], 'beta')
+        self.assertEqual(release_stage('v1.2.3-rc.1')['label'], 'Релиз-кандидат')
+        self.assertEqual(release_stage('v1.0.0-preview')['key'], 'prerelease')
+        for stable in ('v0.0.13', '0.0.13', 'коммит abc123', None):
+            with self.subTest(tag=stable):
+                self.assertIsNone(release_stage(stable))
+
+        order = server_update_service._release_order
+        self.assertGreater(order('v0.0.14-alpha'), order('v0.0.13'))
+        self.assertLess(order('v0.0.14-alpha'), order('v0.0.14'))
+
+        # A failed update to v0.0.13 is superseded once the alpha is installed.
+        reconciled = reconcile_update_status(
+            {'state': 'failed', 'tag': 'v0.0.13'},
+            {'label': 'v0.0.14-alpha', 'tag': 'v0.0.14-alpha', 'tags': ['v0.0.14-alpha']},
+        )
+        self.assertEqual(reconciled['state'], 'success')
+        self.assertEqual(reconciled['tag'], 'v0.0.14-alpha')
+
+    @patch.object(server_update_service.requests, 'get')
+    def test_latest_alpha_release_is_returned_with_its_stage(self, get):
+        response = self.github_response('v0.0.14-alpha')
+        response.json.return_value['name'] = 'Release v0.0.14-alpha'
+        get.return_value = response
+
+        release = fetch_latest_release(self.config)
+
+        self.assertEqual(release['tag'], 'v0.0.14-alpha')
+        self.assertEqual(release['name'], 'Release v0.0.14-alpha')
+        self.assertEqual(release['stage']['key'], 'alpha')
+        self.assertTrue(release['url'].endswith('/releases/tag/v0.0.14-alpha'))
 
     def test_uncomparable_failed_status_is_never_hidden(self):
         status = {'state': 'failed', 'tag': 'release-candidate'}
@@ -319,6 +356,34 @@ class ServerUpdateRouteTestCase(unittest.TestCase):
         self.assertIn('Обновить до v1.1.0', html)
         self.assertIn('IPC из Flask', html)
         self.assertIn('name="csrf_token"', html)
+
+    @patch('app.routes.admin.get_update_status', return_value=None)
+    @patch('app.routes.admin.check_update_readiness', return_value={'ok': True, 'code': 'ready'})
+    @patch('app.routes.admin.get_current_release')
+    @patch('app.routes.admin.fetch_latest_release')
+    def test_alpha_release_is_marked_before_and_after_installation(self, latest, current, _check, _status):
+        latest.return_value = {
+            'tag': 'v0.0.14-alpha', 'name': 'Release v0.0.14-alpha', 'published_at': '',
+            'stage': release_stage('v0.0.14-alpha'),
+            'url': 'https://github.com/example-owner/officium/releases/tag/v0.0.14-alpha',
+        }
+        current.return_value = {'label': 'v0.0.13', 'tag': 'v0.0.13', 'tags': ['v0.0.13'], 'commit': 'abc123'}
+        self.login(self.superadmin_id)
+
+        html = self.client.get('/admin/server-update').get_data(as_text=True)
+
+        self.assertIn('Обновить до v0.0.14-alpha', html)
+        self.assertIn('data-release-stage="alpha"', html)
+        self.assertIn('data-release-stage-warning', html)
+        self.assertIn('(альфа-версия)?', html)
+
+        current.return_value = {
+            'label': 'v0.0.14-alpha', 'tag': 'v0.0.14-alpha', 'tags': ['v0.0.14-alpha'], 'commit': 'def456',
+        }
+        html = self.client.get('/admin/server-update').get_data(as_text=True)
+        self.assertIn('Уже установлена последняя версия', html)
+        self.assertEqual(html.count('data-release-stage="alpha"'), 2)
+        self.assertNotIn('data-release-stage-warning', html)
 
     def test_ordinary_admin_cannot_open_server_update(self):
         self.login(self.admin_id)

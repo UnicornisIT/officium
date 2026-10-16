@@ -178,7 +178,7 @@ class SchemaContractTestCase(unittest.TestCase):
             set(columns.keys()),
             {
                 'id', 'user_id', 'transaction_type', 'amount',
-                'transaction_date', 'comment', 'expense_id', 'income_id', 'created_at',
+                'transaction_date', 'comment', 'created_at',
             },
         )
         self.assertEqual(tuple(columns.transaction_type.type.enums), ('deposit', 'withdrawal'))
@@ -199,7 +199,7 @@ class SchemaContractTestCase(unittest.TestCase):
             set(transaction_columns.keys()),
             {
                 'id', 'goal_id', 'transaction_type', 'amount',
-                'transaction_date', 'comment', 'expense_id', 'income_id', 'created_at',
+                'transaction_date', 'comment', 'created_at',
             },
         )
         self.assertEqual(tuple(transaction_columns.transaction_type.type.enums), ('deposit', 'withdrawal'))

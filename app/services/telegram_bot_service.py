@@ -1136,6 +1136,7 @@ def _build_summary(user):
         f'Доходы: {_format_money(summary.get("total_incomes", 0))}',
         f'Расходы: {_format_money(summary.get("total_expenses", 0))}',
         f'Платежи по долгам: {_format_money(summary.get("total_payments", 0))}',
+        f'Отложено в цели: {_format_money((summary.get("goal_transfers") or {}).get("net", 0))}',
         f'Свободный остаток: {_format_money(summary.get("free_balance", 0))}',
         f'Задолженность по долгам: {_format_money(summary.get("total_remaining", 0))}',
     ]

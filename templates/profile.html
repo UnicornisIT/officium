@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% from '_avatar.html' import user_avatar, user_display_name %}
+{% block title %}Профиль — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="profile-page">
+    <section class="profile-card" aria-labelledby="profileTitle">
+        {{ user_avatar(current_user, 'user-avatar user-avatar--xl') }}
+        <div>
+            <h1 id="profileTitle">{{ user_display_name(current_user) }}</h1>
+            <p>Профиль в разработке. Скоро здесь можно будет рассказать о себе и настроить аккаунт.</p>
+        </div>
+    </section>
+</div>
+{% endblock %}

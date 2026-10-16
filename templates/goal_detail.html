@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+{% block title %}{{ goal.name }} — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="goals-page">
+    <a class="goals-back" href="{{ url_for('goals') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i>Все цели</a>
+    <header class="goals-header">
+        <div>
+            <span class="plan-section__kicker">{{ 'Финансовая подушка' if goal.is_emergency else 'Цель' }}</span>
+            <h1>{{ goal.name }}</h1>
+            <p>{{ goal.balance|money }} из {{ goal.target_amount|money }} · {{ '%.0f'|format(goal.progress) }}%</p>
+        </div>
+        <div class="goals-header__actions">
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#goalOperationEditModal"
+                    data-operation-mode="create" data-operation-type="deposit" data-operation-action="{{ operation_action }}">
+                <i class="bi bi-plus-lg me-1"></i>Пополнить
+            </button>
+            <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalOperationEditModal"
+                    data-operation-mode="create" data-operation-type="withdrawal" data-operation-action="{{ operation_action }}"
+                    {% if goal.balance <= 0 %}disabled{% endif %}>
+                <i class="bi bi-dash-lg me-1"></i>Снять
+            </button>
+        </div>
+    </header>
+
+    <div class="plan-progress" role="progressbar" aria-label="Прогресс цели" aria-valuenow="{{ '%.0f'|format(goal.progress) }}" aria-valuemin="0" aria-valuemax="100">
+        <span style="width: {{ goal.progress }}%"></span>
+    </div>
+
+    <section class="goal-forecast" aria-label="Прогноз">
+        <div><span>Осталось накопить</span><strong>{{ goal.forecast.gap|money }}</strong></div>
+        <div><span>Взнос в месяц</span><strong>{{ goal.monthly_contribution|money }}</strong></div>
+        <div><span>Целевая дата</span><strong>{{ goal.target_date.strftime('%d.%m.%Y') if goal.target_date else 'Без срока' }}</strong></div>
+        <div data-goal-forecast>
+            <span>Темп за {{ goal.forecast.pace_months }} мес.: {{ goal.forecast.pace|money }}/мес.</span>
+            <strong>
+                {% if goal.forecast.is_reached %}Цель достигнута
+                {% elif goal.forecast.pace_date %}{{ goal.forecast.pace_date.strftime('%m.%Y') }}
+                {% else %}Не достигается{% endif %}
+            </strong>
+        </div>
+        <div>
+            <span>По плановому взносу</span>
+            <strong>
+                {% if goal.forecast.is_reached %}Цель достигнута
+                {% elif goal.forecast.planned_date %}{{ goal.forecast.planned_date.strftime('%m.%Y') }}
+                {% else %}Взнос не задан{% endif %}
+            </strong>
+        </div>
+    </section>
+
+    <section class="card p-4 history-card goal-section" aria-labelledby="goalHistoryTitle">
+        <h2 class="history-card-title h5 mb-3" id="goalHistoryTitle">История операций</h2>
+        {% if history %}
+        <div class="history-table-wrapper">
+            <table class="table align-middle mb-0 history-table goal-history-table">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>Тип</th>
+                        <th>Сумма</th>
+                        <th>Остаток после</th>
+                        <th>Комментарий</th>
+                        <th class="text-center">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in history %}
+                    <tr data-operation-id="{{ item.id }}">
+                        <td class="history-date">{{ item.transaction_date.strftime('%d.%m.%Y') }}</td>
+                        <td class="history-category">{{ item.type_label }}</td>
+                        <td class="history-amount goal-amount--{{ item.transaction_type }}">{{ '+' if item.transaction_type == 'deposit' else '−' }}{{ item.amount|money }}</td>
+                        <td class="history-amount">{{ item.balance_after|money }}</td>
+                        {% set comment = item.comment|display %}
+                        <td class="history-comment-cell"><span class="history-comment" title="{{ comment }}">{{ comment }}</span></td>
+                        <td class="history-actions-cell">
+                            <div class="history-actions">
+                                <button type="button" class="history-icon-btn history-icon-btn-edit" title="Редактировать" aria-label="Редактировать операцию"
+                                        data-bs-toggle="modal" data-bs-target="#goalOperationEditModal"
+                                        data-operation-mode="edit"
+                                        data-operation-action="{{ url_for('edit_goal_operation', key=goal.key, transaction_id=item.id) }}"
+                                        data-operation-type="{{ item.transaction_type }}"
+                                        data-operation-amount="{{ item.amount }}"
+                                        data-operation-date="{{ item.transaction_date.isoformat() }}"
+                                        data-operation-comment="{{ item.comment or '' }}">
+                                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                                </button>
+                                <form method="post" action="{{ url_for('delete_goal_operation', key=goal.key, transaction_id=item.id) }}" class="history-delete-form" onsubmit="return confirm('Удалить эту операцию?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="history-icon-btn history-icon-btn-delete" title="Удалить" aria-label="Удалить операцию">
+                                        <i class="bi bi-trash" aria-hidden="true"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="history-empty">Операций пока нет.</p>
+        {% endif %}
+    </section>
+
+    {% if months %}
+    <section class="card p-4 history-card goal-section" aria-labelledby="goalMonthsTitle">
+        <h2 class="history-card-title h5 mb-3" id="goalMonthsTitle">По месяцам</h2>
+        <div class="history-table-wrapper">
+            <table class="table align-middle mb-0 history-table goal-months-table">
+                <thead>
+                    <tr><th>Месяц</th><th>Отложено</th><th>Снято</th><th>Итого</th><th>Остаток на конец</th></tr>
+                </thead>
+                <tbody>
+                    {% for month in months %}
+                    <tr data-month="{{ month.month_start.strftime('%Y-%m') }}">
+                        <td class="history-date">{{ month.label }}</td>
+                        <td class="history-amount">{{ month.deposited|money }}</td>
+                        <td class="history-amount">{{ month.withdrawn|money }}</td>
+                        <td class="history-amount">{{ month.net|money }}</td>
+                        <td class="history-amount">{{ month.balance_end|money }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+</div>
+
+<div class="modal fade" id="goalOperationEditModal" tabindex="-1" aria-labelledby="goalOperationEditTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" class="modal-content" id="goalOperationEditForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="return_to" value="goal">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="goalOperationEditTitle">Операция</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label" for="goalOperationEditType">Тип</label>
+                    <select class="form-select" id="goalOperationEditType" name="transaction_type">
+                        <option value="deposit">Пополнение</option>
+                        <option value="withdrawal">Снятие</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="goalOperationEditAmount">Сумма</label>
+                    <input class="form-control number-format" id="goalOperationEditAmount" name="amount" inputmode="decimal" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="goalOperationEditDate">Дата</label>
+                    <input class="form-control" id="goalOperationEditDate" name="transaction_date" type="date" required>
+                </div>
+                <div>
+                    <label class="form-label" for="goalOperationEditComment">Комментарий</label>
+                    <input class="form-control" id="goalOperationEditComment" name="comment" maxlength="255" placeholder="Необязательно">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.getElementById('goalOperationEditModal').addEventListener('show.bs.modal', (event) => {
+    const trigger = event.relatedTarget;
+    if (!trigger) return;
+    const isEdit = trigger.dataset.operationMode === 'edit';
+    document.getElementById('goalOperationEditForm').action = trigger.dataset.operationAction;
+    document.getElementById('goalOperationEditTitle').textContent = isEdit
+        ? 'Изменить операцию'
+        : (trigger.dataset.operationType === 'deposit' ? 'Пополнить' : 'Снять деньги');
+    document.getElementById('goalOperationEditType').value = trigger.dataset.operationType;
+    document.getElementById('goalOperationEditAmount').value = trigger.dataset.operationAmount || '';
+    document.getElementById('goalOperationEditDate').value = trigger.dataset.operationDate || '{{ today.isoformat() }}';
+    document.getElementById('goalOperationEditComment').value = trigger.dataset.operationComment || '';
+});
+</script>
+{% endblock %}

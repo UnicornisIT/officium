@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Цели — {{ app_name }}{% endblock %}
+
+{% macro forecast_text(forecast) -%}
+{% if forecast.is_reached %}Цель достигнута
+{%- elif forecast.pace_date %}При текущем темпе — {{ forecast.pace_date.strftime('%m.%Y') }}
+{%- elif forecast.planned_date %}По плановому взносу — {{ forecast.planned_date.strftime('%m.%Y') }}
+{%- else %}При текущем темпе цель не достигается
+{%- endif %}
+{%- endmacro %}
+
+{% block content %}
+<div class="goals-page">
+    <header class="goals-header">
+        <div>
+            <span class="plan-section__kicker">Переводы своих денег</span>
+            <h1>Цели</h1>
+            <p>Пополнения и снятия — это перемещение ваших денег, они не входят в доходы и расходы. Новые цели и их параметры настраиваются в финансовом плане.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{{ url_for('financial_plan') }}#goals"><i class="bi bi-signpost-split me-1"></i>Финансовый план</a>
+    </header>
+
+    {% if is_demo %}
+    <p class="text-muted">В демо-режиме цели не сохраняются.</p>
+    {% endif %}
+
+    <div class="goals-grid">
+        {% for goal in cards %}
+        <a class="goal-card" href="{{ url_for('goal_detail', key=goal.key) }}" data-goal-card="{{ goal.key }}">
+            <div class="goal-card__head">
+                <span class="goal-card__icon"><i class="bi {{ 'bi-shield-check' if goal.is_emergency else 'bi-bullseye' }}" aria-hidden="true"></i></span>
+                <h2>{{ goal.name }}</h2>
+                <strong>{{ '%.0f'|format(goal.progress) }}%</strong>
+            </div>
+            <div class="plan-progress" role="progressbar" aria-label="Прогресс цели" aria-valuenow="{{ '%.0f'|format(goal.progress) }}" aria-valuemin="0" aria-valuemax="100">
+                <span style="width: {{ goal.progress }}%"></span>
+            </div>
+            <dl class="goal-card__facts">
+                <div><dt>Накоплено</dt><dd>{{ goal.balance|money }}</dd></div>
+                <div><dt>Цель</dt><dd>{{ goal.target_amount|money }}</dd></div>
+                <div><dt>Взнос в месяц</dt><dd>{{ goal.monthly_contribution|money }}</dd></div>
+                <div><dt>Целевая дата</dt><dd>{{ goal.target_date.strftime('%d.%m.%Y') if goal.target_date else 'Без срока' }}</dd></div>
+            </dl>
+            <p class="goal-card__forecast"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i>{{ forecast_text(goal.forecast) }}</p>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -393,6 +393,13 @@ class RequestedReleaseTestCase(unittest.TestCase):
                 runner.verify_requested_release({}, 'v1.0.0', True)
         self.assertEqual(caught.exception.code, 'release_rejected')
 
+    def test_alpha_release_passes_tag_checks_and_latest_rule(self):
+        self.assertEqual(runner.validate_tag('v0.0.14-alpha'), 'v0.0.14-alpha')
+        with mock.patch.object(runner, 'latest_release_tag', return_value='v0.0.14-alpha'):
+            runner.verify_requested_release({}, 'v0.0.14-alpha', True)
+            with self.assertRaises(runner.UpdateFailure):
+                runner.verify_requested_release({}, 'v0.0.13', True)
+
     def test_pinned_root_update_only_needs_a_published_tag(self):
         with mock.patch.object(runner, 'latest_release_tag') as latest, \
                 mock.patch.object(runner, 'verify_tag_published') as published:
