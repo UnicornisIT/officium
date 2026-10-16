@@ -14,7 +14,9 @@ for (const role of ['admin', 'superadmin']) {
 
     await page.goto('/incomes');
     await expect(page).toHaveURL(/\/incomes/);
-    await expect(page.locator('.navbar-nav > .nav-item', { hasText: 'Админ-панель' })).toHaveCount(0);
+    // Only the avatar menu (itself a nav-item) may contain the panel link.
+    await expect(page.locator('.navbar-nav > .nav-item:not(.user-menu)', { hasText: 'Админ-панель' })).toHaveCount(0);
+    await expect(page.locator('#userMenu [data-admin-panel-link]')).toBeHidden();
 
     const toggle = page.locator('#userMenuToggle');
     await toggle.click();
