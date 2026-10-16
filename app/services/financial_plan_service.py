@@ -17,14 +17,13 @@ from app.models import (
 from app.services.debt_schedule_service import build_debt_payment_schedule
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import paid_toward_payment_cycle
-from app.utils import EXPENSE_CATEGORIES, INCOME_CATEGORIES, format_currency
+from app.utils import EXPENSE_CATEGORIES, INCOME_CATEGORY_LABELS, format_currency
 from extensions import db
 
 
 MONEY = Decimal('0.01')
 MONTHS_PER_YEAR = Decimal('12')
 
-INCOME_CATEGORY_LABELS = dict(INCOME_CATEGORIES)
 EXPENSE_CATEGORY_LABELS = dict(EXPENSE_CATEGORIES)
 STRATEGY_LABELS = {
     'safe': 'Безопасная',
@@ -268,17 +267,6 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
             'allocation_is_balanced': allocation_balance == 0,
         },
     }
-
-
-def get_emergency_fund_balance(user_id):
-    return _decimal(_build_emergency_fund_summary(user_id)['balance'])
-
-
-def get_financial_goal_balance(goal_id, user_id):
-    goal = FinancialGoal.query.filter_by(id=goal_id, user_id=user_id).first()
-    if goal is None:
-        return None
-    return _decimal(_summarize_goal_transactions(goal.id)['balance'])
 
 
 def _build_emergency_fund_summary(user_id, period_start=None, period_end=None):
@@ -537,7 +525,6 @@ def _load_sources(user_id, period_start, period_end):
             Income.user_id == user_id,
             Income.income_date >= period_start,
             Income.income_date < period_end,
-            Income.category != 'goal_withdrawal',
         )
         .order_by(Income.income_date.asc(), Income.id.asc())
         .all()

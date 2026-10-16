@@ -30,7 +30,7 @@
             <span class="balance-hero__status">{{ 'Дефицит' if free_balance < 0 else 'Доступно' }}</span>
         </div>
         <strong class="balance-hero__amount">{{ free_balance|money }}</strong>
-        <p>{{ 'Расходы превышают доходы — стоит пересмотреть план.' if free_balance < 0 else 'После расходов и обязательных платежей.' }}</p>
+        <p>{{ 'Расходы превышают доходы — стоит пересмотреть план.' if free_balance < 0 else 'После расходов, платежей по долгам и переводов в цели.' }}</p>
         <div class="balance-hero__footer">
             <div>
                 <span>На каждый день</span>
@@ -58,6 +58,11 @@
             <span class="money-flow__icon"><i class="bi bi-credit-card"></i></span>
             <span class="money-flow__copy"><small>Платежи по долгам</small><strong>{{ total_payments|money }}</strong></span>
             <i class="bi bi-chevron-down money-flow__chevron"></i>
+        </a>
+        <a class="money-flow__item money-flow__item--goals" href="{{ url_for('goals') }}" data-goal-transfers>
+            <span class="money-flow__icon"><i class="bi bi-piggy-bank"></i></span>
+            <span class="money-flow__copy"><small>Отложено в цели за месяц</small><strong>{{ goal_transfers_net|money }}</strong></span>
+            <i class="bi bi-chevron-right money-flow__chevron"></i>
         </a>
     </nav>
 

@@ -66,6 +66,8 @@ ENTITY_LABELS = {
     'payment': 'Платёж',
     'expense': 'Расход',
     'income': 'Доход',
+    'goal_transaction': 'Операция цели',
+    'emergency_fund_transaction': 'Операция подушки',
     'server_update': 'Обновление сервера',
     'setting': 'Настройка',
     'dictionary': 'Справочник',

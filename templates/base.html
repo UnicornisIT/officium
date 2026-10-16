@@ -71,6 +71,9 @@
             <a href="{{ url_for('mortgages') }}" class="{% if request.path == '/mortgages' %}active{% endif %}">
                 <i class="bi bi-bank"></i><span>Ипотека</span>
             </a>
+            <a href="{{ url_for('goals') }}" class="{% if request.path.startswith('/goals') %}active{% endif %}">
+                <i class="bi bi-bullseye"></i><span>Цели</span>
+            </a>
             {% if archive_enabled %}<a href="{{ url_for('archive') }}" class="{% if request.path == '/archive' %}active{% endif %}">
                 <i class="bi bi-archive"></i><span>Архив</span>
             </a>{% endif %}
@@ -147,6 +150,12 @@
                     <a class="nav-link nav-expand {% if request.path == '/financial-plan' %}active{% endif %}" href="{{ url_for('financial_plan') }}">
                         <span class="nav-expand__compact"><i class="bi bi-signpost-split me-1"></i>Финансовый план</span>
                         <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-signpost-split"></i>Финансовый план</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link nav-expand {% if request.path.startswith('/goals') %}active{% endif %}" href="{{ url_for('goals') }}">
+                        <span class="nav-expand__compact"><i class="bi bi-bullseye me-1"></i>Цели</span>
+                        <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-bullseye"></i>Цели</span>
                     </a>
                 </li>
                 {% if archive_enabled %}

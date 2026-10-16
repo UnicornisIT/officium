@@ -3553,7 +3553,7 @@ textarea.form-control {
 
 .money-flow {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
 }
 
@@ -3577,6 +3577,7 @@ textarea.form-control {
 .money-flow__item:nth-child(1) { animation-delay: 0.28s; }
 .money-flow__item:nth-child(2) { animation-delay: 0.38s; }
 .money-flow__item:nth-child(3) { animation-delay: 0.48s; }
+.money-flow__item:nth-child(4) { animation-delay: 0.58s; }
 
 .money-flow__item:hover {
     border-color: var(--border-hov);
@@ -3611,6 +3612,11 @@ textarea.form-control {
 .money-flow__item--expense .money-flow__icon {
     color: var(--danger);
     background: color-mix(in srgb, var(--danger) 11%, var(--bg-card));
+}
+
+.money-flow__item--goals .money-flow__icon {
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, var(--bg-card));
 }
 
 .money-flow__item--payment .money-flow__icon {
@@ -6959,3 +6965,144 @@ html[data-theme="dark"] .toast {
 
 .comment-templates { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .comment-templates .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Цели ── */
+.goals-page {
+    display: grid;
+    gap: 1.25rem;
+}
+.goals-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.goals-header h1 {
+    margin: 0.2rem 0 0.35rem;
+    overflow-wrap: anywhere;
+}
+.goals-header p {
+    max-width: 640px;
+    margin: 0;
+    color: var(--text-muted);
+}
+.goals-header__actions,
+.plan-goals__header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.goals-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-muted);
+    text-decoration: none;
+}
+.goals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+.goal-card {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1.15rem;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    color: var(--text);
+    background: var(--bg-card);
+    text-decoration: none;
+    transition: var(--transition);
+}
+.goal-card:hover,
+.goal-card:focus-visible {
+    border-color: color-mix(in srgb, var(--primary) 50%, var(--border));
+    color: var(--text);
+}
+.goal-card__head {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+}
+.goal-card__head h2 {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 1.05rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.goal-card__icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 14%, var(--bg-card-2));
+}
+.goal-card__facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+    margin: 0;
+}
+.goal-card__facts dt,
+.goal-forecast span {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+.goal-card__facts dd {
+    margin: 0;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.goal-card__forecast {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+.goal-forecast {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.75rem;
+}
+.goal-forecast > div {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+}
+.goal-forecast strong {
+    white-space: nowrap;
+}
+.history-card .goal-history-table,
+.history-card .goal-months-table {
+    min-width: 640px;
+}
+.goal-amount--deposit { color: var(--success); }
+.goal-amount--withdrawal { color: var(--danger); }
+.plan-goal__details-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+@media (min-width: 768px) and (max-width: 1199.98px) {
+    .money-flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

@@ -511,13 +511,9 @@ class EmergencyFundTransaction(db.Model):
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     transaction_date = db.Column(db.Date, nullable=False, default=date.today)
     comment = db.Column(db.String(255), nullable=True)
-    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', ondelete='SET NULL'), nullable=True, unique=True)
-    income_id = db.Column(db.Integer, db.ForeignKey('incomes.id', ondelete='SET NULL'), nullable=True, unique=True)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     user = db.relationship('User', back_populates='emergency_fund_transactions')
-    expense = db.relationship('Expense', foreign_keys=[expense_id])
-    income = db.relationship('Income', foreign_keys=[income_id])
 
     def __repr__(self):
         return f'<EmergencyFundTransaction user={self.user_id} {self.transaction_type} {self.amount}>'
@@ -568,13 +564,9 @@ class FinancialGoalTransaction(db.Model):
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     transaction_date = db.Column(db.Date, nullable=False, default=date.today)
     comment = db.Column(db.String(255), nullable=True)
-    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', ondelete='SET NULL'), nullable=True, unique=True)
-    income_id = db.Column(db.Integer, db.ForeignKey('incomes.id', ondelete='SET NULL'), nullable=True, unique=True)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     goal = db.relationship('FinancialGoal', back_populates='transactions')
-    expense = db.relationship('Expense', foreign_keys=[expense_id])
-    income = db.relationship('Income', foreign_keys=[income_id])
 
     def __repr__(self):
         return f'<FinancialGoalTransaction goal={self.goal_id} {self.transaction_type} {self.amount}>'

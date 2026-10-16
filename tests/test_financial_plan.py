@@ -368,7 +368,7 @@ class FinancialPlanTestCase(unittest.TestCase):
             self.assertEqual(preference.emergency_fund_target_amount, Decimal('100000.00'))
             self.assertEqual(preference.desired_monthly_savings, Decimal('7000.00'))
 
-    def test_plan_uses_selected_month_income_and_ignores_goal_withdrawals(self):
+    def test_plan_uses_selected_month_income_and_counts_every_income(self):
         with self.app.app_context():
             db.session.add_all([
                 Income(
@@ -392,7 +392,9 @@ class FinancialPlanTestCase(unittest.TestCase):
             september = build_financial_plan(self.user_id, preference, today=date(2026, 9, 10), year=2026, month=9)
 
         self.assertEqual(august['totals']['income'], 75000.0)
-        self.assertEqual(september['totals']['income'], 50000.0)
+        # A manually entered legacy 'goal_withdrawal' income is an income like any
+        # other: the plan counts it, as the dashboard and analytics do.
+        self.assertEqual(september['totals']['income'], 59000.0)
         self.assertEqual(september['period']['label'], 'сентябрь 2026')
 
         with self.client.session_transaction() as session:
@@ -598,23 +600,19 @@ class FinancialPlanTestCase(unittest.TestCase):
                 comment='Перевод в резерв',
             ).one()
             added_deposit_id = added_deposit.id
-            linked_expense_id = added_deposit.expense_id
-            added_withdrawal = EmergencyFundTransaction.query.filter_by(
-                user_id=self.user_id,
-                comment='Срочная покупка',
-            ).one()
-            linked_income_id = added_withdrawal.income_id
-            linked_expense = db.session.get(Expense, linked_expense_id)
-            linked_income = db.session.get(Income, linked_income_id)
-            self.assertEqual(linked_expense.category, 'savings')
-            self.assertEqual(linked_expense.amount, Decimal('3000.00'))
-            self.assertEqual(linked_income.category, 'goal_withdrawal')
-            self.assertEqual(linked_income.amount, Decimal('1000.00'))
+            # Transfers to and from the fund are not incomes or expenses.
+            self.assertEqual(Expense.query.filter_by(user_id=self.user_id, category='savings').count(), 0)
+            self.assertEqual(Income.query.filter_by(user_id=self.user_id, category='goal_withdrawal').count(), 0)
             report = get_finance_summary(self.user_id, year=2026, month=8)
-            self.assertEqual(report['total_expenses'], 46454.0)
-            self.assertEqual(report['total_incomes'], 76000.0)
-            self.assertTrue(any(item.category == 'savings' for item in report['expenses_this_month']))
-            self.assertTrue(any(item.category == 'goal_withdrawal' for item in report['incomes_this_month']))
+            self.assertEqual(report['total_expenses'], 43454.0)
+            self.assertEqual(report['total_incomes'], 75000.0)
+            self.assertEqual(report['goal_transfers']['deposits'], Decimal('3000.00'))
+            self.assertEqual(report['goal_transfers']['withdrawals'], Decimal('1000.00'))
+            self.assertEqual(report['goal_transfers']['net'], Decimal('2000.00'))
+            self.assertEqual(
+                report['free_balance'],
+                report['total_incomes'] - report['total_expenses'] - report['total_payments'] - Decimal('2000.00'),
+            )
         self.assertEqual(plan['totals']['emergency_current'], 12000.0)
         self.assertEqual(plan['goals'][0]['monthly_progress'], 2000.0)
         self.assertEqual(plan['goals'][0]['monthly_remaining'], 3000.0)
@@ -634,8 +632,6 @@ class FinancialPlanTestCase(unittest.TestCase):
         with self.app.app_context():
             preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
             plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
-            self.assertIsNone(db.session.get(Expense, linked_expense_id))
-            self.assertIsNotNone(db.session.get(Income, linked_income_id))
         self.assertEqual(plan['totals']['emergency_current'], 9000.0)
 
     def test_custom_goal_repeats_fund_operations_and_follows_emergency_priority(self):
@@ -691,11 +687,8 @@ class FinancialPlanTestCase(unittest.TestCase):
             self.assertEqual(custom_goal['monthly_remaining'], 0.0)
             savings_rows = [item for item in plan['allocation'] if item['kind'] == 'savings']
             self.assertEqual([item['label'] for item in savings_rows], ['Финансовая подушка'])
-            goal_transactions = FinancialGoalTransaction.query.filter_by(goal_id=goal_id).all()
-            linked_expense_ids = [item.expense_id for item in goal_transactions if item.expense_id]
-            linked_income_ids = [item.income_id for item in goal_transactions if item.income_id]
-            self.assertEqual(len(linked_expense_ids), 1)
-            self.assertEqual(len(linked_income_ids), 1)
+            self.assertEqual(Expense.query.filter_by(user_id=self.user_id, category='savings').count(), 0)
+            self.assertEqual(Income.query.filter_by(user_id=self.user_id, category='goal_withdrawal').count(), 0)
 
         invalid_response = self.client.post(f'/financial-plan/goals/{goal_id}/transactions', data={
             'transaction_type': 'withdrawal',
@@ -715,8 +708,6 @@ class FinancialPlanTestCase(unittest.TestCase):
         with self.app.app_context():
             self.assertIsNone(db.session.get(FinancialGoal, goal_id))
             self.assertEqual(FinancialGoalTransaction.query.filter_by(goal_id=goal_id).count(), 0)
-            self.assertIsNone(db.session.get(Expense, linked_expense_ids[0]))
-            self.assertIsNone(db.session.get(Income, linked_income_ids[0]))
 
 
 if __name__ == '__main__':
