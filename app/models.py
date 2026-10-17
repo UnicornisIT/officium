@@ -2,9 +2,20 @@ from calendar import monthrange
 from datetime import date
 
 from dateutil.relativedelta import relativedelta
+from flask import current_app, has_app_context
 from flask_login import UserMixin
 from extensions import db
 from app.time_utils import utc_now
+
+
+def _running_release():
+    """The release a new account starts at, so it never sees older release notes."""
+    from app.services.installed_release_service import changelog_version
+
+    if not has_app_context():
+        return None
+    version = changelog_version(current_app.config.get('APP_VERSION'))
+    return version if version and len(version) <= 64 else None
 
 
 class User(UserMixin, db.Model):
@@ -26,6 +37,9 @@ class User(UserMixin, db.Model):
     google_id = db.Column(db.String(50), unique=True, nullable=True)
     email = db.Column(db.String(120), nullable=True, index=True)
     avatar_url = db.Column(db.String(255), nullable=True)
+    # Last release whose "what's new" the user acknowledged; empty for accounts
+    # that existed before the feature, which then see the current release once.
+    last_seen_release = db.Column(db.String(64), nullable=True, default=_running_release)
 
     debts = db.relationship('Debt', back_populates='user', lazy=True, cascade='all, delete-orphan')
     incomes = db.relationship('Income', back_populates='user', lazy=True, cascade='all, delete-orphan')

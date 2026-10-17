@@ -1,0 +1,58 @@
+{# The notes of the running release, shown once; see app/services/whats_new_service.py. #}
+<div class="modal fade whats-new-modal" id="whatsNewModal" tabindex="-1" aria-labelledby="whatsNewModalTitle" data-whats-new-version="{{ whats_new.version }}">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <span class="whats-new-modal__eyebrow">Обновление</span>
+                    <h2 class="modal-title" id="whatsNewModalTitle">Что нового в v{{ whats_new.version }}</h2>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                {% for section in whats_new.sections %}
+                <section class="whats-new-modal__section whats-new-modal__section--{{ section.kind }}" data-whats-new-section="{{ section.kind }}">
+                    <h3>{{ section.title }}</h3>
+                    <div class="whats-new-modal__notes">{{ section.html }}</div>
+                </section>
+                {% endfor %}
+            </div>
+            <div class="modal-footer">
+                <form method="post" action="{{ url_for('whats_new_seen') }}" class="whats-new-modal__form" data-whats-new-form>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <button type="submit" class="btn btn-primary">Понятно</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const modalElement = document.getElementById('whatsNewModal');
+        const form = modalElement && modalElement.querySelector('[data-whats-new-form]');
+        if (!modalElement || !form || !window.bootstrap) return;
+        let acknowledged = false;
+        // Any way of closing the window counts as seen; a failed request only
+        // means the notes come back on the next page.
+        const acknowledge = function () {
+            if (acknowledged) return;
+            acknowledged = true;
+            fetch(form.action, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Accept': 'application/json', 'X-CSRFToken': form.elements.csrf_token.value},
+                body: new FormData(form)
+            }).catch(function () { acknowledged = false; });
+        };
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            acknowledge();
+            bootstrap.Modal.getOrCreateInstance(modalElement).hide();
+        });
+        modalElement.addEventListener('hidden.bs.modal', acknowledge);
+        try {
+            bootstrap.Modal.getOrCreateInstance(modalElement).show();
+        } catch (_error) { /* The page stays usable without the window. */ }
+    });
+</script>
