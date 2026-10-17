@@ -58,6 +58,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: python-${{ matrix.python-version }}-evidence
+          # .coverage is a dotfile; upload-artifact skips hidden files by default.
+          include-hidden-files: true
           path: |
             test-results/
             .coverage
