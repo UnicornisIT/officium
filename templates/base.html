@@ -772,6 +772,7 @@
         }
     });
 </script>
+{% if whats_new and not request.path.startswith('/admin') %}{% include '_whats_new.html' %}{% endif %}
 {% block extra_js %}{% endblock %}
 </body>
 </html>

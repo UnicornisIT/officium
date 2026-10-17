@@ -3049,6 +3049,24 @@ html[data-theme="dark"] .user-menu__panel .dropdown-item.active {
 .modal-title { font-weight: 700; letter-spacing: -0.02em; }
 .btn-close { filter: invert(1) grayscale(1); }
 
+/* "What's new" window shown once after an update */
+.whats-new-modal .modal-header { align-items: flex-start; }
+.whats-new-modal .modal-title { margin: 2px 0 0; font-size: 1.2rem; overflow-wrap: anywhere; }
+.whats-new-modal__eyebrow { color: var(--text-muted); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.whats-new-modal__section + .whats-new-modal__section { margin-top: 18px; }
+.whats-new-modal__section h3 { margin: 0 0 8px; font-size: 0.95rem; font-weight: 750; }
+.whats-new-modal__section--added h3 { color: var(--success, #22c55e); }
+.whats-new-modal__section--changed h3 { color: var(--primary, #3b82f6); }
+.whats-new-modal__section--fixed h3 { color: var(--warning, #f59e0b); }
+.whats-new-modal__notes { min-width: 0; font-size: 0.88rem; line-height: 1.5; overflow-wrap: anywhere; }
+.whats-new-modal__notes ul,
+.whats-new-modal__notes ol { margin: 0; padding-left: 1.2rem; }
+.whats-new-modal__notes li + li { margin-top: 6px; }
+.whats-new-modal__notes p { margin: 0 0 8px; }
+.whats-new-modal__notes code { overflow-wrap: anywhere; }
+.whats-new-modal__form { width: 100%; margin: 0; }
+.whats-new-modal__form .btn { width: 100%; }
+
 /* Form controls */
 .form-control, .form-select {
     background: var(--bg-card-2);
