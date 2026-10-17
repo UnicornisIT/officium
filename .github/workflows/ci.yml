@@ -12,7 +12,7 @@ permissions:
 jobs:
   unit-integration:
     name: Python ${{ matrix.python-version }} unit/integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -24,8 +24,8 @@ jobs:
       DB_ENGINE: sqlite
       APP_TIMEZONE: Europe/Moscow
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -55,7 +55,7 @@ jobs:
           python -m flask db check
       - name: Upload Python evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-${{ matrix.python-version }}-evidence
           path: |
@@ -64,10 +64,10 @@ jobs:
 
   deployment-scripts:
     name: Deployment scripts (shellcheck, bats)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install shellcheck and bats
         run: sudo apt-get update && sudo apt-get install -y shellcheck bats
       - name: shellcheck
@@ -79,7 +79,7 @@ jobs:
 
   mysql-backup-restore:
     name: MySQL migrations and backup restore without PROCESS
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       mysql:
@@ -111,8 +111,8 @@ jobs:
       OFFICIUM_MYSQL_RESTORE_DATABASE: officium_restore_ci
       OFFICIUM_APP_USER: runner
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
           cache: pip
@@ -144,23 +144,23 @@ jobs:
           sudo --preserve-env=OFFICIUM_MYSQL_HOST,OFFICIUM_MYSQL_PORT,OFFICIUM_MYSQL_USER,OFFICIUM_MYSQL_PASSWORD,OFFICIUM_MYSQL_DATABASE,OFFICIUM_MYSQL_RESTORE_DATABASE,OFFICIUM_APP_USER "$PYTHON_BIN" tests/integration/mysql_backup_restore.py | tee test-results/mysql-backup-restore.log
       - name: Upload sanitized MySQL evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mysql-backup-restore-evidence
           path: test-results/mysql-backup-restore.log
 
   browser-e2e:
     name: Playwright Chromium Firefox WebKit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
           cache: pip
           cache-dependency-path: requirements.txt
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: python -m pip install --disable-pip-version-check -r requirements.txt
@@ -172,7 +172,7 @@ jobs:
         run: npm run test:e2e
       - name: Upload Playwright evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-evidence
           path: |
@@ -182,11 +182,11 @@ jobs:
 
   dependency-audit:
     name: Dependency audit (blocking)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
           cache: pip
@@ -197,7 +197,7 @@ jobs:
           python -m pip_audit -r requirements.txt --format json --output test-results/pip-audit-runtime.json
           python -m pip_audit -r requirements-build.txt --format json --output test-results/pip-audit-build.json
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dependency-audit-evidence
           path: test-results/pip-audit-*.json
