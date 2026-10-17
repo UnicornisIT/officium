@@ -1561,6 +1561,14 @@ html[data-theme="dark"] .admin-login-page {
 .admin-update-plan > form,
 .admin-update-plan > .alert,
 .admin-update-plan > button { margin: var(--admin-update-steps-gap) var(--admin-panel-padding) var(--admin-panel-padding); }
+/* The update and "remind later" actions stay visibly apart: a filled primary
+   button and a ghost secondary one, stacked full width on narrow screens. */
+.admin-update-actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; }
+.admin-update-actions > input[type="hidden"] { display: none; }
+/* Side by side they share the row; once the panel is too narrow each takes a full line. */
+.admin-update-actions .btn { flex: 1 1 12rem; }
+.admin-page .admin-update-actions__primary { box-shadow: 0 8px 20px color-mix(in srgb, #2563eb 28%, transparent); }
+.admin-page .admin-update-actions__later { color: var(--admin-text-soft); background: transparent; border-color: var(--admin-border); }
 
 .admin-login-page .app-navbar,
 .admin-login-page .app-footer { display: none !important; }
