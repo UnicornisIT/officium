@@ -17,6 +17,7 @@ from app.services.finance_summary_service import get_finance_summary
 from app.services import goal_service
 from app.services.financial_plan_service import (
     build_financial_plan,
+    current_window_daily,
     get_financial_plan_preference,
 )
 from app.services.debt_accrual_service import get_debt_state
@@ -164,6 +165,13 @@ def init_app(app):
         overdue_count = len([d for d in active_debts if d.is_overdue(today)])
 
         daily_budget = free_balance / days_left if days_left > 0 else 0
+        window_daily = None
+        if not is_local_test_user():
+            try:
+                window_daily = current_window_daily(current_user.id, today=today)
+            except Exception:
+                db.session.rollback()
+                current_app.logger.exception('Failed to build the pay window daily limit')
         return render_template('index.html',
             debts=active_debts,
             total_remaining=total_remaining,
@@ -181,6 +189,7 @@ def init_app(app):
             goal_transfers_net=summary['goal_transfers']['net'],
             days_left=days_left,
             daily_budget=daily_budget,
+            window_daily=window_daily,
         )
 
     @app.route('/finance')

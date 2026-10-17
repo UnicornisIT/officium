@@ -13,7 +13,6 @@
         <div>
             <span class="dashboard-v2__eyebrow">Финансы · {{ month_start.strftime('%m.%Y') }}</span>
             <h1>Деньги под контролем</h1>
-            <p>Главное за месяц — без лишних цифр и сложных отчётов.</p>
         </div>
     </header>
 
@@ -27,6 +26,17 @@
         <strong class="balance-hero__amount">{{ free_balance|money }}</strong>
         <p>{{ 'Расходы превышают доходы — стоит пересмотреть план.' if free_balance < 0 else 'После расходов, платежей по долгам и переводов в цели.' }}</p>
         <div class="balance-hero__footer">
+            {% if window_daily %}
+            {% set window_days = window_daily.days_left %}
+            <div title="По финансовому плану: повседневные деньги текущего периода выплат минус записанные траты">
+                <span>На каждый день до {% if window_daily.end %}{% if window_daily.end_is_estimated %}~{% endif %}{{ window_daily.end.strftime('%d.%m') }}{% else %}поступления{% endif %}</span>
+                <strong>{{ window_daily.daily|money }}</strong>
+            </div>
+            <div>
+                <span>До следующего поступления</span>
+                <strong>{{ window_days }} {{ 'день' if window_days % 10 == 1 and window_days % 100 != 11 else ('дня' if window_days % 10 in [2,3,4] and window_days % 100 not in [12,13,14] else 'дней') }}</strong>
+            </div>
+            {% else %}
             <div>
                 <span>На каждый день</span>
                 <strong>{{ daily_budget|money }}</strong>
@@ -35,7 +45,9 @@
                 <span>Осталось</span>
                 <strong>{{ days_left }} {{ 'день' if days_left == 1 else ('дня' if days_left in [2,3,4] else 'дней') }}</strong>
             </div>
+            {% endif %}
         </div>
+
     </section>
 
     <nav class="money-flow" aria-label="Движение денег за месяц">

@@ -27,6 +27,9 @@ os.environ.update({
     'TELEGRAM_BOT_USERNAME': 'officium_playwright_bot',
     'TELEGRAM_LOGIN_ENABLED': 'true',
     'TELEGRAM_MINI_APP_ENABLED': 'true',
+    # Stand-in for https://web.telegram.org in telegram-web-frame.spec.js:
+    # browsers block a public HTTPS page from framing 127.0.0.1.
+    'TELEGRAM_WEB_FRAME_ANCESTORS': 'https://web.telegram.org http://telegram-web.localhost:5011',
 })
 
 from waitress import serve  # noqa: E402

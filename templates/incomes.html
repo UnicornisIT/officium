@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
+{% from '_info_hint.html' import info_hint %}
 {% block title %}Доходы — officium{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex align-items-center justify-content-between gap-3 mb-4">
     <div>
-        <h1 class="page-title mb-1"><i class="bi bi-wallet2 text-success me-2"></i>Доходы</h1>
-        <p class="text-muted mb-0">Фиксируйте поступления и следите за доходами за месяц.</p>
+        <h1 class="page-title mb-1"><i class="bi bi-wallet2 text-success me-2"></i>Доходы{{ info_hint('Фиксируйте поступления и следите за доходами за месяц.', 'hint-incomes') }}</h1>
     </div>
 </div>
 
@@ -55,6 +55,15 @@
                 <div class="mb-3">
                     <label class="form-label">Комментарий</label>
                     <textarea name="comment" class="form-control" rows="3" placeholder="Зарплата за апрель">{{ form_data.get('comment', edit_income.comment if edit_income and edit_income.comment else '') }}</textarea>
+                </div>
+                {% set selected_pay_period_mode = form_data.get('pay_period_mode', edit_income.pay_period_mode if edit_income and edit_income.pay_period_mode else '') %}
+                <div class="mb-3">
+                    <label class="form-label" for="incomePayPeriodMode">Вид поступления для плана</label>{{ info_hint('Финансовый план распределяет деньги до следующей основной выплаты (зарплаты или аванса). Укажите вручную, если основная выплата записана в другой категории или зарплату не нужно считать основной выплатой.', 'incomePayPeriodModeHelp') }}
+                    <select id="incomePayPeriodMode" name="pay_period_mode" class="form-select" aria-describedby="incomePayPeriodModeHelp">
+                        {% for value, label in pay_period_modes.items() %}
+                        <option value="{{ value }}" {% if selected_pay_period_mode == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div class="d-flex gap-2 align-items-center">
                     <button type="submit" class="btn btn-success">{{ 'Сохранить изменения' if edit_income else 'Сохранить доход' }}</button>

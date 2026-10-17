@@ -1,0 +1,15 @@
+{#
+    A round "i" button next to a title that shows an explanation.
+
+    ``hint_id`` must be unique on the page. The text stays in the page for
+    screen readers, tests and search; static/js/app.js opens it on hover,
+    focus or tap and keeps it inside the viewport.
+#}
+{% macro info_hint(text, hint_id, label='Пояснение') -%}
+<span class="info-hint" data-info-hint>
+    <button type="button" class="info-hint__button" aria-label="{{ label }}" aria-expanded="false" aria-controls="{{ hint_id }}" aria-describedby="{{ hint_id }}" data-info-hint-toggle>
+        <i class="bi bi-info-lg" aria-hidden="true"></i>
+    </button>
+    <span class="info-hint__bubble" id="{{ hint_id }}" role="tooltip" hidden>{{ text }}</span>
+</span>
+{%- endmacro %}

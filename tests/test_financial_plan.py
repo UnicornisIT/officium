@@ -230,18 +230,397 @@ class FinancialPlanTestCase(unittest.TestCase):
             plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 5))
 
         directions = plan['income_allocations'][0]['allocations']
+        # The next salary is expected on ~05.09: dates before it come first,
+        # then the living reserve; the 05.09 credit waits for that salary.
         self.assertEqual(
             [item['label'] for item in directions],
-            ['Коммунальные услуги', 'Помощь родственнику', 'Яндекс — Сплит', 'Сбер — Кредит'],
+            ['Коммунальные услуги', 'Помощь родственнику', 'Яндекс — Сплит', 'Повседневные расходы'],
         )
         self.assertEqual([item['amount'] for item in directions], [7000.0, 20000.0, 2086.0, 914.0])
         self.assertEqual(
             [item['due_date'] for item in directions],
-            [date(2026, 8, 10), date(2026, 8, 15), date(2026, 8, 28), date(2026, 9, 5)],
+            [date(2026, 8, 10), date(2026, 8, 15), date(2026, 8, 28), None],
         )
+        self.assertEqual(plan['income_allocations'][0]['reserve_missing'], 19086.0)
+        self.assertIn('Сбер — Кредит', [item['label'] for item in plan['awaiting_obligations']])
         self.assertIn('оплатить до 10.08.2026', directions[0]['detail'])
         self.assertIn('через 5 дн.', directions[0]['detail'])
         self.assertEqual(directions[0]['urgency'], 'upcoming')
+
+    def _replace_sources_with_october_scenario(self):
+        """Owner scenario: two jobs pay on 05.10 and 09.10, the advance came on 20.09."""
+        Debt.query.filter_by(user_id=self.user_id).delete()
+        Expense.query.filter_by(user_id=self.user_id).delete()
+        Income.query.filter_by(user_id=self.user_id).delete()
+        db.session.add_all([
+            Income(user_id=self.user_id, amount=Decimal('30000.00'), category='advance',
+                   source='Первая работа', income_date=date(2026, 9, 20)),
+            Income(user_id=self.user_id, amount=Decimal('24700.62'), category='salary',
+                   source='Первая работа', income_date=date(2026, 10, 5)),
+            Income(user_id=self.user_id, amount=Decimal('13038.50'), category='salary',
+                   source='Вторая работа', income_date=date(2026, 10, 9)),
+        ])
+        for title, amount, day in (
+            ('Музыка', '169.00', 4),
+            ('Банковская подписка', '399.00', 5),
+            ('Мобильная связь', '500.00', 8),
+            ('Нейросеть', '2000.00', 12),
+            ('Аренда', '15000.00', 25),
+        ):
+            db.session.add(Expense(
+                user_id=self.user_id,
+                amount=Decimal(amount),
+                category='other',
+                title=title,
+                expense_date=date(2026, 10, day),
+                is_monthly=True,
+                monthly_group_id=f'scenario-{day}',
+                generated_for_month='2026-10',
+            ))
+        db.session.add(Debt(
+            user_id=self.user_id,
+            bank_name='Банк',
+            debt_type='consumer_credit',
+            product_name='Кредит наличными',
+            total_amount=Decimal('100000.00'),
+            remaining_amount=Decimal('50000.00'),
+            minimum_payment=Decimal('5000.00'),
+            interest_rate=Decimal('20.00'),
+            next_payment_date=date(2026, 11, 5),
+            status='active',
+        ))
+        db.session.commit()
+
+    def test_owner_scenario_each_salary_covers_only_its_pay_window(self):
+        with self.app.app_context():
+            self._replace_sources_with_october_scenario()
+            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            plan = build_financial_plan(self.user_id, preference, today=date(2026, 10, 17))
+
+        # The September advance only finds the next incomes; it is not October income.
+        self.assertEqual(plan['totals']['income'], 37739.12)
+        self.assertEqual(len(plan['income_allocations']), 2)
+        self.assertEqual(plan['totals']['allocation_balance'], 0.0)
+        self.assertTrue(plan['totals']['allocation_is_balanced'])
+        for income in plan['income_allocations']:
+            self.assertAlmostEqual(sum(item['amount'] for item in income['allocations']), income['amount'], places=2)
+
+        first, second = plan['income_allocations'][1], plan['income_allocations'][0]
+        # The first job pays on 05.10, the second on 09.10, the advance is expected ~20.10.
+        self.assertEqual((first['next_income_date'], first['next_income_is_estimated']), (date(2026, 10, 9), False))
+        self.assertEqual((second['next_income_date'], second['next_income_is_estimated']), (date(2026, 10, 20), True))
+        self.assertEqual(
+            [(item['label'], item['amount'], item['stage']) for item in first['allocations']],
+            [
+                ('Банковская подписка', 399.0, 'due'),
+                ('Мобильная связь', 500.0, 'due'),
+                ('Нейросеть', 2000.0, 'ahead'),
+                ('Аренда', 15000.0, 'ahead'),
+                ('Музыка', 169.0, 'ahead'),
+                ('Повседневные расходы', 6632.62, 'living'),
+            ],
+        )
+        # 20 000 a month in October, 4 days until the second salary.
+        self.assertEqual(first['reserve'], 2580.65)
+        self.assertEqual(
+            [(item['label'], item['stage']) for item in second['allocations']],
+            [
+                ('Банк — Кредит наличными', 'ahead'),
+                ('Банковская подписка', 'ahead'),
+                ('Мобильная связь', 'ahead'),
+                ('Повседневные расходы', 'living'),
+            ],
+        )
+        self.assertEqual(second['reserve'], 7096.77)
+        self.assertEqual(plan['shortfalls'], [])
+        self.assertEqual(plan['totals']['window_shortfall'], 0.0)
+        self.assertEqual(plan['awaiting_obligations'], [])
+        # 04.10 comes before the first October income: the 20.09 advance reached it.
+        self.assertEqual(
+            [(item['label'], item['amount'], item['expected_income_date']) for item in plan['covered_by_previous_period']],
+            [('Музыка', 169.0, date(2026, 9, 20))],
+        )
+
+    def test_advance_pays_next_month_recurring_expenses_of_its_window(self):
+        with self.app.app_context():
+            self._replace_sources_with_october_scenario()
+            db.session.add_all([
+                Income(user_id=self.user_id, amount=Decimal('30000.00'), category='advance',
+                       source='Первая работа', income_date=date(2026, 10, 20)),
+                Expense(user_id=self.user_id, amount=Decimal('299.00'), category='subscriptions',
+                        title='Подписка', expense_date=date(2026, 10, 3), is_monthly=True,
+                        monthly_group_id='scenario-3', generated_for_month='2026-10'),
+                Expense(user_id=self.user_id, amount=Decimal('3000.00'), category='other',
+                        title='Помощь маме', expense_date=date(2026, 10, 1), is_monthly=True,
+                        monthly_group_id='scenario-1', generated_for_month='2026-10'),
+                # Mirrors the credit payment that the debt itself already plans.
+                Expense(user_id=self.user_id, amount=Decimal('5000.00'), category='loans',
+                        title='Кредит наличными', expense_date=date(2026, 10, 2), is_monthly=True,
+                        monthly_group_id='scenario-2', generated_for_month='2026-10'),
+            ])
+            db.session.commit()
+            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            plan = build_financial_plan(self.user_id, preference, today=date(2026, 10, 21))
+
+        # Month totals still count one occurrence of every recurring expense.
+        self.assertEqual(plan['totals']['regular_expenses'], 18367.0)
+        self.assertEqual(plan['totals']['family_support'], 3000.0)
+        self.assertEqual(plan['totals']['debt_payments'], 5000.0)
+        self.assertEqual(plan['totals']['obligations'], 26367.0)
+        self.assertAlmostEqual(
+            plan['totals']['living_budget'],
+            67739.12 - 26367.0 - plan['totals']['recommended_savings'] - plan['totals']['extra_repayment'],
+            places=2,
+        )
+        self.assertEqual(plan['totals']['allocation_balance'], 0.0)
+
+        advance = plan['income_allocations'][0]
+        self.assertEqual(advance['date'], date(2026, 10, 20))
+        self.assertEqual(advance['next_income_date'], date(2026, 11, 5))
+        self.assertTrue(advance['next_income_is_estimated'])
+        for income in plan['income_allocations']:
+            self.assertAlmostEqual(sum(item['amount'] for item in income['allocations']), income['amount'], places=2)
+
+        directed = [
+            (item['label'], item.get('due_date'))
+            for income in plan['income_allocations'] for item in income['allocations']
+        ]
+        # Next month's occurrences before ~05.11 take the month's free money.
+        self.assertIn(('Помощь маме', date(2026, 11, 1)), directed)
+        self.assertIn(('Подписка', date(2026, 11, 3)), directed)
+        subscription = next(
+            item for income in plan['income_allocations'] for item in income['allocations']
+            if item['label'] == 'Подписка'
+        )
+        self.assertIn('03.11.2026', subscription['detail'])
+        self.assertNotIn('Кредит наличными', [label for label, _ in directed])
+        # 03.10 is before the first October income: the September advance covered it.
+        self.assertNotIn(('Подписка', date(2026, 10, 3)), directed)
+        self.assertIn('Подписка', [item['label'] for item in plan['covered_by_previous_period']])
+        self.assertNotIn('Подписка', [item['label'] for item in plan['awaiting_obligations']])
+        self.assertEqual(plan['shortfalls'], [])
+
+    def test_advance_limits_what_the_salary_pays_and_next_month_payment_waits(self):
+        with self.app.app_context():
+            db.session.add(Income(
+                user_id=self.user_id,
+                amount=Decimal('25000.00'),
+                category='advance',
+                source='Основная работа',
+                income_date=date(2026, 8, 20),
+            ))
+            db.session.commit()
+            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+
+        advance, salary = plan['income_allocations']
+        self.assertEqual((salary['next_income_date'], salary['next_income_is_estimated']), (date(2026, 8, 20), False))
+        self.assertEqual(
+            [(item['label'], item['stage']) for item in salary['allocations'] if item.get('due_date')],
+            [('Коммунальные услуги', 'due'), ('Помощь родственнику', 'due'), ('Яндекс — Сплит', 'ahead')],
+        )
+        self.assertEqual(salary['allocations'][-1]['kind'], 'living')
+        self.assertEqual((advance['next_income_date'], advance['next_income_is_estimated']), (date(2026, 9, 5), True))
+        credit = next(item for item in advance['allocations'] if item['label'] == 'Сбер — Кредит')
+        self.assertEqual(credit['stage'], 'ahead')
+        awaiting = {item['label']: item for item in plan['awaiting_obligations']}
+        self.assertEqual(awaiting['Сбер — Кредит']['expected_income_date'], date(2026, 9, 5))
+        self.assertTrue(awaiting['Сбер — Кредит']['expected_income_is_estimated'])
+        self.assertEqual(
+            awaiting['Сбер — Кредит']['amount'] + awaiting['Сбер — Кредит']['prepaid'],
+            16454.0,
+        )
+        self.assertEqual(plan['totals']['allocation_balance'], 0.0)
+
+    def test_neighbouring_salary_history_bounds_windows_but_not_month_totals(self):
+        with self.app.app_context():
+            db.session.add_all([
+                Income(user_id=self.user_id, amount=Decimal('40000.00'), category='advance',
+                       source='Основная работа', income_date=date(2026, 7, 20)),
+                Income(user_id=self.user_id, amount=Decimal('60000.00'), category='salary',
+                       source='Основная работа', income_date=date(2026, 9, 5)),
+                Income(user_id=self.user_id, amount=Decimal('9000.00'), category='bonus',
+                       source='Премия', income_date=date(2026, 9, 1)),
+            ])
+            db.session.commit()
+            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+
+        self.assertEqual(plan['totals']['income'], 75000.0)
+        self.assertEqual(plan['totals']['allocated_income'], 75000.0)
+        self.assertEqual([item['date'] for item in plan['income_allocations']], [date(2026, 8, 5)])
+        salary = plan['income_allocations'][0]
+        # The July advance on the 20th makes the next income an advance on ~20.08,
+        # before the recorded September salary.
+        self.assertEqual((salary['next_income_date'], salary['next_income_is_estimated']), (date(2026, 8, 20), True))
+        awaiting = {item['label']: item for item in plan['awaiting_obligations']}
+        self.assertEqual(awaiting['Сбер — Кредит']['expected_income_date'], date(2026, 8, 20))
+        self.assertTrue(awaiting['Сбер — Кредит']['expected_income_is_estimated'])
+
+    def test_past_month_knows_the_next_salary_and_has_nothing_awaiting(self):
+        with self.app.app_context():
+            db.session.add_all([
+                Income(user_id=self.user_id, amount=Decimal('25000.00'), category='advance',
+                       source='Основная работа', income_date=date(2026, 8, 20)),
+                Income(user_id=self.user_id, amount=Decimal('75000.00'), category='salary',
+                       source='Основная работа', income_date=date(2026, 9, 5)),
+            ])
+            db.session.commit()
+            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            plan = build_financial_plan(self.user_id, preference, today=date(2026, 10, 10), year=2026, month=8)
+
+        self.assertEqual(plan['totals']['income'], 100000.0)
+        self.assertEqual(plan['awaiting_obligations'], [])
+        advance = plan['income_allocations'][0]
+        self.assertEqual((advance['next_income_date'], advance['next_income_is_estimated']), (date(2026, 9, 5), False))
+        self.assertTrue(plan['totals']['allocation_is_balanced'])
+
+    def test_partially_paid_debt_is_directed_with_its_remaining_amount(self):
+        with self.app.app_context():
+            debt = Debt.query.filter_by(user_id=self.user_id, debt_type='consumer_credit').one()
+            debt.remaining_amount = Decimal('95000.00')
+            db.session.add(Payment(
+                debt_id=debt.id,
+                amount=Decimal('5000.00'),
+                principal_amount=Decimal('5000.00'),
+                interest_amount=Decimal('0.00'),
+                fee_amount=Decimal('0.00'),
+                payment_date=date(2026, 8, 20),
+                is_early_repayment=False,
+                remaining_after_payment=Decimal('95000.00'),
+            ))
+            db.session.commit()
+            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+
+        # The 05.09 payment is due with the next salary; only what is still owed waits.
+        credit = next(item for item in plan['awaiting_obligations'] if item['label'] == 'Сбер — Кредит')
+        self.assertEqual(credit['amount'], 11454.0)
+        self.assertIn('уже внесено', credit['detail'])
+
+    def test_demo_plan_has_pay_periods_without_reading_salary_history(self):
+        from app.services.financial_plan_service import _everyday_spending, _load_pay_history
+
+        # Outside an application context any database access would fail.
+        self.assertIsNone(_load_pay_history(None, date(2026, 8, 1), date(2026, 9, 1)))
+        self.assertEqual(_everyday_spending(None, date(2026, 8, 1), date(2026, 8, 21)), Decimal('0.00'))
+        with self.app.app_context():
+            plan = build_financial_plan(None, today=date(2026, 8, 21))
+        self.assertTrue(plan['income_allocations'])
+        self.assertIn('next_income_date', plan['income_allocations'][0])
+        self.assertIn('window_daily', plan)
+        self.assertIn('window_shortfall', plan['totals'])
+        self.assertTrue(plan['totals']['allocation_is_balanced'])
+
+    def _login(self):
+        with self.client.session_transaction() as session:
+            session['_user_id'] = str(self.user_id)
+            session['_fresh'] = True
+
+    def test_income_form_saves_and_validates_the_pay_period_mark(self):
+        self._login()
+        response = self.client.post('/incomes', data={
+            'amount': '12000',
+            'category': 'other',
+            'income_date': '2026-08-25',
+            'source': 'Основной заказчик',
+            'pay_period_mode': 'start',
+        })
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            income = Income.query.filter_by(user_id=self.user_id, source='Основной заказчик').one()
+            income_id = income.id
+            self.assertEqual(income.pay_period_mode, 'start')
+
+        page = self.client.get(f'/incomes/edit/{income_id}').get_data(as_text=True)
+        self.assertIn('name="pay_period_mode"', page)
+        self.assertIn('value="start" selected', page)
+
+        response = self.client.post(f'/incomes/edit/{income_id}', data={
+            'amount': '12000',
+            'category': 'other',
+            'income_date': '2026-08-25',
+            'source': 'Основной заказчик',
+            'pay_period_mode': '',
+        })
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            self.assertIsNone(db.session.get(Income, income_id).pay_period_mode)
+
+        response = self.client.post(f'/incomes/edit/{income_id}', data={
+            'amount': '12000',
+            'category': 'other',
+            'income_date': '2026-08-25',
+            'pay_period_mode': 'weekly',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Выберите корректный вид поступления', response.get_data(as_text=True))
+
+    def test_marked_income_opens_a_pay_period_in_the_plan(self):
+        with self.app.app_context():
+            db.session.add(Income(
+                user_id=self.user_id,
+                amount=Decimal('12000.00'),
+                category='other',
+                source='Основной заказчик',
+                income_date=date(2026, 8, 12),
+                pay_period_mode='start',
+            ))
+            db.session.commit()
+            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+
+        # Marked as a main payment, the 12.08 income is the salary's next income.
+        salary = plan['income_allocations'][1]
+        self.assertEqual(salary['next_income_date'], date(2026, 8, 12))
+        self.assertFalse(salary['next_income_is_estimated'])
+
+    def test_window_daily_limit_counts_everyday_spending_only(self):
+        with self.app.app_context():
+            db.session.add_all([
+                Expense(user_id=self.user_id, amount=Decimal('1500.00'), category='products',
+                        title='Продукты', expense_date=date(2026, 8, 7), is_monthly=False),
+                Expense(user_id=self.user_id, amount=Decimal('900.00'), category='products',
+                        title='Продукты после даты', expense_date=date(2026, 8, 25), is_monthly=False),
+            ])
+            db.session.commit()
+            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            past = build_financial_plan(self.user_id, preference, today=date(2026, 10, 1), year=2026, month=8)
+
+        window = plan['window_daily']
+        self.assertEqual(window['start'], date(2026, 8, 5))
+        # Recurring expenses are obligations, and spending after today is not counted yet.
+        self.assertEqual(window['spent'], 1500.0)
+        living = sum(
+            item['amount'] for item in plan['income_allocations'][0]['allocations'] if item['kind'] == 'living'
+        )
+        self.assertEqual(window['living'], living)
+        # The next salary is expected on ~05.09.
+        self.assertEqual((window['end'], window['end_is_estimated']), (date(2026, 9, 5), True))
+        self.assertEqual(window['days_left'], 15)
+        self.assertAlmostEqual(window['daily'], round((living - 1500.0) / 15, 2), places=2)
+        self.assertIsNone(past['window_daily'])
+
+    def test_dashboard_shows_daily_money_until_the_next_income(self):
+        today = date.today()
+        with self.app.app_context():
+            db.session.add(Income(
+                user_id=self.user_id,
+                amount=Decimal('50000.00'),
+                category='salary',
+                source='Основная работа',
+                income_date=today,
+            ))
+            db.session.commit()
+        self._login()
+        dashboard = self.client.get('/').get_data(as_text=True)
+        self.assertIn('На каждый день до ', dashboard)
+        self.assertIn('До следующего поступления', dashboard)
+        self.assertNotIn('Осталось</span>', dashboard)
+        plan_page = self.client.get('/financial-plan').get_data(as_text=True)
+        self.assertIn('id="plan-window-daily"', plan_page)
+        self.assertIn('В день до следующего поступления', plan_page)
 
     def test_missing_rate_keeps_distribution_and_adds_explanation(self):
         with self.app.app_context():

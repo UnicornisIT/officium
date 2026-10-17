@@ -6,6 +6,8 @@ from unittest.mock import patch
 from html import unescape
 from urllib.parse import urldefrag
 
+from flask import render_template
+from flask_login import login_user
 from sqlalchemy.exc import OperationalError
 
 from app import create_app
@@ -96,6 +98,48 @@ class AdminNavigationTestCase(unittest.TestCase):
         html = self._client('emergency').get('/admin').get_data(as_text=True)
 
         self.assertIn('Аварийный вход', html)
+
+    def _topbar(self, role):
+        html = self._client(role).get('/admin').get_data(as_text=True)
+        return html, html.split('<header class="admin-topbar">', 1)[1].split('</header>', 1)[0]
+
+    def test_header_shows_the_same_avatar_menu_as_the_personal_cabinet(self):
+        for role, subtitle in (('superadmin', 'Супер-администратор'), ('admin', 'Администратор')):
+            with self.subTest(role=role):
+                html, topbar = self._topbar(role)
+                menu = topbar.split('id="userMenu"', 1)[1]
+
+                self.assertIn('class="dropdown user-menu"', topbar)
+                self.assertIn('id="userMenuToggle"', topbar)
+                self.assertIn('class="user-avatar user-menu__avatar"', topbar)
+                self.assertIn('data-avatar-initial="', topbar)
+                self.assertIn(f'<small class="user-menu__subtitle">{subtitle}</small>', menu)
+                self.assertIn('href="/" data-admin-menu-personal-link', menu)
+                self.assertIn('id="themeToggleBtn"', menu)
+                self.assertIn('href="/logout"', menu)
+                self.assertNotIn('Вернуться', menu)
+                self.assertNotIn('admin-topbar__avatar', html)
+                self.assertNotIn('admin-topbar__identity', html)
+                self.assertEqual(html.count('id="themeToggleBtn"'), 1)
+                self.assertEqual(html.count('id="userMenuToggle"'), 1)
+
+    def test_emergency_admin_menu_has_no_personal_cabinet(self):
+        _, topbar = self._topbar('emergency')
+        menu = topbar.split('id="userMenu"', 1)[1]
+
+        self.assertIn('<small class="user-menu__subtitle">Аварийный вход</small>', menu)
+        self.assertNotIn('data-admin-menu-personal-link', menu)
+        self.assertIn('href="/logout"', menu)
+
+    def test_impersonation_adds_return_item_to_the_admin_menu(self):
+        # The panel itself is closed while impersonating; the shell still offers the way back.
+        with self.app.test_request_context('/admin'):
+            login_user(db.session.get(User, int(self.session_ids['superadmin'])))
+            html = render_template('admin_base.html', is_impersonating=True)
+        menu = html.split('id="userMenu"', 1)[1]
+
+        self.assertIn('action="/admin/stop-impersonate"', menu)
+        self.assertIn('Вернуться', menu)
 
     def test_personal_cabinet_link_is_shown_to_database_admins_only(self):
         for role in ('superadmin', 'admin'):

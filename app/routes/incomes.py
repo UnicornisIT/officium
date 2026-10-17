@@ -2,6 +2,7 @@ from datetime import date
 from flask import abort, current_app, redirect, render_template, request, url_for
 from flask_login import current_user
 from app.models import Income
+from app.services.pay_period_service import PAY_PERIOD_MODE_LABELS, parse_pay_period_mode
 from app.services.history_month_service import month_key, resolve_active_month
 from app.utils import (
     INCOME_CATEGORIES,
@@ -41,6 +42,7 @@ def init_app(app):
                         raise ValueError('Источник не должен превышать 150 символов')
                     if comment and len(comment) > 2000:
                         raise ValueError('Комментарий не должен превышать 2000 символов')
+                    pay_period_mode = parse_pay_period_mode(request.form.get('pay_period_mode'))
 
                     income = Income(
                         user_id=current_user.id,
@@ -49,6 +51,7 @@ def init_app(app):
                         source=source,
                         income_date=income_date,
                         comment=comment,
+                        pay_period_mode=pay_period_mode,
                     )
                     db.session.add(income)
                     db.session.commit()
@@ -95,7 +98,8 @@ def init_app(app):
                                category_labels=INCOME_CATEGORY_LABELS,
                                success_message=success_message, error_message=error_message,
                                edit_income=None, form_data=form_data,
-                               source_suggestions=source_suggestions)
+                               source_suggestions=source_suggestions,
+                               pay_period_modes=PAY_PERIOD_MODE_LABELS)
 
     @app.route('/incomes/edit/<int:income_id>', methods=['GET', 'POST'])
     def edit_income(income_id):
@@ -124,12 +128,14 @@ def init_app(app):
                     raise ValueError('Источник не должен превышать 150 символов')
                 if comment and len(comment) > 2000:
                     raise ValueError('Комментарий не должен превышать 2000 символов')
+                pay_period_mode = parse_pay_period_mode(request.form.get('pay_period_mode'))
 
                 income.amount = amount
                 income.category = category
                 income.source = source
                 income.income_date = income_date
                 income.comment = comment
+                income.pay_period_mode = pay_period_mode
                 db.session.commit()
                 return redirect(url_for(
                     'incomes',
@@ -152,7 +158,8 @@ def init_app(app):
                                category_labels=INCOME_CATEGORY_LABELS,
                                success_message=success_message, error_message=error_message,
                                edit_income=income, form_data=form_data,
-                               source_suggestions=source_suggestions)
+                               source_suggestions=source_suggestions,
+                               pay_period_modes=PAY_PERIOD_MODE_LABELS)
 
     @app.route('/incomes/delete/<int:income_id>', methods=['POST'])
     def delete_income(income_id):

@@ -1,4 +1,4 @@
-{% from '_brand.html' import brand_mark %}{% from '_avatar.html' import user_avatar, user_display_name %}<!DOCTYPE html>
+{% from '_brand.html' import brand_mark %}{% from '_avatar.html' import user_avatar, user_display_name, user_menu %}<!DOCTYPE html>
 <html lang="ru" data-theme="dark" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
@@ -28,7 +28,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=9" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=20" rel="stylesheet">
     {% block extra_css %}{% endblock %}
 </head>
 <body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
@@ -85,7 +85,7 @@
             </a>
             {% if current_user.is_admin and not is_impersonating %}
             <a href="{{ url_for('admin_dashboard') }}" data-admin-panel-link>
-                <i class="bi bi-shield-lock"></i><span>Админ-панель</span>
+                <i class="bi bi-shield-lock"></i><span>Панель администратора</span>
             </a>
             {% endif %}
             <a href="{{ url_for('logout') }}" class="telegram-more-menu__logout">
@@ -172,28 +172,12 @@
                 </li>
                 {% endif %}
                 {% if current_user.is_authenticated %}
-                <li class="nav-item ms-2 dropdown user-menu">
-                    <button class="user-menu__toggle" type="button" id="userMenuToggle"
-                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
-                            aria-haspopup="true" aria-controls="userMenu" aria-label="Меню профиля: {{ user_display_name(current_user) }}">
-                        {{ user_avatar(current_user, 'user-avatar user-menu__avatar') }}
-                        <span class="user-menu__toggle-name">{{ user_display_name(current_user) }}</span>
-                        <i class="bi bi-chevron-down user-menu__chevron" aria-hidden="true"></i>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end user-menu__panel" id="userMenu" aria-labelledby="userMenuToggle">
-                        <li class="user-menu__header" aria-hidden="true">
-                            {{ user_avatar(current_user, 'user-avatar user-avatar--lg') }}
-                            <strong>{{ user_display_name(current_user) }}</strong>
-                        </li>
+                {% call user_menu(current_user, 'li', 'nav-item ms-2') %}
                         <li><a class="dropdown-item {% if request.path == '/profile' %}active{% endif %}" href="{{ url_for('profile') }}"><i class="bi bi-person-circle" aria-hidden="true"></i>Профиль</a></li>
                         {% if current_user.is_admin and not is_impersonating %}
-                        <li><a class="dropdown-item" href="{{ url_for('admin_dashboard') }}" data-admin-panel-link><i class="bi bi-shield-lock" aria-hidden="true"></i>Админ-панель</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('admin_dashboard') }}" data-admin-panel-link><i class="bi bi-shield-lock" aria-hidden="true"></i>Панель администратора</a></li>
                         {% endif %}
-                        <li><button id="themeToggleBtn" class="dropdown-item" type="button" data-theme-toggle-style="menu"><i class="bi bi-circle-half" aria-hidden="true"></i>Сменить тему</button></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item user-menu__logout" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Выйти</a></li>
-                    </ul>
-                </li>
+                {% endcall %}
                 {% else %}
                 <li class="nav-item ms-2">
                     <button id="themeToggleBtn" class="btn btn-outline-secondary btn-sm nav-expand" type="button" aria-label="Переключить тему"></button>
@@ -772,7 +756,7 @@
 
 {% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=7"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=8"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const params = new URLSearchParams(window.location.search);

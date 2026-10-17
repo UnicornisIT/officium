@@ -8,7 +8,6 @@
     <div>
         <p class="admin-page-kicker">Центр управления</p>
         <h1>Добро пожаловать, {{ current_user.first_name or current_user.username or 'администратор' }}</h1>
-        <p>Учётные записи, сеансы входа от имени пользователей, состояние сервиса и последние события. Финансовые данные пользователей здесь не показываются.</p>
     </div>
     <div class="admin-page-header__actions">
         {% if show_test_impersonation %}

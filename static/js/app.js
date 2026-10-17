@@ -432,6 +432,92 @@ function initCommentTemplates() {
     });
 }
 
+// Round "i" buttons next to titles: hover or focus shows the text, a tap
+// toggles it, Esc or a tap elsewhere closes it; the bubble stays on screen.
+function initInfoHints() {
+    const hints = Array.from(document.querySelectorAll('[data-info-hint]'));
+    if (!hints.length) return;
+    let pinned = null;
+
+    function place(hint) {
+        const button = hint.querySelector('[data-info-hint-toggle]');
+        const bubble = hint.querySelector('.info-hint__bubble');
+        const gap = 8;
+        const margin = 12;
+        const rect = button.getBoundingClientRect();
+        bubble.style.left = '0px';
+        bubble.style.top = '0px';
+        const width = bubble.offsetWidth;
+        const height = bubble.offsetHeight;
+        const viewportWidth = document.documentElement.clientWidth;
+        const viewportHeight = window.innerHeight;
+        let left = rect.left + rect.width / 2 - width / 2;
+        left = Math.max(margin, Math.min(left, viewportWidth - width - margin));
+        let top = rect.bottom + gap;
+        if (top + height > viewportHeight - margin && rect.top - gap - height > margin) {
+            top = rect.top - gap - height;
+        }
+        bubble.style.left = `${Math.round(left)}px`;
+        bubble.style.top = `${Math.round(top)}px`;
+    }
+
+    function open(hint) {
+        hints.forEach((other) => { if (other !== hint) close(other); });
+        const bubble = hint.querySelector('.info-hint__bubble');
+        bubble.hidden = false;
+        hint.classList.add('is-open');
+        hint.querySelector('[data-info-hint-toggle]').setAttribute('aria-expanded', 'true');
+        place(hint);
+    }
+
+    function close(hint) {
+        hint.querySelector('.info-hint__bubble').hidden = true;
+        hint.classList.remove('is-open');
+        hint.querySelector('[data-info-hint-toggle]').setAttribute('aria-expanded', 'false');
+        if (pinned === hint) pinned = null;
+    }
+
+    hints.forEach((hint) => {
+        const button = hint.querySelector('[data-info-hint-toggle]');
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (pinned === hint) {
+                close(hint);
+            } else {
+                open(hint);
+                pinned = hint;
+            }
+        });
+        hint.addEventListener('mouseenter', () => { if (!pinned) open(hint); });
+        hint.addEventListener('mouseleave', () => { if (pinned !== hint) close(hint); });
+        button.addEventListener('focus', () => {
+            if (hint.dataset.infoHintRefocus) {
+                delete hint.dataset.infoHintRefocus;
+                return;
+            }
+            if (!pinned) open(hint);
+        });
+        button.addEventListener('blur', () => { if (pinned !== hint) close(hint); });
+    });
+
+    document.addEventListener('click', (event) => {
+        if (pinned && !pinned.contains(event.target)) close(pinned);
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const openHint = hints.find((hint) => hint.classList.contains('is-open'));
+        if (openHint) {
+            close(openHint);
+            openHint.dataset.infoHintRefocus = '1';
+            openHint.querySelector('[data-info-hint-toggle]').focus({ preventScroll: true });
+        }
+    });
+    const reposition = () => hints.forEach((hint) => { if (hint.classList.contains('is-open')) place(hint); });
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, { passive: true });
+}
+
 function initImpersonationBanner() {
     const banner = document.querySelector('.impersonation-banner[data-expires-at]');
     if (!banner) return;
@@ -1823,6 +1909,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initAvatarFallback();
     initBottomNavPress();
     initImpersonationBanner();
+    initInfoHints();
     initCommentTemplates();
     initNavbarLayout();
     initOperationHistories();

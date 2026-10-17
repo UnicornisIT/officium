@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
+{% from '_info_hint.html' import info_hint %}
 {% block title %}Импорт выписки — officium{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex align-items-center justify-content-between gap-3 mb-4">
     <div>
-        <h1 class="page-title mb-1"><i class="bi bi-file-earmark-arrow-up text-primary me-2"></i>Импорт выписки</h1>
-        <p class="text-muted mb-0">Загрузите CSV, XLSX или PDF из Сбера, Т-Банка, Альфа-Банка или ВТБ.</p>
+        <h1 class="page-title mb-1"><i class="bi bi-file-earmark-arrow-up text-primary me-2"></i>Импорт выписки{{ info_hint('Загрузите CSV, XLSX или PDF из Сбера, Т-Банка, Альфа-Банка или ВТБ.', 'hint-expenses-import') }}</h1>
     </div>
     <a href="{{ url_for('expenses') }}" class="btn btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>К расходам

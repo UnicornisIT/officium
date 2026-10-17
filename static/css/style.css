@@ -392,6 +392,23 @@ body {
     gap: 18px;
 }
 
+.plan-layout--single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 992px) {
+    .plan-settings--wide .plan-settings__form {
+        grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr) auto;
+        align-items: end;
+        gap: 16px 20px;
+    }
+
+    .plan-settings--wide .plan-settings__form > button {
+        width: auto;
+        white-space: nowrap;
+    }
+}
+
 .plan-settings .form-label {
     margin-bottom: 6px;
     color: var(--text-dim);
@@ -1403,6 +1420,7 @@ body {
 .plan-income-allocation__row--due-overdue > div span { color: var(--warning); }
 .plan-income-allocation__row--due-today > div span { color: var(--success); }
 .plan-income-allocation__row--due-upcoming > div span { color: var(--primary); }
+.plan-income-allocation__row--due-ahead > div span { color: var(--success); }
 
 .plan-income-allocation__row > div {
     min-width: 0;
@@ -1444,6 +1462,104 @@ body {
     color: var(--primary);
 }
 
+.plan-income-allocation__window {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.74rem;
+}
+
+.plan-income-allocation__window i {
+    color: var(--primary);
+}
+
+.plan-window-notice {
+    display: grid;
+    gap: 2px;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text-muted);
+    border-radius: 8px;
+    background: var(--bg-card);
+}
+
+.plan-income-allocation .plan-window-notice {
+    margin: 12px 16px 0;
+}
+
+.plan-window-notice > strong {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.84rem;
+}
+
+.plan-window-notice > p {
+    margin: 0 0 4px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+}
+
+.plan-window-notice--shortfall {
+    border-left-color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 6%, var(--bg-card));
+}
+
+.plan-window-notice--shortfall > strong i,
+.plan-window-notice--shortfall .plan-window-notice__row > strong {
+    color: var(--danger);
+}
+
+.plan-window-notice--awaiting {
+    border-left-color: var(--warning);
+}
+
+.plan-window-notice--awaiting > strong i {
+    color: var(--warning);
+}
+
+.plan-window-notice--previous > strong i {
+    color: var(--text-muted);
+}
+
+.plan-window-notice__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border-top: 1px solid var(--border);
+}
+
+.plan-window-notice__row > div {
+    min-width: 0;
+}
+
+.plan-window-notice__row span,
+.plan-window-notice__row small {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.plan-window-notice__row span {
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.plan-window-notice__row small {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+}
+
+.plan-window-notice__row > strong {
+    flex: 0 0 auto;
+    font-size: 0.86rem;
+    white-space: nowrap;
+}
+
 @media (max-width: 1180px) {
     .plan-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .plan-metric:nth-child(3) { border-right: 0; }
@@ -1458,7 +1574,6 @@ body {
     .plan-header__actions { flex-direction: column; align-items: stretch; }
     .plan-layout,
     .plan-two-columns { grid-template-columns: 1fr; }
-    .plan-settings { order: -1; }
     .plan-settings__form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .plan-settings__form > fieldset,
     .plan-settings__form > button,
@@ -2339,6 +2454,18 @@ html[data-theme="dark"] .navbar {
     color: var(--text);
     background: var(--bg-card-2);
 }
+.user-menu__panel li + li {
+    margin-top: 2px;
+}
+/* The dark theme paints every .dropdown-item; in this menu only the hovered one is highlighted. */
+html[data-theme="dark"] .user-menu__panel .dropdown-item {
+    background: transparent !important;
+}
+html[data-theme="dark"] .user-menu__panel .dropdown-item:hover,
+html[data-theme="dark"] .user-menu__panel .dropdown-item:focus,
+html[data-theme="dark"] .user-menu__panel .dropdown-item.active {
+    background: var(--bg-card-2) !important;
+}
 .user-menu__panel .dropdown-divider {
     border-color: var(--border);
     margin: 0.3rem 0;
@@ -3048,13 +3175,18 @@ textarea.form-control {
 
 .early-repayment-plan-settings {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(190px, 0.7fr));
+    /* Hidden amount fields take no column, and the fields wrap inside a narrow modal. */
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
     gap: 16px;
     align-items: end;
     padding: 14px;
     border: 1px solid var(--border);
     border-radius: 9px;
     background: rgba(59, 130, 246, 0.06);
+}
+
+.early-repayment-plan-settings > :first-child {
+    grid-column: 1 / -1;
 }
 
 .early-repayment-plan-settings small {
@@ -3071,10 +3203,6 @@ textarea.form-control {
     font-weight: 700;
     color: var(--primary);
     background: color-mix(in srgb, var(--primary) 8%, var(--bg-card-2));
-}
-
-@media (max-width: 680px) {
-    .early-repayment-plan-settings { grid-template-columns: 1fr; }
 }
 
 .form-select option { background: var(--bg-card-2); }
@@ -3442,7 +3570,9 @@ textarea.form-control {
     font-size: clamp(2.75rem, 7vw, 5rem);
     font-weight: 800;
     line-height: 0.98;
-    letter-spacing: -0.065em;
+    /* Tight enough to read as one number; the space between thousands stays wider than between digits. */
+    letter-spacing: -0.04em;
+    font-variant-numeric: proportional-nums;
     animation: balance-content-reveal 0.65s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -7274,4 +7404,66 @@ html[data-theme="dark"] .toast {
     .telegram-bottom-nav__add > span i {
         transition: none;
     }
+}
+
+/* Round "i" next to a title: the explanation opens on hover, focus or tap. */
+.info-hint {
+    display: inline-flex;
+    position: relative;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+.info-hint__button {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--text-muted) 60%, transparent);
+    border-radius: 50%;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.info-hint__button:hover,
+.info-hint.is-open .info-hint__button {
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.info-hint__button:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.info-hint__bubble {
+    position: fixed;
+    z-index: 1080;
+    width: max-content;
+    max-width: min(340px, calc(100vw - 24px));
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    background: var(--bg-card);
+    box-shadow: 0 12px 28px rgba(2, 8, 23, 0.22);
+    font-size: 0.82rem;
+    font-weight: 400;
+    line-height: 1.45;
+    text-align: left;
+    white-space: normal;
+}
+
+.info-hint__bubble[hidden] {
+    display: none;
 }

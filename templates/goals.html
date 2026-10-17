@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_info_hint.html' import info_hint %}
 {% block title %}Цели — {{ app_name }}{% endblock %}
 
 {% macro forecast_text(forecast) -%}
@@ -14,8 +15,7 @@
     <header class="goals-header">
         <div>
             <span class="plan-section__kicker">Переводы своих денег</span>
-            <h1>Цели</h1>
-            <p>Пополнения и снятия — это перемещение ваших денег, они не входят в доходы и расходы. Новые цели и их параметры настраиваются в финансовом плане.</p>
+            <h1>Цели{{ info_hint('Пополнения и снятия — это перемещение ваших денег, они не входят в доходы и расходы. Новые цели и их параметры настраиваются в финансовом плане.', 'hint-goals') }}</h1>
         </div>
         <a class="btn btn-outline-secondary" href="{{ url_for('financial_plan') }}#goals"><i class="bi bi-signpost-split me-1"></i>Финансовый план</a>
     </header>

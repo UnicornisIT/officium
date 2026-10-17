@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_info_hint.html' import info_hint %}
 
 {% block title %}Финансовый план — officium{% endblock %}
 
@@ -7,8 +8,7 @@
     <header class="plan-header">
         <div>
             <div class="plan-eyebrow"><i class="bi bi-stars"></i> Автоматический расчет</div>
-            <h1>Финансовый план</h1>
-            <p>План на {{ plan.period.label }} на основе доходов, долгов и регулярных расходов.</p>
+            <h1>Финансовый план{{ info_hint('План на ' ~ plan.period.label ~ ' на основе доходов, долгов и регулярных расходов.', 'hint-plan') }}</h1>
         </div>
         <div class="plan-header__actions">
             <form method="get" class="plan-period" aria-label="Выбор месяца финансового плана">
@@ -105,19 +105,70 @@
             <strong>≈ {{ plan.totals.weekly_limit|money }}</strong>
             <small>на повседневные расходы</small>
         </div>
+        {% if plan.window_daily %}
+        {% set window = plan.window_daily %}
+        <div class="plan-metric" id="plan-window-daily">
+            <span>В день до следующего поступления</span>
+            <strong>≈ {{ window.daily|money }}</strong>
+            <small>
+                {% if window.end %}до {% if window.end_is_estimated %}~{% endif %}{{ window.end.strftime('%d.%m') }}, {% endif %}{{ window.days_left }} дн.: свободно {{ window.available|money }}{% if window.spent %} после трат {{ window.spent|money }}{% endif %}
+                · в среднем за год ≈ {{ plan.totals.daily_limit|money }}
+            </small>
+        </div>
+        {% else %}
         <div class="plan-metric">
             <span>Дневной ориентир</span>
             <strong>≈ {{ plan.totals.daily_limit|money }}</strong>
             <small>среднее за календарный год</small>
         </div>
+        {% endif %}
     </div>
+
+    <section class="plan-section plan-settings plan-settings--wide" id="plan-settings">
+        <div class="plan-section__header">
+            <div>
+                <span class="plan-section__kicker">Личные ограничения</span>
+                <h2>Настройки плана</h2>
+            </div>
+            <i class="bi bi-sliders2 plan-section__header-icon"></i>
+        </div>
+        <form method="post" action="{{ url_for('financial_plan', year=plan.period.year, month=plan.period.month) }}" class="plan-settings__form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div>
+                <label class="form-label" for="living_minimum">Минимум на жизнь</label>{{ info_hint('Из каждого поступления план откладывает долю этой суммы на дни до следующего поступления.', 'livingMinimumHelp') }}
+                <div class="input-group">
+                    <input id="living_minimum" name="living_minimum" type="text" inputmode="decimal"
+                           class="form-control number-format" value="{{ '{:.0f}'.format(plan.preferences.living_minimum) }}" aria-describedby="livingMinimumHelp" required>
+                    <span class="input-group-text">₽ / мес.</span>
+                </div>
+            </div>
+
+            <fieldset>
+                <legend class="form-label">Стратегия</legend>
+                <div class="plan-strategies">
+                    {% for value, label, icon in [('safe', 'Безопасная', 'bi-shield-check'), ('balanced', 'Сбалансированная', 'bi-distribute-horizontal'), ('aggressive', 'Погашение долгов', 'bi-lightning-charge')] %}
+                    <label>
+                        <input type="radio" name="strategy" value="{{ value }}"
+                               {% if plan.preferences.strategy == value %}checked{% endif %}>
+                        <span><i class="bi {{ icon }}"></i>{{ label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <button type="submit" class="btn btn-primary w-100" {% if plan.is_demo %}disabled{% endif %}>
+                <i class="bi bi-arrow-clockwise me-1"></i>Пересчитать план
+            </button>
+            {% if plan.is_demo %}<small class="text-muted">В демо-режиме используются стандартные настройки.</small>{% endif %}
+        </form>
+    </section>
 
     <section class="plan-section plan-income-receipts" id="salary-income">
         <div class="plan-section__header">
             <div>
                 <span class="plan-section__kicker">По факту поступления</span>
-                <h2>Распределение отдельных поступлений</h2>
-                <p>Сначала план предлагает ближайшие ежемесячные расходы и рассчитанные платежи по долгам, затем закрывает невыполненный план месяца по целям с учетом их приоритета и оставляет свободный остаток.</p>
+                <h2>Распределение отдельных поступлений{{ info_hint('Рекомендация для каждого поступления, от раннего к позднему: сначала сроки, которые уже наступили, и сроки до следующего поступления, затем «Минимум на жизнь» на эти дни, затем ближайшие следующие сроки заранее, цели и досрочное погашение. Остаток остается на повседневные расходы. Если денег не хватает, карточка предупреждает об этом.', 'hint-plan-income-allocation') }}</h2>
             </div>
             <span class="plan-source-badge"><i class="bi bi-link-45deg"></i> Связано с доходами</span>
         </div>
@@ -193,6 +244,16 @@
                         </div>
                         <strong>{{ income.amount|money }}</strong>
                     </div>
+                    <div class="plan-income-allocation__window">
+                        <i class="bi bi-calendar-event"></i>
+                        <span>
+                            {% if income.next_income_date %}
+                            Следующее поступление: {% if income.next_income_is_estimated %}~{% endif %}{{ income.next_income_date.strftime('%d.%m.%Y') }}{% if income.next_income_is_estimated %} (ожидается){% endif %}
+                            {% else %}
+                            Следующее поступление не найдено: расчет до конца месяца
+                            {% endif %}
+                        </span>
+                    </div>
                     <div class="plan-income-allocation__list">
                         {% for item in income.allocations %}
                         <div class="plan-income-allocation__row plan-income-allocation__row--{{ item.kind }}{% if item.urgency %} plan-income-allocation__row--due-{{ item.urgency }}{% endif %}">
@@ -204,6 +265,26 @@
                         <div class="plan-source-empty">Для этого поступления пока нет направлений.</div>
                         {% endfor %}
                     </div>
+                    {% if income.reserve_missing or income.shortfalls %}
+                    <div class="plan-window-notice plan-window-notice--shortfall">
+                        <strong><i class="bi bi-exclamation-triangle"></i>Не хватает денег</strong>
+                        {% if income.reserve_missing %}
+                        <div class="plan-window-notice__row">
+                            <div>
+                                <span>На жизнь до {% if income.next_income_is_estimated %}~{% endif %}{{ (income.next_income_date or plan.period.end).strftime('%d.%m.%Y') }}</span>
+                                <small>нужно {{ income.reserve_needed|money }} по «Минимуму на жизнь»</small>
+                            </div>
+                            <strong>{{ income.reserve_missing|money }}</strong>
+                        </div>
+                        {% endif %}
+                        {% for item in income.shortfalls %}
+                        <div class="plan-window-notice__row">
+                            <div><span>{{ item.label }}</span><small>{{ item.detail }}</small></div>
+                            <strong>{{ item.amount|money }}</strong>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                     {% if not plan.is_demo %}
                     <a href="{{ url_for('edit_income', income_id=income.id) }}" class="plan-income-allocation__link">
                         Открыть запись в доходах <i class="bi bi-arrow-up-right"></i>
@@ -217,11 +298,41 @@
                     <span>Добавьте зарплатное поступление здесь или создайте запись в разделе «Доходы».</span>
                 </div>
                 {% endfor %}
+
+                {% if plan.awaiting_obligations %}
+                <div class="plan-window-notice plan-window-notice--awaiting">
+                    <strong><i class="bi bi-hourglass-split"></i>Оплатит следующее поступление</strong>
+                    {% for item in plan.awaiting_obligations %}
+                    <div class="plan-window-notice__row">
+                        <div>
+                            <span>{{ item.label }}</span>
+                            <small>{{ item.detail }}{% if item.prepaid %} · уже оплачено заранее {{ item.prepaid|money }}{% endif %} · поступление {% if item.expected_income_is_estimated %}ожидается ~{% endif %}{{ item.expected_income_date.strftime('%d.%m.%Y') }}</small>
+                        </div>
+                        <strong>{{ item.amount|money }}</strong>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if plan.covered_by_previous_period %}
+                <div class="plan-window-notice plan-window-notice--previous">
+                    <strong><i class="bi bi-arrow-counterclockwise"></i>Оплачены из поступления прошлого месяца</strong>
+                    {% for item in plan.covered_by_previous_period %}
+                    <div class="plan-window-notice__row">
+                        <div>
+                            <span>{{ item.label }}</span>
+                            <small>{{ item.detail }} · поступление {{ item.expected_income_date.strftime('%d.%m.%Y') }}</small>
+                        </div>
+                        <strong>{{ item.amount|money }}</strong>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
         </div>
     </section>
 
-    <div class="plan-layout">
+    <div class="plan-layout plan-layout--single">
         <section class="plan-section plan-distribution">
             <div class="plan-section__header">
                 <div>
@@ -257,45 +368,6 @@
             {% endif %}
         </section>
 
-        <aside class="plan-section plan-settings">
-            <div class="plan-section__header">
-                <div>
-                    <span class="plan-section__kicker">Личные ограничения</span>
-                    <h2>Настройки плана</h2>
-                </div>
-                <i class="bi bi-sliders2 plan-section__header-icon"></i>
-            </div>
-            <form method="post" action="{{ url_for('financial_plan', year=plan.period.year, month=plan.period.month) }}" class="plan-settings__form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                <div>
-                    <label class="form-label" for="living_minimum">Минимум на жизнь</label>
-                    <div class="input-group">
-                        <input id="living_minimum" name="living_minimum" type="text" inputmode="decimal"
-                               class="form-control number-format" value="{{ '{:.0f}'.format(plan.preferences.living_minimum) }}" required>
-                        <span class="input-group-text">₽ / мес.</span>
-                    </div>
-                </div>
-
-                <fieldset>
-                    <legend class="form-label">Стратегия</legend>
-                    <div class="plan-strategies">
-                        {% for value, label, icon in [('safe', 'Безопасная', 'bi-shield-check'), ('balanced', 'Сбалансированная', 'bi-distribute-horizontal'), ('aggressive', 'Погашение долгов', 'bi-lightning-charge')] %}
-                        <label>
-                            <input type="radio" name="strategy" value="{{ value }}"
-                                   {% if plan.preferences.strategy == value %}checked{% endif %}>
-                            <span><i class="bi {{ icon }}"></i>{{ label }}</span>
-                        </label>
-                        {% endfor %}
-                    </div>
-                </fieldset>
-
-                <button type="submit" class="btn btn-primary w-100" {% if plan.is_demo %}disabled{% endif %}>
-                    <i class="bi bi-arrow-clockwise me-1"></i>Пересчитать план
-                </button>
-                {% if plan.is_demo %}<small class="text-muted">В демо-режиме используются стандартные настройки.</small>{% endif %}
-            </form>
-        </aside>
     </div>
 
     <section class="plan-section">
@@ -380,8 +452,7 @@
             <div class="plan-section__header">
                 <div>
                     <span class="plan-section__kicker">Накопления по приоритету</span>
-                    <h2>Цели</h2>
-                    <p>Подушка всегда идет первой. Для каждой цели учитываются план месяца, чистое пополнение, остаток до цели и доступная сумма.</p>
+                    <h2>Цели{{ info_hint('Подушка всегда идет первой. Для каждой цели учитываются план месяца, чистое пополнение, остаток до цели и доступная сумма.', 'hint-plan-goals') }}</h2>
                 </div>
                 <div class="plan-goals__header-actions">
                     {% if not plan.is_demo %}

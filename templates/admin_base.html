@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
-{% from 'admin/_macros.html' import icon, role_badge %}
+{% from 'admin/_macros.html' import icon %}
+{% from '_avatar.html' import user_menu %}
 
 {% block extra_css %}
-<link href="{{ url_for('static', filename='css/admin.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=17" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/admin.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=18" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
@@ -74,13 +75,20 @@
                 <strong>{% block admin_topbar_title %}Обзор{% endblock %}</strong>
             </div>
             <div class="admin-topbar__actions">
-                <button id="themeToggleBtn" class="admin-icon-button" type="button" aria-label="Переключить тему"></button>
-                <span class="admin-topbar__divider" aria-hidden="true"></span>
-                <span class="admin-topbar__avatar" aria-hidden="true">{{ (current_user.first_name or current_user.username or 'A')[:1]|upper }}</span>
-                <span class="admin-topbar__identity">
-                    <strong>{{ current_user.first_name or current_user.username or 'Администратор' }}</strong>
-                    {% if current_user.get_id() == 'admin' %}<span class="admin-badge admin-badge--warning" title="Вход по аварийному паролю">Аварийный вход</span>{% else %}{{ role_badge(current_user.role) }}{% endif %}
-                </span>
+                {% set admin_subtitle = 'Аварийный вход' if current_user.get_id() == 'admin' else current_user.role|admin_role %}
+                {% call user_menu(current_user, subtitle=admin_subtitle) %}
+                        {% if can_use_personal_cabinet %}
+                        <li><a class="dropdown-item" href="{{ url_for('index') }}" data-admin-menu-personal-link><i class="bi bi-house" aria-hidden="true"></i>Мой кабинет</a></li>
+                        {% endif %}
+                        {% if is_impersonating %}
+                        <li>
+                            <form method="post" action="{{ url_for('stop_impersonate') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="dropdown-item"><i class="bi bi-box-arrow-left" aria-hidden="true"></i>Вернуться</button>
+                            </form>
+                        </li>
+                        {% endif %}
+                {% endcall %}
             </div>
         </header>
 

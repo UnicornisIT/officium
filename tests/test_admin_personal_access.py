@@ -173,12 +173,12 @@ class AdminCabinetTestCase(AdminPersonalAccessTestCase):
                 self._login(self.ids[role])
                 html = self.client.get('/').get_data(as_text=True)
                 self.assertIn('data-admin-panel-link', html)
-                self.assertIn('Админ-панель', html)
+                self.assertIn('Панель администратора', html)
 
         self._login(self.ids['user'])
         html = self.client.get('/').get_data(as_text=True)
         self.assertNotIn('data-admin-panel-link', html)
-        self.assertNotIn('Админ-панель', html)
+        self.assertNotIn('Панель администратора', html)
 
     def test_plain_user_cannot_open_the_panel(self):
         self._login(self.ids['user'])

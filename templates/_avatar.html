@@ -14,3 +14,28 @@
 {%- if photo %}<img src="{{ photo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}{{ user_initial(user) }}{% endif -%}
 </span>
 {%- endmacro %}
+
+{# Аватар с выпадающим меню профиля: шапка личного кабинета и админ-панели.
+   Пункты, зависящие от раздела, передаются через {% call %}; смена темы и выход общие. #}
+{% macro user_menu(user, tag='div', class_name='', subtitle=None) -%}
+<{{ tag }} class="{{ class_name ~ ' ' if class_name }}dropdown user-menu">
+    <button class="user-menu__toggle" type="button" id="userMenuToggle"
+            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+            aria-haspopup="true" aria-controls="userMenu" aria-label="Меню профиля: {{ user_display_name(user) }}">
+        {{ user_avatar(user, 'user-avatar user-menu__avatar') }}
+        <span class="user-menu__toggle-name">{{ user_display_name(user) }}</span>
+        <i class="bi bi-chevron-down user-menu__chevron" aria-hidden="true"></i>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end user-menu__panel" id="userMenu" aria-labelledby="userMenuToggle">
+        <li class="user-menu__header" aria-hidden="true">
+            {{ user_avatar(user, 'user-avatar user-avatar--lg') }}
+            <strong>{{ user_display_name(user) }}</strong>
+            {%- if subtitle %}<small class="user-menu__subtitle">{{ subtitle }}</small>{% endif %}
+        </li>
+        {{ caller() }}
+        <li><button id="themeToggleBtn" class="dropdown-item" type="button" data-theme-toggle-style="menu"><i class="bi bi-circle-half" aria-hidden="true"></i>Сменить тему</button></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item user-menu__logout" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Выйти</a></li>
+    </ul>
+</{{ tag }}>
+{%- endmacro %}

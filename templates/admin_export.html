@@ -1,4 +1,5 @@
 {% extends 'admin_base.html' %}
+{% from '_info_hint.html' import info_hint %}
 {% from 'admin/_macros.html' import icon %}
 {% block title %}Аудит-выгрузка — Административная панель officium{% endblock %}
 {% block admin_topbar_title %}Аудит-выгрузка{% endblock %}
@@ -12,8 +13,7 @@
     <section class="admin-panel admin-export-card" aria-labelledby="export-accounts-title">
         <span class="admin-export-card__icon">{{ icon('users', 24) }}</span>
         <div>
-            <h2 id="export-accounts-title">Учётные записи</h2>
-            <p>Все аккаунты: идентификатор, Telegram ID, имя, роль, статус блокировки, число входов и дата создания. IP-адреса и данные браузера не включаются.</p>
+            <h2 id="export-accounts-title">Учётные записи{{ info_hint('Все аккаунты: идентификатор, Telegram ID, имя, роль, статус блокировки, число входов и дата создания. IP-адреса и данные браузера не включаются.', 'hint-export-accounts') }}</h2>
             <p class="admin-export-card__meta">Записей: {{ counts.accounts }}</p>
         </div>
         <form method="post" action="{{ url_for('admin_export_accounts') }}">
@@ -25,8 +25,7 @@
     <section class="admin-panel admin-export-card" aria-labelledby="export-log-title">
         <span class="admin-export-card__icon">{{ icon('activity', 24) }}</span>
         <div>
-            <h2 id="export-log-title">Журнал действий</h2>
-            <p>События журнала с теми же фильтрами, что и на странице журнала: время, пользователь, действие, объект, описание и IP-адрес.</p>
+            <h2 id="export-log-title">Журнал действий{{ info_hint('События журнала с теми же фильтрами, что и на странице журнала: время, пользователь, действие, объект, описание и IP-адрес.', 'hint-export-log') }}</h2>
             <p class="admin-export-card__meta">Событий всего: {{ counts.events }}</p>
         </div>
         <form method="post" action="{{ url_for('admin_export_activity_log') }}" class="admin-export-card__filters">

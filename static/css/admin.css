@@ -288,65 +288,42 @@ html[data-theme="dark"] .admin-login-page {
     border-radius: 12px;
 }
 
-.admin-icon-button .nav-expand__full {
-    display: none !important;
+/* Меню профиля (общий макрос user_menu из _avatar.html): в шапке панели оно
+   компактное на любой ширине, а не встроено в мобильную навигацию, как в кабинете. */
+.admin-topbar .user-menu__toggle {
+    width: auto;
+    padding: 3px;
+    border-radius: 999px;
 }
 
-.admin-icon-button .nav-expand__compact {
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-    margin: 0 !important;
-    font-size: 0;
+.admin-topbar .user-menu__toggle-name,
+.admin-topbar .user-menu__chevron {
+    display: none;
 }
 
-.admin-icon-button .nav-expand__compact i {
-    margin: 0 !important;
-    font-size: 1rem;
+.admin-topbar .user-menu__panel {
+    width: auto;
+    min-width: 240px;
+    max-width: calc(100vw - 28px);
 }
 
-.admin-topbar__divider {
-    width: 1px;
-    height: 32px;
-    background: var(--admin-border);
-}
-
-.admin-topbar__avatar {
-    display: inline-grid;
-    flex: 0 0 auto;
-    place-items: center;
-    color: #fff;
-    background: #2563eb;
-    font-weight: 760;
-    text-transform: uppercase;
-}
-
-.admin-topbar__avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 13px;
-}
-
-.admin-topbar__identity {
+.admin-topbar .user-menu__header {
     display: grid;
-    gap: 2px;
-    min-width: 130px;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 0.65rem;
 }
 
-.admin-topbar__identity strong {
-    overflow: hidden;
-    font-size: 0.82rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.admin-topbar .user-menu__header .user-avatar {
+    grid-row: span 2;
 }
 
-.admin-topbar__identity .admin-badge {
-    width: fit-content;
-    padding: 0;
+.admin-topbar .user-menu__subtitle {
     color: var(--admin-text-soft);
-    background: transparent;
-    border: 0;
-    font-size: 0.66rem;
+    font-size: 0.72rem;
+}
+
+.admin-topbar .user-menu__panel form {
+    margin: 0;
 }
 
 .admin-content {
@@ -727,7 +704,8 @@ html[data-theme="dark"] .admin-login-page {
     background: var(--admin-primary-soft);
 }
 
-.admin-page .dropdown-menu {
+/* Меню профиля (.user-menu__panel) оформлено общими стилями style.css, как в кабинете. */
+.admin-page .dropdown-menu:not(.user-menu__panel) {
     min-width: 220px;
     padding: 7px;
     color: var(--admin-text);
@@ -737,14 +715,14 @@ html[data-theme="dark"] .admin-login-page {
     box-shadow: var(--admin-shadow);
 }
 
-.admin-page .dropdown-item {
+.admin-page .dropdown-menu:not(.user-menu__panel) .dropdown-item {
     padding: 9px 10px;
     color: var(--admin-text);
     border-radius: 9px;
     font-size: 0.78rem;
 }
 
-.admin-page .dropdown-item:hover {
+.admin-page .dropdown-menu:not(.user-menu__panel) .dropdown-item:hover {
     color: var(--admin-primary);
     background: var(--admin-primary-soft);
 }
@@ -1707,8 +1685,6 @@ html[data-theme="dark"] .admin-login-page {
     .admin-content { padding: 22px 14px 34px; }
     .admin-topbar { min-height: 68px; padding: 11px 14px; }
     .admin-topbar__context { display: none; }
-    .admin-topbar__identity { min-width: 0; }
-    .admin-topbar__identity strong { max-width: 112px; }
     .admin-page-header { flex-direction: column; gap: 17px; margin-bottom: 22px; }
 
     .admin-page-header__actions { width: 100%; justify-content: stretch; }
@@ -1791,7 +1767,6 @@ html[data-theme="dark"] .admin-login-page {
 
 @media (max-width: 480px) {
     .admin-stat-grid { grid-template-columns: 1fr; }
-    .admin-topbar__identity { display: none; }
 
     .admin-panel__header { align-items: stretch; flex-direction: column; }
     .admin-panel__header > .btn { width: 100%; }

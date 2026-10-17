@@ -23,6 +23,8 @@ class Config:
     TELEGRAM_LOGIN_ENABLED = os.environ.get('TELEGRAM_LOGIN_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     TELEGRAM_MINI_APP_ENABLED = os.environ.get('TELEGRAM_MINI_APP_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     TELEGRAM_MINI_APP_SHORT_NAME = os.environ.get('TELEGRAM_MINI_APP_SHORT_NAME', '')
+    # Origins allowed to frame the Mini App (Telegram Web); empty disables it.
+    TELEGRAM_WEB_FRAME_ANCESTORS = os.environ.get('TELEGRAM_WEB_FRAME_ANCESTORS', 'https://web.telegram.org')
     TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS = int(os.environ.get('TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS', '86400'))
     TELEGRAM_BOT_ENABLED = os.environ.get('TELEGRAM_BOT_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     TELEGRAM_WEBHOOK_SECRET = os.environ.get('TELEGRAM_WEBHOOK_SECRET', '')

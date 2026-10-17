@@ -15,7 +15,7 @@ for (const role of ['admin', 'superadmin']) {
     await page.goto('/incomes');
     await expect(page).toHaveURL(/\/incomes/);
     // Only the avatar menu (itself a nav-item) may contain the panel link.
-    await expect(page.locator('.navbar-nav > .nav-item:not(.user-menu)', { hasText: 'Админ-панель' })).toHaveCount(0);
+    await expect(page.locator('.navbar-nav > .nav-item:not(.user-menu)', { hasText: 'Панель администратора' })).toHaveCount(0);
     await expect(page.locator('#userMenu [data-admin-panel-link]')).toBeHidden();
 
     const toggle = page.locator('#userMenuToggle');
@@ -75,3 +75,34 @@ test('avatar menu opens inside the mobile navigation', async ({ page }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 812 }]) {
+  test(`admin header shows the avatar menu at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/dev-login/superadmin');
+    await expect(page).toHaveURL(/\/admin$/);
+
+    const toggle = page.locator('.admin-topbar #userMenuToggle');
+    await expect(toggle.locator('.user-avatar')).toBeVisible();
+    await expect(toggle.locator('.user-menu__toggle-name')).toBeHidden();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const menu = page.locator('#userMenu');
+    await expect(menu.getByText('Супер-администратор')).toBeVisible();
+    await expect(menu.locator('a[href="/logout"]')).toBeVisible();
+
+    const before = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+    await page.locator('#themeToggleBtn').click();
+    await expect(menu).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).not.toBe(before);
+
+    const box = await menu.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+
+    await menu.locator('[data-admin-menu-personal-link]').click();
+    await expect(page).toHaveURL(/\/$/);
+  });
+}

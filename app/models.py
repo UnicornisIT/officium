@@ -375,6 +375,9 @@ class Income(db.Model):
     source = db.Column(db.String(150), nullable=True)
     income_date = db.Column(db.Date, nullable=False)
     comment = db.Column(db.Text, nullable=True)
+    # Manual mark for the financial plan: 'start' is a main payment like a
+    # salary, 'join' a one-off income; empty means the category decides.
+    pay_period_mode = db.Column(db.String(8), nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
 
     user = db.relationship('User', back_populates='incomes')

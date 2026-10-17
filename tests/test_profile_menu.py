@@ -106,7 +106,7 @@ class ProfileMenuTestCase(unittest.TestCase):
         self.assertIn('id="themeToggleBtn"', menu)
         self.assertIn('href="/logout"', menu)
         self.assertNotIn('data-admin-panel-link', html)
-        self.assertNotIn('Админ-панель', html)
+        self.assertNotIn('Панель администратора', html)
         self.assertEqual(html.count('id="themeToggleBtn"'), 1)
 
     def test_admin_sees_admin_panel_item_in_menu_only(self):
@@ -119,7 +119,7 @@ class ProfileMenuTestCase(unittest.TestCase):
                 self.assertIn('data-admin-panel-link', menu)
                 self.assertIn('bi-shield-lock', menu)
                 navbar_without_menu = html.split('<nav class="navbar', 1)[1].split('</nav>', 1)[0].replace(menu, '')
-                self.assertNotIn('Админ-панель', navbar_without_menu)
+                self.assertNotIn('Панель администратора', navbar_without_menu)
 
     def test_admin_panel_stays_closed_for_plain_user(self):
         self._login('member')

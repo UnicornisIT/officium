@@ -16,6 +16,12 @@ from app.models import (
 )
 from app.services.debt_schedule_service import build_debt_payment_schedule
 from app.services.finance_summary_service import get_finance_summary
+from app.services.pay_period_service import (
+    PAY_HISTORY_LOOKAHEAD_DAYS,
+    PAY_HISTORY_LOOKBACK_DAYS,
+    recommend_income_allocation,
+    window_daily_limit,
+)
 from app.services.payment_service import paid_toward_payment_cycle
 from app.utils import EXPENSE_CATEGORIES, INCOME_CATEGORY_LABELS, format_currency
 from extensions import db
@@ -171,7 +177,34 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
         living_budget=max(living_budget, Decimal('0.00')),
         deficit=deficit,
     )
-    income_allocations = _build_income_allocations(income_summary['items'], allocation)
+    pay_plan = recommend_income_allocation(
+        income_summary['items'],
+        allocation,
+        period_start,
+        period_end=period_end,
+        history_incomes=_load_pay_history(user_id, period_start, period_end),
+        living_minimum=preferences['living_minimum'],
+        next_month_obligations=_build_next_month_recurring_obligations(
+            recurring_expenses,
+            period_end,
+            debt_items,
+        ),
+    )
+    income_allocations = pay_plan['allocations']
+    window_daily = (
+        window_daily_limit(
+            income_allocations,
+            today,
+            lambda start, until: _everyday_spending(user_id, start, until),
+            period_end,
+        )
+        if period_start <= today < period_end
+        else None
+    )
+    window_shortfall = _decimal(sum(
+        (_decimal(item['amount']) for item in pay_plan['shortfalls']),
+        Decimal('0.00'),
+    ))
     allocated_income_total = _decimal(sum(
         (_decimal(item['allocated_total']) for item in income_allocations),
         Decimal('0.00'),
@@ -240,6 +273,10 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
         'goals': goals,
         'allocation': allocation,
         'income_allocations': income_allocations,
+        'shortfalls': pay_plan['shortfalls'],
+        'awaiting_obligations': pay_plan['awaiting'],
+        'covered_by_previous_period': pay_plan['covered_by_previous'],
+        'window_daily': window_daily,
         'analysis': analysis,
         'recommendations': recommendations,
         'forecast': forecast,
@@ -265,8 +302,18 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
             'allocated_income': _float(allocated_income_total),
             'allocation_balance': _float(allocation_balance),
             'allocation_is_balanced': allocation_balance == 0,
+            'window_shortfall': _float(window_shortfall),
+            'living_reserve_shortfall': pay_plan['reserve_shortfall'],
         },
     }
+
+
+def current_window_daily(user_id, today=None):
+    """Everyday money per day until the next income, or ``None`` without pay periods."""
+    if user_id is None:
+        return None
+    plan = build_financial_plan(user_id, get_financial_plan_preference(user_id), today=today)
+    return plan['window_daily']
 
 
 def _build_emergency_fund_summary(user_id, period_start=None, period_end=None):
@@ -538,6 +585,50 @@ def _load_sources(user_id, period_start, period_end):
     return debts, incomes, recurring_expenses
 
 
+def _load_pay_history(user_id, period_start, period_end):
+    """Incomes around the month; they only shape pay period boundaries."""
+    if user_id is None:
+        return None
+    try:
+        rows = (
+            db.session.query(Income.income_date, Income.category, Income.pay_period_mode)
+            .filter(
+                Income.user_id == user_id,
+                Income.income_date >= period_start - relativedelta(days=PAY_HISTORY_LOOKBACK_DAYS),
+                Income.income_date < period_end + relativedelta(days=PAY_HISTORY_LOOKAHEAD_DAYS),
+            )
+            .all()
+        )
+    except SQLAlchemyError:
+        db.session.rollback()
+        return None
+    return [
+        {'date': income_date, 'category': category, 'pay_period_mode': mode}
+        for income_date, category, mode in rows
+    ]
+
+
+def _everyday_spending(user_id, start, until):
+    """Recorded everyday expenses from ``start`` to ``until``; recurring ones are obligations."""
+    if user_id is None:
+        return Decimal('0.00')
+    try:
+        total = (
+            db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0))
+            .filter(
+                Expense.user_id == user_id,
+                Expense.is_monthly.is_(False),
+                Expense.expense_date >= start,
+                Expense.expense_date <= until,
+            )
+            .scalar()
+        )
+    except SQLAlchemyError:
+        db.session.rollback()
+        return Decimal('0.00')
+    return _decimal(total)
+
+
 def _build_income_summary(incomes, period_start=None):
     items = []
     for income in incomes:
@@ -548,6 +639,7 @@ def _build_income_summary(incomes, period_start=None):
             'category_label': INCOME_CATEGORY_LABELS.get(income.category, 'Доход'),
             'source': income.source or INCOME_CATEGORY_LABELS.get(income.category, 'Источник не указан'),
             'date': income.income_date,
+            'pay_period_mode': getattr(income, 'pay_period_mode', None),
         })
     latest_date = max((item['date'] for item in items), default=None)
     period_date = period_start or latest_date
@@ -799,6 +891,28 @@ def _build_recurring_expense_items(expenses, today):
     return sorted(items, key=lambda item: (item['due_date'], -item['amount'], item['title'].lower()))
 
 
+def _build_next_month_recurring_obligations(expenses, period_end, debt_items):
+    """Next month's recurring payments for a pay window that crosses the month end.
+
+    They are not added to the month's totals; duplicates of debt payments are
+    left out just as in the selected month.
+    """
+    next_month_last_day = period_end + relativedelta(months=1) - relativedelta(days=1)
+    items = _build_recurring_expense_items(expenses, next_month_last_day)
+    _mark_debt_expense_duplicates(items, debt_items)
+    counted_items = [item for item in items if not item['excluded_as_debt_duplicate']]
+    return _build_allocation(
+        debt_items=[],
+        support_items=[item for item in counted_items if item['is_family_support']],
+        regular_items=[item for item in counted_items if not item['is_family_support']],
+        goal_allocations=[],
+        extra_repayment=Decimal('0.00'),
+        extra_repayment_target=None,
+        living_budget=Decimal('0.00'),
+        deficit=Decimal('0.00'),
+    )
+
+
 def _current_recurring_expense(group, today):
     not_future = [expense for expense in group if expense.expense_date <= today]
     candidates = not_future or group
@@ -1008,99 +1122,6 @@ def _detail_with_due_date(detail, due_date):
     if due_date is None:
         return detail
     return f'{detail} · срок {due_date.strftime("%d.%m.%Y")}'
-
-
-def _income_due_context(due_date, income_date):
-    if due_date is None or income_date is None:
-        return None, None
-    if due_date < income_date:
-        return f'срок уже наступил: {due_date.strftime("%d.%m.%Y")}', 'overdue'
-    if due_date == income_date:
-        return 'оплатить сегодня', 'today'
-    days_until_due = (due_date - income_date).days
-    if days_until_due <= 7:
-        return f'оплатить до {due_date.strftime("%d.%m.%Y")} · через {days_until_due} дн.', 'upcoming'
-    return f'оплатить до {due_date.strftime("%d.%m.%Y")}', 'planned'
-
-
-def _build_income_allocations(income_items, monthly_allocation):
-    """Split the monthly recommendation between actual income entries in date order."""
-    destinations = []
-    for item in monthly_allocation:
-        if item['kind'] == 'deficit':
-            continue
-        amount = _decimal(item['amount'])
-        if amount <= 0:
-            continue
-        destinations.append({
-            'item': item,
-            'initial': amount,
-            'remaining': amount,
-        })
-
-    allocations = []
-    destination_index = 0
-    ordered_incomes = sorted(
-        income_items,
-        key=lambda item: (item['date'] or date.min, item['id'] or 0),
-    )
-    for income in ordered_incomes:
-        available = _decimal(income['amount'])
-        recommended = []
-
-        while available > 0 and destination_index < len(destinations):
-            destination = destinations[destination_index]
-            if destination['remaining'] <= 0:
-                destination_index += 1
-                continue
-
-            directed_amount = _decimal(min(available, destination['remaining']))
-            source_item = destination['item']
-            allocated_before = _decimal(destination['initial'] - destination['remaining'])
-            due_label, urgency = _income_due_context(
-                source_item.get('due_date'),
-                income['date'],
-            )
-            detail = source_item.get('base_detail', source_item['detail'])
-            if source_item['kind'] == 'savings' and allocated_before > 0:
-                detail = (
-                    f'{detail} · ранее распределено '
-                    f'{format_currency(allocated_before)} из предыдущих поступлений'
-                )
-            if due_label:
-                detail = f'{due_label} · {detail}'
-            recommended.append({
-                'kind': source_item['kind'],
-                'icon': source_item['icon'],
-                'label': source_item['label'],
-                'detail': detail,
-                'amount': _float(directed_amount),
-                'due_date': source_item.get('due_date'),
-                'urgency': urgency,
-            })
-            available = _decimal(available - directed_amount)
-            destination['remaining'] = _decimal(destination['remaining'] - directed_amount)
-
-        if available > 0:
-            recommended.append({
-                'kind': 'living',
-                'icon': 'bi-wallet2',
-                'label': 'Свободный остаток',
-                'detail': 'после плановых направлений месяца',
-                'amount': _float(available),
-            })
-            available = Decimal('0.00')
-
-        allocations.append({
-            **income,
-            'allocations': recommended,
-            'allocated_total': _float(sum(
-                (_decimal(item['amount']) for item in recommended),
-                Decimal('0.00'),
-            )),
-        })
-
-    return list(reversed(allocations))
 
 
 def _financial_state(income, obligations, living_minimum):

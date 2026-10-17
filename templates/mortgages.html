@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_info_hint.html' import info_hint %}
 {% block title %}Ипотечные кредиты — officium{% endblock %}
 
 {% from '_debt_amounts.html' import debt_amounts %}
@@ -6,8 +7,7 @@
 {% block content %}
 <div class="d-flex align-items-center justify-content-between gap-3 mb-4">
     <div>
-        <h1 class="page-title mb-1"><i class="bi bi-bank2 text-primary me-2"></i>Ипотечные кредиты</h1>
-        <p class="text-muted mb-0">Отдельная страница для ипотек и крупных долгов.</p>
+        <h1 class="page-title mb-1"><i class="bi bi-bank2 text-primary me-2"></i>Ипотечные кредиты{{ info_hint('Отдельная страница для ипотек и крупных долгов.', 'hint-mortgages') }}</h1>
     </div>
     <a class="btn btn-outline-secondary" href="/">
         <i class="bi bi-arrow-left me-1"></i>Вернуться на дашборд

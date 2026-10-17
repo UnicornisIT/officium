@@ -21,6 +21,7 @@ from app.admin_presenters import (
     admin_role_label,
     admin_status_label,
 )
+from app.services.telegram_frame_service import TelegramFrameSessionInterface, apply_frame_headers
 from app.utils import display_value, format_currency
 
 login_manager = LoginManager()
@@ -42,6 +43,7 @@ def create_app(config_overrides=None):
     if config_overrides:
         app.config.update(config_overrides)
 
+    app.session_interface = TelegramFrameSessionInterface()
     _configure_secret_key(app)
     _validate_runtime_config(app)
 
@@ -127,7 +129,7 @@ def create_app(config_overrides=None):
     @app.after_request
     def add_security_headers(response):
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
-        response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+        apply_frame_headers(response, request, app.config)
         response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
         response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
         if app.config.get('ENVIRONMENT') == 'production':

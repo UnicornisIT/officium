@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
+{% from '_info_hint.html' import info_hint %}
 {% block title %}Куда уходят деньги — officium{% endblock %}
 
 {% block content %}
 <div class="finance-page">
     <div class="finance-header mb-4">
         <div>
-            <h1 class="page-title mb-1"><i class="bi bi-pie-chart text-primary me-2"></i>Куда уходят деньги</h1>
-            <p class="text-muted mb-0">Итог месяца, главные категории и самые заметные списания.</p>
+            <h1 class="page-title mb-1"><i class="bi bi-pie-chart text-primary me-2"></i>Куда уходят деньги{{ info_hint('Итог месяца, главные категории и самые заметные списания.', 'hint-finance') }}</h1>
         </div>
         <div class="finance-actions">
             <a href="{{ url_for('expenses') }}" class="btn btn-danger">
@@ -239,8 +239,7 @@
             <section class="finance-panel h-100">
                 <div class="finance-panel__header">
                     <div>
-                        <h2>Крупные списания</h2>
-                        <p>Операции, которые сильнее всего повлияли на месяц.</p>
+                        <h2>Крупные списания{{ info_hint('Операции, которые сильнее всего повлияли на месяц.', 'hint-finance-largest') }}</h2>
                     </div>
                 </div>
 
@@ -276,8 +275,7 @@
     <section class="finance-panel mb-4">
         <div class="finance-panel__header">
             <div>
-                <h2>Уникальные расходы</h2>
-                <p>Суммы по конкретным получателям и названиям из выписок.</p>
+                <h2>Уникальные расходы{{ info_hint('Суммы по конкретным получателям и названиям из выписок.', 'hint-finance-unique') }}</h2>
             </div>
         </div>
 
@@ -349,8 +347,7 @@
             <section class="finance-panel h-100">
                 <div class="finance-panel__header">
                     <div>
-                        <h2>Где концентрируются траты</h2>
-                        <p>Способы оплаты и самые дорогие дни месяца.</p>
+                        <h2>Где концентрируются траты{{ info_hint('Способы оплаты и самые дорогие дни месяца.', 'hint-finance-concentration') }}</h2>
                     </div>
                 </div>
 
