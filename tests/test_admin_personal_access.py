@@ -1,5 +1,6 @@
 """Administrators use the personal cabinet under their own account and keep the panel."""
 
+import re
 import unittest
 from decimal import Decimal
 
@@ -179,6 +180,18 @@ class AdminCabinetTestCase(AdminPersonalAccessTestCase):
         html = self.client.get('/').get_data(as_text=True)
         self.assertNotIn('data-admin-panel-link', html)
         self.assertNotIn('Панель администратора', html)
+
+    def test_mini_app_admin_tile_keeps_the_full_name_and_an_abbreviation(self):
+        self._login(self.ids['admin'])
+        with self.client.session_transaction() as session:
+            session['telegram_mini_app'] = True
+
+        html = self.client.get('/').get_data(as_text=True)
+
+        tile = re.search(r'<a [^>]*class="telegram-more-menu__admin".*?</a>', html, re.S).group(0)
+        self.assertIn('aria-label="Панель администратора"', tile)
+        self.assertIn('<span class="telegram-more-menu__label-full">Панель администратора</span>', tile)
+        self.assertIn('<span class="telegram-more-menu__label-short" aria-hidden="true">Панель админ-ра</span>', tile)
 
     def test_plain_user_cannot_open_the_panel(self):
         self._login(self.ids['user'])

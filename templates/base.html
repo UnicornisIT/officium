@@ -28,7 +28,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=20" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=22" rel="stylesheet">
     {% block extra_css %}{% endblock %}
 </head>
 <body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
@@ -84,8 +84,8 @@
                 <i class="bi bi-person-circle"></i><span>Профиль</span>
             </a>
             {% if current_user.is_admin and not is_impersonating %}
-            <a href="{{ url_for('admin_dashboard') }}" data-admin-panel-link>
-                <i class="bi bi-shield-lock"></i><span>Панель администратора</span>
+            <a href="{{ url_for('admin_dashboard') }}" class="telegram-more-menu__admin" data-admin-panel-link aria-label="Панель администратора">
+                <i class="bi bi-shield-lock"></i><span><span class="telegram-more-menu__label-full">Панель администратора</span><span class="telegram-more-menu__label-short" aria-hidden="true">Панель админ-ра</span></span>
             </a>
             {% endif %}
             <a href="{{ url_for('logout') }}" class="telegram-more-menu__logout">

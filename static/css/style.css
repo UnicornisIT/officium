@@ -4829,6 +4829,17 @@ body.keyboard-open [contenteditable="true"] {
     gap: 10px;
 }
 
+/* "Панель администратора" is the one label with a word longer than a narrow
+   tile. The tile measures itself: when "администратора" does not fit, the
+   abbreviated "Панель админ-ра" is shown instead (the link keeps the full
+   name in aria-label). Without container queries the full label wraps. */
+.telegram-more-menu__admin { container-type: inline-size; }
+.telegram-more-menu__label-short { display: none; }
+@container (max-width: 103.98px) {
+    .telegram-more-menu__label-full { display: none; }
+    .telegram-more-menu__label-short { display: inline; }
+}
+
 .telegram-more-menu__grid a {
     display: grid;
     justify-items: start;
@@ -4849,7 +4860,12 @@ body.keyboard-open [contenteditable="true"] {
 }
 
 .telegram-more-menu__grid a i { font-size: 1.25rem; }
-.telegram-more-menu__grid a span { align-self: end; overflow: hidden; font-size: 0.76rem; font-weight: 700; text-overflow: ellipsis; }
+/* A grid item defaults to min-width: auto, so one long word such as
+   "администратора" used to widen the label past the tile. The label may now
+   shrink to the tile; a long word is hyphenated where the browser knows
+   Russian, or broken anywhere as the last resort, never clipped. */
+.telegram-more-menu__grid a > * { min-width: 0; max-width: 100%; }
+.telegram-more-menu__grid a > span { align-self: end; font-size: 0.76rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; -webkit-hyphens: auto; hyphens: auto; }
 .telegram-more-menu__grid .telegram-more-menu__logout { color: var(--tg-theme-destructive-text-color, var(--danger)); }
 
 .telegram-more-menu__profile {
