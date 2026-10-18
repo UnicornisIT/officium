@@ -12,14 +12,15 @@
 
 ### Не проверено перед выпуском
 
-Локально перед выпуском: полный набор unittest (покрытие 78%), миграции
-SQLite (`flask db upgrade`, `heads`, `check`, откат и повторное применение
-новой миграции `20261018_last_seen_release`). MySQL 8.4,
-Playwright, аудит зависимостей и установка/обновление сервера на Ubuntu
-выполняются в CI после публикации ветки. Не проверялись: миграция на копии
-настоящей production-базы, окно «Что нового» в настоящем Telegram на
-iPhone, Android и в Telegram Web и обновление настоящего production до
-альфа-версии.
+CI на релизном коммите (Ubuntu 24.04) проверил unit/integration на Python
+3.10 и 3.13, MySQL 8.4 (миграции и backup/restore без `PROCESS`),
+Playwright в Chromium, Firefox и WebKit, аудит зависимостей, shellcheck/bats
+и установку/обновление сервера на Ubuntu (managed и legacy); локально
+прошли 622 теста (покрытие 78%) и миграции SQLite, включая откат и
+повторное применение `20261018_last_seen_release`. Не проверялись:
+миграция на копии настоящей production-базы, окно «Что нового» в
+настоящем Telegram на iPhone, Android и в Telegram Web и обновление
+настоящего production до альфа-версии.
 
 ### Добавлено
 
