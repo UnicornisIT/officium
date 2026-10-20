@@ -34,7 +34,7 @@ jobs:
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pqa-root-password"
           --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Ubuntu packages
         run: |
           sudo apt-get update
@@ -115,7 +115,7 @@ jobs:
           sudo chown -R "$USER" evidence
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deploy-${{ matrix.scenario }}-evidence
           path: evidence/

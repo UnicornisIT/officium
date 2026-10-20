@@ -35,11 +35,11 @@ jobs:
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot-staging-password"
           --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Validate inputs are not the production repository
@@ -156,7 +156,7 @@ jobs:
           sudo journalctl -u officium.service -u officium-updater.service --no-pager --output=short-iso | sed -E 's/(password|token|secret)=[^ ]+/\1=[REDACTED]/Ig' >"$RUNNER_TEMP/staging-journal.log"
       - name: Upload staging evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: staging-release-gate-evidence
           path: |
