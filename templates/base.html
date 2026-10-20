@@ -183,7 +183,7 @@
                     <button id="themeToggleBtn" class="btn btn-outline-secondary btn-sm nav-expand" type="button" aria-label="Переключить тему"></button>
                 </li>
                 <li class="nav-item ms-2">
-                    <a class="nav-link nav-expand" href="{{ url_for('login') }}">
+                    <a class="nav-link nav-expand" href="{{ url_for('login') }}"{% if telegram_login_launch %} data-telegram-login-trigger{% endif %}>
                         <span class="nav-expand__compact"><i class="bi bi-box-arrow-in-right me-1"></i>Войти</span>
                         <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-box-arrow-in-right"></i>Войти</span>
                     </a>
@@ -757,6 +757,9 @@
 {% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=8"></script>
+{% if telegram_login_launch %}
+<script src="{{ url_for('static', filename='js/telegram-login.js') }}?v={{ config.APP_VERSION|urlencode }}" data-available="{{ 'true' if telegram_login_launch.available else 'false' }}" data-bot-id="{{ telegram_login_launch.bot_id or '' }}" data-auth-url="{{ telegram_login_launch.auth_url }}"></script>
+{% endif %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const params = new URLSearchParams(window.location.search);

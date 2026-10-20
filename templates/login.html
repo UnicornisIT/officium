@@ -26,36 +26,17 @@
                     {% endif %}
 
                     {% if not telegram_allowed %}
-                    <div class="alert alert-warning text-start">
+                    <div class="alert alert-warning text-start" data-telegram-login-unavailable tabindex="-1">
                         <strong>Вход через Telegram отключён.</strong>
                         <div>Обратитесь к администратору для разблокировки доступа.</div>
                     </div>
                     {% elif bot_username %}
-                    <div id="telegram-login-widget" aria-live="polite">
-                        <button id="telegram-login-loader" type="button" class="btn btn-info btn-lg rounded-pill px-4 text-white">
+                    <div id="telegram-login-widget">
+                        <button id="telegram-login-loader" type="button" class="btn btn-info btn-lg rounded-pill px-4 text-white" data-telegram-login-trigger>
                             <i class="bi bi-telegram me-2"></i>Войти через Telegram
                         </button>
+                        <div id="telegram-login-status" class="text-muted small mt-2" role="status" aria-live="polite" hidden></div>
                     </div>
-                    <script>
-                        document.getElementById('telegram-login-loader')?.addEventListener('click', function () {
-                            const host = document.getElementById('telegram-login-widget');
-                            if (!host) return;
-
-                            host.innerHTML = '<span class="text-muted small">Подключаем Telegram…</span>';
-                            const widget = document.createElement('script');
-                            widget.async = true;
-                            widget.src = 'https://telegram.org/js/telegram-widget.js?15';
-                            widget.dataset.telegramLogin = {{ bot_username|tojson }};
-                            widget.dataset.size = 'large';
-                            widget.dataset.userpic = 'false';
-                            widget.dataset.authUrl = {{ url_for('telegram_login', _external=True)|tojson }};
-                            widget.dataset.requestAccess = 'write';
-                            widget.onerror = function () {
-                                host.innerHTML = '<span class="text-danger small">Не удалось загрузить вход через Telegram. Проверьте соединение и обновите страницу.</span>';
-                            };
-                            host.appendChild(widget);
-                        }, { once: true });
-                    </script>
                     {% if telegram_mini_app_enabled %}
                     <a class="login-mini-app-link"
                        href="https://t.me/{{ bot_username }}{% if telegram_mini_app_short_name %}/{{ telegram_mini_app_short_name }}{% else %}?startapp{% endif %}"
@@ -69,7 +50,7 @@
                     </a>
                     {% endif %}
                     {% else %}
-                    <div class="alert alert-warning text-start">
+                    <div class="alert alert-warning text-start" data-telegram-login-unavailable tabindex="-1">
                         <strong>Бот Telegram не настроен.</strong>
                         <div>Добавьте в `.env` переменные <code>TELEGRAM_BOT_TOKEN</code> и <code>TELEGRAM_BOT_USERNAME</code>.</div>
                     </div>

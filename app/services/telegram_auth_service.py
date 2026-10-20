@@ -5,6 +5,19 @@ import time
 from urllib.parse import parse_qsl
 
 
+def telegram_bot_id(bot_token):
+    """Return the numeric bot id that prefixes a bot token, or None.
+
+    The id is public (it is the bot's Telegram user id) and is what the
+    official Telegram.Login.auth() call needs; the secret part of the
+    token never leaves the server.
+    """
+    bot_id, separator, secret = str(bot_token or '').strip().partition(':')
+    if not separator or not secret or not bot_id.isdigit() or int(bot_id) <= 0:
+        return None
+    return int(bot_id)
+
+
 def verify_telegram_login(data, bot_token):
     if not bot_token:
         return False
