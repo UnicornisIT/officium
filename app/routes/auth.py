@@ -13,6 +13,7 @@ from app.services import impersonation_service as impersonation
 from app.services.contact_service import load_contacts
 from app.services.personal_access_service import can_use_personal_cabinet
 from app.services.telegram_auth_service import (
+    telegram_bot_id,
     verify_telegram_login,
     verify_telegram_web_app_init_data,
 )
@@ -287,7 +288,17 @@ def init_app(app):
                 }
         is_telegram_mini_app = bool(session.get('telegram_mini_app'))
         mini_app_short_name = app.config.get('TELEGRAM_MINI_APP_SHORT_NAME', '')
-        mini_app_enabled = telegram_feature_states(app.config)['mini_app']['effective']
+        telegram_states = telegram_feature_states(app.config)
+        mini_app_enabled = telegram_states['mini_app']['effective']
+        telegram_login_launch = None
+        if not getattr(current_user, 'is_authenticated', False) and not is_telegram_mini_app:
+            # One launcher config for the /login button and the header "Войти" link.
+            launch_bot_id = telegram_bot_id(app.config.get('TELEGRAM_BOT_TOKEN', ''))
+            telegram_login_launch = {
+                'available': bool(telegram_states['login']['effective'] and launch_bot_id),
+                'bot_id': launch_bot_id if telegram_states['login']['effective'] else None,
+                'auth_url': url_for('telegram_login'),
+            }
         return dict(
             current_user=current_user,
             app_name=app_name,
@@ -305,6 +316,7 @@ def init_app(app):
             payment_days=payment_thresholds(),
             is_telegram_mini_app=is_telegram_mini_app,
             telegram_mini_app_enabled=mini_app_enabled,
+            telegram_login_launch=telegram_login_launch,
             telegram_mini_app_short_name=mini_app_short_name,
             public_contacts_footer=load_contacts(published_only=True, location='footer'),
             public_contacts_login=load_contacts(published_only=True, location='login'),
