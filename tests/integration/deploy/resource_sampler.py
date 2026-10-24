@@ -1,6 +1,6 @@
 """Resource sampling for the free-tier deployment scenario (run as root).
 
-    resource_sampler.py sample OUT.jsonl SLICE [CONTAINER_ID]   # until killed
+    resource_sampler.py sample OUT.jsonl SLICE_CGROUP_PATH [CONTAINER_ID]   # until killed
     resource_sampler.py report OUT.jsonl MARKERS OUT.json
 
 sample writes one JSON line every 200 ms: the application slice's memory and
@@ -55,7 +55,9 @@ def _container_cgroup(container_id):
 
 
 def sample(out_path, slice_name, container_id=None):
-    slice_cgroup = Path('/sys/fs/cgroup') / slice_name
+    # A dash nests slices (officium-budget.slice lives in officium.slice), so
+    # the caller passes the path from `systemctl show -p ControlGroup`.
+    slice_cgroup = Path(slice_name) if slice_name.startswith('/') else Path('/sys/fs/cgroup') / slice_name
     container = _container_cgroup(container_id) if container_id else None
     with open(out_path, 'a', encoding='utf-8') as out:
         while True:

@@ -53,6 +53,11 @@ for unit in officium.service officium-maintenance.service officium-monthly-expen
 done
 systemctl daemon-reload
 systemctl start officium-budget.slice
+# The dash nests it in officium.slice; take the real path from systemd.
+budget_cgroup="/sys/fs/cgroup$(systemctl show officium-budget.slice -p ControlGroup --value)"
+echo "budget cgroup: $budget_cgroup"
+test -f "$budget_cgroup/memory.current"
+test "$(cat "$budget_cgroup/memory.max")" = $((640 * 1024 * 1024))
 
 container=$(docker ps --filter ancestor=mysql:8.4 --format '{{.ID}}' | head -n 1)
 [ -n "$container" ] || { echo "MySQL service container not found" >&2; exit 1; }
@@ -67,6 +72,9 @@ for _attempt in $(seq 1 60); do
     sleep 2
 done
 docker update --memory 384m --memory-swap 384m --cpuset-cpus 0 "$container" >/dev/null
+test -f "/sys/fs/cgroup/system.slice/docker-$container.scope/memory.current" || \
+    test -f "/sys/fs/cgroup/docker/$container/memory.current" || \
+    { echo "MySQL container cgroup not found; its memory would not be measured" >&2; exit 1; }
 mysql -h127.0.0.1 -uroot -pqa-root-password -e \
     "SELECT @@innodb_buffer_pool_size, @@max_connections, @@performance_schema;"
 
@@ -81,7 +89,7 @@ install -m 0644 "$here/resource_sampler.py" "$here/import_probe.py" "$qa/"
 install -d -m 0755 "$qa/performance"
 install -m 0644 "$workspace/tests/performance/import_load_driver.py" \
     "$workspace/tests/performance/import_memory_profile.py" "$qa/performance/"
-python3 "$qa/resource_sampler.py" sample "$results/samples.jsonl" officium-budget.slice "$container" &
+python3 "$qa/resource_sampler.py" sample "$results/samples.jsonl" "$budget_cgroup" "$container" &
 sampler=$!
 trap 'kill "$sampler" 2>/dev/null || true' EXIT
 
@@ -115,7 +123,7 @@ app_python "$qa/performance/import_load_driver.py" mint >"$results/session.json"
 chmod 0644 "$results/session.json"
 /opt/officium/current/venv/bin/python "$qa/performance/import_load_driver.py" run \
     --base-url http://127.0.0.1:5000 --session "$results/session.json" \
-    --cgroup /sys/fs/cgroup/officium-budget.slice \
+    --cgroup "$budget_cgroup" \
     --storage-dir /opt/officium/shared/instance/bank_imports --out "$results/http-scenarios.json"
 mark end ui_and_imports
 systemctl show officium.service -p NRestarts -p MemoryPeak | tee -a "$results/summary.txt"
