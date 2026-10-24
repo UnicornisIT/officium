@@ -116,6 +116,16 @@ jobs:
             sudo cat "$RUNNER_TEMP/free-tier/summary.txt" 2>/dev/null || true
             echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
+          # Job summaries and artifacts need a signed-in viewer; notices are
+          # public. Only synthetic QA data is in these reports.
+          { sudo cat "$RUNNER_TEMP/free-tier/steps.md" "$RUNNER_TEMP/free-tier/summary.txt" 2>/dev/null || true; } \
+            | python3 -c '
+          import sys
+          text = sys.stdin.read().replace("\r", "")[:31500]
+          for start in range(0, len(text), 3500):
+              chunk = text[start:start + 3500].replace("%", "%25").replace("\n", "%0A")
+              print(f"::notice title=free-tier resources {start // 3500 + 1}::{chunk}")
+          '
       - name: Collect evidence
         if: always()
         run: |
