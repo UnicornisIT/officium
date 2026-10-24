@@ -1,5 +1,7 @@
 import io
 import re
+import shutil
+import tempfile
 import unittest
 import zipfile
 from datetime import date
@@ -251,12 +253,16 @@ class BankStatementImportServiceTestCase(unittest.TestCase):
 
 class BankStatementImportRouteTestCase(unittest.TestCase):
     def setUp(self):
+        storage_dir = tempfile.mkdtemp(prefix='officium-bank-import-')
+        self.addCleanup(shutil.rmtree, storage_dir, ignore_errors=True)
         self.app = create_app({
             'TESTING': True,
             'SECRET_KEY': 'bank-import-test-secret',
             'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
             'SQLALCHEMY_ENGINE_OPTIONS': {},
             'WTF_CSRF_ENABLED': False,
+            'IMPORT_STORAGE_DIR': storage_dir,
+            'IMPORT_DISK_RESERVE_BYTES': 0,
         })
         self.client = self.app.test_client()
 

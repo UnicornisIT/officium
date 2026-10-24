@@ -65,6 +65,26 @@ class Config:
         'true' if ENVIRONMENT == 'production' else 'false',
     ).lower() in ('1', 'true', 'yes', 'on')
     MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH', str(10 * 1024 * 1024)))
+    # Bank statement import. Previews live in <instance>/bank_imports until they
+    # are confirmed or expire; see docs/DEPLOYMENT.md "Хранилище импорта".
+    # Empty IMPORT_STORAGE_DIR means <instance path>/bank_imports.
+    IMPORT_STORAGE_DIR = os.environ.get('IMPORT_STORAGE_DIR', '').strip()
+    IMPORT_PREVIEW_TTL_MINUTES = int(os.environ.get('IMPORT_PREVIEW_TTL_MINUTES', '240'))
+    IMPORT_STORAGE_MAX_BYTES = int(os.environ.get('IMPORT_STORAGE_MAX_BYTES', str(32 * 1024 * 1024)))
+    IMPORT_STORAGE_MAX_FILES = int(os.environ.get('IMPORT_STORAGE_MAX_FILES', '500'))
+    IMPORT_MAX_PENDING_PER_USER = int(os.environ.get('IMPORT_MAX_PENDING_PER_USER', '5'))
+    # Free space an import must leave on the filesystem for the database, logs and the OS.
+    IMPORT_DISK_RESERVE_BYTES = int(os.environ.get('IMPORT_DISK_RESERVE_BYTES', str(512 * 1024 * 1024)))
+    # Statements parsed at the same time in one process, and how long a
+    # request waits for a free slot before it is told to retry.
+    IMPORT_MAX_CONCURRENT_PARSES = int(os.environ.get('IMPORT_MAX_CONCURRENT_PARSES', '1'))
+    IMPORT_PARSE_WAIT_SECONDS = float(os.environ.get('IMPORT_PARSE_WAIT_SECONDS', '20'))
+    # Expense rows one preview may hold and table/PDF lines read from a file.
+    IMPORT_MAX_ROWS = int(os.environ.get('IMPORT_MAX_ROWS', '500'))
+    IMPORT_MAX_SOURCE_ROWS = int(os.environ.get('IMPORT_MAX_SOURCE_ROWS', '20000'))
+    # Free-space alerts of `flask storage-check` (the maintenance timer).
+    DISK_WARN_FREE_BYTES = int(os.environ.get('DISK_WARN_FREE_BYTES', str(1536 * 1024 * 1024)))
+    DISK_CRITICAL_FREE_BYTES = int(os.environ.get('DISK_CRITICAL_FREE_BYTES', str(750 * 1024 * 1024)))
     TEST_USER_ENABLED = os.environ.get('TEST_USER_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     TEST_USER_TELEGRAM_ID = int(os.environ.get('TEST_USER_TELEGRAM_ID', '-999999999999'))
     TEST_USER_USERNAME = os.environ.get('TEST_USER_USERNAME', 'testuser')

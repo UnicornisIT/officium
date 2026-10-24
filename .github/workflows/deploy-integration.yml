@@ -23,7 +23,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [managed, legacy]
+        # free-tier: 1 vCPU / 1 GiB / small disk emulation with resource peaks.
+        scenario: [managed, legacy, free-tier]
     services:
       mysql:
         image: mysql:8.4
@@ -83,7 +84,8 @@ jobs:
       - name: Run the ${{ matrix.scenario }} scenario
         run: |
           set -o pipefail
-          sudo bash tests/integration/deploy/scenario-${{ matrix.scenario }}.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/qa/app.env" 2>&1 \
+          sudo bash tests/integration/deploy/scenario-${{ matrix.scenario }}.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/qa/app.env" \
+            "$RUNNER_TEMP/free-tier" 2>&1 \
             | tee "$RUNNER_TEMP/scenario.log"
       - name: Report the failure as annotations
         if: failure()
@@ -103,10 +105,23 @@ jobs:
           grep -v 'INFO  \[alembic' "$RUNNER_TEMP/scenario.log" | tail -n 60 | annotate "scenario output"
           sudo journalctl -u officium.service -u officium-updater.service -u 'officium-update-*' --no-pager -n 80 \
             | annotate "journal (tail)" || true
+      - name: Free Tier resource summary
+        if: always() && matrix.scenario == 'free-tier'
+        run: |
+          {
+            echo '## Free Tier emulation: peaks per step'
+            sudo cat "$RUNNER_TEMP/free-tier/steps.md" 2>/dev/null || echo 'no step report (the scenario stopped early)'
+            echo
+            echo '```'
+            sudo cat "$RUNNER_TEMP/free-tier/summary.txt" 2>/dev/null || true
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
       - name: Collect evidence
         if: always()
         run: |
           mkdir -p evidence
+          sudo cp -r "$RUNNER_TEMP/free-tier" evidence/ 2>/dev/null || true
+          sudo rm -f evidence/free-tier/session.json
           sudo journalctl -u officium.service -u officium-updater.service -u 'officium-update-*' \
             --no-pager --output=short-iso | sed -E 's/(password|token|secret)=[^ ]+/\1=[REDACTED]/Ig' >evidence/journal.log || true
           sudo sh -c 'cat /var/log/officium/*.log' >evidence/update.log 2>/dev/null || true

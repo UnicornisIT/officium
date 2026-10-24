@@ -149,9 +149,12 @@ main() {
 
     report dependencies
     python3 -m venv "$final_dir/$VENV_NAME"
-    "$final_dir/$VENV_NAME/bin/python" -m pip install \
+    # Prebuilt wheels only: building cryptography or nh3 from source needs a
+    # compiler and far more RAM and disk than a 1 GiB server has. --no-cache-dir
+    # keeps pip from growing a wheel cache in the application user's home.
+    "$final_dir/$VENV_NAME/bin/python" -m pip install --no-cache-dir --only-binary=:all: \
         --disable-pip-version-check --requirement "$final_dir/requirements-build.txt"
-    "$final_dir/$VENV_NAME/bin/python" -m pip install \
+    "$final_dir/$VENV_NAME/bin/python" -m pip install --no-cache-dir --only-binary=:all: \
         --disable-pip-version-check --requirement "$final_dir/requirements.txt"
     verify_venv_paths "$final_dir" "$VENV_NAME"
 

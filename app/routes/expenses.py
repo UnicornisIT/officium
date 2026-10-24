@@ -1,29 +1,28 @@
-import json
-import os
-import re
-import secrets
-from datetime import date, datetime, timedelta, timezone
+import sys
+import traceback
+from datetime import date
 from decimal import Decimal
 
 from flask import abort, current_app, redirect, render_template, request, url_for
 from sqlalchemy import or_
 from app.models import Expense
-from app.services.bank_statement_import_service import parse_bank_statement
+from app.services import import_storage_service as import_storage
+from app.services.bank_statement_import_service import parse_bank_statement, too_many_rows_message
 from app.services.expense_title_service import expense_group_key
 from app.services.history_month_service import month_key, resolve_active_month
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
     generate_monthly_expenses_from_start_date,
 )
-from app.time_utils import as_utc, utc_now
+from app.time_utils import utc_now
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS, group_entries_by_month, parse_date, parse_decimal, is_local_test_user
 from flask_login import current_user
 from extensions import db
 import uuid
 
 
+# Used when the configuration has no IMPORT_MAX_ROWS.
 MAX_IMPORT_ROWS = 500
-IMPORT_TTL_HOURS = 4
 
 
 def init_app(app):
@@ -140,6 +139,7 @@ def init_app(app):
         error_message = None
         parse_result = None
         import_token = None
+        status_code = 200
 
         if is_local_test_user():
             error_message = 'Локальный тестовый режим: импорт выписки отключен.'
@@ -147,18 +147,44 @@ def init_app(app):
             upload = request.files.get('statement_file')
             if not upload or not upload.filename:
                 error_message = 'Выберите файл выписки.'
+                status_code = 400
             else:
                 try:
-                    file_bytes = upload.read()
-                    if not file_bytes:
-                        raise ValueError('Файл пустой.')
-                    parse_result = parse_bank_statement(file_bytes, upload.filename)
-                    if len(parse_result.rows) > MAX_IMPORT_ROWS:
-                        raise ValueError(f'В файле найдено больше {MAX_IMPORT_ROWS} расходов. Загрузите выписку за меньший период.')
+                    with import_storage.parse_slot():
+                        file_bytes = upload.read()
+                        if not file_bytes:
+                            raise ValueError('Файл пустой.')
+                        max_rows = current_app.config.get('IMPORT_MAX_ROWS', MAX_IMPORT_ROWS)
+                        parse_result = parse_bank_statement(
+                            file_bytes,
+                            upload.filename,
+                            max_rows=max_rows,
+                            max_source_rows=current_app.config.get('IMPORT_MAX_SOURCE_ROWS'),
+                        )
+                        del file_bytes
+                        if len(parse_result.rows) > max_rows:
+                            raise ValueError(too_many_rows_message(max_rows))
                     _prepare_import_rows(parse_result.rows)
-                    import_token = _save_import_payload(parse_result)
+                    import_token = import_storage.save_preview(current_user.id, parse_result.rows)
                 except ValueError as exc:
+                    parse_result = None
                     error_message = str(exc)
+                    status_code = 400
+                except import_storage.ImportStorageError as exc:
+                    parse_result = None
+                    error_message = exc.message
+                    status_code = exc.http_status
+                except MemoryError:
+                    parse_result = None
+                    _log_import_failure('Not enough memory to parse a bank statement')
+                    error_message = 'Серверу не хватило памяти для разбора файла. Загрузите выписку за меньший период.'
+                    status_code = 503
+                except Exception:
+                    db.session.rollback()
+                    parse_result = None
+                    _log_import_failure('Failed to prepare a bank statement import preview')
+                    error_message = 'Не удалось разобрать выписку. Проверьте файл или загрузите его в другом формате.'
+                    status_code = 500
 
         return render_template(
             'expenses_import.html',
@@ -167,7 +193,7 @@ def init_app(app):
             import_token=import_token,
             categories=EXPENSE_CATEGORIES,
             payment_methods=PAYMENT_METHODS,
-        )
+        ), status_code
 
     @app.route('/expenses/import/confirm', methods=['POST'])
     def confirm_import_expenses():
@@ -176,73 +202,11 @@ def init_app(app):
 
         token = request.form.get('import_token', '')
         try:
-            payload = _load_import_payload(token)
-            rows = payload.get('rows', [])
-            row_count = int(request.form.get('row_count', 0))
-            if row_count != len(rows):
-                raise ValueError('Данные предпросмотра устарели. Загрузите выписку еще раз.')
-
-            created = 0
-            updated_monthly = 0
-            skipped_unselected = 0
-
-            for index, row in enumerate(rows):
-                action = request.form.get(f'action_{index}')
-                if action is None:
-                    action = 'create' if request.form.get(f'include_{index}') == 'on' else 'skip'
-                if action not in {'create', 'skip', 'update_monthly'}:
-                    action = 'create'
-
-                if action == 'skip':
-                    skipped_unselected += 1
-                    continue
-
-                amount = parse_decimal(request.form.get(f'amount_{index}'), 'Сумма', required=True)
-                if amount <= 0:
-                    raise ValueError('Сумма импортируемого расхода должна быть больше нуля.')
-                expense_date = parse_date(request.form.get(f'expense_date_{index}'), 'Дата', required=True)
-                category = request.form.get(f'category_{index}')
-                if category not in [item[0] for item in EXPENSE_CATEGORIES]:
-                    raise ValueError('В одной из строк выбрана некорректная категория.')
-                payment_method = request.form.get(f'payment_method_{index}') or 'card'
-                if payment_method not in [item[0] for item in PAYMENT_METHODS]:
-                    payment_method = 'other'
-                title = str(request.form.get(f'title_{index}', '')).strip()
-                if not title:
-                    raise ValueError('В одной из строк не заполнено название.')
-                if len(title) > 150:
-                    raise ValueError('Название импортируемого расхода не должно превышать 150 символов.')
-                comment = str(request.form.get(f'comment_{index}', '')).strip() or None
-                if comment and len(comment) > 2000:
-                    raise ValueError('Комментарий импортируемого расхода не должен превышать 2000 символов.')
-
-                if action == 'update_monthly':
-                    monthly_expense = _get_import_monthly_match(row)
-                    if not monthly_expense:
-                        raise ValueError('Ежемесячный расход для одной из строк не найден. Загрузите выписку еще раз.')
-                    _update_monthly_expense_from_import(
-                        monthly_expense,
-                        amount=amount,
-                        expense_date=expense_date,
-                        payment_method=payment_method,
-                        comment=comment,
-                    )
-                    updated_monthly += 1
-                    continue
-
-                db.session.add(Expense(
-                    user_id=current_user.id,
-                    amount=amount,
-                    category=category,
-                    title=title[:150],
-                    expense_date=expense_date,
-                    payment_method=payment_method,
-                    comment=comment,
-                ))
-                created += 1
-
-            db.session.commit()
-            _delete_import_payload(token)
+            claim = import_storage.claimed_preview(current_user.id, token)
+            with claim as preview:
+                created, updated_monthly, skipped_unselected = _apply_confirmed_import(preview)
+                db.session.commit()
+                claim.complete()
 
             message = f'Импортировано расходов: {created}.'
             details = []
@@ -255,25 +219,90 @@ def init_app(app):
             return redirect(url_for('expenses', success=message))
         except ValueError as exc:
             db.session.rollback()
-            return render_template(
-                'expenses_import.html',
-                error_message=str(exc),
-                parse_result=None,
-                import_token=None,
-                categories=EXPENSE_CATEGORIES,
-                payment_methods=PAYMENT_METHODS,
-            )
+            return _import_error_page(str(exc), 400)
+        except import_storage.ImportStorageError as exc:
+            db.session.rollback()
+            return _import_error_page(exc.message, exc.http_status)
         except Exception:
             db.session.rollback()
-            current_app.logger.exception('Failed to confirm bank statement import')
-            return render_template(
-                'expenses_import.html',
-                error_message='Не удалось завершить импорт. Данные не были сохранены.',
-                parse_result=None,
-                import_token=None,
-                categories=EXPENSE_CATEGORIES,
-                payment_methods=PAYMENT_METHODS,
-            )
+            _log_import_failure('Failed to confirm bank statement import')
+            return _import_error_page('Не удалось завершить импорт. Данные не были сохранены.', 500)
+
+    def _import_error_page(message, status_code):
+        return render_template(
+            'expenses_import.html',
+            error_message=message,
+            parse_result=None,
+            import_token=None,
+            categories=EXPENSE_CATEGORIES,
+            payment_methods=PAYMENT_METHODS,
+        ), status_code
+
+    def _apply_confirmed_import(preview):
+        row_count = int(request.form.get('row_count', 0))
+        if row_count != preview.row_count:
+            raise ValueError('Данные предпросмотра устарели. Загрузите выписку еще раз.')
+
+        created = 0
+        updated_monthly = 0
+        skipped_unselected = 0
+
+        for index, monthly_match_id in enumerate(preview.monthly_match_ids):
+            action = request.form.get(f'action_{index}')
+            if action is None:
+                action = 'create' if request.form.get(f'include_{index}') == 'on' else 'skip'
+            if action not in {'create', 'skip', 'update_monthly'}:
+                action = 'create'
+
+            if action == 'skip':
+                skipped_unselected += 1
+                continue
+
+            amount = parse_decimal(request.form.get(f'amount_{index}'), 'Сумма', required=True)
+            if amount <= 0:
+                raise ValueError('Сумма импортируемого расхода должна быть больше нуля.')
+            expense_date = parse_date(request.form.get(f'expense_date_{index}'), 'Дата', required=True)
+            category = request.form.get(f'category_{index}')
+            if category not in [item[0] for item in EXPENSE_CATEGORIES]:
+                raise ValueError('В одной из строк выбрана некорректная категория.')
+            payment_method = request.form.get(f'payment_method_{index}') or 'card'
+            if payment_method not in [item[0] for item in PAYMENT_METHODS]:
+                payment_method = 'other'
+            title = str(request.form.get(f'title_{index}', '')).strip()
+            if not title:
+                raise ValueError('В одной из строк не заполнено название.')
+            if len(title) > 150:
+                raise ValueError('Название импортируемого расхода не должно превышать 150 символов.')
+            comment = str(request.form.get(f'comment_{index}', '')).strip() or None
+            if comment and len(comment) > 2000:
+                raise ValueError('Комментарий импортируемого расхода не должен превышать 2000 символов.')
+
+            if action == 'update_monthly':
+                monthly_expense = _get_import_monthly_match(monthly_match_id)
+                if not monthly_expense:
+                    raise ValueError('Ежемесячный расход для одной из строк не найден. Загрузите выписку еще раз.')
+                _update_monthly_expense_from_import(
+                    monthly_expense,
+                    amount=amount,
+                    expense_date=expense_date,
+                    payment_method=payment_method,
+                    comment=comment,
+                )
+                updated_monthly += 1
+                continue
+
+            db.session.add(Expense(
+                user_id=current_user.id,
+                amount=amount,
+                category=category,
+                title=title[:150],
+                expense_date=expense_date,
+                payment_method=payment_method,
+                comment=comment,
+            ))
+            created += 1
+
+        return created, updated_monthly, skipped_unselected
 
     @app.route('/expenses/edit/<int:expense_id>', methods=['GET', 'POST'])
     def edit_expense(expense_id):
@@ -533,8 +562,7 @@ def _monthly_title_key(title):
     return key
 
 
-def _get_import_monthly_match(row):
-    monthly_id = row.get('monthly_match_id')
+def _get_import_monthly_match(monthly_id):
     if not monthly_id:
         return None
     try:
@@ -568,64 +596,18 @@ def _update_monthly_expense_from_import(expense, amount, expense_date, payment_m
     expense.monthly_settings_updated_at = utc_now()
 
 
-def _import_dir():
-    path = os.path.join(current_app.instance_path, 'bank_imports')
-    os.makedirs(path, exist_ok=True)
-    return path
+def _log_import_failure(message):
+    """Log an unexpected import failure with its stack but without values.
 
-
-def _cleanup_old_imports():
-    threshold = utc_now() - timedelta(hours=IMPORT_TTL_HOURS)
-    for filename in os.listdir(_import_dir()):
-        if not filename.endswith('.json'):
-            continue
-        path = os.path.join(_import_dir(), filename)
-        try:
-            modified = datetime.fromtimestamp(os.path.getmtime(path), timezone.utc)
-            if modified < threshold:
-                os.remove(path)
-        except OSError:
-            continue
-
-
-def _save_import_payload(parse_result):
-    _cleanup_old_imports()
-    token = secrets.token_urlsafe(24)
-    payload = {
-        'user_id': current_user.id,
-        'created_at': utc_now().replace(tzinfo=None).isoformat(),
-        'bank': parse_result.bank,
-        'rows': [row.to_dict() for row in parse_result.rows],
-    }
-    path = os.path.join(_import_dir(), f'{token}.json')
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
-        json.dump(payload, handle, ensure_ascii=False)
-    return token
-
-
-def _load_import_payload(token):
-    if not token or not re.match(r'^[A-Za-z0-9_-]+$', token):
-        raise ValueError('Импорт не найден. Загрузите выписку еще раз.')
-    path = os.path.join(_import_dir(), f'{token}.json')
-    if not os.path.exists(path):
-        raise ValueError('Импорт не найден или устарел. Загрузите выписку еще раз.')
-    with open(path, 'r', encoding='utf-8') as handle:
-        payload = json.load(handle)
-    if payload.get('user_id') != current_user.id:
-        raise ValueError('Этот предпросмотр импорта принадлежит другому пользователю.')
-    created_at = datetime.fromisoformat(payload.get('created_at'))
-    if as_utc(created_at) < utc_now() - timedelta(hours=IMPORT_TTL_HOURS):
-        _delete_import_payload(token)
-        raise ValueError('Предпросмотр импорта устарел. Загрузите выписку еще раз.')
-    return payload
-
-
-def _delete_import_payload(token):
-    if not token:
-        return
-    path = os.path.join(_import_dir(), f'{token}.json')
-    try:
-        os.remove(path)
-    except OSError:
-        pass
+    Exception messages of parsers and drivers may quote statement content
+    (merchant names, amounts, card fragments), so only the exception type and
+    the code locations are written to the journal.
+    """
+    exc_type, exc, tb = sys.exc_info()
+    frames = ''.join(traceback.format_list(traceback.extract_tb(tb)))
+    current_app.logger.error(
+        '%s: %s (message withheld: it may contain statement data)\nTraceback (most recent call last):\n%s',
+        message,
+        exc_type.__name__ if exc_type else 'unknown',
+        frames.rstrip(),
+    )

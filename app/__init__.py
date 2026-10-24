@@ -29,13 +29,35 @@ login_manager.login_view = 'login'
 _development_secret_key = None
 
 
+def resolve_instance_path(base_dir, environ=None):
+    """Writable instance directory, or None for Flask's <base_dir>/instance.
+
+    A managed release (<APP_ROOT>/releases/<name>, sealed read-only and behind
+    ProtectSystem=strict) must never write into itself: its state belongs in
+    <APP_ROOT>/shared/instance. OFFICIUM_INSTANCE_PATH wins; otherwise a
+    release marked by .officium-release-ready uses the shared directory next
+    to it, so installs updated before the variable existed work unchanged.
+    """
+    environ = os.environ if environ is None else environ
+    configured = str(environ.get('OFFICIUM_INSTANCE_PATH', '') or '').strip()
+    if configured:
+        return os.path.abspath(configured)
+    release_dir = os.path.realpath(base_dir)
+    if os.path.isfile(os.path.join(release_dir, '.officium-release-ready')):
+        shared_instance = os.path.join(os.path.dirname(os.path.dirname(release_dir)), 'shared', 'instance')
+        if os.path.isdir(shared_instance):
+            return shared_instance
+    return None
+
+
 def create_app(config_overrides=None):
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     app = Flask(
         __name__,
         template_folder=os.path.join(base_dir, 'templates'),
         static_folder=os.path.join(base_dir, 'static'),
-        static_url_path='/static'
+        static_url_path='/static',
+        instance_path=resolve_instance_path(base_dir),
     )
     app.config.from_object(Config)
     if app.config.get('SEND_FILE_MAX_AGE_DEFAULT') is None:
@@ -84,6 +106,11 @@ def create_app(config_overrides=None):
             400: ('Некорректный запрос', 'Проверьте введённые данные и повторите попытку.'),
             403: ('Доступ запрещён', 'У вас нет прав для выполнения этого действия.'),
             404: ('Страница не найдена', 'Проверьте адрес или вернитесь на главную страницу.'),
+            413: (
+                'Файл слишком большой',
+                'Максимальный размер загружаемого файла — '
+                f'{max(1, int(app.config.get("MAX_CONTENT_LENGTH") or 0) // (1024 * 1024))} МБ.',
+            ),
             500: ('Внутренняя ошибка', 'Не удалось выполнить запрос. Повторите попытку позже.'),
         }
         title, message = messages[status_code]
@@ -107,6 +134,10 @@ def create_app(config_overrides=None):
     @app.errorhandler(404)
     def not_found(_error):
         return error_response(404)
+
+    @app.errorhandler(413)
+    def request_too_large(_error):
+        return error_response(413)
 
     @app.errorhandler(SQLAlchemyError)
     def database_error(_error):
@@ -242,6 +273,47 @@ def register_cli_commands(app):
         user.role = 'superadmin'
         db.session.commit()
         click.echo(f'Пользователь {telegram_id_int} назначен superadmin.')
+
+    @app.cli.command('import-cleanup')
+    def import_cleanup():
+        """Remove expired bank statement import previews (run by the maintenance timer)."""
+        from app.services.import_storage_service import cleanup_expired, storage_dir
+
+        stats = cleanup_expired(app)
+        click.echo(
+            f'Import storage {storage_dir(app)}: removed {stats.removed} files ({stats.removed_bytes} bytes), '
+            f'kept {stats.kept} ({stats.kept_bytes} bytes), errors {stats.errors}'
+        )
+        app.logger.info(
+            'Import cleanup finished: removed=%s removed_bytes=%s kept=%s kept_bytes=%s errors=%s',
+            stats.removed, stats.removed_bytes, stats.kept, stats.kept_bytes, stats.errors,
+        )
+        if stats.errors:
+            raise click.ClickException('Some expired import files could not be removed')
+
+    @app.cli.command('storage-check')
+    def storage_check():
+        """Report free space of the instance filesystem; exit 2 when it is critical."""
+        from app.services.import_storage_service import disk_status
+
+        path = app.instance_path if os.path.isdir(app.instance_path) else os.path.dirname(app.instance_path)
+        status = disk_status(
+            path,
+            int(app.config.get('DISK_WARN_FREE_BYTES')),
+            int(app.config.get('DISK_CRITICAL_FREE_BYTES')),
+        )
+        mib = 1024 * 1024
+        line = (
+            f'Disk {status.level}: {status.free // mib} MiB free of {status.total // mib} MiB on {status.path} '
+            f'(warning below {int(app.config.get("DISK_WARN_FREE_BYTES")) // mib} MiB, '
+            f'critical below {int(app.config.get("DISK_CRITICAL_FREE_BYTES")) // mib} MiB)'
+        )
+        click.echo(line)
+        if status.level == 'critical':
+            app.logger.critical(line)
+            raise SystemExit(2)
+        if status.level == 'warning':
+            app.logger.warning(line)
 
     @app.cli.command('generate-monthly-expenses')
     @click.option('--user-id', type=int, default=None, help='Generate for specific user ID')

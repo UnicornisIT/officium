@@ -11,6 +11,7 @@ APP_GROUP="${APP_GROUP:-officium}"
 VENV_DIR="${VENV_DIR:-$APP_DIR/current/venv}"
 SERVICE_NAME="${SERVICE_NAME:-officium}"
 MONTHLY_SERVICE="${MONTHLY_SERVICE:-officium-monthly-expenses}"
+MAINTENANCE_SERVICE="${MAINTENANCE_SERVICE:-officium-maintenance}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-5000}"
 WAITRESS_THREADS="${WAITRESS_THREADS:-4}"
@@ -64,6 +65,7 @@ render() {
         -e "s|@@TRUSTED_PROXY_HEADERS@@|$TRUSTED_PROXY_HEADERS|g" \
         -e "s|@@APP_TIMEZONE@@|$APP_TIMEZONE|g" \
         -e "s|@@MONTHLY_SERVICE@@|$MONTHLY_SERVICE|g" \
+        -e "s|@@MAINTENANCE_SERVICE@@|$MAINTENANCE_SERVICE|g" \
         -e "s|@@SERVER_NAME@@|$SERVER_NAME|g" \
         "$1" >"$2"
 }
@@ -82,6 +84,14 @@ configure_managed_env() {
     set_env_value "$managed_env" SERVER_UPDATE_APP_DIR "$APP_DIR/current"
     set_env_value "$managed_env" SERVER_UPDATE_STATUS_PATH "$STATE_DIR/server-update-status.json"
     set_env_value "$managed_env" SERVER_UPDATE_SOCKET "$UPDATE_SOCKET"
+    # Releases are sealed read-only; runtime files (import previews) live here.
+    set_env_value "$managed_env" OFFICIUM_INSTANCE_PATH "$APP_DIR/shared/instance"
+}
+# The only directories the application writes to. shared/ itself stays
+# root-owned; the service reaches them through ReadWritePaths=shared.
+ensure_runtime_dirs() {
+    install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$1/shared/instance"
+    install -d -o "$APP_USER" -g "$APP_GROUP" -m 0700 "$1/shared/instance/bank_imports"
 }
 # realpath -e current/.env must be the permanent shared file.
 verify_current_environment() {
@@ -120,7 +130,13 @@ Fix (comments out those location blocks; static files come from the application)
 }
 unit_files() {
     printf '%s\n' "/etc/systemd/system/$SERVICE_NAME.service" \
-        "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer"
+        "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer" \
+        "/etc/systemd/system/$MAINTENANCE_SERVICE.service" "/etc/systemd/system/$MAINTENANCE_SERVICE.timer"
+}
+verify_units() {
+    local -a files
+    mapfile -t files < <(unit_files)
+    systemd-analyze verify "${files[@]}"
 }
 dropin_dir() { printf '%s\n' "/etc/systemd/system/$SERVICE_NAME.service.d"; }
 # Copies the units and every drop-in, so a failed activation can put them back.
@@ -142,8 +158,22 @@ render_units() {
     render "$1/officium.service.in" "/etc/systemd/system/$SERVICE_NAME.service" &&
         render "$1/officium-monthly-expenses.service" "/etc/systemd/system/$MONTHLY_SERVICE.service" &&
         render "$1/officium-monthly-expenses.timer" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
+        render_maintenance_units "$1" &&
         chmod 0644 "/etc/systemd/system/$SERVICE_NAME.service" \
             "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer"
+}
+# Releases before the maintenance timer have no template: keep what is
+# installed (or nothing) instead of failing the whole unit refresh.
+render_maintenance_units() {
+    [ -f "$1/officium-maintenance.service" ] && [ -f "$1/officium-maintenance.timer" ] || return 0
+    render "$1/officium-maintenance.service" "/etc/systemd/system/$MAINTENANCE_SERVICE.service" &&
+        render "$1/officium-maintenance.timer" "/etc/systemd/system/$MAINTENANCE_SERVICE.timer" &&
+        chmod 0644 "/etc/systemd/system/$MAINTENANCE_SERVICE.service" "/etc/systemd/system/$MAINTENANCE_SERVICE.timer"
+}
+# Timers that exist as units; the maintenance timer is optional (see above).
+timer_units() {
+    printf '%s\n' "$MONTHLY_SERVICE.timer"
+    if [ -f "/etc/systemd/system/$MAINTENANCE_SERVICE.timer" ]; then printf '%s\n' "$MAINTENANCE_SERVICE.timer"; fi
 }
 # A drop-in ExecStart (for example a manual work-around pointing at
 # venv/bin/waitress-serve of the old checkout) silently overrides the new
@@ -238,7 +268,7 @@ seal_release() {
 
 [ "$(id -u)" -eq 0 ] || fail "Run with sudo/root."
 case "$MODE" in install|upgrade|recover|preflight|units) ;; *) fail "Usage: $0 install|upgrade|recover|preflight|units" ;; esac
-for name in "$APP_USER" "$APP_GROUP" "$SERVICE_NAME" "$MONTHLY_SERVICE"; do
+for name in "$APP_USER" "$APP_GROUP" "$SERVICE_NAME" "$MONTHLY_SERVICE" "$MAINTENANCE_SERVICE"; do
     valid_name "$name" || fail "Unsafe user, group, or service name: $name"
 done
 [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "Invalid REPOSITORY."
@@ -321,6 +351,7 @@ fi
 # previous units and drop-ins come back if the service is not healthy.
 if [ "$MODE" = units ]; then
     [ -L "$APP_DIR/current" ] || fail "Mode units needs a managed install with $APP_DIR/current."
+    ensure_runtime_dirs "$APP_DIR"
     unit_backup="$BACKUP_DIR/units.$(date -u +%Y%m%dT%H%M%SZ)"
     backup_units "$unit_backup"
     render_units "$SCRIPT_DIR" || { restore_units "$unit_backup"; fail "Cannot render the units."; }
@@ -338,8 +369,7 @@ if [ "$MODE" = units ]; then
         exit 0
     fi
     if ! {
-        systemd-analyze verify "/etc/systemd/system/$SERVICE_NAME.service" \
-            "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
+        verify_units &&
         systemctl daemon-reload && systemctl restart "$SERVICE_NAME.service" && service_is_healthy;
     }; then
         restore_units "$unit_backup"
@@ -348,6 +378,8 @@ if [ "$MODE" = units ]; then
         printf 'ERROR: %s\n' "The service was not healthy with the new units; the previous units and drop-ins were restored from $unit_backup." >&2
         exit 10
     fi
+    mapfile -t timers < <(timer_units)
+    systemctl enable --now "${timers[@]}" || warn "Could not enable ${timers[*]}."
     info "Units updated and the service is healthy. Previous units and drop-ins: $unit_backup"
     exit 0
 fi
@@ -384,7 +416,7 @@ if [ "$MODE" = upgrade ] && { [ -d "$APP_DIR/.git" ] || [ -f "$APP_DIR/.git" ]; 
     install -d -o root -g "$APP_GROUP" -m 0750 "$managed_root/shared"
     install -o root -g "$APP_GROUP" -m 0640 "$APP_DIR/.env" "$managed_root/shared/.env"
     configure_managed_env "$managed_root/shared/.env"
-    install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$managed_root/shared/instance"
+    ensure_runtime_dirs "$managed_root"
 
     # SQLite files tied to the old checkout would otherwise be left behind or
     # replaced by a new empty database after the atomic directory migration.
@@ -490,8 +522,7 @@ PY
         verify_current_environment &&
         render_units "$release_script_dir" &&
         retire_stale_dropins "$release_script_dir" "$unit_backup" &&
-        systemd-analyze verify "/etc/systemd/system/$SERVICE_NAME.service" \
-            "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer" &&
+        verify_units &&
         systemctl daemon-reload && systemctl restart "$SERVICE_NAME.service" &&
         service_is_healthy;
     }; then
@@ -524,9 +555,10 @@ PY
             -e "s|^HEALTHCHECK_URL=.*|HEALTHCHECK_URL=http://$HOST:$PORT/login|" \
             -e "s|^VENV_NAME=.*|VENV_NAME=$VENV_NAME|" \
             /etc/officium/updater.env &&
-        systemctl enable --now "$MONTHLY_SERVICE.timer" officium-updater.socket;
+        mapfile -t timers < <(timer_units) &&
+        systemctl enable --now "${timers[@]}" officium-updater.socket;
     }; then
-        warn "The updater or the monthly timer could not be set up. Rerun: sudo APP_ROOT=$APP_DIR /bin/sh $release_script_dir/install-officium-updater.sh $APP_USER $APP_GROUP"
+        warn "The updater or the timers could not be set up. Rerun: sudo APP_ROOT=$APP_DIR /bin/sh $release_script_dir/install-officium-updater.sh $APP_USER $APP_GROUP"
     fi
     check_nginx_app_paths "$release_script_dir"
     finish_with_summary "Legacy migration" "$release_script_dir" "$legacy_root"
@@ -543,11 +575,12 @@ if [ "$MODE" = install ]; then
     [ ! -e "$APP_DIR/current" ] || fail "current already exists; use upgrade or a new APP_DIR."
     install -o root -g "$APP_GROUP" -m 0640 "$ENV_FILE_SOURCE" "$APP_DIR/shared/.env"
     configure_managed_env "$APP_DIR/shared/.env"
-    install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$APP_DIR/shared/instance"
+    ensure_runtime_dirs "$APP_DIR"
 elif [ -f "$APP_DIR/shared/.env" ]; then
     config_backup="$BACKUP_DIR/app.env.before-installer.$(date -u +%Y%m%dT%H%M%SZ)"
     install -o root -g root -m 0600 "$APP_DIR/shared/.env" "$config_backup"
     configure_managed_env "$APP_DIR/shared/.env"
+    ensure_runtime_dirs "$APP_DIR"
 fi
 
 info "Installing restricted updater"
@@ -611,7 +644,7 @@ mv -Tf "$APP_DIR/.current.initial" "$APP_DIR/current"
 if ! (
     info "Rendering systemd units"
     render_units "$SCRIPT_DIR"
-    systemd-analyze verify "/etc/systemd/system/$SERVICE_NAME.service" "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer"
+    verify_units
 
     if [ "$ENABLE_NGINX" = true ]; then
         command -v nginx >/dev/null 2>&1 || fail "ENABLE_NGINX=true but nginx is not installed."
@@ -621,15 +654,18 @@ if ! (
     fi
 
     systemctl daemon-reload
-    systemctl enable --now "$SERVICE_NAME.service" "$MONTHLY_SERVICE.timer" officium-updater.socket
+    mapfile -t timers < <(timer_units)
+    systemctl enable --now "$SERVICE_NAME.service" "${timers[@]}" officium-updater.socket
     service_is_healthy || fail "Application service is not healthy."
     verify_current_environment || fail "current/.env is not the shared environment file."
-    systemctl is-active --quiet "$MONTHLY_SERVICE.timer" || fail "Monthly timer is not active."
+    for timer in "${timers[@]}"; do
+        systemctl is-active --quiet "$timer" || fail "$timer is not active."
+    done
     if [ "$ENABLE_NGINX" = true ]; then
         systemctl enable --now nginx && systemctl reload-or-restart nginx
     fi
 ); then
-    systemctl disable --now "$SERVICE_NAME.service" "$MONTHLY_SERVICE.timer" >/dev/null 2>&1 || true
+    systemctl disable --now "$SERVICE_NAME.service" "$MONTHLY_SERVICE.timer" "$MAINTENANCE_SERVICE.timer" >/dev/null 2>&1 || true
     current_target=$(realpath -e "$APP_DIR/current" 2>/dev/null || true)
     release_target=$(realpath -e "$release_path" 2>/dev/null || true)
     if [ -L "$APP_DIR/current" ] && [ -n "$release_target" ] && [ "$current_target" = "$release_target" ]; then

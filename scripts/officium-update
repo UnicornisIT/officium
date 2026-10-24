@@ -338,6 +338,7 @@ PY
     if [ -f "$UPDATER_ENV" ]; then cp -a -- "$UPDATER_ENV" "$BACKUP_PATH/updater.env"; fi
     for unit in "/etc/systemd/system/$SERVICE_NAME.service" "/etc/systemd/system/$SERVICE_NAME.service.d" \
             "/etc/systemd/system/$MONTHLY_SERVICE.service" "/etc/systemd/system/$MONTHLY_SERVICE.timer" \
+            /etc/systemd/system/officium-maintenance.service /etc/systemd/system/officium-maintenance.timer \
             /etc/tmpfiles.d/officium.conf; do
         if [ -e "$unit" ]; then cp -a --parents -- "$unit" "$BACKUP_PATH"; fi
     done

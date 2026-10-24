@@ -1,0 +1,32 @@
+[Unit]
+Description=Officium housekeeping: expired import previews and free disk space
+Documentation=file:@@APP_ROOT@@/current/docs/DEPLOYMENT.md
+
+[Service]
+Type=oneshot
+User=@@APP_USER@@
+Group=@@APP_GROUP@@
+WorkingDirectory=@@APP_ROOT@@/current
+EnvironmentFile=@@APP_ROOT@@/shared/.env
+Environment=FLASK_APP=run.py
+# Removes only files the import code manages, and only after their TTL. A
+# failure is logged and does not stop the free-space check below.
+ExecStart=-@@VENV_DIR@@/bin/python -m flask import-cleanup
+# Logs a warning or critical journal entry; exits 2 (unit "failed") when free
+# space is below DISK_CRITICAL_FREE_BYTES so `systemctl --failed` shows it.
+ExecStart=@@VENV_DIR@@/bin/python -m flask storage-check
+TimeoutStartSec=5min
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=read-only
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+UMask=0077
+ReadWritePaths=@@APP_ROOT@@/shared

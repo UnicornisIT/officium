@@ -1,0 +1,15 @@
+[Unit]
+Description=Run officium housekeeping every hour
+Documentation=file:@@APP_ROOT@@/current/docs/DEPLOYMENT.md
+
+[Timer]
+# Hourly is enough for a four-hour preview TTL; nothing stays resident between
+# runs. RandomizedDelaySec keeps it away from the daily monthly-expense run.
+OnBootSec=10min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+AccuracySec=5min
+Unit=@@MAINTENANCE_SERVICE@@.service
+
+[Install]
+WantedBy=timers.target
