@@ -3,6 +3,7 @@ import io
 import re
 import zipfile
 from dataclasses import dataclass
+from itertools import chain, islice
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from xml.etree import ElementTree
@@ -20,6 +21,10 @@ MAX_XLSX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 MAX_XLSX_MEMBERS = 500
 MAX_PDF_PAGES = 200
 MONEY = Decimal('0.01')
+XLSX_NAMESPACE = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+# Bank and header detection look at the first rows only (see _detect_bank and
+# _detect_header); the rest of a table is read one row at a time.
+HEADER_SCAN_ROWS = 40
 
 HEADER_ALIASES = {
     'date': (
@@ -179,7 +184,22 @@ class BankStatementParseResult:
         return BANK_LABELS.get(self.bank, BANK_LABELS['unknown'])
 
 
-def parse_bank_statement(file_bytes, filename):
+def too_many_rows_message(max_rows):
+    return f'В файле найдено больше {max_rows} расходов. Загрузите выписку за меньший период.'
+
+
+def too_many_source_rows_message(max_source_rows):
+    return f'В файле больше {max_source_rows} строк. Загрузите выписку за меньший период.'
+
+
+def parse_bank_statement(file_bytes, filename, *, max_rows=None, max_source_rows=None):
+    """Parse a statement into expense rows.
+
+    max_rows stops as soon as the file holds more expense rows than one
+    preview may show; max_source_rows bounds the table rows or PDF lines that
+    are read at all. Both keep memory and CPU time of a hostile or simply huge
+    file at the level of an ordinary statement.
+    """
     if not isinstance(file_bytes, (bytes, bytearray)) or not file_bytes:
         raise ValueError('Файл пустой.')
     if len(file_bytes) > MAX_STATEMENT_BYTES:
@@ -190,51 +210,61 @@ def parse_bank_statement(file_bytes, filename):
         raise ValueError('Поддерживаются файлы CSV, TXT, TSV, XLSX и PDF.')
 
     if extension == '.pdf':
-        return _parse_pdf_statement(file_bytes)
+        return _parse_pdf_statement(file_bytes, max_rows=max_rows, max_source_rows=max_source_rows)
 
-    rows = _read_xlsx_rows(file_bytes) if extension == '.xlsx' else _read_csv_rows(file_bytes)
-    rows = _trim_table(rows)
-    if not rows:
-        raise ValueError('В файле не найдены строки с операциями.')
+    rows = _trim_table(_iter_xlsx_rows(file_bytes) if extension == '.xlsx' else _iter_csv_rows(file_bytes))
+    try:
+        head = list(islice(rows, HEADER_SCAN_ROWS))
+        if not head:
+            raise ValueError('В файле не найдены строки с операциями.')
 
-    bank = _detect_bank(rows)
-    header_index, mapping = _detect_header(rows)
-    data_rows = rows[header_index + 1:]
-    result = BankStatementParseResult(bank=bank, rows=[])
+        bank = _detect_bank(head)
+        header_index, mapping = _detect_header(head)
+        data_rows = chain(head[header_index + 1:], rows)
+        result = BankStatementParseResult(bank=bank, rows=[])
 
-    for offset, raw_row in enumerate(data_rows, start=header_index + 2):
-        if not any(str(cell).strip() for cell in raw_row):
-            result.skipped_empty += 1
-            continue
-        try:
-            imported = _parse_operation_row(raw_row, mapping, bank, offset)
-        except ValueError as exc:
-            result.errors.append(f'Строка {offset}: {exc}')
-            continue
+        for offset, raw_row in enumerate(data_rows, start=header_index + 2):
+            if max_source_rows is not None and offset > max_source_rows:
+                raise ValueError(too_many_source_rows_message(max_source_rows))
+            if not any(str(cell).strip() for cell in raw_row):
+                result.skipped_empty += 1
+                continue
+            try:
+                imported = _parse_operation_row(raw_row, mapping, bank, offset)
+            except ValueError as exc:
+                result.errors.append(f'Строка {offset}: {exc}')
+                continue
 
-        if imported is None:
-            result.skipped_income += 1
-            continue
-        result.rows.append(imported)
+            if imported is None:
+                result.skipped_income += 1
+                continue
+            result.rows.append(imported)
+            if max_rows is not None and len(result.rows) > max_rows:
+                raise ValueError(too_many_rows_message(max_rows))
+    finally:
+        rows.close()
 
     if not result.rows and not result.errors:
         raise ValueError('В файле не найдено расходов. Возможно, выписка содержит только пополнения.')
     return result
 
 
-def _parse_pdf_statement(file_bytes):
+def _parse_pdf_statement(file_bytes, *, max_rows=None, max_source_rows=None):
     text = _extract_pdf_text(file_bytes)
     lines = _normalize_pdf_lines(text)
     if not lines:
         raise ValueError('PDF не содержит распознаваемого текста. Если это скан, загрузите CSV/XLSX или текстовый PDF.')
+    if max_source_rows is not None and len(lines) > max_source_rows:
+        raise ValueError(too_many_source_rows_message(max_source_rows))
 
     bank = _detect_bank([[line] for line in lines[:30]])
 
     if _is_sber_credit_card_pdf(text):
-        return _finalize_pdf_result(_parse_sber_credit_card_pdf(lines, bank))
+        return _finalize_pdf_result(_parse_sber_credit_card_pdf(lines, bank), max_rows)
 
     if _is_tbank_movement_pdf(text):
-        return _finalize_pdf_result(_parse_tbank_movement_pdf(lines, bank))
+        return _finalize_pdf_result(_parse_tbank_movement_pdf(lines, bank), max_rows)
+    del text
 
     result = BankStatementParseResult(bank=bank, rows=[])
 
@@ -248,13 +278,17 @@ def _parse_pdf_statement(file_bytes):
         if imported is None:
             continue
         result.rows.append(imported)
+        if max_rows is not None and len(result.rows) > max_rows:
+            raise ValueError(too_many_rows_message(max_rows))
 
-    return _finalize_pdf_result(result)
+    return _finalize_pdf_result(result, max_rows)
 
 
-def _finalize_pdf_result(result):
+def _finalize_pdf_result(result, max_rows=None):
     if not result.rows and not result.errors:
         raise ValueError('В PDF не найдено расходов. Поддерживаются текстовые PDF Сбера и Т-Банка, а также CSV/XLSX.')
+    if max_rows is not None and len(result.rows) > max_rows:
+        raise ValueError(too_many_rows_message(max_rows))
     return result
 
 
@@ -650,15 +684,32 @@ def _decode_text(file_bytes):
     return file_bytes.decode('utf-8', errors='ignore')
 
 
-def _read_csv_rows(file_bytes):
+def _iter_csv_rows(file_bytes):
     text = _decode_text(file_bytes)
     delimiter = _detect_delimiter(text)
-    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    return [[_clean_cell(cell) for cell in row] for row in reader]
+    # The reader walks the decoded text line by line instead of copying it into
+    # a StringIO and materialising every row at once.
+    for row in csv.reader(_iter_lines(text), delimiter=delimiter):
+        yield [_clean_cell(cell) for cell in row]
+
+
+def _iter_lines(text):
+    """Lines of text with their line breaks, as iterating a text file gives them."""
+    start = 0
+    length = len(text)
+    while start < length:
+        end = text.find('\n', start)
+        if end == -1:
+            yield text[start:]
+            return
+        yield text[start:end + 1]
+        start = end + 1
 
 
 def _detect_delimiter(text):
-    lines = [line for line in text.splitlines()[:30] if line.strip()]
+    # 30 lines never need more than this window; splitting the whole text
+    # would copy a 10 MB statement once more.
+    lines = [line for line in text[:256 * 1024].splitlines()[:30] if line.strip()]
     best = (';', -1, -1)
     for delimiter in (';', '\t', ','):
         column_counts = [len(line.split(delimiter)) for line in lines]
@@ -670,60 +721,77 @@ def _detect_delimiter(text):
     return best[0]
 
 
-def _read_xlsx_rows(file_bytes):
+def _iter_xlsx_rows(file_bytes):
+    """Rows of the first worksheet, parsed incrementally.
+
+    The worksheet XML (up to MAX_XLSX_UNCOMPRESSED_BYTES) is never held as one
+    document tree: every finished <row> is converted and dropped, so memory
+    stays proportional to one row plus the shared strings.
+    """
     try:
         archive = zipfile.ZipFile(io.BytesIO(file_bytes))
     except zipfile.BadZipFile:
         raise ValueError('XLSX-файл поврежден или имеет неподдерживаемый формат.')
 
-    members = archive.infolist()
-    if len(members) > MAX_XLSX_MEMBERS:
-        archive.close()
-        raise ValueError('XLSX-файл содержит слишком много внутренних файлов.')
-    uncompressed_size = sum(member.file_size for member in members)
-    if uncompressed_size > MAX_XLSX_UNCOMPRESSED_BYTES:
-        archive.close()
-        raise ValueError('XLSX-файл слишком велик после распаковки.')
-    if any(
-        member.file_size > 1024 * 1024
-        and member.compress_size > 0
-        and member.file_size / member.compress_size > 200
-        for member in members
-    ):
-        archive.close()
-        raise ValueError('XLSX-файл имеет небезопасную степень сжатия.')
+    with archive:
+        members = archive.infolist()
+        if len(members) > MAX_XLSX_MEMBERS:
+            raise ValueError('XLSX-файл содержит слишком много внутренних файлов.')
+        uncompressed_size = sum(member.file_size for member in members)
+        if uncompressed_size > MAX_XLSX_UNCOMPRESSED_BYTES:
+            raise ValueError('XLSX-файл слишком велик после распаковки.')
+        if any(
+            member.file_size > 1024 * 1024
+            and member.compress_size > 0
+            and member.file_size / member.compress_size > 200
+            for member in members
+        ):
+            raise ValueError('XLSX-файл имеет небезопасную степень сжатия.')
 
-    try:
-        shared_strings = _xlsx_shared_strings(archive)
-        worksheet_name = _first_worksheet_name(archive)
-        namespace = {'x': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
-        root = ElementTree.fromstring(archive.read(worksheet_name))
-        rows = []
-        for row_el in root.findall('.//x:sheetData/x:row', namespace):
-            values = []
-            for cell_el in row_el.findall('x:c', namespace):
-                cell_ref = cell_el.attrib.get('r', '')
-                col_index = _xlsx_column_index(cell_ref)
-                while len(values) < col_index:
-                    values.append('')
-                values.append(_xlsx_cell_value(cell_el, shared_strings, namespace))
-            rows.append(values)
-        return rows
-    except (ElementTree.ParseError, KeyError):
-        raise ValueError('XLSX-файл поврежден или имеет неподдерживаемую структуру.')
-    finally:
-        archive.close()
+        try:
+            shared_strings = _xlsx_shared_strings(archive)
+            worksheet_name = _first_worksheet_name(archive)
+            namespace = {'x': XLSX_NAMESPACE}
+            row_tag = f'{{{XLSX_NAMESPACE}}}row'
+            sheet_data_tag = f'{{{XLSX_NAMESPACE}}}sheetData'
+            with archive.open(worksheet_name) as stream:
+                sheet_data = None
+                for event, element in ElementTree.iterparse(stream, events=('start', 'end')):
+                    if event == 'start':
+                        if element.tag == sheet_data_tag:
+                            sheet_data = element
+                        continue
+                    if element.tag != row_tag:
+                        continue
+                    values = []
+                    for cell_el in element.findall('x:c', namespace):
+                        cell_ref = cell_el.attrib.get('r', '')
+                        col_index = _xlsx_column_index(cell_ref)
+                        while len(values) < col_index:
+                            values.append('')
+                        values.append(_xlsx_cell_value(cell_el, shared_strings, namespace))
+                    # Remove the converted row from the tree iterparse builds.
+                    if sheet_data is not None:
+                        sheet_data.clear()
+                    else:
+                        element.clear()
+                    yield values
+        except (ElementTree.ParseError, KeyError, zipfile.BadZipFile, EOFError):
+            raise ValueError('XLSX-файл поврежден или имеет неподдерживаемую структуру.')
 
 
 def _xlsx_shared_strings(archive):
     if 'xl/sharedStrings.xml' not in archive.namelist():
         return []
-    namespace = {'x': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
-    root = ElementTree.fromstring(archive.read('xl/sharedStrings.xml'))
+    item_tag = f'{{{XLSX_NAMESPACE}}}si'
+    text_tag = f'{{{XLSX_NAMESPACE}}}t'
     strings = []
-    for item in root.findall('.//x:si', namespace):
-        parts = [node.text or '' for node in item.findall('.//x:t', namespace)]
-        strings.append(''.join(parts))
+    with archive.open('xl/sharedStrings.xml') as stream:
+        for _event, element in ElementTree.iterparse(stream, events=('end',)):
+            if element.tag != item_tag:
+                continue
+            strings.append(''.join(node.text or '' for node in element.iter(text_tag)))
+            element.clear()
     return strings
 
 
@@ -764,14 +832,15 @@ def _xlsx_cell_value(cell_el, shared_strings, namespace):
 
 
 def _trim_table(rows):
-    trimmed = []
-    for row in rows:
-        normalized = [_clean_cell(cell) for cell in row]
-        while normalized and normalized[-1] == '':
-            normalized.pop()
-        if normalized:
-            trimmed.append(normalized)
-    return trimmed
+    try:
+        for row in rows:
+            normalized = [_clean_cell(cell) for cell in row]
+            while normalized and normalized[-1] == '':
+                normalized.pop()
+            if normalized:
+                yield normalized
+    finally:
+        rows.close()
 
 
 def _clean_cell(value):

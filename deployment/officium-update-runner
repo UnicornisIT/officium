@@ -51,13 +51,28 @@ ALLOWED_CONFIG_KEYS = {
     'HEALTHCHECK_URL',
     'REPOSITORY',
     'RELEASES_DIR',
+    'RELEASES_KEEP',
     'SERVICE_NAME',
     'SOURCE_URL',
     'STATUS_FILE',
     'STALE_MINUTES',
+    'UPDATE_MIN_FREE_MB',
+    'UPDATE_MIN_MEMORY_MB',
+    'DISK_WARN_FREE_MB',
     'UPDATE_SOCKET',
     'VENV_NAME',
 }
+# Resource defaults for a 1 vCPU / 1 GiB / 10 GB server (docs/DEPLOYMENT.md).
+DEFAULT_RELEASES_KEEP = 3
+DEFAULT_UPDATE_MIN_FREE_MB = 750
+DEFAULT_UPDATE_MIN_MEMORY_MB = 200
+DEFAULT_DISK_WARN_FREE_MB = 1536
+# Used when nothing better is known: a release with its venv is ~130 MiB.
+FALLBACK_RELEASE_BYTES = 400 * 1024 * 1024
+FALLBACK_BACKUP_BYTES = 64 * 1024 * 1024
+RELEASE_DIR_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}-[0-9a-f]{12}$')
+STALE_BUILD_RE = re.compile(r'^\.(?:build|permission-check|staging)-')
+STALE_BUILD_SECONDS = 6 * 3600
 ACTIVE_STATES = {
     'queued', 'checking', 'preparing', 'backing_up', 'installing',
     'dependencies', 'migrating', 'restarting', 'verifying',
@@ -76,6 +91,7 @@ PUBLIC_MESSAGES = {
     'deployment_failed': 'Не удалось установить код релиза.',
     'github_unavailable': 'Серверный помощник не смог проверить релиз на GitHub.',
     'healthcheck_failed': 'Новая версия запущена, но не прошла проверку работоспособности.',
+    'insufficient_resources': 'Недостаточно места на диске или памяти для безопасного обновления. Обновление не начато.',
     'migration_failed': 'Не удалось выполнить миграции базы данных.',
     'protocol_error': 'Локальная служба отклонила некорректный запрос.',
     'release_rejected': 'Серверный помощник отклонил выбранный релиз.',
@@ -172,7 +188,24 @@ def load_runner_config():
         'UPDATE_SOCKET': configured.get('UPDATE_SOCKET', '/run/officium/updater.sock'),
         'SOURCE_URL': configured.get('SOURCE_URL', '') or DEFAULT_SOURCE_URL,
         'GITHUB_API_URL': configured.get('GITHUB_API_URL', '') or DEFAULT_GITHUB_API_URL,
+        'RELEASES_KEEP': configured.get('RELEASES_KEEP', '') or str(DEFAULT_RELEASES_KEEP),
+        'UPDATE_MIN_FREE_MB': configured.get('UPDATE_MIN_FREE_MB', '') or str(DEFAULT_UPDATE_MIN_FREE_MB),
+        'UPDATE_MIN_MEMORY_MB': configured.get('UPDATE_MIN_MEMORY_MB', '') or str(DEFAULT_UPDATE_MIN_MEMORY_MB),
+        'DISK_WARN_FREE_MB': configured.get('DISK_WARN_FREE_MB', '') or str(DEFAULT_DISK_WARN_FREE_MB),
     }
+    for key, low, high in (
+        # Fewer than 2 would delete the release an automatic rollback needs.
+        ('RELEASES_KEEP', 2, 20),
+        ('UPDATE_MIN_FREE_MB', 0, 1024 * 1024),
+        ('UPDATE_MIN_MEMORY_MB', 0, 1024 * 1024),
+        ('DISK_WARN_FREE_MB', 0, 1024 * 1024),
+    ):
+        try:
+            values[key] = int(values[key])
+        except ValueError as exc:
+            raise UpdateFailure(f'{key} must be an integer.') from exc
+        if not low <= values[key] <= high:
+            raise UpdateFailure(f'{key} must be between {low} and {high}.')
     validate_release_sources(values)
     if not Path(values['UPDATE_SOCKET']).is_absolute():
         raise UpdateFailure('UPDATE_SOCKET must be an absolute path.')
@@ -1229,6 +1262,10 @@ def rollback_to_release(config, target):
                 f'{candidate.name} did not start healthy ({exc}); {previous.name} was restored.',
                 'rollback_failed',
             ) from exc
+        try:
+            record_release_activation(config, candidate)
+        except OSError:
+            log_unexpected_failure('release history')
     return {
         'code': 'rolled_back', 'release': str(candidate), 'previous': str(previous),
         'env_link_repaired': repaired,
@@ -1392,6 +1429,286 @@ def verify_requested_release(config, tag, require_latest):
         verify_tag_published(config, tag)
 
 
+MIB = 1024 * 1024
+
+
+def tree_disk_usage(path):
+    """Bytes a directory tree occupies on disk; symlinks are not followed."""
+    total = 0
+    for root, directories, files in os.walk(path, followlinks=False):
+        for name in directories + files:
+            try:
+                info = os.lstat(os.path.join(root, name))
+            except OSError:
+                continue
+            total += getattr(info, 'st_blocks', 0) * 512 or info.st_size
+    return total
+
+
+def available_memory():
+    """(MemAvailable, SwapFree) in bytes, or None where /proc/meminfo is missing."""
+    try:
+        lines = Path('/proc/meminfo').read_text(encoding='ascii').splitlines()
+    except OSError:
+        return None
+    values = {}
+    for line in lines:
+        key, _separator, rest = line.partition(':')
+        parts = rest.split()
+        if parts and parts[0].isdigit():
+            values[key] = int(parts[0]) * 1024
+    if 'MemAvailable' not in values:
+        return None
+    return values['MemAvailable'], values.get('SwapFree', 0)
+
+
+def estimate_backup_bytes(config):
+    """Room the pre-update database backup needs, from real sizes where possible."""
+    settings = database_settings(application_env_path(config), Path(config['APP_DIR']))
+    if settings['engine'] == 'sqlite':
+        try:
+            return int(settings['path'].stat().st_size * 1.1) + MIB, 'sqlite file'
+        except OSError:
+            return FALLBACK_BACKUP_BYTES, 'fallback'
+    backups = sorted(
+        Path(config['BACKUP_DIR']).glob('officium-*.sql'),
+        key=lambda item: item.stat().st_mtime,
+    )
+    if backups:
+        return int(backups[-1].stat().st_size * 1.25) + 8 * MIB, f'last dump {backups[-1].name}'
+    # A local MySQL keeps one directory per database; root can measure it.
+    datadir = Path('/var/lib/mysql') / settings['database']
+    if datadir.is_dir():
+        return tree_disk_usage(datadir), 'mysql data directory'
+    return FALLBACK_BACKUP_BYTES, 'fallback'
+
+
+def estimate_release_bytes(config):
+    """Room for the new release: the current one plus its build overhead."""
+    try:
+        current = Path(config['APP_DIR']).resolve(strict=True)
+        measured = tree_disk_usage(current)
+    except OSError:
+        return FALLBACK_RELEASE_BYTES, 'fallback'
+    # git objects and pip's temporary build tree come on top of the result.
+    return max(int(measured * 1.25), 256 * MIB), f'current release {current.name}'
+
+
+def update_resource_plan(config):
+    """Free space and memory an update needs, checked before anything changes.
+
+    The new release (built next to the running one) and the database backup
+    are counted on the filesystem they are written to; when both share one
+    filesystem their sizes add up. UPDATE_MIN_FREE_MB has to stay free after
+    both, for the database, journald and the operating system.
+    """
+    release_bytes, release_basis = estimate_release_bytes(config)
+    backup_bytes, backup_basis = estimate_backup_bytes(config)
+    reserve = config['UPDATE_MIN_FREE_MB'] * MIB
+    needs = {}
+    for label, path, size in (
+        ('release', Path(config['RELEASES_DIR']), release_bytes),
+        ('backup', Path(config['BACKUP_DIR']), backup_bytes),
+    ):
+        existing = path
+        while not existing.exists() and existing != existing.parent:
+            existing = existing.parent
+        device = os.stat(existing).st_dev
+        entry = needs.setdefault(device, {'path': str(existing), 'needed': reserve, 'parts': []})
+        entry['needed'] += size
+        entry['parts'].append(f'{label} {size // MIB} MiB ({release_basis if label == "release" else backup_basis})')
+    filesystems = []
+    for entry in needs.values():
+        free = shutil.disk_usage(entry['path']).free
+        filesystems.append({
+            'path': entry['path'],
+            'free_mib': free // MIB,
+            'needed_mib': entry['needed'] // MIB,
+            'parts': entry['parts'] + [f'reserve {reserve // MIB} MiB'],
+            'ok': free >= entry['needed'],
+        })
+    memory = available_memory()
+    memory_needed = config['UPDATE_MIN_MEMORY_MB'] * MIB
+    memory_plan = None
+    if memory is not None:
+        memory_plan = {
+            'available_mib': memory[0] // MIB,
+            'swap_free_mib': memory[1] // MIB,
+            'needed_mib': memory_needed // MIB,
+            # Swap only softens a peak; it is counted, not relied upon alone.
+            'ok': memory[0] >= memory_needed // 2 and sum(memory) >= memory_needed,
+        }
+    return {'filesystems': filesystems, 'memory': memory_plan}
+
+
+def verify_update_resources(config):
+    plan = update_resource_plan(config)
+    problems = []
+    for filesystem in plan['filesystems']:
+        if not filesystem['ok']:
+            problems.append(
+                f'{filesystem["path"]}: {filesystem["free_mib"]} MiB free, '
+                f'{filesystem["needed_mib"]} MiB needed ({", ".join(filesystem["parts"])})'
+            )
+    memory = plan['memory']
+    if memory is not None and not memory['ok']:
+        problems.append(
+            f'memory: {memory["available_mib"]} MiB available and {memory["swap_free_mib"]} MiB swap free, '
+            f'{memory["needed_mib"]} MiB needed'
+        )
+    if problems:
+        print('officium updater: not enough resources: ' + '; '.join(problems), file=sys.stderr)
+        raise UpdateFailure('Not enough disk space or memory for a safe update.', 'insufficient_resources')
+    return plan
+
+
+def release_history_path(config):
+    return Path(config['STATUS_FILE']).parent / 'release-history.json'
+
+
+def record_release_activation(config, release_path):
+    """Remember when a release last served healthy (used to pick what to keep)."""
+    path = release_history_path(config)
+    try:
+        history = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(history, dict):
+            history = {}
+    except (OSError, ValueError):
+        history = {}
+    history[Path(release_path).name] = time.time()
+    temporary = path.with_name(f'.{path.name}.{os.getpid()}')
+    temporary.write_text(json.dumps(history, sort_keys=True), encoding='utf-8')
+    temporary.chmod(0o640)
+    os.replace(temporary, path)
+
+
+def prune_releases(config, protected=(), *, dry_run=False, release_owner_uid=0):
+    """Delete old releases beyond RELEASES_KEEP; never the current or protected ones.
+
+    Only directories in RELEASES_DIR that look exactly like a finished
+    release (name <tag>-<12 hex>, root-owned, with .officium-release-ready)
+    are candidates. Releases that served healthy most recently are kept
+    first (release-history.json), then the newest builds; a release that was
+    rolled back and never passed a health check is the first to go, so it
+    never displaces a working rollback target. Build leftovers of crashed
+    runs (.build-*, .staging-*, .permission-check-*) older than six hours go
+    too. Backups, shared/ and anything unknown are never touched.
+    """
+    try:
+        history = json.loads(release_history_path(config).read_text(encoding='utf-8'))
+        if not isinstance(history, dict):
+            history = {}
+    except (OSError, ValueError, KeyError):
+        history = {}
+    releases_dir = Path(config['RELEASES_DIR']).resolve(strict=True)
+    current = Path(config['APP_DIR']).resolve(strict=True)
+    keep_paths = {current}
+    for item in protected:
+        if item:
+            try:
+                keep_paths.add(Path(item).resolve(strict=True))
+            except OSError:
+                continue
+    releases = []
+    stale_builds = []
+    now = time.time()
+    for entry in releases_dir.iterdir():
+        try:
+            info = entry.lstat()
+        except OSError:
+            continue
+        if not stat.S_ISDIR(info.st_mode):
+            continue
+        if STALE_BUILD_RE.match(entry.name):
+            if now - info.st_mtime > STALE_BUILD_SECONDS:
+                stale_builds.append(entry)
+            continue
+        marker = entry / '.officium-release-ready'
+        if not RELEASE_DIR_RE.fullmatch(entry.name) or info.st_uid != release_owner_uid or not marker.is_file():
+            continue
+        activated = history.get(entry.name)
+        releases.append(((float(activated) if isinstance(activated, (int, float)) else 0.0,
+                          marker.stat().st_mtime), entry))
+    releases.sort(key=lambda item: item[0], reverse=True)
+    kept = [entry for _rank, entry in releases if entry in keep_paths]
+    doomed = []
+    for _rank, entry in releases:
+        if entry in keep_paths:
+            continue
+        if len(kept) < config['RELEASES_KEEP']:
+            kept.append(entry)
+        else:
+            doomed.append(entry)
+    removed = []
+    for entry in doomed + stale_builds:
+        if entry.parent != releases_dir or entry.resolve() in keep_paths:
+            continue
+        size = tree_disk_usage(entry)
+        if not dry_run:
+            shutil.rmtree(entry)
+        removed.append({'name': entry.name, 'mib': round(size / MIB, 1)})
+    return {'kept': sorted(entry.name for entry in kept), 'removed': removed, 'dry_run': dry_run}
+
+
+def journal_disk_usage():
+    journalctl = shutil.which('journalctl')
+    if not journalctl:
+        return None
+    result = subprocess.run(
+        [journalctl, '--disk-usage'], capture_output=True, text=True, timeout=20, check=False,
+    )
+    match = re.search(r'take up ([0-9.]+)([KMGT]?)', result.stdout)
+    if not match:
+        return None
+    scale = {'': 1 / MIB, 'K': 1 / 1024, 'M': 1, 'G': 1024, 'T': 1024 * 1024}[match.group(2)]
+    return round(float(match.group(1)) * scale, 1)
+
+
+def disk_report(config):
+    """Read-only disk budget of the installation, for operators and the docs."""
+    current = Path(config['APP_DIR']).resolve(strict=True)
+    releases_dir = Path(config['RELEASES_DIR'])
+    app_root = releases_dir.parent
+    releases = []
+    for entry in sorted(releases_dir.iterdir()):
+        if entry.is_dir() and not entry.is_symlink():
+            releases.append({
+                'name': entry.name,
+                'mib': round(tree_disk_usage(entry) / MIB, 1),
+                'current': entry.resolve() == current,
+            })
+    backup_dir = Path(config['BACKUP_DIR'])
+    backups = [item for item in backup_dir.iterdir()] if backup_dir.is_dir() else []
+    usage = shutil.disk_usage(app_root)
+    free_mib = usage.free // MIB
+    if free_mib < config['UPDATE_MIN_FREE_MB']:
+        level = 'critical'
+    elif free_mib < config['DISK_WARN_FREE_MB']:
+        level = 'warning'
+    else:
+        level = 'ok'
+    shared = app_root / 'shared'
+    return {
+        'code': 'disk_report',
+        'level': level,
+        'filesystem': {'path': str(app_root), 'total_mib': usage.total // MIB, 'free_mib': free_mib},
+        'thresholds_mib': {'warning': config['DISK_WARN_FREE_MB'], 'critical': config['UPDATE_MIN_FREE_MB']},
+        'releases': releases,
+        'releases_keep': config['RELEASES_KEEP'],
+        'shared_mib': round(tree_disk_usage(shared) / MIB, 1) if shared.is_dir() else None,
+        'import_storage_mib': round(tree_disk_usage(shared / 'instance' / 'bank_imports') / MIB, 1)
+        if (shared / 'instance' / 'bank_imports').is_dir() else None,
+        'backups': {
+            'path': str(backup_dir),
+            'count': len(backups),
+            'mib': round(tree_disk_usage(backup_dir) / MIB, 1) if backup_dir.is_dir() else 0,
+            'disk_free_mib': shutil.disk_usage(backup_dir).free // MIB if backup_dir.is_dir() else None,
+        },
+        'journal_mib': journal_disk_usage(),
+        'update_plan': update_resource_plan(config),
+    }
+
+
 def perform_update(tag, *, require_latest=True):
     config = load_runner_config()
     LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1408,6 +1725,9 @@ def perform_update(tag, *, require_latest=True):
             verify_git_remote(config)
 
             write_status(config, 'preparing', tag, 'Подготовка сервера к обновлению.')
+            # Nothing has been written yet: a full disk or too little memory
+            # stops the update here, with the running release untouched.
+            verify_update_resources(config)
             write_status(config, 'backing_up', tag, 'Создание резервной копии базы данных.')
             backup_path, config_backup_path = create_backups(config, tag)
 
@@ -1468,6 +1788,16 @@ def perform_update(tag, *, require_latest=True):
                     previous_release=str(previous_release),
                 )
                 raise failure from exc
+
+            # The new release is healthy; the previous one stays for rollback.
+            try:
+                record_release_activation(config, previous_release)
+                record_release_activation(config, release_path)
+                pruned = prune_releases(config, protected=(release_path, previous_release))
+                if pruned['removed']:
+                    print(f'officium updater: removed old releases {pruned["removed"]}', file=sys.stderr)
+            except Exception:
+                log_unexpected_failure('old release cleanup', operation_id)
 
             write_status(
                 config,
@@ -1740,6 +2070,24 @@ def main(argv):
     if len(argv) == 3 and argv[1] == '--backup-only':
         backup_only(validate_tag(argv[2]))
         return 0
+    if len(argv) == 2 and argv[1] == '--disk-report':
+        emit_result(True, **disk_report(load_runner_config()))
+        return 0
+    if len(argv) == 2 and argv[1] == '--check-resources':
+        emit_result(True, code='resources_ok', **verify_update_resources(load_runner_config()))
+        return 0
+    if len(argv) in (2, 3) and argv[1] == '--prune-releases':
+        if len(argv) == 3 and argv[2] != '--dry-run':
+            raise UpdateFailure('Usage: officium-update-runner --prune-releases [--dry-run]')
+        config = load_runner_config()
+        LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with LOCK_PATH.open('w', encoding='utf-8') as lock_file:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise UpdateFailure('Another server update is already running.', 'update_busy') from exc
+            emit_result(True, code='releases_pruned', **prune_releases(config, dry_run=len(argv) == 3))
+        return 0
     if 2 <= len(argv) <= 4 and argv[1] == '--verify-health':
         if len(argv) >= 3:
             service = argv[2]
@@ -1766,6 +2114,7 @@ def main(argv):
         'Usage: officium-update-runner --serve|--check|--start-latest|--start TAG|--start-tag TAG'
         '|--perform TAG|--latest-tag|--rollback-to RELEASE|--components'
         '|--backup-only LABEL|--verify-health [SERVICE [URL]]|--relocate-venv RELEASE OLD_ROOT NEW_ROOT|--verify-release RELEASE [ENV_FILE]'
+        '|--disk-report|--check-resources|--prune-releases [--dry-run]'
     )
 
 
