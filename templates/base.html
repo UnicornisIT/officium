@@ -28,7 +28,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=23" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=24" rel="stylesheet">
     {% block extra_css %}{% endblock %}
 </head>
 <body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
@@ -145,7 +145,7 @@
                         <span class="nav-expand__compact"><i class="bi bi-boxes me-1" aria-hidden="true"></i>Модули<i class="bi bi-chevron-down ms-1 modules-menu-chevron" aria-hidden="true"></i></span>
                         <span class="nav-expand__full" aria-hidden="true"><i class="bi bi-boxes"></i>Модули<i class="bi bi-chevron-down"></i></span>
                     </button>
-                    <ul id="modulesMenu" class="dropdown-menu" aria-labelledby="modulesMenuToggle">
+                    <ul id="modulesMenu" class="dropdown-menu dropdown-menu-end" aria-labelledby="modulesMenuToggle">
                         {% if vehicles_enabled %}<li><a class="dropdown-item {% if request.path.startswith('/vehicles') %}active{% endif %}" href="{{ url_for('vehicles') }}"><i class="bi bi-car-front me-2" aria-hidden="true"></i>Автомобили</a></li>{% endif %}
                         <li><a class="dropdown-item {% if request.path.startswith('/goals') %}active{% endif %}" href="{{ url_for('goals') }}"><i class="bi bi-bullseye me-2" aria-hidden="true"></i>Цели</a></li>
                     </ul>

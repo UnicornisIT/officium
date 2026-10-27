@@ -7501,4 +7501,49 @@ html[data-theme="dark"] .toast {
 .info-hint__bubble[hidden] {
     display: none;
 }
-.modules-menu>.dropdown-menu{min-width:220px;margin-top:0;padding:.5rem}.modules-menu .dropdown-item{display:flex;align-items:center;min-height:42px;border-radius:6px}.modules-menu .nav-link{font:inherit}.navbar.navbar--compact .modules-menu-chevron{display:none}@media(max-width:991.98px){.modules-menu{width:100%}.modules-menu>button{margin-inline:auto}.modules-menu>.dropdown-menu{position:static;min-width:0;width:100%}}
+.modules-menu > .dropdown-menu {
+    min-width: 240px;
+    margin-top: 6px;
+    padding: 8px;
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(2, 8, 23, .24);
+}
+#modulesMenu > li + li { margin-top: 8px; }
+.modules-menu #modulesMenu .dropdown-item {
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text) !important;
+    background: var(--bg-card-2) !important;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+.modules-menu #modulesMenu .dropdown-item:hover,
+.modules-menu #modulesMenu .dropdown-item:focus-visible {
+    border-color: color-mix(in srgb, var(--primary) 60%, var(--border));
+    background: color-mix(in srgb, var(--primary) 12%, var(--bg-card-2)) !important;
+}
+.modules-menu #modulesMenu .dropdown-item.active {
+    border-color: color-mix(in srgb, var(--primary) 65%, var(--border));
+    background: color-mix(in srgb, var(--primary) 18%, var(--bg-card-2)) !important;
+}
+#modulesMenu .dropdown-item > .bi {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
+    margin-right: 10px !important;
+    border-radius: 7px;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.modules-menu .nav-link { font: inherit; }
+.navbar.navbar--compact .modules-menu-chevron { display: none; }
+@media (max-width: 991.98px) {
+    .modules-menu { width: 100%; }
+    .modules-menu > button { margin-inline: auto; }
+    .modules-menu > .dropdown-menu { position: static; min-width: 0; width: 100%; }
+}
