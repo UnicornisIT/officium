@@ -4,7 +4,7 @@ const dateInMoscow = () => {
   const parts = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
   return ['year', 'month', 'day'].map(key => parts.find(part => part.type === key).value).join('-');
 };
-const cents = text => Math.round(Number(text.replace(/[^\d,-]/g, '').replace(',', '.')) * 100);
+const cents = text => Math.round(Number(text.replace(/[^\d,.-]/g, '').replace(',', '.')) * 100);
 const saveVehicle = async page => {
   await page.getByRole('button', { name: 'Сохранить автомобиль', exact: true }).click();
   await page.waitForURL(/\/vehicles\/\d+$/);
@@ -183,4 +183,32 @@ test('vehicle checklist: country management, code badge and administrator privac
   await expect(page.locator(`[name="registration_country_id"] option[value="${countryId}"]`)).toHaveCount(0);
   await page.goto(`${vehiclePath}/edit`);
   await expect(page.locator('[name="registration_country_id"]')).toHaveValue(countryId);
+});
+
+test('vehicle checklist: bank import cannot change an archived vehicle expense', async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  const title = `Такси учебная ежемесячная перевозка ${testInfo.project.name}`;
+  await page.goto('/dev-login/user');
+  const vehiclePath = await createVehicle(page, `Учебное авто импорта ${testInfo.project.name}`);
+  await page.goto(`${vehiclePath}/expense`);
+  await page.locator('[name="title"]').fill(title);
+  await page.locator('[name="amount"]').fill('123.45');
+  await page.locator('[name="expense_date"]').fill(dateInMoscow());
+  await page.locator('[name="is_monthly"]').check();
+  await page.getByRole('button', { name: 'Сохранить расход', exact: true }).click();
+  await page.waitForURL(/month=/);
+  const editExpense = await page.locator('tr', { hasText: title }).getByRole('link', { name: 'Редактировать', exact: true }).getAttribute('href');
+  await page.goto(vehiclePath);
+  await page.getByRole('button', { name: 'Архивировать автомобиль', exact: true }).click();
+  await page.getByRole('button', { name: 'В архив', exact: true }).click();
+  await page.goto('/expenses/import');
+  const bankDate = dateInMoscow().split('-').reverse().join('.');
+  const csv = `Сбербанк Онлайн\nДата операции;Описание операции;Сумма операции;Категория;Карта\n${bankDate};${title};-999,00;Транспорт;*1111\n`;
+  await page.locator('[name="statement_file"]').setInputFiles({ name: 'fictional-transport.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8') });
+  await page.getByRole('button', { name: 'Разобрать', exact: true }).click();
+  await expect(page.locator('[name="action_0"]')).toHaveValue('update_monthly');
+  await page.locator('form[action$="/expenses/import/confirm"] button[type="submit"]').click();
+  await expect(page.locator('.alert-danger:visible')).toContainText('Автомобиль в архиве');
+  await page.goto(editExpense);
+  expect(cents(await page.locator('[name="amount"]').inputValue())).toBe(12345);
 });

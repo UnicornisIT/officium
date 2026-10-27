@@ -19,6 +19,10 @@
     });
     menu.addEventListener('focusin', () => window.clearTimeout(closeTimer));
     menu.addEventListener('focusout', event => {
+        // Safari may blur a focused item without focusing the clicked link.
+        // Keep that pointer interaction alive until click; pointerleave still
+        // closes the menu, and keyboard focus moving outside closes it below.
+        if (!event.relatedTarget && menu.matches(':hover')) return;
         if (!menu.contains(event.relatedTarget)) dropdown.hide();
     });
     menu.addEventListener('keydown', () => {

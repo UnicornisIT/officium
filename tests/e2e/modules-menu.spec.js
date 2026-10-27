@@ -3,6 +3,7 @@ const { test, expect } = require('@playwright/test');
 for (const width of [1440, 390]) {
   for (const theme of ['light', 'dark']) {
     test(`modules menu ${width}px ${theme}`, async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
       await page.setViewportSize({ width, height: 1000 });
       await page.addInitScript(value => localStorage.setItem('officiumTheme', value), theme);
       await page.goto('/dev-login/user');
@@ -49,6 +50,12 @@ for (const width of [1440, 390]) {
       }
       await menu.getByRole('link', { name: 'Автомобили', exact: true }).click();
       await expect(page).toHaveURL(/\/vehicles$/);
+      await expect(page.locator('#modulesMenuToggle')).toHaveClass(/active/);
+      if (width < 992) await page.locator('.navbar-toggler').click();
+      if (width >= 992) await toggle.press('ArrowDown');
+      else await toggle.click();
+      await menu.getByRole('link', { name: 'Цели', exact: true }).press('Enter');
+      await expect(page).toHaveURL(/\/goals$/);
       await expect(page.locator('#modulesMenuToggle')).toHaveClass(/active/);
     });
   }
