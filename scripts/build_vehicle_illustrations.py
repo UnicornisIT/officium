@@ -65,8 +65,6 @@ def passenger(kind):
         'sedan': ('M27 118L30 100Q33 91 51 88L99 81L132 55Q138 51 149 51H218Q228 51 237 59L267 82L315 91Q326 93 329 107L331 123H306Q304 96 282 96Q260 96 257 123H114Q111 96 89 96Q66 96 64 123H31Z', 55, 230, 267),
         'hatchback': ('M27 118L30 99Q34 90 51 87L98 80L130 51Q138 47 149 47H237Q245 48 250 56L282 87L317 93L326 107V123H306Q304 96 282 96Q260 96 257 123H114Q111 96 89 96Q66 96 64 123H30Z', 51, 242, 278),
         'wagon': ('M27 118L30 99Q34 90 51 87L98 81L130 51Q138 47 149 47H267L290 85L317 91L329 106V123H306Q304 96 282 96Q260 96 257 123H114Q111 96 89 96Q66 96 64 123H30Z', 51, 260, 285),
-        'suv': ('M27 119L29 93Q31 81 49 79L98 73L120 43Q124 37 138 37H265L290 76L318 83L329 99V123H306Q304 95 282 95Q259 95 256 123H114Q111 95 89 95Q65 95 63 123H29Z', 42, 259, 283),
-        'minivan': ('M27 119L29 94L49 78L82 69L116 40Q125 35 139 35H266L294 73L320 84L330 104V123H306Q304 96 282 96Q260 96 257 123H114Q111 96 89 96Q66 96 64 123H29Z', 40, 260, 286),
         'pickup': ('M27 118L29 95L49 83L85 77L107 47Q113 43 125 43H194L213 79H326V123H306Q304 96 282 96Q260 96 257 123H114Q111 96 89 96Q66 96 64 123H29Z', 48, 190, 207),
         'van': ('M28 119L29 80L67 47Q73 39 89 37H310Q325 38 328 52L331 123H306Q304 96 282 96Q260 96 257 123H114Q111 96 89 96Q66 96 64 123H29Z', 43, 310, 320),
     }
@@ -85,7 +83,7 @@ def passenger(kind):
             result += '<path d="M215 83H323M214 86V117" fill="none" stroke="#182737" stroke-opacity=".55"/>'
         else:
             result += window(f'M181 {roof+3}H{min(roof_end-7, 226)}L{min(rear-13,252)} 79H181Z')
-            if kind in ('wagon', 'suv', 'minivan'):
+            if kind == 'wagon':
                 result += window(f'M237 {roof+3}H{roof_end-5}L{rear-4} 79H259Z')
             result += '<path d="M178 83V116M254 83L250 115" fill="none" stroke="#172639" stroke-opacity=".55" stroke-width=".8"/>'
         result += '<path d="M145 57L119 77H133L158 57Z" fill="#e4f3ff" fill-opacity=".18"/>'
@@ -102,10 +100,87 @@ def passenger(kind):
       <path d="M101 78H109" stroke="#d7e7f1" stroke-opacity=".55"/>
       <path d="M126 120H247" stroke="#0e1825" stroke-width="3"/>
     '''
-    if kind in ('suv', 'wagon', 'minivan'):
+    if kind == 'wagon':
         result += f'<path d="M141 {roof-5}H{roof_end-7}" stroke="#82909d" stroke-width="2" stroke-linecap="round"/>'
     result += wheel(89) + wheel(282)
     return result
+
+
+def offroad_wheel(x):
+    vents = ''.join(
+        f'<ellipse cx="0" cy="-9" rx="3" ry="4" fill="#172131" transform="rotate({angle})"/>'
+        for angle in range(0, 360, 60)
+    )
+    tread = ''.join(
+        f'<path d="M-3 -23L0 -25L3 -23" fill="none" stroke="#56606c" stroke-width="1.5" transform="rotate({angle})"/>'
+        for angle in range(0, 360, 20)
+    )
+    return f'''<g transform="translate({x} 117)">
+      <circle r="26" fill="url(#tyre)" stroke="#090f17" stroke-width="1.5"/>{tread}
+      <circle r="16" fill="url(#metal)" stroke="#8e9baa" stroke-width="1.5"/>{vents}
+      <circle r="5.5" fill="#697a8d" stroke="#c5d0dc"/><circle r="2" fill="#233246"/>
+    </g>'''
+
+
+def suv():
+    """Tall, boxy off-roader: short overhangs, raised chassis, rugged tyres."""
+    body = 'M27 109V81L32 71H104L122 37Q125 31 136 31H291L306 44V111H304Q301 87 274 87Q246 87 244 112H113Q111 87 83 87Q55 87 53 112H29Z'
+    result = '<ellipse cx="178" cy="145" rx="157" ry="8" fill="url(#shadow)"/>'
+    result += '<path d="M39 103H308V117H39Z" fill="#172334"/>'
+    # Rear-mounted spare wheel, visible beyond the upright tailgate.
+    result += '<rect x="305" y="65" width="21" height="44" rx="8" fill="url(#tyre)" stroke="#657183"/>'
+    result += '<path d="M309 71H323M308 78H324M308 85H324M308 92H324M309 100H323" stroke="#09121e" stroke-width="2"/>'
+    result += paint(body)
+    result += window('M111 73L132 40H177V73Z')
+    result += window('M187 40H239V73H187Z')
+    result += window('M249 40H288L296 48V73H249Z')
+    result += '''<path d="M145 42L124 70H135L155 42Z" fill="#e7f4ff" fill-opacity=".17"/>
+      <path d="M180 38V105M243 38V105M298 47V105" fill="none" stroke="#132132" stroke-opacity=".65"/>
+      <path d="M114 78H297M116 99H241" fill="none" stroke="#fff" stroke-opacity=".27"/>
+      <path d="M119 76V105M115 106H244" fill="none" stroke="#142133" stroke-width="1.2"/>
+      <path d="M158 82H170M222 82H234" stroke="url(#metal)" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M133 27V23H289V27M146 24V31M278 24V31" fill="none" stroke="#7e8c9c" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M30 70H100M31 75H101" stroke="#dbe7f1" stroke-opacity=".35"/>
+      <path d="M25 80H39V94H25Z" fill="#172438" stroke="#899daf"/>
+      <path d="M26 83H37V88H26Z" fill="#e5f6ff"/><path d="M27 91H37" stroke="#e9a44c" stroke-width="2"/>
+      <path d="M299 78H306V97H299Z" fill="#ae2b3e"/><path d="M301 80V93" stroke="#ff9491" stroke-width="1.2"/>
+      <path d="M21 106H52V117H23ZM304 106H321V117H304Z" fill="#223044" stroke="#6d7e91"/>
+      <path d="M55 111Q57 88 83 88Q109 88 112 111M246 111Q248 88 274 88Q300 88 302 111" fill="none" stroke="#172233" stroke-width="7"/>
+      <path d="M55 110Q58 86 83 86Q108 86 112 110M246 110Q249 86 274 86Q299 86 302 110" fill="none" stroke="#7d8b9b" stroke-opacity=".5" stroke-width="1"/>
+      <path d="M116 113H241V118H116Z" fill="#28384b" stroke="#8796a5" stroke-width=".7"/>
+      <path d="M124 114H234" stroke="#b5c0ca" stroke-width="1"/>
+      <path d="M118 73L109 68H104L103 76H119Z" fill="currentColor" stroke="#243346"/>
+    '''
+    return result + offroad_wheel(83) + offroad_wheel(274)
+
+
+def minivan():
+    """One-volume people carrier: rounded nose, long roof, sliding rear door."""
+    body = 'M23 117L25 98Q28 85 43 75L87 37Q103 24 128 24H278Q298 24 310 40L324 65Q331 78 331 94V124H306Q303 99 282 99Q260 99 257 124H104Q102 99 80 99Q58 99 56 124H29Q23 124 23 117Z'
+    result = '<ellipse cx="178" cy="143" rx="159" ry="8" fill="url(#shadow)"/>'
+    result += '<path d="M34 111H324V128H34Z" fill="#172233"/>' + paint(body)
+    # Continuous glass band runs nearly from the nose to the upright rear.
+    result += window('M46 77L93 39Q104 32 120 32H139V79H46Z')
+    result += window('M148 32H226V79H148Z')
+    result += window('M235 32H277Q289 33 297 44L313 73V79H235Z')
+    result += '''<path d="M99 39L58 76H75L115 34Z" fill="#e7f4ff" fill-opacity=".18"/>
+      <path d="M242 34L273 34L298 75H285Z" fill="#e7f4ff" fill-opacity=".06"/>
+      <path d="M142 32V118M231 32V117M314 82V117" fill="none" stroke="#16263a" stroke-opacity=".6" stroke-width="1"/>
+      <path d="M151 88H299" fill="none" stroke="#1a293d" stroke-width="3"/>
+      <path d="M153 87H298" stroke="#cfdae5" stroke-opacity=".5" stroke-width=".8"/>
+      <path d="M150 94V116H249" fill="none" stroke="#1a293d" stroke-opacity=".55"/>
+      <path d="M117 85H129M156 84H169" stroke="url(#metal)" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M46 83H312M108 115H254" stroke="#e0edf7" stroke-opacity=".3" stroke-width="1"/>
+      <path d="M26 97L43 87H61L51 97L26 102Z" fill="#d9eef8" stroke="#7c94a7" stroke-width=".6"/>
+      <path d="M31 96L53 91" stroke="#fff" stroke-width="1.2"/>
+      <path d="M318 67H325L329 82V103H320Z" fill="#b72e42" stroke="#6d2d3d" stroke-width=".5"/>
+      <path d="M323 73L326 99" stroke="#ff9b94" stroke-width="1.4"/>
+      <path d="M28 109H51M308 113H327" stroke="#182739" stroke-width="5"/>
+      <path d="M108 123H251" stroke="#142233" stroke-width="3"/>
+      <path d="M85 77L79 72H72L69 81H85Z" fill="currentColor" stroke="#243346"/>
+      <path d="M73 75H80" stroke="#d6e4f0" stroke-opacity=".5"/>
+    '''
+    return result + wheel(80, y=122, radius=20) + wheel(282, y=122, radius=20)
 
 
 def tractor(flatbed=False):
@@ -165,7 +240,8 @@ def trailer():
 def build():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     for kind in ('sedan', 'hatchback', 'wagon', 'suv', 'minivan', 'pickup', 'van', 'tractor_unit', 'flatbed', 'trailer'):
-        artwork = tractor() if kind == 'tractor_unit' else tractor(True) if kind == 'flatbed' else trailer() if kind == 'trailer' else passenger(kind)
+        renderers = {'tractor_unit': tractor, 'flatbed': lambda: tractor(True), 'trailer': trailer, 'suv': suv, 'minivan': minivan}
+        artwork = renderers[kind]() if kind in renderers else passenger(kind)
         # Keep definitions inside the referenced group for external <use> in
         # Chromium, Firefox and WebKit. IDs are unique across body types too.
         content = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200"><g id="body">{DEFS}{artwork}</g></svg>\n'

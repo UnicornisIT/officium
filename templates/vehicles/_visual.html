@@ -1,6 +1,6 @@
 {% macro visual(vehicle) %}
 <svg class="vehicle-visual" viewBox="0 0 360 200" role="img" aria-label="{{ vehicle_bodies[vehicle.body_type] }}: {{ vehicle.name }}" style="color:{{ vehicle.color }}">
-    <use href="{{ url_for('static', filename='images/vehicles/' ~ vehicle.body_type ~ '.svg', v='detail-1') }}#body"/>
+    <use href="{{ url_for('static', filename='images/vehicles/' ~ vehicle.body_type ~ '.svg', v='detail-2') }}#body"/>
     {% if vehicle.plate %}
     <rect x="94" y="150" width="172" height="32" rx="4" fill="#fff" stroke="#17223b"/>
     <text class="vehicle-plate-value" x="165" y="166" text-anchor="middle" dominant-baseline="central" fill="#17223b" font-size="18" font-family="sans-serif" font-weight="700" {% if vehicle.plate|length > 9 %}textLength="126" lengthAdjust="spacingAndGlyphs"{% endif %}>{{ vehicle.plate }}</text>

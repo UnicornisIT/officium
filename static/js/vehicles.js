@@ -6,7 +6,7 @@
   const previewBody = document.getElementById('vehiclePreviewBody');
   const updatePreview = () => {
     preview.style.color = color.value;
-    previewBody.setAttribute('href', `${previewBody.dataset.baseUrl}${body.value}.svg?v=detail-1#body`);
+    previewBody.setAttribute('href', `${previewBody.dataset.baseUrl}${body.value}.svg?v=detail-2#body`);
   };
   const sync = () => {
     const trailer = kind.value === 'trailer';
