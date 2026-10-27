@@ -26,12 +26,14 @@
     <div class="col-xl-4">
         <div class="card p-4 h-100">
             <h5 class="mb-3">{{ 'Редактировать расход' if edit_expense else 'Добавить расход' }}</h5>
-            {% set selected_vehicle = form_data.get('vehicle_id', edit_expense.vehicle_id if edit_expense else request.args.get('vehicle_id', '')) | string %}
-            {% set selected_category = form_data.get('category') if form_data else (edit_expense.category if edit_expense else ('transport' if selected_vehicle else '')) %}
+            {% set vehicle_expense_context = vehicles_enabled and (request.args.get('vehicle_id') or form_data.get('vehicle_expense_context') == '1' or (edit_expense and edit_expense.vehicle_id)) %}
+            {% set selected_vehicle = (form_data.get('vehicle_id', edit_expense.vehicle_id if edit_expense else request.args.get('vehicle_id', '')) or '') | string %}
+            {% set selected_category = form_data.get('category') if form_data else (edit_expense.category if edit_expense else ('transport' if vehicle_expense_context and selected_vehicle else '')) %}
             {% set selected_payment_method = form_data.get('payment_method') if form_data else (edit_expense.payment_method if edit_expense else '') %}
             <form method="post" novalidate action="{{ url_for('edit_expense', expense_id=edit_expense.id) if edit_expense else url_for('expenses') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                {% if vehicles_enabled %}
+                {% if vehicle_expense_context %}
+                <input type="hidden" name="vehicle_expense_context" value="1">
                 <div class="mb-3"><label class="form-label" for="expenseVehicle">Автомобиль (необязательно)</label>
                     <select id="expenseVehicle" name="vehicle_id" class="form-select" onchange="if(this.value) this.form.elements.category.value='transport'">
                         <option value="">Без автомобиля</option>

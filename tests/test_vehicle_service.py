@@ -324,6 +324,24 @@ class VehicleServiceTestCase(unittest.TestCase):
         self.client.post(f'/vehicles/{vehicle.id}/restore')
         self.assertIsNone(db.session.get(Vehicle,vehicle.id).archived_at)
 
+    def test_expense_vehicle_field_is_limited_to_vehicle_flow(self):
+        vehicle = self.vehicle()
+        self.login()
+        self.assertNotIn('id="expenseVehicle"', self.client.get('/expenses').get_data(as_text=True))
+        response = self.client.get(f'/vehicles/{vehicle.id}/expense', follow_redirects=True)
+        self.assertIn('id="expenseVehicle"', response.get_data(as_text=True))
+        self.assertIn('name="vehicle_expense_context" value="1"', response.get_data(as_text=True))
+        # Keep the vehicle flow after validation, even if the selection is cleared.
+        response = self.client.post('/expenses', data=dict(vehicle_expense_context='1', vehicle_id='', amount='0',
+            category='transport', title='Тест', expense_date='2026-01-01'))
+        self.assertIn('id="expenseVehicle"', response.get_data(as_text=True))
+        response = self.client.post('/expenses', data=dict(amount='0', category='transport', title='Тест', expense_date='2026-01-01'))
+        self.assertNotIn('id="expenseVehicle"', response.get_data(as_text=True))
+        linked = self.expense(vehicle)
+        self.assertIn('id="expenseVehicle"', self.client.get(f'/expenses/edit/{linked.id}').get_data(as_text=True))
+        ordinary = expenses.create_expense(user_id=self.owner.id, amount=100, category='other', title='Тест', expense_date='2026-01-01')
+        self.assertNotIn('id="expenseVehicle"', self.client.get(f'/expenses/edit/{ordinary.id}').get_data(as_text=True))
+
     def test_country_administration_and_privacy(self):
         vehicle = self.vehicle(vin='ABCDEFGHJKLMN1234', plate='a123bc77', registration_country_id=self.ru.id)
         service.archive_vehicle(self.owner,vehicle.id,'sold','Секретное примечание')

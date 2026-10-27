@@ -27,6 +27,8 @@ for (const width of [1440, 390]) {
       }
       await page.goto('/dev-login/user');
       if (width === 390) await page.goto('/telegram-app');
+      await page.goto('/expenses');
+      await expect(page.locator('#expenseVehicle')).toHaveCount(0);
       const prefix = `Учебный ${width} ${theme} ${testInfo.project.name}`;
       const root = process.env.VEHICLE_CAPTURE_DIR || testInfo.outputPath('captures');
       fs.mkdirSync(root, { recursive: true });
