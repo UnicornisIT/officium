@@ -110,6 +110,10 @@ for (const width of [1440, 390]) {
       await page.goto('/vehicles?q=' + encodeURIComponent(prefix));
       await expect(page.locator('.vehicle-card')).toHaveCount(3);
       await capture('list');
+      const firstVehicleCard = page.locator('.vehicle-card').first();
+      const detailPath = await firstVehicleCard.locator('h2 a').getAttribute('href');
+      await firstVehicleCard.locator('.vehicle-image-link').click();
+      await expect(page).toHaveURL(new URL(detailPath, carURL).href);
       await page.goto('/');
       await expect(page.locator('.mileage-reminder')).toContainText('Обновите пробег');
       await capture('reminder');
