@@ -4,8 +4,14 @@
   const color = document.getElementById('v_color');
   const preview = document.getElementById('vehiclePreview');
   const previewBody = document.getElementById('vehiclePreviewBody');
+  const picker = document.querySelector('.vehicle-color-picker');
+  const swatches = picker.querySelectorAll('[data-vehicle-color]');
+  const eyedropper = picker.querySelector('.vehicle-eyedropper');
+  const colorStatus = picker.querySelector('.vehicle-color-status');
   const updatePreview = () => {
     preview.style.color = color.value;
+    picker.style.setProperty('--vehicle-color', color.value);
+    swatches.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.vehicleColor === color.value.toLowerCase())));
     previewBody.setAttribute('href', `${previewBody.dataset.baseUrl}${body.value}.svg?v=detail-2#body`);
   };
   const sync = () => {
@@ -26,5 +32,29 @@
   body.addEventListener('change', updatePreview);
   color.addEventListener('input', updatePreview);
   color.addEventListener('change', updatePreview);
+  swatches.forEach(button => button.addEventListener('click', () => {
+    color.value = button.dataset.vehicleColor;
+    colorStatus.textContent = '';
+    updatePreview();
+  }));
+  if (typeof window.EyeDropper === 'function') {
+    eyedropper.hidden = false;
+    eyedropper.addEventListener('click', async () => {
+      colorStatus.textContent = '';
+      try {
+        const result = await new window.EyeDropper().open();
+        color.value = result.sRGBHex;
+        updatePreview();
+      } catch (error) {
+        if (error.name !== 'AbortError') colorStatus.textContent = 'Не удалось выбрать цвет. Воспользуйтесь палитрой.';
+      }
+    });
+  }
+  picker.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      picker.open = false;
+      picker.querySelector('summary').focus();
+    }
+  });
   sync();
 })();

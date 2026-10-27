@@ -48,6 +48,7 @@ for (const width of [1440, 390]) {
       };
 
       await page.goto('/vehicles/new');
+      await page.locator('.vehicle-color-toggle').click();
       const preview = page.locator('#vehiclePreview');
       await page.getByLabel('Цвет', { exact: true }).fill('#dc3545');
       await expect(preview).toHaveCSS('color', 'rgb(220, 53, 69)');
