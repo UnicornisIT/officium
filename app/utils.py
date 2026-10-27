@@ -342,7 +342,8 @@ def actor_label_for(user):
     return label[:ACTOR_LABEL_MAX_LENGTH]
 
 
-def record_activity(action, user=None, entity_type=None, entity_id=None, description=None, ip_address=None, user_agent=None, impersonation_session_id=None, actor_label=None):
+def record_activity(action, user=None, entity_type=None, entity_id=None, description=None, ip_address=None, user_agent=None, impersonation_session_id=None, actor_label=None, commit=True):
+    """Record an audit event; commit=False joins the caller's transaction."""
     user_id = getattr(user, 'id', None) if user else None
     if not isinstance(user_id, int):
         try:
@@ -362,7 +363,8 @@ def record_activity(action, user=None, entity_type=None, entity_id=None, descrip
         impersonation_session_id=impersonation_session_id,
     )
     db.session.add(log)
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
 def record_goal_activity(action, ref, transaction_id):
