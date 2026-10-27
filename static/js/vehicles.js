@@ -16,7 +16,7 @@
   };
   const sync = () => {
     const trailer = kind.value === 'trailer';
-    document.getElementById('v_fuel_type').closest('label').hidden = trailer;
+    document.getElementById('v_fuel_type').closest('.vehicle-field').hidden = trailer;
     document.querySelectorAll('[data-trailer]').forEach(el => { el.hidden = !trailer; });
     document.querySelectorAll('[data-powered]').forEach(el => { el.hidden = trailer; });
     document.querySelectorAll('[data-tractor]').forEach(el => { el.hidden = kind.value !== 'tractor_unit'; });
