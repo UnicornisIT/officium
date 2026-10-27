@@ -761,7 +761,7 @@
 {% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=8"></script>
-<script src="{{ url_for('static', filename='js/modules-menu.js', v='1') }}"></script>
+<script src="{{ url_for('static', filename='js/modules-menu.js', v='2') }}"></script>
 {% if telegram_login_launch %}
 <script src="{{ url_for('static', filename='js/telegram-login.js') }}?v={{ config.APP_VERSION|urlencode }}" data-available="{{ 'true' if telegram_login_launch.available else 'false' }}" data-bot-id="{{ telegram_login_launch.bot_id or '' }}" data-auth-url="{{ telegram_login_launch.auth_url }}"></script>
 {% endif %}

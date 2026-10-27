@@ -17,7 +17,12 @@ for (const width of [1440, 390]) {
       }));
       expect(order.indexOf('modules')).toBe(order.indexOf('/mortgages') + 1);
       expect(order.indexOf('/archive')).toBe(order.indexOf('modules') + 1);
-      if (width >= 992) await toggle.hover();
+      if (width >= 992) {
+        // Keyboard modality makes Bootstrap's programmatic focus :focus-visible.
+        // Moving the mouse away must still collapse the expanded label.
+        await page.keyboard.press('Tab');
+        await toggle.hover();
+      }
       else await toggle.click();
       await expect(menu).toBeVisible();
       await expect(toggle).toHaveAttribute('aria-expanded', 'true');
@@ -29,6 +34,13 @@ for (const width of [1440, 390]) {
       await page.screenshot({ path: testInfo.outputPath('modules-menu.png'), fullPage: true });
       if (width >= 992) {
         await menu.getByRole('link', { name: 'Цели', exact: true }).hover();
+        await expect(menu).toBeVisible();
+        await page.locator('h1').hover();
+        await expect(menu).toBeHidden();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(toggle).not.toBeFocused();
+        await expect(toggle.locator('.nav-expand__full')).toBeHidden();
+        await toggle.hover();
         await expect(menu).toBeVisible();
         await page.keyboard.press('Escape');
         await expect(menu).toBeHidden();
