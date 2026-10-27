@@ -18,7 +18,7 @@
 <article class="card vehicle-card p-3">
     <div class="d-flex justify-content-between"><span class="text-muted">{{ vehicle_kinds[vehicle.kind] }}</span><span class="badge {{ 'text-bg-secondary' if vehicle.archived_at else 'text-bg-primary' }}">{{ 'В архиве' if vehicle.archived_at else vehicle_statuses[vehicle.status] }}</span></div>
     {{ visual(vehicle) }}
-    <h2 class="h5"><a href="{{ url_for('vehicle_detail', vehicle_id=vehicle.id) }}">{{ vehicle.name }}</a></h2><p class="text-muted mb-0">{{ vehicle.make or '' }} {{ vehicle.model or '' }} {{ vehicle.year or '' }}</p>
+    <h2 class="h5"><a class="btn btn-outline-primary vehicle-button vehicle-related-link" href="{{ url_for('vehicle_detail', vehicle_id=vehicle.id) }}">{{ vehicle.name }}</a></h2><p class="text-muted mb-0">{{ vehicle.make or '' }} {{ vehicle.model or '' }} {{ vehicle.year or '' }}</p>
     {% if vehicle.tractor %}<p class="mt-2 mb-0">Тягач: {{ vehicle.tractor.name }}</p>{% endif %}
 </article>
 {% else %}<div class="card p-4"><h2 class="h5">Автомобилей пока нет</h2><p class="mb-0">Добавьте автомобиль или измените фильтры.</p></div>{% endfor %}
