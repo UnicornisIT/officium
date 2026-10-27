@@ -1,0 +1,13 @@
+<section class="alert alert-info mb-4 mileage-reminder" aria-labelledby="mileageTitle">
+    <h2 id="mileageTitle" class="h5">Обновите пробег</h2>
+    <p>Свежие показания помогут следить за автомобилями.</p>
+    <form method="post" action="{{ url_for('vehicle_mileage_batch') }}" class="d-flex flex-wrap gap-3 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for vehicle in mileage_due %}
+        <input type="hidden" name="vehicle_ids" value="{{ vehicle.id }}">
+        <div><label for="km{{ vehicle.id }}" class="form-label">{{ vehicle.name }} · км</label><input id="km{{ vehicle.id }}" class="form-control" name="km_{{ vehicle.id }}" type="number" min="0" max="2147483647" inputmode="numeric"></div>
+        {% endfor %}
+        <button class="btn btn-primary" name="action" value="save">Обновить пробег</button>
+        <button class="btn btn-outline-secondary" name="action" value="snooze">Напомнить через 3 дня</button>
+    </form>
+</section>

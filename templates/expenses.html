@@ -26,10 +26,20 @@
     <div class="col-xl-4">
         <div class="card p-4 h-100">
             <h5 class="mb-3">{{ 'Редактировать расход' if edit_expense else 'Добавить расход' }}</h5>
-            {% set selected_category = form_data.get('category') if form_data else (edit_expense.category if edit_expense else '') %}
+            {% set selected_vehicle = form_data.get('vehicle_id', edit_expense.vehicle_id if edit_expense else request.args.get('vehicle_id', '')) | string %}
+            {% set selected_category = form_data.get('category') if form_data else (edit_expense.category if edit_expense else ('transport' if selected_vehicle else '')) %}
             {% set selected_payment_method = form_data.get('payment_method') if form_data else (edit_expense.payment_method if edit_expense else '') %}
             <form method="post" novalidate action="{{ url_for('edit_expense', expense_id=edit_expense.id) if edit_expense else url_for('expenses') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% if vehicles_enabled %}
+                <div class="mb-3"><label class="form-label" for="expenseVehicle">Автомобиль (необязательно)</label>
+                    <select id="expenseVehicle" name="vehicle_id" class="form-select" onchange="if(this.value) this.form.elements.category.value='transport'">
+                        <option value="">Без автомобиля</option>
+                        {% for vehicle in expense_vehicles %}<option value="{{ vehicle.id }}" {% if selected_vehicle == vehicle.id|string %}selected{% endif %}>{{ vehicle.name }}</option>{% endfor %}
+                        {% if edit_expense and edit_expense.vehicle_id and edit_expense.vehicle_id not in expense_vehicles|map(attribute='id')|list %}<option value="{{ edit_expense.vehicle_id }}" selected>Текущий автомобиль (недоступен для новых расходов)</option>{% endif %}
+                    </select>
+                </div>
+                {% endif %}
                 <div class="mb-3">
                     <label class="form-label"><span class="required-indicator">*</span>Категория</label>
                     <select class="form-select" name="category" required>

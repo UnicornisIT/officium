@@ -116,6 +116,9 @@
             <ul class="navbar-nav ms-auto align-items-center gap-1">
                 {% set show_user_nav = not (current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin')) %}
                 {% if show_user_nav %}
+                {% if vehicles_enabled %}
+                <li class="nav-item"><a class="nav-link {% if request.path.startswith('/vehicles') %}active{% endif %}" href="{{ url_for('vehicles') }}"><i class="bi bi-car-front me-1"></i>Автомобили</a></li>
+                {% endif %}
                 <li class="nav-item">
                     <a class="nav-link nav-expand {% if request.path == '/' %}active{% endif %}" href="/">
                         <span class="nav-expand__compact"><i class="bi bi-grid-3x3-gap me-1"></i>Дашборд</span>

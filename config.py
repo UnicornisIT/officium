@@ -16,6 +16,7 @@ def _read_version():
     return version or 'unknown'
 
 class Config:
+    VEHICLES_ENABLED = os.environ.get('VEHICLES_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     ENVIRONMENT = os.environ.get('OFFICIUM_ENV', 'production').strip().lower()
     SECRET_KEY = os.environ.get('SECRET_KEY', '').strip()
     TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
