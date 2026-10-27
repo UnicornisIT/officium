@@ -18,7 +18,13 @@
     <label for="v_interval" data-powered>Напоминать о пробеге через (дней, 0 — выключить)<input id="v_interval" name="mileage_reminder_days" class="form-control" type="number" min="0" max="36500" value="{{ form.get('mileage_reminder_days',vehicle.mileage_reminder_days if vehicle else 30) }}"></label>
     <label for="v_company" class="align-self-center"><input id="v_company" type="checkbox" name="is_company" {% if form.get('is_company',vehicle.is_company if vehicle else false) %}checked{% endif %}> Служебный автомобиль</label>
     <label for="v_payer">Плательщик по умолчанию<select id="v_payer" name="default_payer" class="form-select">{% for key,label in [('self','За свой счёт'),('organization','Организация (для служебного)')] %}<option value="{{ key }}" {% if form.get('default_payer',vehicle.default_payer if vehicle else 'self')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><small class="text-muted">Сейчас расходы учитываются только за свой счёт.</small></label>
-    {% if not vehicle %}<label for="v_trailer_name" data-tractor>Сразу добавить прицеп (необязательно)<input id="v_trailer_name" name="trailer_name" maxlength="150" class="form-control" value="{{ form.get('trailer_name','') }}"></label>{% endif %}
+    {% if not vehicle %}
+    <div data-tractor>
+        <label for="v_trailer_name">Название прицепа (необязательно)</label>
+        <input id="v_trailer_name" name="trailer_name" maxlength="150" class="form-control" placeholder="Например, Полуприцеп №1" aria-describedby="v_trailer_name_help" value="{{ form.get('trailer_name','') }}">
+        <small id="v_trailer_name_help" class="text-muted d-block mt-1">Прицеп с этим названием будет создан вместе с тягачом и привязан к нему. Оставьте поле пустым, если прицеп пока не нужен.</small>
+    </div>
+    {% endif %}
     <div class="vehicle-form-actions"><p class="text-muted">Номер РФ: А123ВС77 или А123ВС777. Латинские буквы будут заменены кириллицей. У прицепа нет топлива и пробега.</p><button class="btn btn-primary">Сохранить автомобиль</button></div>
 </form>
 <script src="{{ url_for('static',filename='js/vehicles.js') }}"></script>
