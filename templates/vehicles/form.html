@@ -5,7 +5,7 @@
 {%- endmacro %}
 {% block title %}{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль — officium{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='motion-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='disclosure-1') }}">
 <a class="btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id) if vehicle else url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
 <h1 class="page-title my-4">{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль</h1>
 <form method="post" class="card p-4 vehicle-form">
@@ -43,7 +43,8 @@
         {{ field_heading('payer','Плательщик по умолчанию','Сейчас расходы учитываются только за свой счёт. Выбор организации сохраняется как настройка служебного автомобиля.') }}
         <select id="v_payer" name="default_payer" class="form-select">{% for key,label in [('self','За свой счёт'),('organization','Организация (для служебного)')] %}<option value="{{ key }}" {% if form.get('default_payer',vehicle.default_payer if vehicle else 'self')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
     </div>
-    <div class="vehicle-field-heading vehicle-form-wide">
+    <div class="vehicle-auxiliary-fields vehicle-form-wide">
+    <div class="vehicle-field-heading">
         <label for="v_company" class="vehicle-company-switch"><input id="v_company" type="checkbox" role="switch" name="is_company" {% if form.get('is_company',vehicle.is_company if vehicle else false) %}checked{% endif %}><span>Служебный автомобиль</span></label>
     </div>
     <div class="vehicle-field vehicle-form-wide" data-trailer>
@@ -56,6 +57,7 @@
         <input id="v_trailer_name" name="trailer_name" maxlength="150" class="form-control" value="{{ form.get('trailer_name','') }}">
     </div>
     {% endif %}
+    </div>
     <section class="vehicle-form-preview" aria-label="Предпросмотр автомобиля">
         <svg id="vehiclePreview" class="vehicle-visual" viewBox="0 0 360 200" role="img" aria-label="Предпросмотр кузова и цвета">
             <use id="vehiclePreviewBody" data-base-url="{{ url_for('static', filename='images/vehicles/') }}" href="{{ url_for('static', filename='images/vehicles/sedan.svg', v='detail-2') }}#body"/>
@@ -78,5 +80,5 @@
     </section>
     <div class="vehicle-form-actions"><button class="btn btn-primary">Сохранить автомобиль</button></div>
 </form>
-<script src="{{ url_for('static',filename='js/vehicles.js',v='field-hints-2') }}"></script>
+<script src="{{ url_for('static',filename='js/vehicles.js',v='disclosure-1') }}"></script>
 {% endblock %}
