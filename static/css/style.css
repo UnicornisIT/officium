@@ -7501,3 +7501,4 @@ html[data-theme="dark"] .toast {
 .info-hint__bubble[hidden] {
     display: none;
 }
+.modules-menu>.dropdown-menu{min-width:220px;margin-top:0;padding:.5rem}.modules-menu .dropdown-item{display:flex;align-items:center;min-height:42px;border-radius:6px}.modules-menu .nav-link{font:inherit}.navbar.navbar--compact .modules-menu-chevron{display:none}@media(max-width:991.98px){.modules-menu{width:100%}.modules-menu>button{margin-inline:auto}.modules-menu>.dropdown-menu{position:static;min-width:0;width:100%}}
