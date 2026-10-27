@@ -5,7 +5,7 @@
 {%- endmacro %}
 {% block title %}{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль — officium{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='disclosure-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='forest-1') }}">
 <a class="btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id) if vehicle else url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
 <h1 class="page-title my-4">{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль</h1>
 <form method="post" class="card p-4 vehicle-form">
@@ -59,9 +59,12 @@
     {% endif %}
     </div>
     <section class="vehicle-form-preview" aria-label="Предпросмотр автомобиля">
+        <div class="vehicle-preview-scene">
         <svg id="vehiclePreview" class="vehicle-visual" viewBox="0 0 360 200" role="img" aria-label="Предпросмотр кузова и цвета">
             <use id="vehiclePreviewBody" data-base-url="{{ url_for('static', filename='images/vehicles/') }}" href="{{ url_for('static', filename='images/vehicles/sedan.svg', v='detail-2') }}#body"/>
         </svg>
+        </div>
+        <div class="vehicle-preview-controls">
         <details class="vehicle-color-picker">
             <summary class="btn btn-outline-secondary vehicle-color-toggle"><span class="vehicle-color-current" aria-hidden="true"></span><i class="bi bi-palette" aria-hidden="true"></i>Изменить цвет</summary>
             <div class="vehicle-color-panel">
@@ -77,6 +80,7 @@
                 <p class="vehicle-color-status text-muted mb-0" role="status"></p>
             </div>
         </details>
+        </div>
     </section>
     <div class="vehicle-form-actions"><button class="btn btn-primary">Сохранить автомобиль</button></div>
 </form>
