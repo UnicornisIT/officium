@@ -4,6 +4,7 @@ import io
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
@@ -17,6 +18,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class VehicleMigrationTestCase(unittest.TestCase):
+    def setUp(self):
+        # Alembic's CLI logging setup disables existing loggers. These upgrades
+        # run inside the unittest process, so preserve the other suites' logging.
+        logging_config = patch('logging.config.fileConfig')
+        logging_config.start()
+        self.addCleanup(logging_config.stop)
+
     def test_sqlite_upgrade_preserves_expenses_seeds_countries_and_set_null(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / 'vehicles.sqlite'
