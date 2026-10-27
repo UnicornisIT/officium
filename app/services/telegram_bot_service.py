@@ -11,10 +11,11 @@ import requests
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Debt, Expense, Income, TelegramConversationState, TelegramProcessedUpdate, User
+from app.models import Debt, Income, TelegramConversationState, TelegramProcessedUpdate, User
 from app.services.debt_accrual_service import accrual_start_date, default_penalty_rate
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import add_payment
+from app.services.expense_service import create_expense
 from app.time_utils import as_utc, utc_now
 from app.utils import get_setting
 from extensions import db
@@ -864,7 +865,8 @@ def _set_payment_debt(user, chat_id, state, debt_id):
 def _finish_conversation(user, chat_id, state, callback_answer_text=None):
     data = _state_data(state)
     if state.flow == 'expense':
-        expense = Expense(
+        expense = create_expense(
+            commit=False,
             user_id=user.id,
             amount=_parse_money(data['amount']),
             category=data['category'],
@@ -873,7 +875,6 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
             payment_method=data.get('payment_method') if data.get('payment_method') in PAYMENT_METHOD_LABELS else 'card',
             comment='Telegram',
         )
-        db.session.add(expense)
         _clear_state(user)
         db.session.commit()
         return _result(chat_id, f'Записал расход: {_format_money(expense.amount)} — {expense.title}.', MAIN_MENU_KEYBOARD, callback_answer_text)

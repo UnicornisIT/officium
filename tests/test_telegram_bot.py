@@ -4,7 +4,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from app import create_app
-from app.models import Debt, Expense, Income, Payment, TelegramConversationState, User
+from app.models import ActivityLog, Debt, Expense, Income, Payment, TelegramConversationState, User
 from app.services.telegram_bot_service import (
     build_debt_reminder_message,
     process_telegram_callback_result,
@@ -183,6 +183,14 @@ class TelegramBotTestCase(unittest.TestCase):
         self.assertEqual(expense.category, 'products')
         self.assertEqual(expense.title, 'пятерочка')
         self.assertEqual(expense.payment_method, 'card')
+        with self.app.app_context():
+            log = ActivityLog.query.filter_by(action='expense_create').one()
+            self.assertEqual(log.user_id, self.user_id)
+            self.assertEqual(log.entity_id, expense.id)
+            self.assertEqual(log.description, 'products')
+            self.assertEqual(expense.comment, 'Telegram')
+            self.assertFalse(expense.is_monthly)
+            self.assertEqual(TelegramConversationState.query.count(), 0)
 
     def test_can_create_income_from_telegram_text(self):
         with self.app.app_context():

@@ -12,13 +12,12 @@ from app.services.expense_title_service import expense_group_key
 from app.services.history_month_service import month_key, resolve_active_month
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
-    generate_monthly_expenses_from_start_date,
 )
+from app.services import expense_service
 from app.time_utils import utc_now
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS, group_entries_by_month, parse_date, parse_decimal, is_local_test_user
 from flask_login import current_user
 from extensions import db
-import uuid
 
 
 # Used when the configuration has no IMPORT_MAX_ROWS.
@@ -37,48 +36,9 @@ def init_app(app):
                 error_message = 'Локальный тестовый режим: сохранение расходов отключено.'
             else:
                 try:
-                    amount = parse_decimal(request.form.get('amount'), 'Сумма', required=True)
-                    if amount <= 0:
-                        raise ValueError('Сумма расхода должна быть больше нуля')
-                    category = request.form.get('category')
-                    if category not in [item[0] for item in EXPENSE_CATEGORIES]:
-                        raise ValueError('Выберите корректную категорию расхода')
-                    title = str(request.form.get('title', '')).strip()
-                    if not title:
-                        raise ValueError('Название расхода обязательно')
-                    if len(title) > 150:
-                        raise ValueError('Название расхода не должно превышать 150 символов')
-                    expense_date = parse_date(request.form.get('expense_date'), 'Дата', required=True)
-                    payment_method = str(request.form.get('payment_method', '')).strip() or None
-                    comment = str(request.form.get('comment', '')).strip() or None
-                    if payment_method and payment_method not in [item[0] for item in PAYMENT_METHODS]:
-                        raise ValueError('Выберите корректный способ оплаты')
-                    if comment and len(comment) > 2000:
-                        raise ValueError('Комментарий не должен превышать 2000 символов')
-                    is_monthly = request.form.get('is_monthly') == 'on'
-
-                    expense = Expense(
-                        user_id=current_user.id,
-                        amount=amount,
-                        category=category,
-                        title=title,
-                        expense_date=expense_date,
-                        payment_method=payment_method,
-                        comment=comment,
-                        is_monthly=is_monthly,
+                    expense = expense_service.create_expense(
+                        user_id=current_user.id, **_expense_form_values(),
                     )
-                    
-                    # Если это ежемесячный расход, создаём monthly_group_id
-                    if is_monthly:
-                        expense.monthly_group_id = str(uuid.uuid4())
-                        expense.generated_for_month = expense_date.strftime('%Y-%m')
-                        expense.monthly_anchor_day = expense_date.day
-                        expense.monthly_settings_updated_at = utc_now()
-                    
-                    db.session.add(expense)
-                    db.session.commit()
-                    if expense.is_monthly:
-                        generate_monthly_expenses_from_start_date(expense.id)
                     return redirect(url_for(
                         'expenses',
                         success='Расход сохранён',
@@ -317,64 +277,9 @@ def init_app(app):
 
         if request.method == 'POST':
             try:
-                amount = parse_decimal(request.form.get('amount'), 'Сумма', required=True)
-                if amount <= 0:
-                    raise ValueError('Сумма расхода должна быть больше нуля')
-                category = request.form.get('category')
-                if category not in [item[0] for item in EXPENSE_CATEGORIES]:
-                    raise ValueError('Выберите корректную категорию расхода')
-                title = str(request.form.get('title', '')).strip()
-                if not title:
-                    raise ValueError('Название расхода обязательно')
-                if len(title) > 150:
-                    raise ValueError('Название расхода не должно превышать 150 символов')
-                expense_date = parse_date(request.form.get('expense_date'), 'Дата', required=True)
-                payment_method = str(request.form.get('payment_method', '')).strip() or None
-                comment = str(request.form.get('comment', '')).strip() or None
-                if payment_method and payment_method not in [item[0] for item in PAYMENT_METHODS]:
-                    raise ValueError('Выберите корректный способ оплаты')
-                if comment and len(comment) > 2000:
-                    raise ValueError('Комментарий не должен превышать 2000 символов')
-                is_monthly = request.form.get('is_monthly') == 'on'
-
-                was_monthly = expense.is_monthly
-                monthly_group_id = expense.monthly_group_id
-
-                expense.amount = amount
-                expense.category = category
-                expense.title = title
-                expense.expense_date = expense_date
-                expense.payment_method = payment_method
-                expense.comment = comment
-                
-                if is_monthly:
-                    expense.is_monthly = True
-                    if not expense.monthly_group_id:
-                        expense.monthly_group_id = str(uuid.uuid4())
-                    expense.generated_for_month = expense_date.strftime('%Y-%m')
-                    expense.monthly_anchor_day = expense_date.day
-                    expense.monthly_settings_updated_at = utc_now()
-
-                    duplicate = find_monthly_expense_for_month(
-                        current_user.id,
-                        expense.monthly_group_id,
-                        expense.generated_for_month,
-                        exclude_expense_id=expense.id,
-                    )
-                    if duplicate:
-                        raise ValueError('Для этого ежемесячного расхода уже есть запись в выбранном месяце.')
-                elif was_monthly and monthly_group_id:
-                    for group_expense in Expense.query.filter_by(
-                        user_id=current_user.id,
-                        monthly_group_id=monthly_group_id,
-                    ).all():
-                        group_expense.is_monthly = False
-                else:
-                    expense.is_monthly = False
-                
-                db.session.commit()
-                if expense.is_monthly:
-                    generate_monthly_expenses_from_start_date(expense.id)
+                expense = expense_service.update_expense(
+                    user_id=current_user.id, expense_id=expense_id, **_expense_form_values(),
+                )
                 return redirect(url_for(
                     'expenses',
                     success='Расход обновлён',
@@ -404,12 +309,7 @@ def init_app(app):
         expense = Expense.query.filter_by(id=expense_id, user_id=current_user.id).first()
         if not expense:
             abort(404)
-        Expense.query.filter_by(generated_from_id=expense.id).update(
-            {Expense.generated_from_id: None},
-            synchronize_session=False,
-        )
-        db.session.delete(expense)
-        db.session.commit()
+        expense_service.delete_expense(user_id=current_user.id, expense_id=expense_id)
         return redirect(url_for('expenses', success='Расход удалён'))
 
 
@@ -610,4 +510,13 @@ def _log_import_failure(message):
         message,
         exc_type.__name__ if exc_type else 'unknown',
         frames.rstrip(),
+    )
+
+
+def _expense_form_values():
+    return dict(
+        amount=request.form.get('amount'), category=request.form.get('category'),
+        title=request.form.get('title', ''), expense_date=request.form.get('expense_date'),
+        payment_method=request.form.get('payment_method'), comment=request.form.get('comment'),
+        is_monthly=request.form.get('is_monthly') == 'on',
     )

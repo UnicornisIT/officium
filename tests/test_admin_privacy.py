@@ -103,6 +103,26 @@ class AdminPrivacyTestCase(unittest.TestCase):
                 with self.subTest(role=role, path=path):
                     self._assert_private(path)
 
+    def test_expense_crud_audit_does_not_leak_financial_details(self):
+        from app.services.expense_service import create_expense, update_expense, delete_expense
+
+        with self.app.app_context():
+            values = dict(user_id=self.user_ids['owner'], amount='45678', category='products',
+                          title='Тайная покупка', comment='Приватный банк Омега', expense_date='2026-10-02')
+            expense = create_expense(**values)
+            update_expense(expense_id=expense.id, **(values | dict(amount='987654')))
+            delete_expense(user_id=self.user_ids['owner'], expense_id=expense.id)
+            logs = ActivityLog.query.filter_by(entity_type='expense').all()
+            self.assertEqual(len(logs), 3)
+            self.assertTrue(all(log.description == 'products' for log in logs))
+        for role in ('superadmin', 'admin'):
+            self._login(self.user_ids[role])
+            self._assert_private('/admin/logs')
+        self._login(self.user_ids['superadmin'])
+        body = self.client.post('/admin/export/activity-log.csv').get_data(as_text=True)
+        for marker in SECRET_MARKERS:
+            self.assertNotIn(marker, body)
+
     def test_cross_user_finance_route_does_not_exist(self):
         self._login(self.user_ids['superadmin'])
 

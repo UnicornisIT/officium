@@ -82,6 +82,9 @@ ENTITY_LABELS = {
 }
 
 EVENT_LABELS = {
+    'expense_create': 'Добавлен расход',
+    'expense_update': 'Изменён расход',
+    'expense_delete': 'Удалён расход',
     'account_blocked': 'Пользователь заблокирован',
     'account_unblocked': 'Пользователь разблокирован',
     'user_role_changed': 'Изменена роль пользователя',
