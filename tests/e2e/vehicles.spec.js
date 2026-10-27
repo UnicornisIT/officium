@@ -48,6 +48,14 @@ for (const width of [1440, 390]) {
       };
 
       await page.goto('/vehicles/new');
+      const preview = page.locator('#vehiclePreview');
+      await page.getByLabel('Цвет', { exact: true }).fill('#dc3545');
+      await expect(preview).toHaveCSS('color', 'rgb(220, 53, 69)');
+      const redPreview = await preview.screenshot({ animations: 'disabled' });
+      await page.getByLabel('Цвет', { exact: true }).fill('#2e9f62');
+      await expect(preview).toHaveCSS('color', 'rgb(46, 159, 98)');
+      await expect.poll(async () => (await preview.screenshot({ animations: 'disabled' })).equals(redPreview)).toBe(false);
+      await page.getByLabel('Цвет', { exact: true }).fill('#5276ba');
       await page.getByLabel('Название', { exact: true }).fill(`${prefix} · Седан`);
       await page.getByLabel('Марка', { exact: true }).fill('Пример');
       await page.getByLabel('Модель', { exact: true }).fill('Север');

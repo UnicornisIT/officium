@@ -1,1 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200"><g id="body"><ellipse cx="180" cy="139" rx="148" ry="7" fill="#8492a6" opacity=".18"/><path d="M35 121 L39 64 L100 36 L303 36 L324 65 L327 121Z" fill="currentColor" stroke="#243047" stroke-width="3" stroke-linejoin="round"/><path d="M48 65 L81 45 H112 V77 H48Z" fill="#d9edfa"/><g fill="#243047" stroke="#c7d1dd" stroke-width="6"><circle cx="89" cy="121" r="21"/><circle cx="276" cy="121" r="21"/></g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200"><g id="body"><defs>
+  <linearGradient id="van-paint" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+    <stop stop-color="#fff" stop-opacity=".42"/><stop offset=".22" stop-color="#fff" stop-opacity=".1"/>
+    <stop offset=".45" stop-color="#fff" stop-opacity=".02"/><stop offset=".53" stop-color="#fff" stop-opacity=".2"/>
+    <stop offset=".68" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".48"/>
+  </linearGradient>
+  <linearGradient id="van-glass" x1="0" y1="0" x2=".8" y2="1">
+    <stop stop-color="#9fbdcc"/><stop offset=".28" stop-color="#445d70"/>
+    <stop offset=".54" stop-color="#25394b"/><stop offset="1" stop-color="#101c2b"/>
+  </linearGradient>
+  <linearGradient id="van-metal" x1="0" y1="0" x2=".8" y2="1">
+    <stop stop-color="#f5f8fc"/><stop offset=".28" stop-color="#8a9bac"/>
+    <stop offset=".5" stop-color="#dce5ed"/><stop offset=".72" stop-color="#5d6a7c"/><stop offset="1" stop-color="#a0aebb"/>
+  </linearGradient>
+  <radialGradient id="van-tyre"><stop offset=".55" stop-color="#101722"/><stop offset=".78" stop-color="#29313c"/><stop offset=".94" stop-color="#131b26"/><stop offset="1" stop-color="#080d14"/></radialGradient>
+  <radialGradient id="van-shadow"><stop stop-color="#0a1424" stop-opacity=".4"/><stop offset="1" stop-color="#172338" stop-opacity="0"/></radialGradient>
+</defs><ellipse cx="180" cy="142" rx="158" ry="8" fill="url(#van-shadow)"/><path d="M45 112H315V129H45Z" fill="#111b29"/><path d="M28 119L29 80L67 47Q73 39 89 37H310Q325 38 328 52L331 123H306Q304 96 282 96Q260 96 257 123H114Q111 96 89 96Q66 96 64 123H29Z" fill="currentColor" stroke="#253144" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M28 119L29 80L67 47Q73 39 89 37H310Q325 38 328 52L331 123H306Q304 96 282 96Q260 96 257 123H114Q111 96 89 96Q66 96 64 123H29Z" fill="url(#van-paint)"/>
+    <path d="M28 119L29 80L67 47Q73 39 89 37H310Q325 38 328 52L331 123H306Q304 96 282 96Q260 96 257 123H114Q111 96 89 96Q66 96 64 123H29Z" fill="none" stroke="#dce9f8" stroke-opacity=".27" stroke-width=".7"/><path d="M39 80L76 48H110V82H39Z" fill="url(#van-glass)" stroke="#1a2637" stroke-width="2" stroke-linejoin="round"/><path d="M122 44H305V91H122Z" fill="#fff" fill-opacity=".025" stroke="#1b293b" stroke-opacity=".35"/><path d="M116 45V116M225 44V116M232 52V90" fill="none" stroke="#1b293b" stroke-opacity=".45"/><path d="M82 48L53 79H67L94 48Z" fill="#e7f4ff" fill-opacity=".16"/><path d="M38 98Q160 84 316 96" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width=".8"/>
+      <path d="M117 115H253" fill="none" stroke="#eff5fc" stroke-opacity=".34" stroke-width="1.5"/>
+      <path d="M37 108H56M310 109H326" stroke="#132131" stroke-width="5"/>
+      <path d="M33 96L56 93L53 99L32 103Z" fill="#e0f1fa" stroke="#708ba2" stroke-width=".6"/>
+      <path d="M35 97L51 95" stroke="#fff" stroke-width="1.3"/>
+      <path d="M315 92L324 97L326 103L316 100Z" fill="#a62335"/>
+      <path d="M317 94L323 98" stroke="#ff7c79" stroke-width="1.3"/>
+      <path d="M158 87H169M231 87H242" stroke="url(#van-metal)" stroke-width="2" stroke-linecap="round"/>
+      <path d="M113 79L106 75Q99 74 98 79L100 84H113Z" fill="currentColor" stroke="#243346"/>
+      <path d="M101 78H109" stroke="#d7e7f1" stroke-opacity=".55"/>
+      <path d="M126 120H247" stroke="#0e1825" stroke-width="3"/>
+    <g transform="translate(89 120)">
+      <circle r="21" fill="url(#van-tyre)" stroke="#080d15" stroke-width="1.4"/>
+      <circle r="19" fill="none" stroke="#707a87" stroke-opacity=".32" stroke-width=".7"/>
+      <path d="M-18 0 A18 18 0 0 1 18 0" fill="none" stroke="#b0bdcc" stroke-opacity=".22"/>
+      <circle r="13.7" fill="#1b2532" stroke="#a3b0c1" stroke-width="1.5"/>
+      <path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(0)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(36)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(72)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(108)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(144)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(180)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(216)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(252)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(288)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(324)"/><circle r="5.8" fill="url(#van-metal)" stroke="#5c6b80" stroke-width=".8"/><circle cx="4.00" cy="0.00" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="3.80" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="2.35" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="-2.35" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="-3.80" r=".8" fill="#dce4ee"/>
+      <circle r="1.7" fill="#6b7c92"/>
+    </g><g transform="translate(282 120)">
+      <circle r="21" fill="url(#van-tyre)" stroke="#080d15" stroke-width="1.4"/>
+      <circle r="19" fill="none" stroke="#707a87" stroke-opacity=".32" stroke-width=".7"/>
+      <path d="M-18 0 A18 18 0 0 1 18 0" fill="none" stroke="#b0bdcc" stroke-opacity=".22"/>
+      <circle r="13.7" fill="#1b2532" stroke="#a3b0c1" stroke-width="1.5"/>
+      <path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(0)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(36)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(72)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(108)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(144)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(180)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(216)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(252)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(288)"/><path d="M-2 -3 L-2 -11.7 L1 -12.7 L3 -3Z" fill="url(#van-metal)" transform="rotate(324)"/><circle r="5.8" fill="url(#van-metal)" stroke="#5c6b80" stroke-width=".8"/><circle cx="4.00" cy="0.00" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="3.80" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="2.35" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="-2.35" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="-3.80" r=".8" fill="#dce4ee"/>
+      <circle r="1.7" fill="#6b7c92"/>
+    </g></g></svg>

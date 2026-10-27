@@ -1,11 +1,17 @@
 {% extends 'base.html' %}
 {% block title %}{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль — officium{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='detail-1') }}">
 <a class="btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id) if vehicle else url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
 <h1 class="page-title my-4">{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль</h1>
 <form method="post" class="card p-4 vehicle-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <section class="vehicle-form-preview" aria-label="Предпросмотр автомобиля">
+        <svg id="vehiclePreview" class="vehicle-visual" viewBox="0 0 360 200" role="img" aria-label="Предпросмотр кузова и цвета">
+            <use id="vehiclePreviewBody" data-base-url="{{ url_for('static', filename='images/vehicles/') }}" href="{{ url_for('static', filename='images/vehicles/sedan.svg', v='detail-1') }}#body"/>
+        </svg>
+        <p class="text-muted mb-0">Выберите кузов и цвет — изображение обновится сразу.</p>
+    </section>
     {% for key,label,options,default in [('kind','Тип',vehicle_kinds,'passenger'),('body_type','Кузов',vehicle_bodies,'sedan'),('fuel_type','Топливо',vehicle_fuels,'petrol'),('status','Статус',vehicle_statuses,'active')] %}
     <label for="v_{{ key }}">{{ label }}<select id="v_{{ key }}" aria-label="{{ label }}" name="{{ key }}" class="form-select">{% for value,title in options.items() %}<option value="{{ value }}" {% if form.get(key,vehicle|attr(key) if vehicle else default)==value %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></label>
     {% endfor %}
@@ -27,5 +33,5 @@
     {% endif %}
     <div class="vehicle-form-actions"><p class="text-muted">Номер РФ: А123ВС77 или А123ВС777. Латинские буквы будут заменены кириллицей. У прицепа нет топлива и пробега.</p><button class="btn btn-primary">Сохранить автомобиль</button></div>
 </form>
-<script src="{{ url_for('static',filename='js/vehicles.js') }}"></script>
+<script src="{{ url_for('static',filename='js/vehicles.js',v='detail-1') }}"></script>
 {% endblock %}
