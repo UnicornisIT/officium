@@ -90,7 +90,7 @@ for (const width of [1440, 390]) {
       await page.goto('/vehicles/new');
       await page.getByLabel('Название', { exact: true }).fill(`${prefix} · Тягач`);
       await page.getByLabel('Тип', { exact: true }).selectOption('tractor_unit');
-      await page.getByLabel('Название прицепа (необязательно)', { exact: true }).fill(`${prefix} · Прицеп`);
+      await page.getByLabel('Название прицепа', { exact: true }).fill(`${prefix} · Прицеп`);
       await page.getByLabel('Страна учёта', { exact: true }).selectOption({ label: 'Абхазия (AB)' });
       await page.getByLabel('Госномер', { exact: true }).fill('ab 123');
       await page.getByLabel('Цвет', { exact: true }).fill('#d59038');

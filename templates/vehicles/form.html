@@ -20,7 +20,7 @@
     <label for="v_payer">Плательщик по умолчанию<select id="v_payer" name="default_payer" class="form-select">{% for key,label in [('self','За свой счёт'),('organization','Организация (для служебного)')] %}<option value="{{ key }}" {% if form.get('default_payer',vehicle.default_payer if vehicle else 'self')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><small class="text-muted">Сейчас расходы учитываются только за свой счёт.</small></label>
     {% if not vehicle %}
     <div data-tractor>
-        <label for="v_trailer_name">Название прицепа (необязательно)</label>
+        <label for="v_trailer_name">Название прицепа</label>
         <input id="v_trailer_name" name="trailer_name" maxlength="150" class="form-control" placeholder="Например, Полуприцеп №1" aria-describedby="v_trailer_name_help" value="{{ form.get('trailer_name','') }}">
         <small id="v_trailer_name_help" class="text-muted d-block mt-1">Прицеп с этим названием будет создан вместе с тягачом и привязан к нему. Оставьте поле пустым, если прицеп пока не нужен.</small>
     </div>

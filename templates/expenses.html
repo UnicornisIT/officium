@@ -34,7 +34,7 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if vehicle_expense_context %}
                 <input type="hidden" name="vehicle_expense_context" value="1">
-                <div class="mb-3"><label class="form-label" for="expenseVehicle">Автомобиль (необязательно)</label>
+                <div class="mb-3"><label class="form-label" for="expenseVehicle">Автомобиль</label>
                     <select id="expenseVehicle" name="vehicle_id" class="form-select" onchange="if(this.value) this.form.elements.category.value='transport'">
                         <option value="">Без автомобиля</option>
                         {% for vehicle in expense_vehicles %}<option value="{{ vehicle.id }}" {% if selected_vehicle == vehicle.id|string %}selected{% endif %}>{{ vehicle.name }}</option>{% endfor %}
