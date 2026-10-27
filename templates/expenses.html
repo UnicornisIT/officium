@@ -77,13 +77,9 @@
                     <textarea name="comment" class="form-control" rows="3" placeholder="Покупка в магазине">{{ form_data.get('comment', edit_expense.comment if edit_expense and edit_expense.comment else '') }}</textarea>
                 </div>
                 <div class="mb-3">
-                    <div class="form-check form-switch monthly-switch">
-                        <input class="form-check-input monthly-switch-input" type="checkbox" name="is_monthly" id="is_monthly" {% if form_data.get('is_monthly') or (edit_expense and edit_expense.is_monthly) %}checked{% endif %}>
+                    <div class="monthly-switch">
+                        <input class="monthly-switch-input" type="checkbox" role="switch" name="is_monthly" id="is_monthly" {% if form_data.get('is_monthly') or (edit_expense and edit_expense.is_monthly) %}checked{% endif %}>
                         <label class="form-check-label monthly-switch-label" for="is_monthly">
-                            <span class="monthly-switch-icon">
-                                <i class="bi bi-unlock"></i>
-                                <i class="bi bi-lock-fill"></i>
-                            </span>
                             <span>Ежемесячный расход</span>
                         </label>
                     </div>
