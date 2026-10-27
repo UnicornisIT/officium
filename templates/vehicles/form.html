@@ -5,7 +5,7 @@
 {%- endmacro %}
 {% block title %}{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль — officium{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='field-hints-2') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='motion-1') }}">
 <a class="btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id) if vehicle else url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
 <h1 class="page-title my-4">{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль</h1>
 <form method="post" class="card p-4 vehicle-form">

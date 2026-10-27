@@ -16,3 +16,18 @@
   .vehicle-form>[data-vehicle-field]:is([data-vehicle-field="body_type"],[data-vehicle-field="status"],[data-vehicle-field="model"],[data-vehicle-field="vin"],[data-vehicle-field="country"],[data-vehicle-field="payer"]){grid-column:2}
 }
 @media(prefers-reduced-motion:reduce){.vehicle-company-switch input,.vehicle-company-switch input::before{transition:none}}
+@media(prefers-reduced-motion:no-preference){
+  @keyframes vehicle-enter{from{opacity:0;translate:0 8px}to{opacity:1;translate:0 0}}
+  .vehicle-page-header,.vehicle-filters,.vehicle-form-preview{animation:vehicle-enter .32s ease-out backwards}
+  .vehicle-card{animation:vehicle-enter .36s ease-out var(--vehicle-enter-delay,0ms) backwards;transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+  .vehicle-visual{transition:color .22s ease,transform .22s ease}
+  .vehicle-color-picker[open] .vehicle-color-panel{animation:vehicle-enter .18s ease-out backwards}
+  .vehicle-color-current{transition:background-color .22s ease}
+  .vehicle-color-swatch,.vehicle-color-toggle,.vehicle-form-actions .btn,.vehicle-filters .btn{transition:transform .16s ease,background-color .16s ease,border-color .16s ease,box-shadow .16s ease}
+  .vehicle-color-swatch:active,.vehicle-color-toggle:active,.vehicle-form-actions .btn:active,.vehicle-filters .btn:active{transform:scale(.97)}
+}
+@media(prefers-reduced-motion:no-preference) and (hover:hover) and (pointer:fine){
+  .vehicle-card:hover{transform:translateY(-3px);border-color:var(--bs-primary);box-shadow:0 10px 24px #0002}
+  .vehicle-image-link:hover .vehicle-visual{transform:translateY(-2px) scale(1.015)}
+  .vehicle-color-swatch:hover{transform:translateY(-2px)}
+}
