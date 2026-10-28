@@ -17,6 +17,7 @@ class ConfigDefaultsTestCase(unittest.TestCase):
             'SECRET_KEY',
             'TELEGRAM_LOGIN_ENABLED',
             'TELEGRAM_MINI_APP_ENABLED',
+            'VEHICLES_ENABLED',
             'APP_VERSION',
             'APP_TIMEZONE',
             'DB_USER',
@@ -31,6 +32,7 @@ class ConfigDefaultsTestCase(unittest.TestCase):
             '"has_secret": bool(Config.SECRET_KEY), '
             '"telegram_login": Config.TELEGRAM_LOGIN_ENABLED, '
             '"telegram_mini_app": Config.TELEGRAM_MINI_APP_ENABLED, '
+            '"vehicles": Config.VEHICLES_ENABLED, '
             '"version": Config.APP_VERSION, '
             '"timezone": Config.APP_TIMEZONE, '
             '"db_user": Config.DB_USER, '
@@ -51,6 +53,7 @@ class ConfigDefaultsTestCase(unittest.TestCase):
         self.assertFalse(defaults['has_secret'])
         self.assertFalse(defaults['telegram_login'])
         self.assertFalse(defaults['telegram_mini_app'])
+        self.assertFalse(defaults['vehicles'])
         self.assertEqual(defaults['version'], (PROJECT_ROOT / 'VERSION').read_text().strip())
         self.assertEqual(defaults['timezone'], 'UTC')
         self.assertEqual(defaults['db_user'], 'officium')
@@ -68,5 +71,6 @@ class ConfigDefaultsTestCase(unittest.TestCase):
         self.assertEqual(values['DB_ENGINE'], 'sqlite')
         self.assertEqual(values['TELEGRAM_LOGIN_ENABLED'], 'false')
         self.assertEqual(values['TELEGRAM_MINI_APP_ENABLED'], 'false')
+        self.assertEqual(values['VEHICLES_ENABLED'], 'false')
         self.assertEqual(values['SERVER_UPDATE_REPOSITORY'], '<repository-owner>/officium')
         self.assertNotIn('APP_VERSION', values)

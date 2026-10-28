@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200"><g id="body"><defs>
+  <linearGradient id="tractor_unit-paint" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+    <stop stop-color="#fff" stop-opacity=".42"/><stop offset=".22" stop-color="#fff" stop-opacity=".1"/>
+    <stop offset=".45" stop-color="#fff" stop-opacity=".02"/><stop offset=".53" stop-color="#fff" stop-opacity=".2"/>
+    <stop offset=".68" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".48"/>
+  </linearGradient>
+  <linearGradient id="tractor_unit-glass" x1="0" y1="0" x2=".8" y2="1">
+    <stop stop-color="#9fbdcc"/><stop offset=".28" stop-color="#445d70"/>
+    <stop offset=".54" stop-color="#25394b"/><stop offset="1" stop-color="#101c2b"/>
+  </linearGradient>
+  <linearGradient id="tractor_unit-metal" x1="0" y1="0" x2=".8" y2="1">
+    <stop stop-color="#f5f8fc"/><stop offset=".28" stop-color="#8a9bac"/>
+    <stop offset=".5" stop-color="#dce5ed"/><stop offset=".72" stop-color="#5d6a7c"/><stop offset="1" stop-color="#a0aebb"/>
+  </linearGradient>
+  <radialGradient id="tractor_unit-tyre"><stop offset=".55" stop-color="#101722"/><stop offset=".78" stop-color="#29313c"/><stop offset=".94" stop-color="#131b26"/><stop offset="1" stop-color="#080d14"/></radialGradient>
+  <radialGradient id="tractor_unit-shadow"><stop stop-color="#0a1424" stop-opacity=".4"/><stop offset="1" stop-color="#172338" stop-opacity="0"/></radialGradient>
+</defs><ellipse cx="181" cy="143" rx="160" ry="8" fill="url(#tractor_unit-shadow)"/><path d="M46 109H323V128H46Z" fill="#142031" stroke="#506074"/><path d="M194 106H305V111H194Z" fill="url(#tractor_unit-metal)"/><path d="M225 99H271L280 104H218Z" fill="#1e2939" stroke="#7b8a9b"/><rect x="181" y="111" width="49" height="18" rx="5" fill="url(#tractor_unit-metal)" stroke="#263447"/><path d="M191 112V127M218 112V127" stroke="#4c5d72" stroke-width="2"/><path d="M46 119L45 72L53 43L75 27Q79 23 94 23H157L175 34L182 74V117H121Q119 95 96 95Q73 95 71 122H49Z" fill="currentColor" stroke="#253144" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M46 119L45 72L53 43L75 27Q79 23 94 23H157L175 34L182 74V117H121Q119 95 96 95Q73 95 71 122H49Z" fill="url(#tractor_unit-paint)"/>
+    <path d="M46 119L45 72L53 43L75 27Q79 23 94 23H157L175 34L182 74V117H121Q119 95 96 95Q73 95 71 122H49Z" fill="none" stroke="#dce9f8" stroke-opacity=".27" stroke-width=".7"/><path d="M53 68L61 44L78 36H132V75H53Z" fill="url(#tractor_unit-glass)" stroke="#1a2637" stroke-width="2" stroke-linejoin="round"/><path d="M139 37H155L170 48L175 74H139Z" fill="url(#tractor_unit-glass)" stroke="#1a2637" stroke-width="2" stroke-linejoin="round"/><path d="M65 46L56 65H68L89 37Z" fill="#edfaff" fill-opacity=".16"/><path d="M133 34V99M139 80H174V112H126M76 29H154M148 24L163 30" fill="none" stroke="#132132" stroke-opacity=".75"/><path d="M53 38Q90 25 157 31M137 34V78" fill="none" stroke="#e1edf7" stroke-opacity=".4" stroke-width=".7"/><path d="M151 84H163" stroke="url(#tractor_unit-metal)" stroke-width="2" stroke-linecap="round"/><path d="M127 105H161V111H124M128 115H162V121H126" fill="url(#tractor_unit-metal)" stroke="#364457"/><path d="M253 116Q258 94 281 94Q304 94 309 116" fill="#172334" stroke="#6d7d90" stroke-width="1.1"/><path d="M44 74L36 70V53H44" fill="none" stroke="#273548" stroke-width="2"/>
+      <rect x="32" y="52" width="6" height="18" rx="2" fill="#1c293a" stroke="#74879a" stroke-width=".7"/>
+      <path d="M47 81H65V103H46Z" fill="#182435" stroke="#40516a" stroke-width=".7"/>
+      <path d="M48 85H63M48 90H63M48 95H63M48 100H63" stroke="#8191a3" stroke-opacity=".6"/>
+      <path d="M46 107H64V114H46Z" fill="#d7eaf4" stroke="#728597"/>
+      <path d="M48 110H61" stroke="#fff" stroke-width="1.4"/>
+      <path d="M47 117H67M318 118H326" stroke="url(#tractor_unit-metal)" stroke-width="4"/>
+      <rect x="169" y="98" width="3" height="3" rx="1" fill="#e9ad45"/>
+      <rect x="323" y="110" width="4" height="7" rx="1" fill="#d44d4b"/>
+    <g transform="translate(96 120)">
+      <circle r="23" fill="url(#tractor_unit-tyre)" stroke="#080d15" stroke-width="1.4"/>
+      <circle r="21" fill="none" stroke="#707a87" stroke-opacity=".32" stroke-width=".7"/>
+      <path d="M-20 0 A20 20 0 0 1 20 0" fill="none" stroke="#b0bdcc" stroke-opacity=".22"/>
+      <circle r="15.0" fill="#1b2532" stroke="#a3b0c1" stroke-width="1.5"/>
+      <path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(0)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(36)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(72)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(108)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(144)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(180)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(216)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(252)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(288)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(324)"/><circle r="5.8" fill="url(#tractor_unit-metal)" stroke="#5c6b80" stroke-width=".8"/><circle cx="4.00" cy="0.00" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="3.80" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="2.35" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="-2.35" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="-3.80" r=".8" fill="#dce4ee"/>
+      <circle r="1.7" fill="#6b7c92"/>
+    </g><g transform="translate(281 120)">
+      <circle r="23" fill="url(#tractor_unit-tyre)" stroke="#080d15" stroke-width="1.4"/>
+      <circle r="21" fill="none" stroke="#707a87" stroke-opacity=".32" stroke-width=".7"/>
+      <path d="M-20 0 A20 20 0 0 1 20 0" fill="none" stroke="#b0bdcc" stroke-opacity=".22"/>
+      <circle r="15.0" fill="#1b2532" stroke="#a3b0c1" stroke-width="1.5"/>
+      <path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(0)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(36)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(72)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(108)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(144)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(180)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(216)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(252)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(288)"/><path d="M-2 -3 L-2 -13.0 L1 -14.0 L3 -3Z" fill="url(#tractor_unit-metal)" transform="rotate(324)"/><circle r="5.8" fill="url(#tractor_unit-metal)" stroke="#5c6b80" stroke-width=".8"/><circle cx="4.00" cy="0.00" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="3.80" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="2.35" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="-2.35" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="-3.80" r=".8" fill="#dce4ee"/>
+      <circle r="1.7" fill="#6b7c92"/>
+    </g></g></svg>

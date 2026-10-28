@@ -21,6 +21,7 @@ os.environ.update({
     'SESSION_COOKIE_SECURE': 'false',
     'SERVER_UPDATE_ENABLED': 'false',
     'APP_TIMEZONE': 'Europe/Moscow',
+    'VEHICLES_ENABLED': 'true',
     # Placeholder bot settings so /telegram-app can flag a dev-login session
     # as Mini App; Telegram itself is never contacted.
     'TELEGRAM_BOT_TOKEN': '123456:playwright-placeholder-token',
@@ -41,5 +42,10 @@ from extensions import db  # noqa: E402
 app = create_app()
 with app.app_context():
     db.create_all()
+    from app.models import RegistrationCountry
+    for index, (code, name) in enumerate([('RU', 'Россия'), ('AB', 'Абхазия'), ('BY', 'Беларусь'), ('KZ', 'Казахстан'), ('AM', 'Армения'), ('KG', 'Кыргызстан'), ('OTHER', 'Другая')]):
+        db.session.add(RegistrationCountry(code=code, name=name, strict_format=code == 'RU', sort_order=index,
+            flag_path=f'images/flags/{code.lower()}.svg' if code != 'OTHER' else None))
+    db.session.commit()
 
 serve(app, listen=os.getenv('E2E_LISTEN', '127.0.0.1:5010'), threads=4)

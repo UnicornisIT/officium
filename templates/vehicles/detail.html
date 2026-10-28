@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% from 'vehicles/_visual.html' import visual with context %}
+{% block title %}{{ vehicle.name }} — Автомобили{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='motion-1') }}">
+<a class="btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
+<div class="d-flex flex-wrap justify-content-between gap-3 mt-3"><h1 class="page-title">{{ vehicle.name }}</h1>{% if not vehicle.archived_at %}<a class="btn btn-outline-primary align-self-start" href="{{ url_for('edit_vehicle',vehicle_id=vehicle.id) }}">Редактировать</a>{% endif %}</div>
+{% if vehicle.archived_at %}<div class="alert alert-secondary mt-3">Автомобиль в архиве · {{ archive_reasons[vehicle.archive_reason] }}. Только просмотр.<p class="mb-0">{{ vehicle.archive_note or '' }}</p></div>{% endif %}
+<div class="vehicle-detail-grid mt-4">
+<section class="card p-4">{{ visual(vehicle) }}<h2 class="h5">{{ vehicle.make or '' }} {{ vehicle.model or '' }} {{ vehicle.year or '' }}</h2>
+<dl class="vehicle-facts"><dt>Тип</dt><dd>{{ vehicle_kinds[vehicle.kind] }}</dd><dt>Статус</dt><dd>{{ vehicle_statuses[vehicle.status] }}</dd><dt>Страна учёта</dt><dd>{{ vehicle.country.name if vehicle.country else 'Не указана' }}</dd><dt>VIN</dt><dd>{{ vehicle.vin or 'Не указан' }}</dd>
+{% if vehicle.kind!='trailer' %}<dt>Топливо</dt><dd>{{ vehicle_fuels[vehicle.fuel_type] }}</dd><dt>Напоминания</dt><dd>{{ vehicle.mileage_reminder_days }} дней</dd>{% endif %}<dt>Служебный</dt><dd>{{ 'Да' if vehicle.is_company else 'Нет' }}</dd></dl>
+{% if vehicle.tractor %}<h3 class="h6">Текущий тягач</h3><a class="btn btn-outline-primary vehicle-button vehicle-related-link" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.tractor.id) }}">{{ vehicle.tractor.name }}</a>{% endif %}
+{% if vehicle.trailers %}<h3 class="h6 mt-3">Прицепы</h3>{% for trailer in vehicle.trailers %}<div class="vehicle-trailer">{{ visual(trailer) }}<a class="btn btn-outline-primary vehicle-button vehicle-related-link" href="{{ url_for('vehicle_detail',vehicle_id=trailer.id) }}">{{ trailer.name }}</a></div>{% endfor %}{% endif %}
+</section>
+<section class="card p-4">
+{% set tab=request.args.get('tab','overview') %}<nav class="nav nav-pills gap-1 mb-4" aria-label="Вкладки автомобиля">{% for key,label in [('overview','Обзор'),('expenses','Расходы'),('mileage','Пробег')] %}{% if key!='mileage' or vehicle.kind!='trailer' %}<a class="nav-link {% if tab==key %}active{% endif %}" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab=key) }}">{{ label }}</a>{% endif %}{% endfor %}</nav>
+{% if tab=='mileage' and vehicle.kind!='trailer' %}
+<h2 class="h5">История пробега</h2>
+{% if not vehicle.archived_at %}<form method="post" action="{{ url_for('vehicle_odometer',vehicle_id=vehicle.id) }}" class="d-flex flex-wrap gap-3 my-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="readingDate">Дата замера<input id="readingDate" type="date" name="reading_date" value="{{ today.isoformat() }}" max="{{ today.isoformat() }}" class="form-control" required></label><label for="readingKm">Пробег (км)<input id="readingKm" type="number" min="0" max="2147483647" name="odometer_km" class="form-control" required></label><button class="btn btn-primary align-self-end">Добавить замер</button></form>{% endif %}
+<div class="table-responsive"><table class="table"><thead><tr><th>Дата</th><th>Пробег, км</th><th>Источник</th></tr></thead><tbody>{% for row in readings %}<tr><td>{{ row.reading_date.strftime('%d.%m.%Y') }}</td><td>{{ row.odometer_km }}</td><td>{{ {'manual':'Вручную','service':'Обслуживание','fuel':'Заправка','bot':'Бот'}[row.source] }}</td></tr>{% else %}<tr><td colspan="3">Замеров пока нет</td></tr>{% endfor %}</tbody></table></div>
+{% else %}
+{% if tab=='overview' and vehicle.kind!='trailer' %}<p class="text-muted mb-1">Текущий пробег</p><p class="display-6">{{ mileage if mileage is not none else '—' }} <small class="h5">км</small></p>{% endif %}
+<h2 class="h5">{{ 'Последние расходы' if tab=='overview' else 'Расходы на автомобиль' }}</h2>
+{% if not vehicle.archived_at and vehicle.status=='active' %}<a class="btn btn-primary my-3" href="{{ url_for('vehicle_expense',vehicle_id=vehicle.id) }}">Добавить расход на авто</a>{% endif %}
+<div class="table-responsive"><table class="table"><thead><tr><th>Дата</th><th>Название</th><th>Сумма</th></tr></thead><tbody>{% for expense in expenses[:5] if tab=='overview' %}<tr><td>{{ expense.expense_date.strftime('%d.%m.%Y') }}</td><td><a href="{{ url_for('edit_expense',expense_id=expense.id) }}">{{ expense.title }}</a></td><td class="text-nowrap">{{ expense.amount|money }}</td></tr>{% endfor %}{% if tab=='expenses' %}{% for expense in expenses %}<tr><td>{{ expense.expense_date.strftime('%d.%m.%Y') }}</td><td><a href="{{ url_for('edit_expense',expense_id=expense.id) }}">{{ expense.title }}</a></td><td class="text-nowrap">{{ expense.amount|money }}</td></tr>{% endfor %}{% endif %}{% if not expenses %}<tr><td colspan="3">Расходов пока нет</td></tr>{% endif %}</tbody></table></div>
+{% endif %}
+</section>
+</div>
+<section class="card p-4 mt-4">
+{% if vehicle.archived_at %}<form method="post" action="{{ url_for('restore_vehicle',vehicle_id=vehicle.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary">Восстановить автомобиль</button></form>
+{% else %}<button class="btn btn-outline-secondary vehicle-button" type="button" data-bs-toggle="collapse" data-bs-target="#vehicleArchiveForm" aria-expanded="false" aria-controls="vehicleArchiveForm">Архивировать автомобиль</button><div class="collapse" id="vehicleArchiveForm"><form method="post" action="{{ url_for('archive_vehicle',vehicle_id=vehicle.id) }}" class="mt-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="archiveReason" class="vehicle-archive-reason">Причина<select id="archiveReason" name="reason" class="form-select vehicle-select-centered">{% for key,label in archive_reasons.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><label for="archiveNote" class="d-block mt-3">Примечание<textarea id="archiveNote" name="note" maxlength="2000" class="form-control"></textarea></label><button class="btn btn-outline-danger mt-3">В архив</button></form></div>{% endif %}
+</section>
+{% endblock %}

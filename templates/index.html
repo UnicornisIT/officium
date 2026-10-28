@@ -4,6 +4,7 @@
 {% from '_debt_amounts.html' import debt_amounts %}
 
 {% block content %}
+{% if vehicles_enabled and mileage_due %}{% include 'vehicles/_reminder.html' %}{% endif %}
 {% set raw_paid_total_pct = ((1 - total_principal / total_original) * 100) | round(0) if total_original > 0 else 0 %}
 {% set paid_total_pct = 0 if raw_paid_total_pct < 0 else (100 if raw_paid_total_pct > 100 else raw_paid_total_pct) %}
 {% set nearest_payment_date = nearest_debt.effective_next_payment_date(today) if nearest_debt else none %}
@@ -74,6 +75,13 @@
     </nav>
 
     <nav class="dashboard-shortcuts" aria-label="Разделы для анализа и планирования">
+        {% if vehicles_enabled %}
+        <a class="dashboard-shortcut" href="{{ url_for('vehicles') }}">
+            <span class="dashboard-shortcut__icon"><i class="bi bi-car-front" aria-hidden="true"></i></span>
+            <span class="dashboard-shortcut__copy"><strong>Автомобили</strong><small>Гараж, пробег и расходы</small></span>
+            <i class="bi bi-chevron-right dashboard-shortcut__chevron" aria-hidden="true"></i>
+        </a>
+        {% endif %}
         <a class="dashboard-shortcut" href="{{ url_for('finance') }}" data-dashboard-shortcut="finance">
             <span class="dashboard-shortcut__icon"><i class="bi bi-pie-chart" aria-hidden="true"></i></span>
             <span class="dashboard-shortcut__copy">

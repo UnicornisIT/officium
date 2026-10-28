@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from flask import abort, current_app, redirect, render_template, request, url_for
 from sqlalchemy import or_
+from werkzeug.exceptions import HTTPException
 from app.models import Expense
 from app.services import import_storage_service as import_storage
 from app.services.bank_statement_import_service import parse_bank_statement, too_many_rows_message
@@ -47,6 +48,8 @@ def init_app(app):
                 except ValueError as e:
                     db.session.rollback()
                     error_message = str(e)
+                except HTTPException:
+                    raise
                 except Exception:
                     db.session.rollback()
                     current_app.logger.exception('Failed to create expense')
@@ -288,6 +291,8 @@ def init_app(app):
             except ValueError as e:
                 db.session.rollback()
                 error_message = str(e)
+            except HTTPException:
+                raise
             except Exception:
                 db.session.rollback()
                 current_app.logger.exception('Failed to update expense')
@@ -309,7 +314,10 @@ def init_app(app):
         expense = Expense.query.filter_by(id=expense_id, user_id=current_user.id).first()
         if not expense:
             abort(404)
-        expense_service.delete_expense(user_id=current_user.id, expense_id=expense_id)
+        try:
+            expense_service.delete_expense(user_id=current_user.id, expense_id=expense_id)
+        except ValueError as exc:
+            return redirect(url_for('expenses', error=str(exc)))
         return redirect(url_for('expenses', success='Расход удалён'))
 
 
@@ -476,6 +484,7 @@ def _get_import_monthly_match(monthly_id):
 
 
 def _update_monthly_expense_from_import(expense, amount, expense_date, payment_method, comment):
+    expense_service.validate_vehicle_amount_change(expense, amount)
     target_month = expense_date.strftime('%Y-%m')
     existing = find_monthly_expense_for_month(
         current_user.id,
@@ -519,4 +528,5 @@ def _expense_form_values():
         title=request.form.get('title', ''), expense_date=request.form.get('expense_date'),
         payment_method=request.form.get('payment_method'), comment=request.form.get('comment'),
         is_monthly=request.form.get('is_monthly') == 'on',
+        **({'vehicle_id': request.form.get('vehicle_id', type=int)} if current_app.config.get('VEHICLES_ENABLED') else {}),
     )

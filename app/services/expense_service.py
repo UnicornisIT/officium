@@ -9,7 +9,7 @@ for future integrations and rejected until explicitly supported.
 
 import uuid
 
-from app.models import Expense, User
+from app.models import Expense, User, Vehicle
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
     generate_monthly_expenses_from_start_date,
@@ -17,6 +17,40 @@ from app.services.monthly_expenses_service import (
 from app.time_utils import utc_now
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS, parse_date, parse_decimal, record_activity
 from extensions import db
+
+_UNCHANGED = object()
+
+
+def validate_vehicle_amount_change(expense, amount):
+    """Shared guard for the import's existing monthly-expense update path."""
+    if expense.vehicle_id:
+        _check_vehicle_update(expense, expense.vehicle_id, amount)
+
+
+def _vehicle(user_id, vehicle_id):
+    from app.services.vehicle_service import get_vehicle_for_user
+    return get_vehicle_for_user(db.session.get(User, user_id), vehicle_id, for_update=True)
+
+
+def _existing_vehicle(user_id, vehicle_id):
+    """Existing financial records remain usable when the garage UI is disabled."""
+    from flask import abort
+    from app.services.personal_access_service import can_use_personal_cabinet
+    user = db.session.get(User, user_id)
+    if not can_use_personal_cabinet(user) or getattr(user, 'is_local_test_user', False):
+        abort(404)
+    return Vehicle.query.filter_by(user_id=user_id, id=vehicle_id).with_for_update().first_or_404()
+
+
+def _check_vehicle_update(expense, vehicle_id, amount):
+    if expense.vehicle_id:
+        vehicle = _existing_vehicle(expense.user_id, expense.vehicle_id)
+        if vehicle.archived_at and (vehicle_id != expense.vehicle_id or amount != expense.amount):
+            raise ValueError('Автомобиль в архиве: нельзя менять автомобиль и сумму расхода до восстановления.')
+    if vehicle_id and vehicle_id != expense.vehicle_id:
+        vehicle = _vehicle(expense.user_id, vehicle_id)
+        if vehicle.archived_at or vehicle.status != 'active':
+            raise ValueError('Выберите активный автомобиль вне архива.')
 
 
 def _validate(*, amount, category, title, expense_date, payment_method, comment):
@@ -69,14 +103,19 @@ def _save(expense, action, commit):
     return expense
 
 
-def create_expense(*, user_id, amount, category, title, expense_date,
-                   payment_method=None, comment=None, is_monthly=False, commit=True, **extra_fields):
+def create_expense(*, user_id, amount, title, expense_date, category=None,
+                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=None, **extra_fields):
     _check_options(extra_fields)
+    if vehicle_id:
+        vehicle = _vehicle(user_id, vehicle_id)
+        if vehicle.archived_at or vehicle.status != 'active':
+            raise ValueError('Нельзя добавить расход: выберите активный автомобиль вне архива.')
+        category = category or 'transport'
     values = _validate(amount=amount, category=category, title=title, expense_date=expense_date,
                        payment_method=payment_method, comment=comment)
     if is_monthly and not commit:
         raise ValueError('Monthly expenses require commit=True')
-    expense = Expense(user_id=user_id, is_monthly=is_monthly, **values)
+    expense = Expense(user_id=user_id, is_monthly=is_monthly, vehicle_id=vehicle_id or None, **values)
     if is_monthly:
         _monthly_settings(expense)
     db.session.add(expense)
@@ -84,11 +123,13 @@ def create_expense(*, user_id, amount, category, title, expense_date,
 
 
 def update_expense(*, user_id, expense_id, amount, category, title, expense_date,
-                   payment_method=None, comment=None, is_monthly=False, commit=True, **extra_fields):
+                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=_UNCHANGED, **extra_fields):
     _check_options(extra_fields)
     expense = _owned_expense(user_id, expense_id)
     values = _validate(amount=amount, category=category, title=title, expense_date=expense_date,
                        payment_method=payment_method, comment=comment)
+    vehicle_id = expense.vehicle_id if vehicle_id is _UNCHANGED else (vehicle_id or None)
+    _check_vehicle_update(expense, vehicle_id, values['amount'])
     if is_monthly and not commit:
         raise ValueError('Monthly expenses require commit=True')
     was_monthly = expense.is_monthly
@@ -99,6 +140,7 @@ def update_expense(*, user_id, expense_id, amount, category, title, expense_date
         user_id, group_id, values['expense_date'].strftime('%Y-%m'), exclude_expense_id=expense.id,
     ):
         raise ValueError('Для этого ежемесячного расхода уже есть запись в выбранном месяце.')
+    expense.vehicle_id = vehicle_id
     for key, value in values.items():
         setattr(expense, key, value)
     if is_monthly:
@@ -116,6 +158,8 @@ def update_expense(*, user_id, expense_id, amount, category, title, expense_date
 def delete_expense(*, user_id, expense_id, commit=True, **extra_fields):
     _check_options(extra_fields)
     expense = _owned_expense(user_id, expense_id)
+    if expense.vehicle_id and _existing_vehicle(user_id, expense.vehicle_id).archived_at:
+        raise ValueError('Автомобиль в архиве: сначала восстановите его, чтобы удалить расход.')
     Expense.query.filter_by(user_id=user_id, generated_from_id=expense.id).update(
         {Expense.generated_from_id: None}, synchronize_session=False,
     )

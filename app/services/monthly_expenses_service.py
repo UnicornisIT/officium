@@ -118,6 +118,7 @@ def find_monthly_expense_for_month(user_id, monthly_group_id, month, exclude_exp
 def _create_monthly_copy(settings_expense, origin_expense, target_month, anchor_day):
     return Expense(
         user_id=settings_expense.user_id,
+        vehicle_id=settings_expense.vehicle_id,
         amount=settings_expense.amount,
         category=settings_expense.category,
         title=settings_expense.title,
@@ -176,6 +177,12 @@ def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, en
     origin_expense = _pick_origin_expense(group_expenses)
     if source_expense is None or not source_expense.is_monthly:
         source_expense = _pick_settings_expense(active_expenses)
+
+    if source_expense.vehicle_id:
+        from app.models import Vehicle
+        vehicle = db.session.get(Vehicle, source_expense.vehicle_id)
+        if vehicle and vehicle.archived_at:
+            return stats
 
     anchor_day = source_expense.monthly_anchor_day or origin_expense.monthly_anchor_day or origin_expense.expense_date.day
     _ensure_monthly_identity(origin_expense, anchor_day=anchor_day)

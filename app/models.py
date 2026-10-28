@@ -44,6 +44,7 @@ class User(UserMixin, db.Model):
     debts = db.relationship('Debt', back_populates='user', lazy=True, cascade='all, delete-orphan')
     incomes = db.relationship('Income', back_populates='user', lazy=True, cascade='all, delete-orphan')
     expenses = db.relationship('Expense', back_populates='user', lazy=True, cascade='all, delete-orphan')
+    vehicles = db.relationship('Vehicle', back_populates='user', cascade='all, delete-orphan')
     financial_plan_preference = db.relationship(
         'FinancialPlanPreference',
         back_populates='user',
@@ -427,6 +428,7 @@ class Expense(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_expenses_vehicle_id', ondelete='SET NULL'), index=True, nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     category = db.Column(db.Enum('products', 'transport', 'communication', 'rent', 'loans', 'restaurants', 'entertainment', 'health', 'education', 'clothing', 'subscriptions', 'savings', 'other'), nullable=False)
@@ -478,6 +480,70 @@ class Expense(db.Model):
 
     def __repr__(self):
         return f'<Expense {self.amount} {self.title}>'
+
+
+class RegistrationCountry(db.Model):
+    __tablename__ = 'registration_countries'
+    __table_args__ = (db.UniqueConstraint('code', name='uq_registration_countries_code'),)
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(8), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    flag_path = db.Column(db.String(150))
+    strict_format = db.Column(db.Boolean, nullable=False, default=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class Vehicle(db.Model):
+    __tablename__ = 'vehicles'
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'name', name='uq_vehicles_user_name'),
+        db.CheckConstraint("default_payer = 'self' OR is_company = 1", name='ck_vehicles_company_payer'),
+        db.CheckConstraint('mileage_reminder_days >= 0', name='ck_vehicles_reminder_days'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', name='fk_vehicles_user_id'), nullable=False, index=True)
+    name = db.Column(db.String(150), nullable=False)
+    kind = db.Column(db.String(20), nullable=False)
+    body_type = db.Column(db.String(20), nullable=False)
+    color = db.Column(db.String(7), nullable=False, default='#5276ba')
+    fuel_type = db.Column(db.String(20), nullable=False)
+    make = db.Column(db.String(80))
+    model = db.Column(db.String(80))
+    year = db.Column(db.String(20))
+    vin = db.Column(db.String(17))
+    registration_country_id = db.Column(db.Integer, db.ForeignKey('registration_countries.id', name='fk_vehicles_country_id'))
+    plate = db.Column(db.String(12))
+    is_company = db.Column(db.Boolean, nullable=False, default=False)
+    default_payer = db.Column(db.String(20), nullable=False, default='self')
+    status = db.Column(db.String(20), nullable=False, default='active')
+    archived_at = db.Column(db.DateTime)
+    archive_reason = db.Column(db.String(20))
+    archive_note = db.Column(db.String(2000))
+    tractor_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_vehicles_tractor_id', ondelete='SET NULL'))
+    mileage_reminder_days = db.Column(db.Integer, nullable=False, default=30)
+    mileage_snooze_until = db.Column(db.Date)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+    user = db.relationship('User', back_populates='vehicles')
+    country = db.relationship('RegistrationCountry')
+    tractor = db.relationship('Vehicle', remote_side=[id], backref='trailers')
+    readings = db.relationship('VehicleOdometerReading', cascade='all, delete-orphan', back_populates='vehicle')
+
+
+class VehicleOdometerReading(db.Model):
+    __tablename__ = 'vehicle_odometer_readings'
+    __table_args__ = (
+        db.UniqueConstraint('vehicle_id', 'reading_date', name='uq_vehicle_reading_date'),
+        db.CheckConstraint('odometer_km >= 0', name='ck_vehicle_reading_nonnegative'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_vehicle_reading_vehicle_id', ondelete='CASCADE'), nullable=False)
+    reading_date = db.Column(db.Date, nullable=False)
+    odometer_km = db.Column(db.Integer, nullable=False)
+    source = db.Column(db.String(20), nullable=False, default='manual')
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    vehicle = db.relationship('Vehicle', back_populates='readings')
 
 
 class FinancialPlanPreference(db.Model):

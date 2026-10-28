@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200"><g id="body"><defs>
+  <linearGradient id="flatbed-paint" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+    <stop stop-color="#fff" stop-opacity=".42"/><stop offset=".22" stop-color="#fff" stop-opacity=".1"/>
+    <stop offset=".45" stop-color="#fff" stop-opacity=".02"/><stop offset=".53" stop-color="#fff" stop-opacity=".2"/>
+    <stop offset=".68" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".48"/>
+  </linearGradient>
+  <linearGradient id="flatbed-glass" x1="0" y1="0" x2=".8" y2="1">
+    <stop stop-color="#9fbdcc"/><stop offset=".28" stop-color="#445d70"/>
+    <stop offset=".54" stop-color="#25394b"/><stop offset="1" stop-color="#101c2b"/>
+  </linearGradient>
+  <linearGradient id="flatbed-metal" x1="0" y1="0" x2=".8" y2="1">
+    <stop stop-color="#f5f8fc"/><stop offset=".28" stop-color="#8a9bac"/>
+    <stop offset=".5" stop-color="#dce5ed"/><stop offset=".72" stop-color="#5d6a7c"/><stop offset="1" stop-color="#a0aebb"/>
+  </linearGradient>
+  <radialGradient id="flatbed-tyre"><stop offset=".55" stop-color="#101722"/><stop offset=".78" stop-color="#29313c"/><stop offset=".94" stop-color="#131b26"/><stop offset="1" stop-color="#080d14"/></radialGradient>
+  <radialGradient id="flatbed-shadow"><stop stop-color="#0a1424" stop-opacity=".4"/><stop offset="1" stop-color="#172338" stop-opacity="0"/></radialGradient>
+</defs><ellipse cx="181" cy="143" rx="160" ry="8" fill="url(#flatbed-shadow)"/><path d="M46 109H323V128H46Z" fill="#142031" stroke="#506074"/><path d="M145 72H328V107H145Z" fill="currentColor" stroke="#253144" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M145 72H328V107H145Z" fill="url(#flatbed-paint)"/>
+    <path d="M145 72H328V107H145Z" fill="none" stroke="#dce9f8" stroke-opacity=".27" stroke-width=".7"/><path d="M146 103H328M145 76H329M193 76V102M242 76V102M289 76V102" stroke="#182536" stroke-opacity=".55"/><path d="M147 75H329" stroke="#e2eaf3" stroke-opacity=".5" stroke-width="2"/><path d="M33 119V70L64 43Q67 38 78 38H126Q133 38 135 48L143 116Z" fill="currentColor" stroke="#253144" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M33 119V70L64 43Q67 38 78 38H126Q133 38 135 48L143 116Z" fill="url(#flatbed-paint)"/>
+    <path d="M33 119V70L64 43Q67 38 78 38H126Q133 38 135 48L143 116Z" fill="none" stroke="#dce9f8" stroke-opacity=".27" stroke-width=".7"/><path d="M42 71L72 45H118V76H42Z" fill="url(#flatbed-glass)" stroke="#1a2637" stroke-width="2" stroke-linejoin="round"/><path d="M125 44V114M51 81H121" stroke="#182636" stroke-opacity=".6" fill="none"/><path d="M44 74L36 70V53H44" fill="none" stroke="#273548" stroke-width="2"/>
+      <rect x="32" y="52" width="6" height="18" rx="2" fill="#1c293a" stroke="#74879a" stroke-width=".7"/>
+      <path d="M47 81H65V103H46Z" fill="#182435" stroke="#40516a" stroke-width=".7"/>
+      <path d="M48 85H63M48 90H63M48 95H63M48 100H63" stroke="#8191a3" stroke-opacity=".6"/>
+      <path d="M46 107H64V114H46Z" fill="#d7eaf4" stroke="#728597"/>
+      <path d="M48 110H61" stroke="#fff" stroke-width="1.4"/>
+      <path d="M47 117H67M318 118H326" stroke="url(#flatbed-metal)" stroke-width="4"/>
+      <rect x="169" y="98" width="3" height="3" rx="1" fill="#e9ad45"/>
+      <rect x="323" y="110" width="4" height="7" rx="1" fill="#d44d4b"/>
+    <g transform="translate(78 120)">
+      <circle r="22" fill="url(#flatbed-tyre)" stroke="#080d15" stroke-width="1.4"/>
+      <circle r="20" fill="none" stroke="#707a87" stroke-opacity=".32" stroke-width=".7"/>
+      <path d="M-19 0 A19 19 0 0 1 19 0" fill="none" stroke="#b0bdcc" stroke-opacity=".22"/>
+      <circle r="14.3" fill="#1b2532" stroke="#a3b0c1" stroke-width="1.5"/>
+      <path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(0)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(36)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(72)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(108)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(144)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(180)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(216)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(252)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(288)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(324)"/><circle r="5.8" fill="url(#flatbed-metal)" stroke="#5c6b80" stroke-width=".8"/><circle cx="4.00" cy="0.00" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="3.80" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="2.35" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="-2.35" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="-3.80" r=".8" fill="#dce4ee"/>
+      <circle r="1.7" fill="#6b7c92"/>
+    </g><g transform="translate(262 120)">
+      <circle r="22" fill="url(#flatbed-tyre)" stroke="#080d15" stroke-width="1.4"/>
+      <circle r="20" fill="none" stroke="#707a87" stroke-opacity=".32" stroke-width=".7"/>
+      <path d="M-19 0 A19 19 0 0 1 19 0" fill="none" stroke="#b0bdcc" stroke-opacity=".22"/>
+      <circle r="14.3" fill="#1b2532" stroke="#a3b0c1" stroke-width="1.5"/>
+      <path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(0)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(36)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(72)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(108)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(144)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(180)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(216)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(252)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(288)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(324)"/><circle r="5.8" fill="url(#flatbed-metal)" stroke="#5c6b80" stroke-width=".8"/><circle cx="4.00" cy="0.00" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="3.80" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="2.35" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="-2.35" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="-3.80" r=".8" fill="#dce4ee"/>
+      <circle r="1.7" fill="#6b7c92"/>
+    </g><g transform="translate(309 120)">
+      <circle r="22" fill="url(#flatbed-tyre)" stroke="#080d15" stroke-width="1.4"/>
+      <circle r="20" fill="none" stroke="#707a87" stroke-opacity=".32" stroke-width=".7"/>
+      <path d="M-19 0 A19 19 0 0 1 19 0" fill="none" stroke="#b0bdcc" stroke-opacity=".22"/>
+      <circle r="14.3" fill="#1b2532" stroke="#a3b0c1" stroke-width="1.5"/>
+      <path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(0)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(36)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(72)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(108)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(144)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(180)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(216)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(252)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(288)"/><path d="M-2 -3 L-2 -12.3 L1 -13.3 L3 -3Z" fill="url(#flatbed-metal)" transform="rotate(324)"/><circle r="5.8" fill="url(#flatbed-metal)" stroke="#5c6b80" stroke-width=".8"/><circle cx="4.00" cy="0.00" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="3.80" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="2.35" r=".8" fill="#dce4ee"/><circle cx="-3.24" cy="-2.35" r=".8" fill="#dce4ee"/><circle cx="1.24" cy="-3.80" r=".8" fill="#dce4ee"/>
+      <circle r="1.7" fill="#6b7c92"/>
+    </g></g></svg>

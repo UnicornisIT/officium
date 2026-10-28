@@ -61,6 +61,8 @@ STATUS_LABELS = {
 }
 
 ENTITY_LABELS = {
+    'vehicle': 'Автомобиль',
+    'registration_country': 'Страна учёта',
     'user': 'Пользователь',
     'debt': 'Долг',
     'payment': 'Платёж',
@@ -82,6 +84,13 @@ ENTITY_LABELS = {
 }
 
 EVENT_LABELS = {
+    'vehicle_create': 'Добавлен автомобиль',
+    'vehicle_update': 'Изменён автомобиль',
+    'vehicle_archive': 'Автомобиль перенесён в архив',
+    'vehicle_restore': 'Автомобиль восстановлен',
+    'vehicle_mileage': 'Добавлен замер пробега',
+    'vehicle_snooze': 'Напоминание о пробеге отложено',
+    'registration_country_save': 'Изменена страна учёта',
     'expense_create': 'Добавлен расход',
     'expense_update': 'Изменён расход',
     'expense_delete': 'Удалён расход',

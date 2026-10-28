@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% from '_info_hint.html' import info_hint %}
+{% macro field_heading(key, label, text='') -%}
+<div class="vehicle-field-heading"><label for="v_{{ key }}">{{ label }}</label>{% if text %}{{ info_hint(text, 'vehicle-hint-' ~ key, 'Подсказка: ' ~ label) }}{% endif %}</div>
+{%- endmacro %}
+{% block title %}{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль — officium{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='forest-1') }}">
+<a class="btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id) if vehicle else url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
+<h1 class="page-title my-4">{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль</h1>
+<form method="post" class="card p-4 vehicle-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="vehicle-field vehicle-form-wide" data-vehicle-field="name">
+        {{ field_heading('name','Название') }}
+        <input id="v_name" name="name" maxlength="150" class="form-control" value="{{ form.get('name',vehicle.name if vehicle else '') }}" required>
+    </div>
+    {% for key,label,options,default in [('kind','Тип',vehicle_kinds,'passenger'),('body_type','Кузов',vehicle_bodies,'sedan'),('fuel_type','Топливо',vehicle_fuels,'petrol'),('status','Статус',vehicle_statuses,'active')] %}
+    <div class="vehicle-field" data-vehicle-field="{{ key }}">
+        {{ field_heading(key,label) }}
+        <select id="v_{{ key }}" aria-label="{{ label }}" name="{{ key }}" class="form-select">{% for value,title in options.items() %}<option value="{{ value }}" {% if form.get(key,vehicle|attr(key) if vehicle else default)==value %}selected{% endif %}>{{ title }}</option>{% endfor %}</select>
+    </div>
+    {% endfor %}
+    {% for key,label,length,hint in [('make','Марка',80,''),('model','Модель',80,''),('year','Год',20,''),('vin','VIN',17,'Идентификационный номер автомобиля из документов.')] %}
+    <div class="vehicle-field" data-vehicle-field="{{ key }}">
+        {{ field_heading(key,label,hint) }}
+        <input id="v_{{ key }}" name="{{ key }}" maxlength="{{ length }}" class="form-control" value="{{ form.get(key,(vehicle|attr(key) or '') if vehicle else '') }}">
+    </div>
+    {% endfor %}
+    <div class="vehicle-field" data-vehicle-field="plate">
+        {{ field_heading('plate','Госномер','Номер РФ: А123ВС77 или А123ВС777. Латинские буквы будут заменены кириллицей.') }}
+        <input id="v_plate" name="plate" maxlength="12" class="form-control" value="{{ form.get('plate',(vehicle.plate or '') if vehicle else '') }}">
+    </div>
+    <div class="vehicle-field" data-vehicle-field="country">
+        {{ field_heading('country','Страна учёта') }}
+        <select id="v_country" aria-label="Страна учёта" name="registration_country_id" class="form-select"><option value="">Не указана</option>{% for country in countries if country.is_active or (vehicle and vehicle.registration_country_id==country.id) %}<option value="{{ country.id }}" {% if form.get('registration_country_id',vehicle.registration_country_id if vehicle else '')|string==country.id|string %}selected{% endif %}>{{ country.name }} ({{ country.code }})</option>{% endfor %}</select>
+    </div>
+    <div class="vehicle-field" data-vehicle-field="interval" data-powered>
+        {{ field_heading('interval','Напоминание о пробеге','Через сколько дней без свежего замера напомнить об обновлении пробега. Укажите 0, чтобы выключить напоминания.') }}
+        <input id="v_interval" name="mileage_reminder_days" class="form-control" type="number" min="0" max="36500" value="{{ form.get('mileage_reminder_days',vehicle.mileage_reminder_days if vehicle else 30) }}">
+    </div>
+    <div class="vehicle-field" data-vehicle-field="payer">
+        {{ field_heading('payer','Плательщик по умолчанию','Сейчас расходы учитываются только за свой счёт. Выбор организации сохраняется как настройка служебного автомобиля.') }}
+        <select id="v_payer" name="default_payer" class="form-select">{% for key,label in [('self','За свой счёт'),('organization','Организация (для служебного)')] %}<option value="{{ key }}" {% if form.get('default_payer',vehicle.default_payer if vehicle else 'self')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+    </div>
+    <div class="vehicle-auxiliary-fields vehicle-form-wide">
+    <div class="vehicle-field-heading">
+        <label for="v_company" class="vehicle-company-switch"><input id="v_company" type="checkbox" role="switch" name="is_company" {% if form.get('is_company',vehicle.is_company if vehicle else false) %}checked{% endif %}><span>Служебный автомобиль</span></label>
+    </div>
+    <div class="vehicle-field vehicle-form-wide" data-trailer>
+        {{ field_heading('tractor','Текущий тягач') }}
+        <select id="v_tractor" name="tractor_id" class="form-select"><option value="">Без тягача</option>{% for tractor in tractors %}<option value="{{ tractor.id }}" {% if form.get('tractor_id',vehicle.tractor_id if vehicle else '')|string==tractor.id|string %}selected{% endif %}>{{ tractor.name }}</option>{% endfor %}</select>
+    </div>
+    {% if not vehicle %}
+    <div class="vehicle-field vehicle-form-wide" data-tractor>
+        {{ field_heading('trailer_name','Название прицепа','Прицеп с этим названием будет создан вместе с тягачом и привязан к нему. Например, «Полуприцеп №1». Оставьте поле пустым, если прицеп пока не нужен.') }}
+        <input id="v_trailer_name" name="trailer_name" maxlength="150" class="form-control" value="{{ form.get('trailer_name','') }}">
+    </div>
+    {% endif %}
+    </div>
+    <section class="vehicle-form-preview" aria-label="Предпросмотр автомобиля">
+        <div class="vehicle-preview-scene">
+        <svg id="vehiclePreview" class="vehicle-visual" viewBox="0 0 360 200" role="img" aria-label="Предпросмотр кузова и цвета">
+            <use id="vehiclePreviewBody" data-base-url="{{ url_for('static', filename='images/vehicles/') }}" href="{{ url_for('static', filename='images/vehicles/sedan.svg', v='detail-2') }}#body"/>
+        </svg>
+        </div>
+        <div class="vehicle-preview-controls">
+        <details class="vehicle-color-picker">
+            <summary class="btn btn-outline-secondary vehicle-color-toggle"><span class="vehicle-color-current" aria-hidden="true"></span><i class="bi bi-palette" aria-hidden="true"></i>Изменить цвет</summary>
+            <div class="vehicle-color-panel">
+                <div class="vehicle-color-swatches" role="group" aria-label="Готовые цвета кузова">
+                    {% for value,title in [('#f5f5f5','Белый'),('#15171c','Чёрный'),('#757b84','Серый'),('#bfc5ce','Серебристый'),('#5276ba','Синий'),('#dc3545','Красный'),('#2e9f62','Зелёный'),('#d9c6a5','Бежевый'),('#775442','Коричневый'),('#e9b54a','Золотистый'),('#f28c38','Оранжевый'),('#efcf45','Жёлтый')] %}
+                    <button type="button" class="vehicle-color-swatch" data-vehicle-color="{{ value }}" style="--swatch-color:{{ value }}" aria-label="{{ title }}" aria-pressed="false" title="{{ title }}"><i class="bi bi-check-lg" aria-hidden="true"></i></button>
+                    {% endfor %}
+                </div>
+                <div class="vehicle-color-custom">
+                    <label for="v_color" class="vehicle-color-custom-label"><input id="v_color" class="form-control form-control-color" type="color" name="color" aria-label="Цвет" value="{{ form.get('color',vehicle.color if vehicle else '#5276ba') }}"><span>Своя палитра</span></label>
+                    <button type="button" class="btn btn-outline-secondary vehicle-eyedropper" hidden><i class="bi bi-eyedropper" aria-hidden="true"></i>Пипетка</button>
+                </div>
+                <p class="vehicle-color-status text-muted mb-0" role="status"></p>
+            </div>
+        </details>
+        </div>
+    </section>
+    <div class="vehicle-form-actions"><button class="btn btn-primary">Сохранить автомобиль</button></div>
+</form>
+<script src="{{ url_for('static',filename='js/vehicles.js',v='review-fixes-1') }}"></script>
+{% endblock %}

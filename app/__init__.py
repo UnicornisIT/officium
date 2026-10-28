@@ -4,7 +4,7 @@ import secrets
 from datetime import timedelta
 
 import click
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 from flask_login import LoginManager, current_user
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
@@ -69,9 +69,17 @@ def create_app(config_overrides=None):
     _configure_secret_key(app)
     _validate_runtime_config(app)
 
+    engine_options = dict(app.config.get('SQLALCHEMY_ENGINE_OPTIONS') or {})
+    engine_options['hide_parameters'] = True
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
     db.init_app(app)
     Migrate(app, db)
     login_manager.init_app(app)
+    @app.before_request
+    def vehicle_feature_gate():
+        if (request.path == '/vehicles' or request.path.startswith('/vehicles/') or request.path.startswith('/admin/registration-countries')) and not app.config.get('VEHICLES_ENABLED'):
+            abort(404)
+
     csrf = CSRFProtect()
     csrf.init_app(app)
 
@@ -85,7 +93,7 @@ def create_app(config_overrides=None):
     app.jinja_env.filters['admin_event_tone'] = admin_event_tone
     app.jinja_env.filters['admin_event_icon'] = admin_event_icon
 
-    from app.routes import auth, admin, debts, documentation, payments, incomes, expenses, goals, main, profile, telegram_bot, whats_new
+    from app.routes import auth, admin, debts, documentation, payments, incomes, expenses, goals, main, profile, telegram_bot, whats_new, vehicles
 
     auth.init_app(app)
     admin.init_app(app)
@@ -99,6 +107,7 @@ def create_app(config_overrides=None):
     profile.init_app(app)
     goals.init_app(app)
     whats_new.init_app(app)
+    vehicles.init_app(app)
     _register_root_icons(app)
 
     def error_response(status_code):
