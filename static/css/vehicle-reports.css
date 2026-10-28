@@ -1,0 +1,58 @@
+/* Scoped to the server-rendered vehicle spending calendar. */
+.spend-calendar {
+  --calendar-personal: #2878d0;
+  --calendar-organization: #c18016;
+  width: 100%;
+  max-width: 52rem;
+  margin: 1.75rem 0 2rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  background: var(--bg-card);
+  box-shadow: 0 8px 28px #00000005;
+}
+.spend-calendar__header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
+.spend-calendar__heading { display: flex; align-items: center; gap: .8rem; }
+.spend-calendar__icon { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: .9rem; background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary); font-size: 1.2rem; }
+.spend-calendar__eyebrow { margin: 0 0 .2rem; color: var(--text-muted); font-size: .75rem; font-weight: 500; }
+.spend-calendar h2 { margin: 0; color: var(--text); font-size: 1.4rem; font-weight: 650; letter-spacing: -.035em; }
+.spend-calendar h2 span { margin-left: .15rem; color: var(--text-muted); font-weight: 400; }
+.spend-calendar__legend { display: flex; flex-wrap: wrap; gap: .4rem; }
+.spend-calendar__legend > span { display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .6rem; border-radius: 2rem; background: var(--bg-card-2); color: var(--text-dim); font-size: .75rem; }
+.spend-calendar__hint { margin: 1.1rem 0 .9rem; color: var(--text-muted); font-size: .8rem; }
+.spend-calendar__grid { width: 100%; border-collapse: separate; border-spacing: .4rem; table-layout: fixed; }
+.spend-calendar__grid th { padding: .4rem 0 .65rem; text-align: center; font-size: .75rem; font-weight: 500; color: var(--text-muted); }
+.spend-calendar__grid th.spend-calendar__weekend { color: var(--calendar-organization); }
+.spend-calendar__grid td { padding: 0; border: 0; vertical-align: middle; }
+.spend-calendar__day, .spend-calendar__outside { display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; width: 100%; min-height: 4.25rem; border-radius: .9rem; font-size: .95rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.spend-calendar__day { border: 1px solid transparent; background: var(--bg-card-2); color: var(--text); text-decoration: none; }
+.spend-calendar__day.is-weekend { background: color-mix(in srgb, var(--calendar-organization) 6%, var(--bg-card)); }
+.spend-calendar__day.has-spending { border-color: var(--border); }
+.spend-calendar__day.is-today .spend-calendar__number { outline: 1.5px solid var(--primary); outline-offset: 3px; border-radius: 50%; }
+.spend-calendar__number { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; }
+.spend-calendar__markers { display: flex; align-items: center; justify-content: center; gap: 4px; height: 7px; margin-top: .5rem; }
+.spend-calendar__dot { display: inline-block; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; }
+.spend-calendar__dot--self { background: var(--calendar-personal); }
+.spend-calendar__dot--organization { background: var(--calendar-organization); }
+.spend-calendar__outside { color: var(--text-muted); opacity: .4; }
+.spend-calendar__day.is-selected { background: var(--primary); border-color: var(--primary); color: var(--bg-card); box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 20%, transparent); }
+.spend-calendar__day.is-selected .spend-calendar__dot { box-shadow: 0 0 0 1px var(--bg-card); }
+.spend-calendar__day.is-selected.is-today .spend-calendar__number { outline-color: currentColor; }
+.spend-calendar__day:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.spend-calendar__footer { display: flex; align-items: center; gap: .45rem; margin-top: .9rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: .75rem; }
+.spend-calendar__today-key { width: .65rem; height: .65rem; border: 1.5px solid var(--primary); border-radius: 50%; }
+.spend-calendar__selection { margin-left: auto; color: var(--primary); }
+.vehicle-day-spends { scroll-margin-top: 6rem; }
+:root[data-theme="dark"] .spend-calendar { --calendar-personal: #60a5fa; --calendar-organization: #e4a641; }
+@media (hover: hover) { .spend-calendar__day:hover { border-color: var(--primary); color: var(--primary); background: color-mix(in srgb, var(--primary) 9%, var(--bg-card)); } .spend-calendar__day.is-selected:hover { background: var(--primary); color: var(--bg-card); } }
+@media (prefers-reduced-motion: no-preference) { .spend-calendar__day { transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease; } }
+@media (max-width: 575px) {
+  .spend-calendar { padding: 1rem .65rem; border-radius: 1.15rem; }
+  .spend-calendar__header, .spend-calendar__hint, .spend-calendar__footer { margin-inline: .3rem; }
+  .spend-calendar__header { gap: .8rem; }
+  .spend-calendar h2 { font-size: 1.2rem; }
+  .spend-calendar__grid { border-spacing: .2rem; }
+  .spend-calendar__day, .spend-calendar__outside { min-height: 3.25rem; border-radius: .65rem; font-size: .85rem; }
+  .spend-calendar__markers { margin-top: .35rem; }
+  .spend-calendar__hint { font-size: .75rem; }
+}

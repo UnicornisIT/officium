@@ -38,7 +38,17 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) {
     await capture('custom-report');
     await page.goto(`/vehicles/reports?vehicle_id=${id}&date_from=2026-10-01&date_to=2026-10-31&day=2026-10-15`);
     await expect(page.getByRole('heading',{name:'Траты 2026-10-15'})).toBeVisible();
+    const calendar = page.locator('.spend-calendar');
+    await expect(calendar).toBeVisible();
+    await expect(calendar.locator('.is-selected')).toHaveAttribute('aria-label', /15.10.2026.*выбран/);
+    await expect(calendar.locator('.is-selected .spend-calendar__dot')).toHaveCount(2);
+    await calendar.getByRole('link', {name: /16.10.2026/}).click();
+    await expect(page.getByRole('heading',{name:'Траты 2026-10-16'})).toBeVisible();
+    await expect(calendar.locator('.is-selected')).toHaveAttribute('aria-label', /16.10.2026.*выбран/);
+    await calendar.getByRole('link', {name: /15.10.2026/}).click();
+    await page.evaluate(()=>scrollTo(0,0));
     await capture('calendar-day');
+    await calendar.screenshot({path:path.join(root,`${width}-${theme}-calendar-detail.png`),animations:'disabled',style:'.telegram-app-bar, .telegram-bottom-nav { visibility: hidden !important; }'});
     await page.getByLabel('Не возмещено',{exact:true}).check();
     await page.getByRole('button',{name:'Показать',exact:true}).click();
     await expect(page.locator('article')).toHaveCount(1);
