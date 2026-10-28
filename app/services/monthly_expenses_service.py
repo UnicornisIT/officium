@@ -119,6 +119,7 @@ def _create_monthly_copy(settings_expense, origin_expense, target_month, anchor_
     return Expense(
         user_id=settings_expense.user_id,
         vehicle_id=settings_expense.vehicle_id,
+        vehicle_cost_kind=settings_expense.vehicle_cost_kind,
         amount=settings_expense.amount,
         category=settings_expense.category,
         title=settings_expense.title,

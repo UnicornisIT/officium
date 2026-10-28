@@ -37,9 +37,18 @@ def init_app(app):
                 error_message = 'Локальный тестовый режим: сохранение расходов отключено.'
             else:
                 try:
-                    expense = expense_service.create_expense(
-                        user_id=current_user.id, **_expense_form_values(),
-                    )
+                    values = _expense_form_values()
+                    if values.get('vehicle_id'):
+                        from app.services import vehicle_service, vehicle_cost_service
+                        vehicle = vehicle_service.get_vehicle_for_user(current_user, values['vehicle_id'])
+                        expense = vehicle_cost_service.create_vehicle_spend(current_user, vehicle, request.form.get('payer'),
+                            amount=values['amount'], cost_date=values['expense_date'], kind=request.form.get('kind', 'other'),
+                            comment=values.get('comment'), paid_by_driver=request.form.get('paid_by_driver'),
+                            title=values.get('title'), payment_method=values.get('payment_method'), is_monthly=values.get('is_monthly',False))
+                        if isinstance(expense, Expense):
+                            return redirect(url_for('expenses', success='Расход сохранён', month=month_key(expense.expense_date)))
+                        return redirect(url_for('vehicle_reports', vehicle_id=vehicle.id))
+                    expense = expense_service.create_expense(user_id=current_user.id, **values)
                     return redirect(url_for(
                         'expenses',
                         success='Расход сохранён',
