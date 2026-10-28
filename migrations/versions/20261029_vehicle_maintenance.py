@@ -43,7 +43,6 @@ def upgrade():
         sa.Column('expense_id', sa.Integer(), sa.ForeignKey('expenses.id', name='fk_service_record_expense', ondelete='SET NULL'), primary_key=False, nullable=True),
         sa.Column('vehicle_cost_id', sa.Integer(), sa.ForeignKey('vehicle_costs.id', name='fk_service_record_cost', ondelete='SET NULL'), primary_key=False, nullable=True),
         sa.CheckConstraint('odometer_km >= 0 OR odometer_km IS NULL', name='ck_service_record_km'),
-        sa.CheckConstraint('expense_id IS NULL OR vehicle_cost_id IS NULL', name='ck_service_record_single_spend'),
     )
     op.create_index('ix_vehicle_service_records_vehicle_id', 'vehicle_service_records', ['vehicle_id'])
     op.create_table('vehicle_service_items',

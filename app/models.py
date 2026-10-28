@@ -577,7 +577,6 @@ class VehicleServiceRecord(db.Model):
     __tablename__ = 'vehicle_service_records'
     __table_args__ = (
         db.CheckConstraint('odometer_km >= 0 OR odometer_km IS NULL', name='ck_service_record_km'),
-        db.CheckConstraint('expense_id IS NULL OR vehicle_cost_id IS NULL', name='ck_service_record_single_spend'),
     )
     id = db.Column(db.Integer, primary_key=True)
     vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_service_record_vehicle', ondelete='CASCADE'), nullable=False, index=True)
