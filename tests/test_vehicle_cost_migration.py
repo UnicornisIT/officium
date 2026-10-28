@@ -21,8 +21,9 @@ class VehicleCostMigrationTests(unittest.TestCase):
                 upgrade(directory=str(ROOT/'migrations'))
                 self.assertIn('vehicle_costs',inspect(db.engine).get_table_names())
                 check(directory=str(ROOT/'migrations'))
-                with self.assertRaisesRegex(RuntimeError, 'preserve vehicle spending'):
+                with self.assertRaises(SystemExit) as denied:
                     downgrade(directory=str(ROOT/'migrations'),revision='20261027_vehicle_core')
+                self.assertEqual(denied.exception.code, 1)
                 self.assertIn('vehicle_costs',inspect(db.engine).get_table_names())
                 db.session.remove()
                 db.engine.dispose()
