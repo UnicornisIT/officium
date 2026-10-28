@@ -66,6 +66,7 @@ def init_app(app):
         return render_template('vehicles/detail.html', vehicle=vehicle, mileage=service.current_mileage(vehicle),
             expenses=service.vehicle_expenses(current_user, vehicle_id), today=service.today(),
             report=costs.vehicle_report(current_user, vehicle_ids=[vehicle_id]),
+            organization_costs=costs.vehicle_cost_rows(current_user, vehicle_id) if request.args.get('tab') == 'expenses' else [], cost_kinds=costs.KINDS,
             readings=VehicleOdometerReading.query.filter_by(vehicle_id=vehicle.id).order_by(VehicleOdometerReading.reading_date.desc()).all())
 
     @app.route('/vehicles/<int:vehicle_id>/edit', methods=['GET', 'POST'])
@@ -141,10 +142,20 @@ def init_app(app):
                 headers={'Content-Disposition': 'attachment; filename=vehicle-report.csv'})
         return render_template('vehicles/report.html', report=report, kinds=costs.KINDS, today=service.today())
 
+    @app.route('/vehicles/costs/<int:cost_id>/driver-payment', methods=['POST'])
+    @login_required
+    def vehicle_driver_payment(cost_id):
+        result = _attempt(lambda: costs.mark_paid_by_driver(current_user, cost_id))
+        if result and request.form.get('return_to') == 'vehicle':
+            return redirect(url_for('vehicle_detail', vehicle_id=result.vehicle_id, tab='expenses'))
+        return redirect(url_for('vehicle_reports'))
+
     @app.route('/vehicles/costs/<int:cost_id>/reimburse', methods=['POST'])
     @login_required
     def vehicle_reimburse(cost_id):
-        _attempt(lambda: costs.mark_reimbursed(current_user, cost_id, request.form.get('date')))
+        result = _attempt(lambda: costs.mark_reimbursed(current_user, cost_id, request.form.get('date')))
+        if result and request.form.get('return_to') == 'vehicle':
+            return redirect(url_for('vehicle_detail', vehicle_id=result.vehicle_id, tab='expenses'))
         return redirect(url_for('vehicle_reports'))
 
     @app.route('/admin/registration-countries', methods=['GET', 'POST'])

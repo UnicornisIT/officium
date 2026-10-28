@@ -42,6 +42,29 @@ def create_vehicle_spend(user, vehicle, payer=None, *, amount, cost_date, kind='
     return cost
 
 
+def mark_paid_by_driver(user, cost_id):
+    vehicles._user(user)
+    cost = VehicleCost.query.filter_by(id=cost_id, user_id=user.id).with_for_update().first_or_404()
+    vehicle = vehicles.get_vehicle_for_user(user, cost.vehicle_id, for_update=True)
+    vehicles._writable(vehicle)
+    cost.paid_by_driver = True
+    record_activity('vehicle_cost_driver_payment', user, entity_type='vehicle_cost', entity_id=cost.id, commit=False)
+    db.session.commit()
+    return cost
+
+
+def _cost_row(item):
+    return dict(id=item.id, vehicle_id=item.vehicle_id, date=item.cost_date, amount=item.amount,
+        payer='organization', kind=item.kind, comment=item.comment or '', paid_by_driver=item.paid_by_driver,
+        unpaid=item.paid_by_driver and not item.reimbursed_at, reimbursed_at=item.reimbursed_at)
+
+
+def vehicle_cost_rows(user, vehicle_id):
+    vehicle = vehicles.get_vehicle_for_user(user, vehicle_id)
+    return [_cost_row(item) for item in VehicleCost.query.filter_by(user_id=user.id, vehicle_id=vehicle.id)
+        .order_by(VehicleCost.cost_date.desc(), VehicleCost.id.desc()).all()]
+
+
 def mark_reimbursed(user, cost_id, reimbursement_date=None):
     vehicles._user(user)
     cost = VehicleCost.query.filter_by(id=cost_id, user_id=user.id).with_for_update().first_or_404()
@@ -78,7 +101,7 @@ def vehicle_report(user, date_from=None, date_to=None, vehicle_ids=None, *, unpa
         kind = item.vehicle_cost_kind or 'other'
         rows.append(dict(id=item.id, vehicle_id=item.vehicle_id, date=item.expense_date, amount=item.amount, payer='self', kind=kind, comment=item.comment or '', unpaid=False, reimbursed_at=None))
     for item in VehicleCost.query.filter(VehicleCost.user_id == user.id, VehicleCost.vehicle_id.in_(ids), VehicleCost.cost_date.between(start, end)).all():
-        rows.append(dict(id=item.id, vehicle_id=item.vehicle_id, date=item.cost_date, amount=item.amount, payer='organization', kind=item.kind, comment=item.comment or '', unpaid=item.paid_by_driver and not item.reimbursed_at, reimbursed_at=item.reimbursed_at))
+        rows.append(_cost_row(item))
     rows.sort(key=lambda row: (row['date'], row['id']))
     if unpaid:
         rows = [row for row in rows if row['unpaid']]

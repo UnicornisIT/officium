@@ -25,11 +25,15 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) {
       await page.getByLabel('Кто платит').selectOption(payer);
       await page.getByLabel('Дата',{exact:true}).fill('2026-10-15');
       await page.getByLabel('Сумма',{exact:true}).fill('120.50');
-      if(payer==='organization') await page.getByLabel('Оплатил водитель',{exact:false}).check();
       if(payer==='organization') await capture('payer-form');
       await page.getByRole('button',{name:'Сохранить трату'}).click();
       await page.waitForURL(/reports/);
     }
+    await page.goto(`/vehicles/${id}?tab=expenses`);
+    await page.getByRole('button',{name:'Оплатил водитель, к возмещению',exact:true}).click();
+    await expect(page).toHaveURL(new RegExp(`/vehicles/${id}\\?tab=expenses$`));
+    await expect(page.getByRole('button',{name:'Возмещено',exact:true})).toBeVisible();
+    await capture('vehicle-reimbursement');
     await page.goto(`/vehicles/reports?vehicle_id=${id}&date_from=2026-10-01&date_to=2026-10-31`);
     await expect(page.locator('body')).toContainText('241');
     await capture('month-report');
@@ -58,5 +62,10 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) {
     const download=await downloadPromise; expect(download.suggestedFilename()).toBe('vehicle-report.csv');
     await page.getByRole('button',{name:'Возмещено',exact:true}).click();
     await page.waitForURL(/reports/);
+    await page.goto(`/vehicles/${id}?tab=expenses`);
+    await expect(page.getByRole('button',{name:'Снять отметку возмещения',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Снять отметку возмещения',exact:true}).click();
+    await expect(page.getByRole('button',{name:'Возмещено',exact:true})).toBeVisible();
+
   });
 }
