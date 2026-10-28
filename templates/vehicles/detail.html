@@ -6,7 +6,6 @@
 <a class="btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
 <div class="d-flex flex-wrap justify-content-between gap-3 mt-3"><h1 class="page-title">{{ vehicle.name }}</h1>{% if not vehicle.archived_at %}<a class="btn btn-outline-primary align-self-start" href="{{ url_for('edit_vehicle',vehicle_id=vehicle.id) }}">Редактировать</a>{% endif %}</div>
 {% if vehicle.archived_at %}<div class="alert alert-secondary mt-3">Автомобиль в архиве · {{ archive_reasons[vehicle.archive_reason] }}. Только просмотр.<p class="mb-0">{{ vehicle.archive_note or '' }}</p></div>{% endif %}
-<p class="mt-3">Текущий месяц: свои {{ report.totals.self|money }}, организация {{ report.totals.organization|money }}, всего {{ report.totals.total|money }}</p><a class="btn btn-outline-primary" href="{{ url_for('vehicle_reports',vehicle_id=vehicle.id) }}">Отчёты</a>
 <div class="vehicle-detail-grid mt-4">
 <section class="card p-4">{{ visual(vehicle) }}<h2 class="h5">{{ vehicle.make or '' }} {{ vehicle.model or '' }} {{ vehicle.year or '' }}</h2>
 <dl class="vehicle-facts"><dt>Тип</dt><dd>{{ vehicle_kinds[vehicle.kind] }}</dd><dt>Статус</dt><dd>{{ vehicle_statuses[vehicle.status] }}</dd><dt>Страна учёта</dt><dd>{{ vehicle.country.name if vehicle.country else 'Не указана' }}</dd><dt>VIN</dt><dd>{{ vehicle.vin or 'Не указан' }}</dd>
@@ -23,6 +22,7 @@
 {% else %}
 {% if tab=='overview' and vehicle.kind!='trailer' %}<p class="text-muted mb-1">Текущий пробег</p><p class="display-6">{{ mileage if mileage is not none else '—' }} <small class="h5">км</small></p>{% endif %}
 <h2 class="h5">{{ 'Последние расходы' if tab=='overview' else 'Расходы на автомобиль' }}</h2>
+{% if tab=='expenses' %}<p class="mt-3">Текущий месяц: свои {{ report.totals.self|money }}, организация {{ report.totals.organization|money }}, всего {{ report.totals.total|money }}</p><a class="btn btn-outline-primary" href="{{ url_for('vehicle_reports',vehicle_id=vehicle.id) }}">Отчёты</a>{% endif %}
 {% if not vehicle.archived_at and vehicle.status=='active' %}<a class="btn btn-primary my-3" href="{{ url_for('vehicle_expense',vehicle_id=vehicle.id) }}">Добавить расход на авто</a>{% endif %}
 <div class="table-responsive"><table class="table"><thead><tr><th>Дата</th><th>Название</th><th>Сумма</th></tr></thead><tbody>{% for expense in expenses[:5] if tab=='overview' %}<tr><td>{{ expense.expense_date.strftime('%d.%m.%Y') }}</td><td><a href="{{ url_for('edit_expense',expense_id=expense.id) }}">{{ expense.title }}</a></td><td class="text-nowrap">{{ expense.amount|money }}</td></tr>{% endfor %}{% if tab=='expenses' %}{% for expense in expenses %}<tr><td>{{ expense.expense_date.strftime('%d.%m.%Y') }}</td><td><a href="{{ url_for('edit_expense',expense_id=expense.id) }}">{{ expense.title }}</a></td><td class="text-nowrap">{{ expense.amount|money }}</td></tr>{% endfor %}{% endif %}{% if not expenses %}<tr><td colspan="3">Расходов пока нет</td></tr>{% endif %}</tbody></table></div>
 {% endif %}
