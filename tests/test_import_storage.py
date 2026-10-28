@@ -17,6 +17,7 @@ import unittest
 import zipfile
 from collections import namedtuple
 from decimal import Decimal
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -191,11 +192,18 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
 
     def test_preview_file_holds_no_statement_content(self):
         self.login(self.client, self.user_id)
-        token = self.preview_token(self.upload(self.client, statement(*expense_lines(3))))
+        # A timestamp may contain the same digits as an amount. Validate the
+        # complete metadata schema instead of searching raw JSON for "100".
+        now = datetime.now(timezone.utc).replace(microsecond=861005)
+        with patch.object(storage, 'utc_now', return_value=now):
+            token = self.preview_token(self.upload(self.client, statement(*expense_lines(3))))
         raw = (self.storage_dir / f'u{self.user_id}-{token}.json').read_text(encoding='utf-8')
         self.assertNotIn('SYNTH', raw)
-        self.assertNotIn('100', raw.replace('"row_count":3', ''))
         payload = json.loads(raw)
+        self.assertEqual(set(payload), {'version', 'user_id', 'created_at', 'row_count', 'monthly_match_ids'})
+        self.assertEqual(payload['version'], storage.PAYLOAD_VERSION)
+        self.assertEqual(payload['created_at'], now.replace(tzinfo=None).isoformat())
+        self.assertEqual(payload['monthly_match_ids'], [None, None, None])
         self.assertEqual(payload['row_count'], 3)
         self.assertEqual(payload['user_id'], self.user_id)
         if os.name == 'posix':

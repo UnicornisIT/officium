@@ -1,12 +1,13 @@
 """Thin vehicle HTTP adapters; all ownership and validation live in services."""
-from flask import abort, current_app, flash, redirect, render_template, request, url_for
+from flask import Response, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import RegistrationCountry, VehicleOdometerReading
 from app.services import vehicle_service as service
+from app.services import vehicle_cost_service as costs
 from app.services.personal_access_service import can_use_personal_cabinet
-from app.utils import is_local_test_user, superadmin_required
+from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS, is_local_test_user, superadmin_required
 from extensions import db
 
 
@@ -29,7 +30,7 @@ def init_app(app):
         enabled = bool(app.config.get('VEHICLES_ENABLED'))
         personal = enabled and can_use_personal_cabinet(current_user) and not is_local_test_user() and not request.path.startswith('/admin')
         context = dict(vehicles_enabled=enabled, vehicle_kinds=service.KINDS, vehicle_bodies=service.BODIES,
-                       vehicle_fuels=service.FUELS, vehicle_statuses=service.STATUSES, archive_reasons=service.ARCHIVE_REASONS)
+                       vehicle_fuels=service.FUELS, vehicle_statuses=service.STATUSES, archive_reasons=service.ARCHIVE_REASONS, vehicle_payment_methods=dict(PAYMENT_METHODS), vehicle_expense_categories=dict(EXPENSE_CATEGORIES))
         if personal and request.endpoint in ('index', 'vehicles'):
             context['mileage_due'] = service.due_vehicles(current_user)
         if personal and request.endpoint in ('expenses', 'edit_expense'):
@@ -64,6 +65,8 @@ def init_app(app):
         vehicle = service.get_vehicle_for_user(current_user, vehicle_id)
         return render_template('vehicles/detail.html', vehicle=vehicle, mileage=service.current_mileage(vehicle),
             expenses=service.vehicle_expenses(current_user, vehicle_id), today=service.today(),
+            report=costs.vehicle_report(current_user, vehicle_ids=[vehicle_id]),
+            organization_costs=costs.vehicle_cost_rows(current_user, vehicle_id) if request.args.get('tab') == 'expenses' else [], cost_kinds=costs.KINDS,
             readings=VehicleOdometerReading.query.filter_by(vehicle_id=vehicle.id).order_by(VehicleOdometerReading.reading_date.desc()).all())
 
     @app.route('/vehicles/<int:vehicle_id>/edit', methods=['GET', 'POST'])
@@ -112,6 +115,56 @@ def init_app(app):
             flash('Расходы можно добавлять только на активный автомобиль вне архива.', 'warning')
             return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id))
         return redirect(url_for('expenses', vehicle_id=vehicle.id))
+
+    @app.route('/vehicles/<int:vehicle_id>/spend', methods=['GET', 'POST'])
+    @login_required
+    def vehicle_spend(vehicle_id):
+        vehicle = service.get_vehicle_for_user(current_user, vehicle_id)
+        if request.method == 'POST':
+            result = _attempt(lambda: costs.create_vehicle_spend(current_user, vehicle, request.form.get('payer'),
+                amount=request.form.get('amount'), cost_date=request.form.get('cost_date'),
+                kind=request.form.get('kind'), comment=request.form.get('comment'),
+                paid_by_driver=request.form.get('paid_by_driver'), title=request.form.get('title'), payment_method=request.form.get('payment_method')))
+            if result:
+                return redirect(url_for('vehicle_reports', vehicle_id=vehicle.id))
+        return render_template('vehicles/spend.html', vehicle=vehicle, kinds=costs.KINDS, today=service.today())
+
+    @app.route('/vehicles/reports')
+    @login_required
+    def vehicle_reports():
+        service._user(current_user)
+        report = _attempt(lambda: costs.vehicle_report(current_user, request.args.get('date_from'), request.args.get('date_to'),
+            request.args.getlist('vehicle_id'), unpaid=request.args.get('unpaid') == '1', selected_day=request.args.get('day')))
+        if report is None:
+            return redirect(url_for('vehicle_reports'))
+        if request.args.get('format') == 'csv':
+            return Response(costs.report_csv(current_user, report), content_type='text/csv; charset=utf-8',
+                headers={'Content-Disposition': 'attachment; filename=vehicle-report.csv'})
+        return render_template('vehicles/report.html', report=report, kinds=costs.KINDS, today=service.today())
+
+    @app.route('/vehicles/costs/<int:cost_id>')
+    @login_required
+    def vehicle_cost_detail(cost_id):
+        cost = costs.get_cost_for_user(current_user, cost_id)
+        vehicle = service.get_vehicle_for_user(current_user, cost.vehicle_id)
+        return render_template('vehicles/cost_detail.html', cost=costs._cost_row(cost), vehicle=vehicle,
+            kinds=costs.KINDS, today=service.today())
+
+    @app.route('/vehicles/costs/<int:cost_id>/driver-payment', methods=['POST'])
+    @login_required
+    def vehicle_driver_payment(cost_id):
+        result = _attempt(lambda: costs.mark_paid_by_driver(current_user, cost_id))
+        if result and request.form.get('return_to') == 'vehicle':
+            return redirect(url_for('vehicle_detail', vehicle_id=result.vehicle_id, tab='expenses'))
+        return redirect(url_for('vehicle_reports'))
+
+    @app.route('/vehicles/costs/<int:cost_id>/reimburse', methods=['POST'])
+    @login_required
+    def vehicle_reimburse(cost_id):
+        result = _attempt(lambda: costs.mark_reimbursed(current_user, cost_id, request.form.get('date')))
+        if result and request.form.get('return_to') == 'vehicle':
+            return redirect(url_for('vehicle_detail', vehicle_id=result.vehicle_id, tab='expenses'))
+        return redirect(url_for('vehicle_reports'))
 
     @app.route('/admin/registration-countries', methods=['GET', 'POST'])
     @superadmin_required

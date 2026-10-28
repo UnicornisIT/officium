@@ -41,6 +41,11 @@
                         {% if edit_expense and edit_expense.vehicle_id and edit_expense.vehicle_id not in expense_vehicles|map(attribute='id')|list %}<option value="{{ edit_expense.vehicle_id }}" selected>Текущий автомобиль (недоступен для новых расходов)</option>{% endif %}
                     </select>
                 </div>
+                {% if not edit_expense %}
+                <label class="mb-3">Вид траты<select name="kind" class="form-select">{% for key,label in [('fuel','Топливо'),('service','Обслуживание'),('parts','Запчасти'),('insurance','Страхование'),('tax','Налог'),('fines','Штрафы'),('parking','Парковка'),('wash','Мойка'),('other','Другое')] %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label>
+                {% for v in expense_vehicles if v.id|string == selected_vehicle and v.is_company %}
+                <label>Кто платит<select name="payer" class="form-select"><option value="self" {% if v.default_payer=='self' %}selected{% endif %}>Я</option><option value="organization" {% if v.default_payer=='organization' %}selected{% endif %}>Организация</option></select></label><label><input type="checkbox" name="paid_by_driver"> Оплатил водитель, к возмещению</label>
+                {% endfor %}{% endif %}
                 {% endif %}
                 <div class="mb-3">
                     <label class="form-label"><span class="required-indicator">*</span>Категория</label>

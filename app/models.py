@@ -427,6 +427,7 @@ class Expense(db.Model):
         db.Index('ix_expenses_monthly_active', 'is_monthly', 'user_id', 'monthly_group_id'),
     )
 
+    vehicle_cost_kind = db.Column(db.String(20))
     id = db.Column(db.Integer, primary_key=True)
     vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_expenses_vehicle_id', ondelete='SET NULL'), index=True, nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -528,6 +529,7 @@ class Vehicle(db.Model):
     user = db.relationship('User', back_populates='vehicles')
     country = db.relationship('RegistrationCountry')
     tractor = db.relationship('Vehicle', remote_side=[id], backref='trailers')
+    costs = db.relationship('VehicleCost', cascade='all, delete-orphan', back_populates='vehicle')
     readings = db.relationship('VehicleOdometerReading', cascade='all, delete-orphan', back_populates='vehicle')
 
 
@@ -776,3 +778,22 @@ class TelegramConversationState(db.Model):
 
     def __repr__(self):
         return f'<TelegramConversationState {self.telegram_id}:{self.flow}:{self.step}>'
+
+
+class VehicleCost(db.Model):
+    __tablename__ = 'vehicle_costs'
+    __table_args__ = (db.CheckConstraint('amount > 0', name='ck_vehicle_costs_amount'),)
+    id = db.Column(db.Integer, primary_key=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_vehicle_costs_vehicle'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', name='fk_vehicle_costs_user'), nullable=False, index=True)
+    cost_date = db.Column(db.Date, nullable=False, index=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    kind = db.Column(db.String(20), nullable=False)
+    title = db.Column(db.String(150))
+    payment_method = db.Column(db.String(20))
+    comment = db.Column(db.String(2000))
+    paid_by_driver = db.Column(db.Boolean, nullable=False, default=False)
+    reimbursed_at = db.Column(db.Date)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+    vehicle = db.relationship('Vehicle', back_populates='costs')

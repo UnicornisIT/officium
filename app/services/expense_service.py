@@ -104,8 +104,12 @@ def _save(expense, action, commit):
 
 
 def create_expense(*, user_id, amount, title, expense_date, category=None,
-                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=None, **extra_fields):
+                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=None, vehicle_cost_kind=None, **extra_fields):
     _check_options(extra_fields)
+    if vehicle_cost_kind is not None:
+        from app.services.vehicle_cost_service import KINDS
+        if not vehicle_id or vehicle_cost_kind not in KINDS:
+            raise ValueError('Выберите вид траты на автомобиль.')
     if vehicle_id:
         vehicle = _vehicle(user_id, vehicle_id)
         if vehicle.archived_at or vehicle.status != 'active':
@@ -115,7 +119,7 @@ def create_expense(*, user_id, amount, title, expense_date, category=None,
                        payment_method=payment_method, comment=comment)
     if is_monthly and not commit:
         raise ValueError('Monthly expenses require commit=True')
-    expense = Expense(user_id=user_id, is_monthly=is_monthly, vehicle_id=vehicle_id or None, **values)
+    expense = Expense(user_id=user_id, is_monthly=is_monthly, vehicle_id=vehicle_id or None, vehicle_cost_kind=vehicle_cost_kind, **values)
     if is_monthly:
         _monthly_settings(expense)
     db.session.add(expense)

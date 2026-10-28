@@ -59,7 +59,11 @@ test('vehicle checklist: cashflow, mileage, repair, reminders, archive and owner
   await page.goto('/');
   expect(cents(await page.locator('.money-flow__item--expense strong').innerText())).toBe(originalTotal + 12345);
   await page.goto(`${car}?tab=expenses`);
-  await expect(page.locator('tbody')).toContainText(`${name} расход`);
+  const vehicleExpense = page.getByRole('link', { name: `${name} расход`, exact: true });
+  await expect(vehicleExpense).toHaveAttribute('href', editExpense);
+  const expenseDetails = page.locator('article').filter({ has: vehicleExpense });
+  await expect(expenseDetails).toContainText('Транспорт');
+  await expect(expenseDetails).toContainText('123,45');
 
   await addReading(page, car, '2020-01-10', 100);
   await addReading(page, car, '2020-01-20', 200);

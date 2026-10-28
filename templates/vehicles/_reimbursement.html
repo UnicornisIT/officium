@@ -1,0 +1,16 @@
+{% if cost.reimbursed_at %}<p class="text-success mb-2">Возмещено {{ cost.reimbursed_at.strftime('%d.%m.%Y') }}</p>
+{% elif cost.unpaid %}<p class="text-warning mb-2">Оплатил водитель · К возмещению</p>
+{% else %}<p class="text-muted mb-2">Оплачено организацией</p>{% endif %}
+{% if not cost_vehicle.archived_at %}
+<form method="post" action="{{ url_for('vehicle_reimburse' if cost.paid_by_driver else 'vehicle_driver_payment',cost_id=cost.id) }}" class="d-flex flex-wrap align-items-end gap-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="return_to" value="{{ reimbursement_return|default('report') }}">
+  {% if not cost.paid_by_driver %}
+    <button class="btn btn-outline-primary">Оплатил водитель, к возмещению</button>
+  {% elif cost.reimbursed_at %}
+    <button class="btn btn-outline-secondary">Снять отметку возмещения</button>
+  {% else %}
+    <label class="form-label mb-0" for="reimbursement-{{ cost.id }}">Дата возмещения<input id="reimbursement-{{ cost.id }}" class="form-control" type="date" name="date" value="{{ today }}" min="{{ cost.date }}" max="{{ today }}" required></label>
+    <button class="btn btn-outline-primary">Возмещено</button>
+  {% endif %}
+</form>{% endif %}

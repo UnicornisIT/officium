@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block content %}<h1>Трата на авто</h1><p>{{ vehicle.name }}</p>
+{% if vehicle.archived_at %}<p>Автомобиль в архиве. Только просмотр.</p>{% else %}
+<form method="post" class="card p-4"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% if vehicle.is_company %}<label>Кто платит<select name="payer" class="form-select"><option value="self" {% if vehicle.default_payer=='self' %}selected{% endif %}>Я</option><option value="organization" {% if vehicle.default_payer=='organization' %}selected{% endif %}>Организация</option></select></label>{% endif %}
+<label>Название<input class="form-control" type="text" name="title" maxlength="150" value="{{ request.form.get('title','') }}" required></label>
+<label for="spendPaymentMethod">Способ оплаты</label><select id="spendPaymentMethod" class="form-select" name="payment_method"><option value="">Не указан</option>{% for key,label in vehicle_payment_methods.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
+<label>Дата<input class="form-control" type="date" name="cost_date" value="{{ request.form.get('cost_date',today.isoformat()) }}" required></label>
+<label>Сумма<input class="form-control" type="number" step="0.01" min="0.01" name="amount" value="{{ request.form.get('amount','') }}" required></label>
+<label>Вид<select class="form-select" name="kind">{% for key,label in kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label>
+<label>Комментарий<textarea class="form-control" name="comment" maxlength="2000">{{ request.form.get('comment','') }}</textarea></label>
+{% if vehicle.is_company %}<label><input type="checkbox" name="paid_by_driver"> Оплатил водитель, к возмещению (для организации)</label>{% endif %}
+<button class="btn btn-primary mt-3">Сохранить трату</button></form>{% endif %}{% endblock %}
