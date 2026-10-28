@@ -158,3 +158,48 @@ class VehicleCostsTestCase(test_vehicle_service.VehicleServiceTestCase):
         self.app.config['WTF_CSRF_ENABLED']=True
         self.assertEqual(self.client.post(f'/vehicles/costs/{cost.id}/driver-payment').status_code,400)
         self.assertFalse(cost.paid_by_driver)
+
+    def test_full_details_and_owner_scoped_view(self):
+        vehicle=self.vehicle(is_company=True)
+        cost=self.spend(vehicle,payer='organization',title='Учебная замена фильтра',payment_method='card',comment='Вымышленная подробность')
+        self.assertEqual(cost.title,'Учебная замена фильтра')
+        self.assertEqual(cost.payment_method,'card')
+        self.login()
+        for url in (f'/vehicles/{vehicle.id}?tab=expenses',f'/vehicles/costs/{cost.id}',f'/vehicles/reports?vehicle_id={vehicle.id}&date_from=2026-03-01&date_to=2026-03-31'):
+            page=self.client.get(url)
+            self.assertEqual(page.status_code,200)
+            text=page.get_data(as_text=True)
+            for value in ('Учебная замена фильтра','Вымышленная подробность','Карта'):
+                self.assertIn(value,text)
+        report=costs.vehicle_report(self.owner,'2026-03-01','2026-03-31')
+        exported=costs.report_csv(self.owner,report).decode('utf-8-sig')
+        self.assertIn('Учебная замена фильтра',exported)
+        self.assertIn('Карта',exported)
+        for user in (self.other,self.admin):
+            self.login(user)
+            self.assertEqual(self.client.get(f'/vehicles/costs/{cost.id}').status_code,404)
+        self.login()
+        self.app.config['VEHICLES_ENABLED']=False
+        self.assertEqual(self.client.get(f'/vehicles/costs/{cost.id}').status_code,404)
+        self.app.config['VEHICLES_ENABLED']=True
+        for data in (dict(title=''),dict(title='x'*151),dict(payment_method='invalid')):
+            with self.assertRaises(ValueError): self.spend(vehicle,payer='organization',**data)
+        for log in ActivityLog.query.all():
+            self.assertNotIn('Учебная замена фильтра',log.description or '')
+
+    def test_ten_expenses_report_counts_each_record_once(self):
+        vehicle=self.vehicle(is_company=True)
+        own=Decimal(0); organization=Decimal(0)
+        for number in range(1,11):
+            amount=Decimal(number)*Decimal('100.25')
+            payer='self' if number%2 else 'organization'
+            self.spend(vehicle,payer=payer,amount=str(amount),kind=list(costs.KINDS)[(number-1)%len(costs.KINDS)],title=f'Вымышленная трата {number}')
+            if payer=='self': own+=amount
+            else: organization+=amount
+        report=costs.vehicle_report(self.owner,'2026-03-01','2026-03-31')
+        self.assertEqual(len(report['rows']),10)
+        self.assertEqual(report['totals']['self'],own)
+        self.assertEqual(report['totals']['organization'],organization)
+        self.assertEqual(report['totals']['total'],own+organization)
+        self.assertEqual(sum((row['amount'] for row in report['rows']),Decimal(0)),report['totals']['total'])
+        self.assertEqual(sum((row['total'] for row in report['kinds'].values()),Decimal(0)),report['totals']['total'])

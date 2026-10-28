@@ -24,12 +24,20 @@
 <h2 class="h5">{{ 'Последние расходы' if tab=='overview' else 'Расходы на автомобиль' }}</h2>
 {% if tab=='expenses' %}<p class="mt-3">Текущий месяц: свои {{ report.totals.self|money }}, организация {{ report.totals.organization|money }}, всего {{ report.totals.total|money }}</p>{% endif %}
 {% if not vehicle.archived_at and vehicle.status=='active' %}<a class="btn btn-primary my-3" href="{{ url_for('vehicle_expense',vehicle_id=vehicle.id) }}">Добавить расход на авто</a>{% endif %}
-<div class="table-responsive"><table class="table"><thead><tr><th>Дата</th><th>Название</th><th>Сумма</th></tr></thead><tbody>{% for expense in expenses[:5] if tab=='overview' %}<tr><td>{{ expense.expense_date.strftime('%d.%m.%Y') }}</td><td><a href="{{ url_for('edit_expense',expense_id=expense.id) }}">{{ expense.title }}</a></td><td class="text-nowrap">{{ expense.amount|money }}</td></tr>{% endfor %}{% if tab=='expenses' %}{% for expense in expenses %}<tr><td>{{ expense.expense_date.strftime('%d.%m.%Y') }}</td><td><a href="{{ url_for('edit_expense',expense_id=expense.id) }}">{{ expense.title }}</a></td><td class="text-nowrap">{{ expense.amount|money }}</td></tr>{% endfor %}{% endif %}{% if not expenses %}<tr><td colspan="3">Расходов пока нет</td></tr>{% endif %}</tbody></table></div>
+{% if tab=='expenses' %}
+<h3 class="h5 mt-3">Личные траты</h3>
+{% for expense in expenses %}<article class="card p-3 mb-2">
+<h4 class="h6 text-break"><a href="{{ url_for('edit_expense',expense_id=expense.id) }}">{{ expense.title }}</a></h4>
+<dl class="row mb-0"><dt class="col-sm-4">Дата</dt><dd class="col-sm-8">{{ expense.expense_date.strftime('%d.%m.%Y') }}</dd><dt class="col-sm-4">Категория</dt><dd class="col-sm-8">{{ vehicle_expense_categories.get(expense.category,expense.category) }}</dd><dt class="col-sm-4">Вид траты</dt><dd class="col-sm-8">{{ cost_kinds.get(expense.vehicle_cost_kind,'Не указан') }}</dd><dt class="col-sm-4">Сумма</dt><dd class="col-sm-8">{{ expense.amount|money }}</dd><dt class="col-sm-4">Способ оплаты</dt><dd class="col-sm-8">{{ vehicle_payment_methods.get(expense.payment_method,'Не указан') }}</dd><dt class="col-sm-4">Комментарий</dt><dd class="col-sm-8 text-break" style="white-space:pre-wrap">{{ expense.comment or 'Не указан' }}</dd></dl>
+</article>{% else %}<p class="text-muted">Личных трат пока нет.</p>{% endfor %}
+{% else %}
+<div class="table-responsive"><table class="table"><thead><tr><th>Дата</th><th>Название</th><th>Сумма</th></tr></thead><tbody>{% for expense in expenses[:5] %}<tr><td>{{ expense.expense_date.strftime('%d.%m.%Y') }}</td><td><a href="{{ url_for('edit_expense',expense_id=expense.id) }}">{{ expense.title }}</a></td><td>{{ expense.amount|money }}</td></tr>{% else %}<tr><td colspan="3">Расходов пока нет</td></tr>{% endfor %}</tbody></table></div>
+{% endif %}
 {% if tab=='expenses' %}
 <h3 class="h5 mt-4">Траты организации</h3>
 {% for cost in organization_costs %}<article class="card p-3 mb-2">
-  <p>{{ cost.date.strftime('%d.%m.%Y') }} · {{ cost_kinds[cost.kind] }} · {{ cost.amount|money }}</p>
-  {% if cost.comment %}<p>{{ cost.comment }}</p>{% endif %}
+  <h4 class="h6 text-break"><a href="{{ url_for('vehicle_cost_detail',cost_id=cost.id) }}">{{ cost.title }}</a></h4>
+  <dl class="row mb-0"><dt class="col-sm-4">Дата</dt><dd class="col-sm-8">{{ cost.date.strftime('%d.%m.%Y') }}</dd><dt class="col-sm-4">Категория</dt><dd class="col-sm-8">Транспорт</dd><dt class="col-sm-4">Вид траты</dt><dd class="col-sm-8">{{ cost_kinds[cost.kind] }}</dd><dt class="col-sm-4">Сумма</dt><dd class="col-sm-8">{{ cost.amount|money }}</dd><dt class="col-sm-4">Способ оплаты</dt><dd class="col-sm-8">{{ vehicle_payment_methods.get(cost.payment_method,'Не указан') }}</dd><dt class="col-sm-4">Комментарий</dt><dd class="col-sm-8 text-break" style="white-space:pre-wrap">{{ cost.comment or 'Не указан' }}</dd></dl>
   {% with cost_vehicle=vehicle, reimbursement_return='vehicle' %}{% include 'vehicles/_reimbursement.html' %}{% endwith %}
 </article>{% else %}<p class="text-muted">Трат организации пока нет.</p>{% endfor %}
 <a class="btn btn-outline-primary mt-3" href="{{ url_for('vehicle_reports',vehicle_id=vehicle.id) }}">Отчёты</a>

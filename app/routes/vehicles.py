@@ -7,7 +7,7 @@ from app.models import RegistrationCountry, VehicleOdometerReading
 from app.services import vehicle_service as service
 from app.services import vehicle_cost_service as costs
 from app.services.personal_access_service import can_use_personal_cabinet
-from app.utils import is_local_test_user, superadmin_required
+from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS, is_local_test_user, superadmin_required
 from extensions import db
 
 
@@ -30,7 +30,7 @@ def init_app(app):
         enabled = bool(app.config.get('VEHICLES_ENABLED'))
         personal = enabled and can_use_personal_cabinet(current_user) and not is_local_test_user() and not request.path.startswith('/admin')
         context = dict(vehicles_enabled=enabled, vehicle_kinds=service.KINDS, vehicle_bodies=service.BODIES,
-                       vehicle_fuels=service.FUELS, vehicle_statuses=service.STATUSES, archive_reasons=service.ARCHIVE_REASONS)
+                       vehicle_fuels=service.FUELS, vehicle_statuses=service.STATUSES, archive_reasons=service.ARCHIVE_REASONS, vehicle_payment_methods=dict(PAYMENT_METHODS), vehicle_expense_categories=dict(EXPENSE_CATEGORIES))
         if personal and request.endpoint in ('index', 'vehicles'):
             context['mileage_due'] = service.due_vehicles(current_user)
         if personal and request.endpoint in ('expenses', 'edit_expense'):
@@ -124,7 +124,7 @@ def init_app(app):
             result = _attempt(lambda: costs.create_vehicle_spend(current_user, vehicle, request.form.get('payer'),
                 amount=request.form.get('amount'), cost_date=request.form.get('cost_date'),
                 kind=request.form.get('kind'), comment=request.form.get('comment'),
-                paid_by_driver=request.form.get('paid_by_driver')))
+                paid_by_driver=request.form.get('paid_by_driver'), title=request.form.get('title'), payment_method=request.form.get('payment_method')))
             if result:
                 return redirect(url_for('vehicle_reports', vehicle_id=vehicle.id))
         return render_template('vehicles/spend.html', vehicle=vehicle, kinds=costs.KINDS, today=service.today())
@@ -141,6 +141,14 @@ def init_app(app):
             return Response(costs.report_csv(current_user, report), content_type='text/csv; charset=utf-8',
                 headers={'Content-Disposition': 'attachment; filename=vehicle-report.csv'})
         return render_template('vehicles/report.html', report=report, kinds=costs.KINDS, today=service.today())
+
+    @app.route('/vehicles/costs/<int:cost_id>')
+    @login_required
+    def vehicle_cost_detail(cost_id):
+        cost = costs.get_cost_for_user(current_user, cost_id)
+        vehicle = service.get_vehicle_for_user(current_user, cost.vehicle_id)
+        return render_template('vehicles/cost_detail.html', cost=costs._cost_row(cost), vehicle=vehicle,
+            kinds=costs.KINDS, today=service.today())
 
     @app.route('/vehicles/costs/<int:cost_id>/driver-payment', methods=['POST'])
     @login_required

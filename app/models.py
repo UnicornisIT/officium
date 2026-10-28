@@ -789,6 +789,8 @@ class VehicleCost(db.Model):
     cost_date = db.Column(db.Date, nullable=False, index=True)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     kind = db.Column(db.String(20), nullable=False)
+    title = db.Column(db.String(150))
+    payment_method = db.Column(db.String(20))
     comment = db.Column(db.String(2000))
     paid_by_driver = db.Column(db.Boolean, nullable=False, default=False)
     reimbursed_at = db.Column(db.Date)

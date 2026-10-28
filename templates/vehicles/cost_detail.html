@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}{{ cost.title }} — Расход на авто{% endblock %}
+{% block content %}
+<a class="btn btn-outline-secondary mb-3" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab='expenses') }}">К расходам автомобиля</a>
+<h1>{{ cost.title }}</h1><p class="text-muted">{{ vehicle.name }} · Трата организации</p>
+<section class="card p-4">
+<dl class="row mb-0">
+<dt class="col-sm-4">Дата</dt><dd class="col-sm-8">{{ cost.date.strftime('%d.%m.%Y') }}</dd>
+<dt class="col-sm-4">Название</dt><dd class="col-sm-8 text-break">{{ cost.title }}</dd>
+<dt class="col-sm-4">Категория</dt><dd class="col-sm-8">Транспорт</dd>
+<dt class="col-sm-4">Вид траты</dt><dd class="col-sm-8">{{ kinds[cost.kind] }}</dd>
+<dt class="col-sm-4">Сумма</dt><dd class="col-sm-8">{{ cost.amount|money }}</dd>
+<dt class="col-sm-4">Кто платит</dt><dd class="col-sm-8">Организация</dd>
+<dt class="col-sm-4">Способ оплаты</dt><dd class="col-sm-8">{{ vehicle_payment_methods.get(cost.payment_method,'Не указан') }}</dd>
+<dt class="col-sm-4">Комментарий</dt><dd class="col-sm-8 text-break" style="white-space:pre-wrap">{{ cost.comment or 'Не указан' }}</dd>
+</dl>
+{% if vehicle.archived_at %}<p class="text-muted">Автомобиль в архиве. Только просмотр.</p>{% endif %}
+{% with cost_vehicle=vehicle %}{% include 'vehicles/_reimbursement.html' %}{% endwith %}
+</section>{% endblock %}

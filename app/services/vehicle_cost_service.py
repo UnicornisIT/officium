@@ -7,7 +7,7 @@ from decimal import Decimal
 from flask import abort
 from app.models import Expense, Vehicle, VehicleCost
 from app.services import vehicle_service as vehicles, expense_service
-from app.utils import parse_date, parse_decimal, record_activity
+from app.utils import PAYMENT_METHODS, parse_date, parse_decimal, record_activity
 from extensions import db
 
 KINDS = dict(fuel='Топливо', service='Обслуживание', parts='Запчасти', insurance='Страхование', tax='Налог', fines='Штрафы', parking='Парковка', wash='Мойка', other='Другое')
@@ -28,17 +28,30 @@ def create_vehicle_spend(user, vehicle, payer=None, *, amount, cost_date, kind='
     comment = str(comment or '').strip()
     if len(comment) > 2000:
         raise ValueError('Комментарий — до 2000 символов.')
+    title = KINDS[kind] if title is None else str(title).strip()
+    if not title or len(title) > 150:
+        raise ValueError('Название расхода обязательно, не более 150 символов.')
+    payment_method = str(payment_method or '').strip() or None
+    if payment_method and payment_method not in dict(PAYMENT_METHODS):
+        raise ValueError('Выберите корректный способ оплаты.')
     if payer == 'self':
         return expense_service.create_expense(user_id=user.id, vehicle_id=vehicle.id, amount=amount,
             expense_date=day.isoformat(), title=title or KINDS[kind], vehicle_cost_kind=kind, category='transport', comment=comment, payment_method=payment_method, is_monthly=is_monthly)
     if is_monthly:
         raise ValueError('Траты организации не поддерживают ежемесячное повторение.')
     cost = VehicleCost(user_id=user.id, vehicle_id=vehicle.id, amount=amount, cost_date=day,
-        kind=kind, comment=comment, paid_by_driver=paid_by_driver is True or paid_by_driver == 'on')
+        kind=kind, title=title, payment_method=payment_method, comment=comment, paid_by_driver=paid_by_driver is True or paid_by_driver == 'on')
     db.session.add(cost)
     db.session.flush()
     record_activity('vehicle_cost_create', user, entity_type='vehicle_cost', entity_id=cost.id, commit=False)
     db.session.commit()
+    return cost
+
+
+def get_cost_for_user(user, cost_id):
+    vehicles._user(user)
+    cost = VehicleCost.query.filter_by(id=cost_id, user_id=user.id).first_or_404()
+    vehicles.get_vehicle_for_user(user, cost.vehicle_id)
     return cost
 
 
@@ -55,7 +68,7 @@ def mark_paid_by_driver(user, cost_id):
 
 def _cost_row(item):
     return dict(id=item.id, vehicle_id=item.vehicle_id, date=item.cost_date, amount=item.amount,
-        payer='organization', kind=item.kind, comment=item.comment or '', paid_by_driver=item.paid_by_driver,
+        payer='organization', title=item.title or 'Без названия', payment_method=item.payment_method, kind=item.kind, comment=item.comment or '', paid_by_driver=item.paid_by_driver,
         unpaid=item.paid_by_driver and not item.reimbursed_at, reimbursed_at=item.reimbursed_at)
 
 
@@ -99,7 +112,7 @@ def vehicle_report(user, date_from=None, date_to=None, vehicle_ids=None, *, unpa
     rows = []
     for item in Expense.query.filter(Expense.user_id == user.id, Expense.vehicle_id.in_(ids), Expense.expense_date.between(start, end)).all():
         kind = item.vehicle_cost_kind or 'other'
-        rows.append(dict(id=item.id, vehicle_id=item.vehicle_id, date=item.expense_date, amount=item.amount, payer='self', kind=kind, comment=item.comment or '', unpaid=False, reimbursed_at=None))
+        rows.append(dict(id=item.id, vehicle_id=item.vehicle_id, date=item.expense_date, amount=item.amount, payer='self', title=item.title, payment_method=item.payment_method, kind=kind, comment=item.comment or '', unpaid=False, reimbursed_at=None))
     for item in VehicleCost.query.filter(VehicleCost.user_id == user.id, VehicleCost.vehicle_id.in_(ids), VehicleCost.cost_date.between(start, end)).all():
         rows.append(_cost_row(item))
     rows.sort(key=lambda row: (row['date'], row['id']))
@@ -126,12 +139,12 @@ def report_csv(user, report):
     vehicles._user(user)
     output = io.StringIO(newline='')
     writer = csv.writer(output, delimiter=';')
-    writer.writerow(['Дата', 'Автомобиль', 'Плательщик', 'Вид', 'Сумма', 'К возмещению', 'Комментарий'])
+    writer.writerow(['Дата', 'Автомобиль', 'Плательщик', 'Вид', 'Название', 'Способ оплаты', 'Сумма', 'К возмещению', 'Комментарий'])
     names = {v.id: v.name for v in report['vehicles']}
     def safe(value):
         value = str(value)
         return "'" + value if value.lstrip().startswith(('=', '+', '-', '@')) else value
     for row in report['rows']:
-        writer.writerow([row['date'].isoformat(), safe(names[row['vehicle_id']]), 'Я' if row['payer']=='self' else 'Организация', KINDS[row['kind']], format(row['amount'], '.2f'), 'Да' if row['unpaid'] else 'Нет', safe(row['comment'])])
+        writer.writerow([row['date'].isoformat(), safe(names[row['vehicle_id']]), 'Я' if row['payer']=='self' else 'Организация', KINDS[row['kind']], safe(row['title']), dict(PAYMENT_METHODS).get(row['payment_method'], ''), format(row['amount'], '.2f'), 'Да' if row['unpaid'] else 'Нет', safe(row['comment'])])
     record_activity('vehicle_report_export', user)
     return ('\ufeff' + output.getvalue()).encode('utf-8')

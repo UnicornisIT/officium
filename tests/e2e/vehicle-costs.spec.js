@@ -25,6 +25,9 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) {
       await page.getByLabel('Кто платит').selectOption(payer);
       await page.getByLabel('Дата',{exact:true}).fill('2026-10-15');
       await page.getByLabel('Сумма',{exact:true}).fill('120.50');
+      await page.getByLabel('Название',{exact:true}).fill(payer==='self'?'Учебная личная заправка':'Учебная заправка организации');
+      await page.getByLabel('Способ оплаты',{exact:true}).selectOption('card');
+      await page.getByLabel('Комментарий',{exact:true}).fill('Вымышленная подробность для проверки');
       if(payer==='organization') await capture('payer-form');
       await page.getByRole('button',{name:'Сохранить трату'}).click();
       await page.waitForURL(/reports/);
@@ -34,6 +37,13 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) {
     await expect(page).toHaveURL(new RegExp(`/vehicles/${id}\\?tab=expenses$`));
     await expect(page.getByRole('button',{name:'Возмещено',exact:true})).toBeVisible();
     await capture('vehicle-reimbursement');
+    await expect(page.locator('article')).toContainText(['Учебная личная заправка','Учебная заправка организации']);
+    await page.getByRole('link',{name:'Учебная заправка организации',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'Учебная заправка организации',exact:true})).toBeVisible();
+    await expect(page.locator('dl')).toContainText('Карта');
+    await expect(page.locator('dl')).toContainText('Вымышленная подробность для проверки');
+    await capture('cost-details');
+
     await page.goto(`/vehicles/reports?vehicle_id=${id}&date_from=2026-10-01&date_to=2026-10-31`);
     await expect(page.locator('body')).toContainText('241');
     await capture('month-report');
