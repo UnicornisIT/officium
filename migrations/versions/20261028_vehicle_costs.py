@@ -30,6 +30,4 @@ def upgrade():
 
 
 def downgrade():
-    with op.batch_alter_table('expenses') as batch:
-        batch.drop_column('vehicle_cost_kind')
-    op.drop_table('vehicle_costs')
+    raise RuntimeError('Destructive downgrade is disabled to preserve vehicle spending history.')

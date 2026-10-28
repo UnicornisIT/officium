@@ -14,15 +14,16 @@ from extensions import db
 ROOT=Path(__file__).resolve().parents[1]
 
 class VehicleCostMigrationTests(unittest.TestCase):
-    def test_sqlite_upgrade_downgrade_and_metadata(self):
+    def test_sqlite_upgrade_preserves_history_and_metadata(self):
         with tempfile.TemporaryDirectory() as directory, patch('logging.config.fileConfig'):
             app=create_app(dict(TESTING=True,SECRET_KEY='migration',SQLALCHEMY_DATABASE_URI='sqlite:///'+(Path(directory)/'test.sqlite').as_posix(),SQLALCHEMY_ENGINE_OPTIONS={}))
             with app.app_context():
                 upgrade(directory=str(ROOT/'migrations'))
                 self.assertIn('vehicle_costs',inspect(db.engine).get_table_names())
                 check(directory=str(ROOT/'migrations'))
-                downgrade(directory=str(ROOT/'migrations'),revision='20261027_vehicle_core')
-                self.assertNotIn('vehicle_costs',inspect(db.engine).get_table_names())
+                with self.assertRaisesRegex(RuntimeError, 'preserve vehicle spending'):
+                    downgrade(directory=str(ROOT/'migrations'),revision='20261027_vehicle_core')
+                self.assertIn('vehicle_costs',inspect(db.engine).get_table_names())
                 db.session.remove()
                 db.engine.dispose()
 
