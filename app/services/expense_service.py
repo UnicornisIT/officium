@@ -9,7 +9,7 @@ for future integrations and rejected until explicitly supported.
 
 import uuid
 
-from app.models import Expense, User
+from app.models import Expense, User, Vehicle
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
     generate_monthly_expenses_from_start_date,
@@ -32,14 +32,24 @@ def _vehicle(user_id, vehicle_id):
     return get_vehicle_for_user(db.session.get(User, user_id), vehicle_id, for_update=True)
 
 
+def _existing_vehicle(user_id, vehicle_id):
+    """Existing financial records remain usable when the garage UI is disabled."""
+    from flask import abort
+    from app.services.personal_access_service import can_use_personal_cabinet
+    user = db.session.get(User, user_id)
+    if not can_use_personal_cabinet(user) or getattr(user, 'is_local_test_user', False):
+        abort(404)
+    return Vehicle.query.filter_by(user_id=user_id, id=vehicle_id).with_for_update().first_or_404()
+
+
 def _check_vehicle_update(expense, vehicle_id, amount):
     if expense.vehicle_id:
-        vehicle = _vehicle(expense.user_id, expense.vehicle_id)
+        vehicle = _existing_vehicle(expense.user_id, expense.vehicle_id)
         if vehicle.archived_at and (vehicle_id != expense.vehicle_id or amount != expense.amount):
             raise ValueError('Автомобиль в архиве: нельзя менять автомобиль и сумму расхода до восстановления.')
-    if vehicle_id:
+    if vehicle_id and vehicle_id != expense.vehicle_id:
         vehicle = _vehicle(expense.user_id, vehicle_id)
-        if vehicle_id != expense.vehicle_id and (vehicle.archived_at or vehicle.status != 'active'):
+        if vehicle.archived_at or vehicle.status != 'active':
             raise ValueError('Выберите активный автомобиль вне архива.')
 
 
@@ -148,7 +158,7 @@ def update_expense(*, user_id, expense_id, amount, category, title, expense_date
 def delete_expense(*, user_id, expense_id, commit=True, **extra_fields):
     _check_options(extra_fields)
     expense = _owned_expense(user_id, expense_id)
-    if expense.vehicle_id and _vehicle(user_id, expense.vehicle_id).archived_at:
+    if expense.vehicle_id and _existing_vehicle(user_id, expense.vehicle_id).archived_at:
         raise ValueError('Автомобиль в архиве: сначала восстановите его, чтобы удалить расход.')
     Expense.query.filter_by(user_id=user_id, generated_from_id=expense.id).update(
         {Expense.generated_from_id: None}, synchronize_session=False,

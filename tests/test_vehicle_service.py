@@ -59,6 +59,48 @@ class VehicleServiceTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.normalize_plate('A'*13, self.ab)
 
+    def test_restore_trailer_requires_restored_tractor(self):
+        tractor = self.vehicle(kind='tractor_unit')
+        trailer = service.create_vehicle(self.owner, dict(name='Прицеп', kind='trailer', tractor_id=tractor.id))
+        service.archive_vehicle(self.owner, trailer.id, 'sold')
+        service.archive_vehicle(self.owner, tractor.id, 'sold')
+        with self.assertRaisesRegex(ValueError, 'Сначала восстановите тягач'):
+            service.restore_vehicle(self.owner, trailer.id)
+        self.assertIsNotNone(trailer.archived_at)
+        service.restore_vehicle(self.owner, tractor.id)
+        service.restore_vehicle(self.owner, trailer.id)
+        self.assertIsNone(trailer.archived_at)
+        self.assertEqual(trailer.tractor_id, tractor.id)
+
+    def test_disabled_module_keeps_existing_expense_editable(self):
+        vehicle = self.vehicle()
+        expense = self.expense(vehicle)
+        self.login()
+        self.app.config['VEHICLES_ENABLED'] = False
+        response = self.client.post(f'/expenses/edit/{expense.id}', data=dict(
+            amount='124.50', category='transport', title='Правка', expense_date='2026-01-15'))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(expense.amount, Decimal('124.50'))
+        self.assertEqual(expense.vehicle_id, vehicle.id)
+        with self.assertRaises(NotFound):
+            self.expense(vehicle)
+        expenses.delete_expense(user_id=self.owner.id, expense_id=expense.id)
+        self.assertIsNone(db.session.get(Expense, expense.id))
+
+    def test_disabled_module_preserves_archive_and_ownership_guards(self):
+        vehicle = self.vehicle()
+        expense = self.expense(vehicle)
+        service.archive_vehicle(self.owner, vehicle.id, 'sold')
+        self.app.config['VEHICLES_ENABLED'] = False
+        with self.assertRaises(ValueError):
+            expenses.update_expense(user_id=self.owner.id, expense_id=expense.id,
+                amount='200', category='transport', title='Правка', expense_date='2026-01-15')
+        with self.assertRaises(ValueError):
+            expenses.delete_expense(user_id=self.owner.id, expense_id=expense.id)
+        with self.assertRaises(NotFound):
+            expenses.update_expense(user_id=self.other.id, expense_id=expense.id,
+                amount='200', category='transport', title='Чужой', expense_date='2026-01-15')
+
     def test_create_update_and_private_audit(self):
         vehicle = self.vehicle(vin='abcdefghjklmn1234', plate='a123bc77', registration_country_id=self.ru.id)
         self.assertEqual(vehicle.vin, 'ABCDEFGHJKLMN1234')

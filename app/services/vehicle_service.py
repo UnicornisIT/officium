@@ -191,6 +191,10 @@ def restore_vehicle(user, vehicle_id, *, commit=True):
     vehicle = get_vehicle_for_user(user, vehicle_id, for_update=True)
     if not vehicle.archived_at:
         raise ValueError('Автомобиль уже активен.')
+    if vehicle.tractor_id:
+        tractor = get_vehicle_for_user(user, vehicle.tractor_id, for_update=True)
+        if tractor.archived_at:
+            raise ValueError('Сначала восстановите тягач прицепа.')
     vehicle.archived_at = vehicle.archive_reason = vehicle.archive_note = None
     return _audit(user, 'vehicle_restore', vehicle, commit)
 

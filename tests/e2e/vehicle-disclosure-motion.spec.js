@@ -33,9 +33,11 @@ test('vehicle palette and trailer field expand, reverse and respect reduced moti
   await expect(trailer).not.toHaveClass(/vehicle-revealing/);
   await page.getByLabel('Название прицепа', { exact: true }).fill('Учебный прицеп анимации');
   await kind.selectOption('passenger');
+  expect(await page.locator('form.vehicle-form').evaluate(form => new FormData(form).has('trailer_name'))).toBe(false);
   await kind.selectOption('tractor_unit');
   await expect(trailer).not.toHaveClass(/vehicle-revealing/);
   await expect(page.getByLabel('Название прицепа', { exact: true })).toHaveValue('Учебный прицеп анимации');
+  expect(await page.locator('form.vehicle-form').evaluate(form => new FormData(form).get('trailer_name'))).toBe('Учебный прицеп анимации');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await kind.selectOption('passenger');
   await expect(trailer).toBeHidden();
