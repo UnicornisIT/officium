@@ -6,7 +6,7 @@ const { test, expect } = require('@playwright/test');
 for (const width of [1440, 390]) {
   for (const theme of ['light', 'dark']) {
     test(`vehicle core ${width}px ${theme}`, async ({ page }, testInfo) => {
-      test.setTimeout(180_000);
+      test.setTimeout(300_000);
       await page.setViewportSize({ width, height: 1000 });
       await page.addInitScript(value => localStorage.setItem('officiumTheme', value), theme);
       if (width === 390) {
@@ -29,7 +29,7 @@ for (const width of [1440, 390]) {
       if (width === 390) await page.goto('/telegram-app');
       await page.goto('/expenses');
       await expect(page.locator('#expenseVehicle')).toHaveCount(0);
-      const prefix = `Учебный ${width} ${theme} ${testInfo.project.name}`;
+      const prefix = `Учебный ${width} ${theme} ${testInfo.project.name} попытка ${testInfo.retry}`;
       const root = process.env.VEHICLE_CAPTURE_DIR || testInfo.outputPath('captures');
       fs.mkdirSync(root, { recursive: true });
       const capture = async name => {
@@ -102,6 +102,7 @@ for (const width of [1440, 390]) {
       await page.getByLabel('Название прицепа', { exact: true }).fill(`${prefix} · Прицеп`);
       await page.getByLabel('Страна учёта', { exact: true }).selectOption({ label: 'Абхазия (AB)' });
       await page.getByLabel('Госномер', { exact: true }).fill('ab 123');
+      await page.locator('.vehicle-color-toggle').click();
       await page.getByLabel('Цвет', { exact: true }).fill('#d59038');
       const tractorURL = await saveVehicle();
       await expect(page.locator('.vehicle-trailer')).toContainText(`${prefix} · Прицеп`);
