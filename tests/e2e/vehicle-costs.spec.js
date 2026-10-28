@@ -10,7 +10,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) {
     await page.goto('/dev-login/user');
     if(width===390) await page.goto('/telegram-app');
     await page.goto('/vehicles/new');
-    await page.locator('#v_name').fill(`Учебное авто ${width} ${theme} ${info.project.name}`);
+    await page.locator('#v_name').fill(`Учебное авто ${width} ${theme} ${info.project.name} ${info.retry}`);
     await page.locator('#v_company').check();
     await page.getByRole('button',{name:'Сохранить автомобиль',exact:true}).click();
     await page.waitForURL(/\/vehicles\/\d+$/);
@@ -67,9 +67,14 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) {
     await page.getByRole('button',{name:'Показать',exact:true}).click();
     await expect(page.locator('article')).toHaveCount(1);
     await capture('unpaid');
-    const downloadPromise=page.waitForEvent('download');
-    await page.getByRole('button',{name:'Скачать CSV'}).click();
+    const downloadPromise=page.waitForEvent('download',{timeout:15000});
+    await page.getByRole('link',{name:'Скачать CSV'}).click();
     const download=await downloadPromise; expect(download.suggestedFilename()).toBe('vehicle-report.csv');
+    const csv=fs.readFileSync(await download.path(),'utf8');
+    expect(csv.startsWith('\ufeffДата;')).toBe(true);
+    expect(csv).toContain('Учебная заправка организации');
+    expect(csv).not.toContain('Учебная личная заправка');
+    expect(csv.trimEnd().split('\r\n').at(-1)).toBe('Итого;;;;;;120,50;;');
     await page.getByRole('button',{name:'Возмещено',exact:true}).click();
     await page.waitForURL(/reports/);
     await page.goto(`/vehicles/${id}?tab=expenses`);
