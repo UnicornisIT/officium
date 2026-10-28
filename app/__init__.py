@@ -77,7 +77,7 @@ def create_app(config_overrides=None):
     login_manager.init_app(app)
     @app.before_request
     def vehicle_feature_gate():
-        if (request.path == '/vehicles' or request.path.startswith('/vehicles/') or request.path.startswith('/admin/registration-countries')) and not app.config.get('VEHICLES_ENABLED'):
+        if (request.path == '/vehicles' or request.path.startswith('/vehicles/') or request.path.startswith('/admin/registration-countries') or request.path.startswith('/admin/consumable-templates')) and not app.config.get('VEHICLES_ENABLED'):
             abort(404)
 
     csrf = CSRFProtect()

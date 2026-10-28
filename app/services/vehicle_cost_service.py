@@ -13,7 +13,7 @@ from extensions import db
 KINDS = dict(fuel='Топливо', service='Обслуживание', parts='Запчасти', insurance='Страхование', tax='Налог', fines='Штрафы', parking='Парковка', wash='Мойка', other='Другое')
 
 
-def create_vehicle_spend(user, vehicle, payer=None, *, amount, cost_date, kind='other', comment='', paid_by_driver=False, title=None, payment_method=None, is_monthly=False):
+def create_vehicle_spend(user, vehicle, payer=None, *, amount, cost_date, kind='other', comment='', paid_by_driver=False, title=None, payment_method=None, is_monthly=False, commit=True):
     vehicle = vehicles.get_vehicle_for_user(user, vehicle.id, for_update=True)
     vehicles._writable(vehicle)
     payer = payer or vehicle.default_payer
@@ -36,7 +36,7 @@ def create_vehicle_spend(user, vehicle, payer=None, *, amount, cost_date, kind='
         raise ValueError('Выберите корректный способ оплаты.')
     if payer == 'self':
         return expense_service.create_expense(user_id=user.id, vehicle_id=vehicle.id, amount=amount,
-            expense_date=day.isoformat(), title=title or KINDS[kind], vehicle_cost_kind=kind, category='transport', comment=comment, payment_method=payment_method, is_monthly=is_monthly)
+            expense_date=day.isoformat(), title=title or KINDS[kind], vehicle_cost_kind=kind, category='transport', comment=comment, payment_method=payment_method, is_monthly=is_monthly, commit=commit)
     if is_monthly:
         raise ValueError('Траты организации не поддерживают ежемесячное повторение.')
     cost = VehicleCost(user_id=user.id, vehicle_id=vehicle.id, amount=amount, cost_date=day,
@@ -44,7 +44,8 @@ def create_vehicle_spend(user, vehicle, payer=None, *, amount, cost_date, kind='
     db.session.add(cost)
     db.session.flush()
     record_activity('vehicle_cost_create', user, entity_type='vehicle_cost', entity_id=cost.id, commit=False)
-    db.session.commit()
+    if commit:
+        db.session.commit()
     return cost
 
 

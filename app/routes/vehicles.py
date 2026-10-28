@@ -3,7 +3,8 @@ from flask import Response, abort, current_app, flash, redirect, render_template
 from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.models import RegistrationCountry, VehicleOdometerReading
+from app.models import RegistrationCountry, VehicleOdometerReading, ConsumableTemplate
+from app.services import vehicle_maintenance_service as maintenance
 from app.services import vehicle_service as service
 from app.services import vehicle_cost_service as costs
 from app.services.personal_access_service import can_use_personal_cabinet
@@ -30,7 +31,7 @@ def init_app(app):
         enabled = bool(app.config.get('VEHICLES_ENABLED'))
         personal = enabled and can_use_personal_cabinet(current_user) and not is_local_test_user() and not request.path.startswith('/admin')
         context = dict(vehicles_enabled=enabled, vehicle_kinds=service.KINDS, vehicle_bodies=service.BODIES,
-                       vehicle_fuels=service.FUELS, vehicle_statuses=service.STATUSES, archive_reasons=service.ARCHIVE_REASONS, vehicle_payment_methods=dict(PAYMENT_METHODS), vehicle_expense_categories=dict(EXPENSE_CATEGORIES))
+                       vehicle_fuels=service.FUELS, vehicle_statuses=service.STATUSES, archive_reasons=service.ARCHIVE_REASONS, vehicle_payment_methods=dict(PAYMENT_METHODS), vehicle_expense_categories=dict(EXPENSE_CATEGORIES), technical_condition=maintenance.technical_condition, maintenance_labels=maintenance.LABELS, maintenance_colors=maintenance.COLORS)
         if personal and request.endpoint in ('index', 'vehicles'):
             context['mileage_due'] = service.due_vehicles(current_user)
         if personal and request.endpoint in ('expenses', 'edit_expense'):
@@ -67,7 +68,56 @@ def init_app(app):
             expenses=service.vehicle_expenses(current_user, vehicle_id), today=service.today(),
             report=costs.vehicle_report(current_user, vehicle_ids=[vehicle_id]),
             organization_costs=costs.vehicle_cost_rows(current_user, vehicle_id) if request.args.get('tab') == 'expenses' else [], cost_kinds=costs.KINDS,
-            readings=VehicleOdometerReading.query.filter_by(vehicle_id=vehicle.id).order_by(VehicleOdometerReading.reading_date.desc()).all())
+            readings=VehicleOdometerReading.query.filter_by(vehicle_id=vehicle.id).order_by(VehicleOdometerReading.reading_date.desc()).all(), **maintenance.detail(vehicle))
+
+    @app.route('/vehicles/<int:vehicle_id>/maintenance', methods=['POST'])
+    @login_required
+    def vehicle_maintenance(vehicle_id):
+        _attempt(lambda: maintenance.save_item(current_user, vehicle_id, request.form))
+        return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='maintenance'))
+
+    @app.route('/vehicles/<int:vehicle_id>/maintenance/<int:item_id>', methods=['POST'])
+    @login_required
+    def vehicle_maintenance_edit(vehicle_id, item_id):
+        _attempt(lambda: maintenance.save_item(current_user, vehicle_id, request.form, item_id))
+        return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='maintenance'))
+
+    @app.route('/vehicles/<int:vehicle_id>/service', methods=['GET', 'POST'])
+    @login_required
+    def vehicle_record_service(vehicle_id):
+        vehicle = service.get_vehicle_for_user(current_user, vehicle_id)
+        if request.method == 'POST':
+            result = _attempt(lambda: maintenance.record_service(current_user, vehicle_id, request.form))
+            if result:
+                return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='maintenance'))
+        return render_template('vehicles/service_form.html', vehicle=vehicle, today=service.today(), form=request.form,
+                               mileage=service.current_mileage(vehicle), **maintenance.detail(vehicle))
+
+    @app.route('/vehicles/<int:vehicle_id>/defects', methods=['POST'])
+    @login_required
+    def vehicle_defect(vehicle_id):
+        _attempt(lambda: maintenance.save_defect(current_user, vehicle_id, request.form))
+        return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='defects'))
+
+    @app.route('/vehicles/<int:vehicle_id>/defects/<int:defect_id>', methods=['POST'])
+    @login_required
+    def vehicle_defect_edit(vehicle_id, defect_id):
+        _attempt(lambda: maintenance.save_defect(current_user, vehicle_id, request.form, defect_id))
+        return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='defects'))
+
+    @app.route('/admin/consumable-templates', methods=['GET', 'POST'])
+    @superadmin_required
+    def admin_consumable_templates():
+        service.require_enabled()
+        if request.method == 'POST':
+            _attempt(lambda: maintenance.save_template(current_user, request.form))
+        return render_template('vehicles/consumable_templates.html', templates=ConsumableTemplate.query.order_by(ConsumableTemplate.template_set, ConsumableTemplate.sort_order, ConsumableTemplate.id).all())
+
+    @app.route('/admin/consumable-templates/<int:template_id>', methods=['POST'])
+    @superadmin_required
+    def admin_consumable_template_edit(template_id):
+        _attempt(lambda: maintenance.save_template(current_user, request.form, template_id))
+        return redirect(url_for('admin_consumable_templates'))
 
     @app.route('/vehicles/<int:vehicle_id>/edit', methods=['GET', 'POST'])
     @login_required

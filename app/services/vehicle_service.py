@@ -93,8 +93,8 @@ def _values(user, data, existing=None):
         if value not in choices:
             raise ValueError('Выберите корректный тип, кузов, топливо и статус.')
         result[key] = value
-    if existing and existing.kind != result['kind'] and (existing.readings or existing.trailers):
-        raise ValueError('Нельзя менять тип автомобиля с историей пробега или прицепами.')
+    if existing and existing.kind != result['kind'] and (existing.readings or existing.trailers or existing.maintenance_items or existing.service_records or existing.defects):
+        raise ValueError('Нельзя менять тип автомобиля с историей пробега, обслуживания, неисправностей или прицепами.')
     if result['kind'] == 'trailer':
         result.update(body_type='trailer', fuel_type='none')
     if result['kind'] == 'tractor_unit':
@@ -265,6 +265,10 @@ def list_vehicles(user, args):
     if args.get('q'):
         search = '%' + args['q'].strip()[:150] + '%'
         query = query.filter(or_(Vehicle.name.ilike(search), Vehicle.make.ilike(search), Vehicle.plate.ilike(search)))
+    if args.get('attention') == '1':
+        from app.services.vehicle_maintenance_service import technical_condition
+        ids = [v.id for v in query.all() if technical_condition(v) in ('soon', 'overdue')]
+        query = query.filter(Vehicle.id.in_(ids))
     return query.order_by(Vehicle.created_at.desc(), Vehicle.id.desc()).paginate(page=max(args.get('page', 1, type=int) or 1, 1), per_page=12, error_out=False)
 
 
