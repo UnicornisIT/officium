@@ -7,7 +7,7 @@ const dateInMoscow = () => {
 const cents = text => Math.round(Number(text.replace(/[^\d,.-]/g, '').replace(',', '.')) * 100);
 const saveVehicle = async page => {
   await page.getByRole('button', { name: 'Сохранить автомобиль', exact: true }).click();
-  await page.waitForURL(/\/vehicles\/\d+$/);
+  await expect(page).toHaveURL(/\/vehicles\/\d+$/);
   return new URL(page.url()).pathname;
 };
 const createVehicle = async (page, name, kind = 'passenger', trailerName = '') => {
@@ -31,7 +31,7 @@ const addReading = async (page, path, date, km) => {
 
 test('vehicle checklist: cashflow, mileage, repair, reminders, archive and ownership', async ({ page }, testInfo) => {
   test.setTimeout(300_000);
-  const name = `Учебный чек-лист ${testInfo.project.name}`;
+  const name = `Учебный чек-лист ${testInfo.project.name} прогон ${testInfo.repeatEachIndex} попытка ${testInfo.retry}`;
   await page.goto('/dev-login/user');
   await page.goto('/');
   const originalTotal = cents(await page.locator('.money-flow__item--expense strong').innerText());
@@ -52,7 +52,7 @@ test('vehicle checklist: cashflow, mileage, repair, reminders, archive and owner
   await page.locator('[name="amount"]').fill('123.45');
   await page.locator('[name="expense_date"]').fill(dateInMoscow());
   await page.getByRole('button', { name: 'Сохранить расход', exact: true }).click();
-  await page.waitForURL(/month=/);
+  await expect(page).toHaveURL(/month=/);
   const row = page.locator('tr', { hasText: `${name} расход` });
   await expect(row).toContainText('Транспорт');
   const editExpense = await row.getByRole('link', { name: 'Редактировать', exact: true }).getAttribute('href');
@@ -126,11 +126,19 @@ test('vehicle checklist: cashflow, mileage, repair, reminders, archive and owner
   await page.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
   await expect(page.locator('.alert-danger:visible')).toContainText('Автомобиль в архиве');
   await page.goto(car);
-  await page.getByRole('button', { name: 'Восстановить автомобиль', exact: true }).click();
+  // WebKit may defer the form navigation beyond click(). Do not cancel the
+  // restore POST by immediately navigating to the expense edit form.
+  const [restoreResponse] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === `${car}/restore`
+      && response.request().method() === 'POST', { timeout: 8_000 }),
+    page.getByRole('button', { name: 'Восстановить автомобиль', exact: true }).click(),
+  ]);
+  expect(restoreResponse.status()).toBe(302);
+  await expect(page.getByRole('link', { name: 'Редактировать', exact: true })).toBeVisible();
   await page.goto(editExpense);
   await page.locator('[name="amount"]').fill('123.46');
   await page.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
-  await page.waitForURL(/month=/);
+  await expect(page).toHaveURL(/month=/);
   await expect(page.locator('.alert-success:visible')).toContainText('Расход обновлён');
   await page.goto('/');
   expect(cents(await page.locator('.money-flow__item--expense strong').innerText())).toBe(originalTotal + 12346);
