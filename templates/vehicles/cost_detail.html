@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ cost.title }} — Расход на авто{% endblock %}
 {% block content %}
-<a class="btn btn-outline-secondary mb-3" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab='expenses') }}">К расходам автомобиля</a>
+<a class="text-decoration-none btn btn-outline-secondary mb-3" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab='expenses') }}">К расходам автомобиля</a>
 <h1>{{ cost.title }}</h1><p class="text-muted">{{ vehicle.name }} · Трата организации</p>
 <section class="card p-4">
 <dl class="row mb-0">

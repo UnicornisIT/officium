@@ -1,7 +1,7 @@
 {% extends 'admin_base.html' %}
 {% block title %}Страны учёта — Справочники{% endblock %}
 {% block admin_content %}
-<a href="{{ url_for('admin_dictionaries') }}">← Справочники</a><h1 class="my-4">Страны учёта автомобилей</h1>
+<a class="text-decoration-none" href="{{ url_for('admin_dictionaries') }}">← Справочники</a><h1 class="my-4">Страны учёта автомобилей</h1>
 <section class="admin-panel p-3"><h2 class="h5">Добавить страну</h2><form method="post" class="d-flex flex-wrap gap-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Код<input class="form-control" name="code" maxlength="8" required></label><label>Название<input class="form-control" name="name" maxlength="100" required></label><label>Порядок<input class="form-control" name="sort_order" type="number" min="0" value="10"></label><label><input type="checkbox" name="is_active" checked> Активна</label><button class="btn btn-primary">Добавить страну</button></form></section>
 {% for country in countries %}<section class="admin-panel p-3 mt-3"><form method="post" action="{{ url_for('admin_update_registration_country',country_id=country.id) }}" class="d-flex flex-wrap gap-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><span>{{ country.code }}{% if country.strict_format %} · строгий формат{% endif %}</span><label>Название<input class="form-control" name="name" value="{{ country.name }}" maxlength="100" required></label><label>Порядок<input class="form-control" name="sort_order" type="number" min="0" value="{{ country.sort_order }}"></label><label><input type="checkbox" name="is_active" {% if country.is_active %}checked{% endif %}> Активна</label><button class="btn btn-outline-primary">Сохранить</button></form></section>{% endfor %}
 {% endblock %}
