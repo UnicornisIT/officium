@@ -145,7 +145,7 @@ def report_csv(user, report):
         value = str(value)
         return "'" + value if value.lstrip().startswith(('=', '+', '-', '@')) else value
     for row in report['rows']:
-        writer.writerow([row['date'].isoformat(), safe(names[row['vehicle_id']]), 'Я' if row['payer']=='self' else 'Организация', KINDS[row['kind']], safe(row['title']), dict(PAYMENT_METHODS).get(row['payment_method'], ''), format(row['amount'], '.2f'), 'Да' if row['unpaid'] else 'Нет', safe(row['comment'])])
-    writer.writerow(['Итого', '', '', '', '', '', format(report['totals']['total'], '.2f'), '', ''])
+        writer.writerow([row['date'].isoformat(), safe(names[row['vehicle_id']]), 'Я' if row['payer']=='self' else 'Организация', KINDS[row['kind']], safe(row['title']), dict(PAYMENT_METHODS).get(row['payment_method'], ''), format(row['amount'], '.2f').replace('.', ','), 'Да' if row['unpaid'] else 'Нет', safe(row['comment'])])
+    writer.writerow(['Итого', '', '', '', '', '', format(report['totals']['total'], '.2f').replace('.', ','), '', ''])
     record_activity('vehicle_report_export', user)
     return ('\ufeff' + output.getvalue()).encode('utf-8')
