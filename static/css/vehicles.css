@@ -10,6 +10,8 @@
 .vehicle-disclosure>summary>i{flex:none;color:var(--bs-secondary-color);font-size:.85rem;transition:transform .18s ease}
 .vehicle-disclosure[open]>summary{border-bottom:1px solid var(--bs-border-color);background:var(--bs-tertiary-bg)}
 .vehicle-disclosure[open]>summary>i{transform:rotate(180deg)}
+.vehicle-disclosure>summary[aria-expanded="false"]>i{transform:rotate(0)}
+.vehicle-disclosure-moving{will-change:height}
 .vehicle-disclosure>summary:hover{background:var(--bs-tertiary-bg)}
 .vehicle-disclosure>summary:focus-visible{outline:3px solid var(--bs-primary);outline-offset:-3px;border-radius:.8rem}
 .vehicle-disclosure>form{padding:0 1rem 1rem}
@@ -37,6 +39,12 @@
 .vehicle-template-interval{display:block;color:var(--bs-secondary-color);font-size:.85rem;font-weight:400;margin-top:.25rem}
 @media(max-width:575px){.vehicle-maintenance-fields{grid-template-columns:minmax(0,1fr)}.vehicle-service-section{padding:.75rem}.vehicle-disclosure>summary{padding:.75rem}.vehicle-disclosure>form{padding:0 .75rem .75rem}}
 @media(prefers-reduced-motion:reduce){.vehicle-disclosure>summary>i{transition:none}}
+@media(prefers-reduced-motion:no-preference){
+  .vehicle-maintenance-card,.vehicle-service-entry,.vehicle-service-form{animation:vehicle-enter .28s ease-out backwards}
+  .vehicle-disclosure>summary,.vehicle-choice{transition:background-color .18s ease,border-color .18s ease}
+  .vehicle-disclosure button,.vehicle-service-form button,.vehicle-service-entry .btn{transition:transform .15s ease,background-color .18s ease,border-color .18s ease}
+  .vehicle-disclosure button:active,.vehicle-service-form button:active,.vehicle-service-entry .btn:active{transform:scale(.98)}
+}
 .vehicle-form-wide{grid-column:1/-1}
 .vehicle-auxiliary-fields>.vehicle-field-heading{margin-bottom:0}.vehicle-auxiliary-fields>[data-trailer],.vehicle-auxiliary-fields>[data-tractor]{padding-top:1.25rem}.vehicle-revealing{overflow:hidden}
 .vehicle-field{min-width:0}.vehicle-field-heading{display:flex;align-items:center;gap:.35rem;margin-bottom:.25rem}.vehicle-field-heading>label{margin:0}.vehicle-field-heading>.info-hint{flex:0 0 auto;margin-left:0}

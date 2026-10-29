@@ -2,7 +2,7 @@
 {% from 'vehicles/_visual.html' import visual with context %}
 {% block title %}{{ vehicle.name }} — Автомобили{% endblock %}
 {% block content %}{% include 'vehicles/_body_symbols.html' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='maintenance-2') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='maintenance-motion-3') }}">
 <a class="text-decoration-none btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
 <div class="d-flex flex-wrap justify-content-between gap-3 mt-3"><h1 class="page-title">{{ vehicle.name }}</h1>{% if not vehicle.archived_at %}<a class="text-decoration-none btn btn-outline-primary align-self-start" href="{{ url_for('edit_vehicle',vehicle_id=vehicle.id) }}">Редактировать</a>{% endif %}</div>
 {% if vehicle.archived_at %}<div class="alert alert-secondary mt-3">Автомобиль в архиве · {{ archive_reasons[vehicle.archive_reason] }}. Только просмотр.<p class="mb-0">{{ vehicle.archive_note or '' }}</p></div>{% endif %}

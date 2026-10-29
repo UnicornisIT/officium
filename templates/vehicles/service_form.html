@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Записать обслуживание{% endblock %}
-{% block content %}<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='maintenance-2') }}"><a class="btn btn-outline-secondary vehicle-button text-decoration-none" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab='maintenance') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Обслуживание</a><h1 class="page-title my-4">Записать обслуживание</h1><p>{{ vehicle.name }}</p>
+{% block content %}<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='maintenance-motion-3') }}"><a class="btn btn-outline-secondary vehicle-button text-decoration-none" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab='maintenance') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Обслуживание</a><h1 class="page-title my-4">Записать обслуживание</h1><p>{{ vehicle.name }}</p>
 {% if vehicle.archived_at %}<div class="alert alert-secondary">Автомобиль в архиве. Только просмотр.</div>{% else %}
 <form method="post" class="card vehicle-service-form p-3 p-md-4 d-grid gap-3 mx-auto" style="max-width:48rem"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <label>Дата обслуживания<input class="form-control" type="date" name="service_date" value="{{ form.get('service_date',today.isoformat()) }}" max="{{ today }}" required></label>

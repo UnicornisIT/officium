@@ -783,5 +783,6 @@
 {% if whats_new and not request.path.startswith('/admin') %}{% include '_whats_new.html' %}{% endif %}
 {% block extra_js %}{% endblock %}
 <script src="{{ url_for('static', filename='js/vehicle-mileage.js', v='1') }}"></script>
+<script src="{{ url_for('static', filename='js/vehicle-disclosures.js', v='1') }}"></script>
 </body>
 </html>
