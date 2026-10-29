@@ -11,7 +11,8 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await page.goto('/dev-login/user');
     if (width === 390) await page.goto('/telegram-app');
     await page.goto('/vehicles/new');
-    const suffix = `${width} ${theme} ${info.project.name} ${info.retry}`;
+    // All specs share one database: do not match vehicle-costs fixtures in q.
+    const suffix = `maintenance-${width}-${theme}-${info.project.name}-${info.retry}`;
     await page.locator('#v_name').fill(`Учебный автомобиль ${suffix}`);
     await page.locator('#v_company').check();
     await page.getByRole('button', {name:'Сохранить автомобиль', exact:true}).click();
@@ -97,7 +98,10 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     const template = page.locator(`form[action="/admin/consumable-templates/${templateId}"]`);
     await template.locator('..').locator('summary').click();
     await template.getByLabel('Интервал, км', {exact:true}).fill('20000');
-    await template.getByRole('button', {name:'Сохранить шаблон'}).click();
+    await Promise.all([
+      page.waitForNavigation({waitUntil:'domcontentloaded'}),
+      template.getByRole('button', {name:'Сохранить шаблон'}).click(),
+    ]);
     await capture('admin-templates');
     await page.goto('/dev-login/user');
     await page.goto(`/vehicles/${id}?tab=maintenance`);
