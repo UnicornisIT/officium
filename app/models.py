@@ -529,6 +529,7 @@ class Vehicle(db.Model):
     user = db.relationship('User', back_populates='vehicles')
     country = db.relationship('RegistrationCountry')
     tractor = db.relationship('Vehicle', remote_side=[id], backref='trailers')
+    refuelings = db.relationship('VehicleRefueling', cascade='all, delete-orphan', back_populates='vehicle')
     costs = db.relationship('VehicleCost', cascade='all, delete-orphan', back_populates='vehicle')
     readings = db.relationship('VehicleOdometerReading', cascade='all, delete-orphan', back_populates='vehicle')
 
@@ -872,3 +873,30 @@ class VehicleCost(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
     updated_at = db.Column(db.DateTime, nullable=False, default=utc_now, onupdate=utc_now)
     vehicle = db.relationship('Vehicle', back_populates='costs')
+
+
+class VehicleRefueling(db.Model):
+    __tablename__ = 'vehicle_refuelings'
+    __table_args__ = (
+        db.UniqueConstraint('vehicle_id', 'refuel_date', name='uq_vehicle_refueling_date'),
+        db.CheckConstraint('liters > 0', name='ck_refueling_liters_positive'),
+        db.CheckConstraint('price_per_liter > 0', name='ck_refueling_price_positive'),
+        db.CheckConstraint('total_amount > 0', name='ck_refueling_total_positive'),
+        db.CheckConstraint('odometer_km >= 0 OR odometer_km IS NULL', name='ck_refueling_odometer_nonnegative'),
+        db.CheckConstraint("payer IN ('self', 'organization')", name='ck_refueling_payer'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_refueling_vehicle', ondelete='CASCADE'), nullable=False, index=True)
+    refuel_date = db.Column(db.Date, nullable=False)
+    odometer_km = db.Column(db.Integer)
+    liters = db.Column(db.Numeric(10, 3), nullable=False)
+    price_per_liter = db.Column(db.Numeric(10, 2), nullable=False)
+    total_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    payer = db.Column(db.String(20), nullable=False)
+    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', name='fk_refueling_expense', ondelete='SET NULL'))
+    vehicle_cost_id = db.Column(db.Integer, db.ForeignKey('vehicle_costs.id', name='fk_refueling_cost', ondelete='SET NULL'))
+    is_full_tank = db.Column(db.Boolean, nullable=False, default=True)
+    station_name = db.Column(db.String(150))
+    comment = db.Column(db.String(2000))
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    vehicle = db.relationship('Vehicle', back_populates='refuelings')

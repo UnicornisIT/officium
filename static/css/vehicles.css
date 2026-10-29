@@ -73,3 +73,11 @@
   .vehicle-image-link:hover .vehicle-visual{transform:translateY(-2px) scale(1.015)}
   .vehicle-color-swatch:hover{transform:translateY(-2px)}
 }
+
+.vehicle-fuel-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+.vehicle-fuel-form { min-width:0; }
+.vehicle-fuel-fields label { min-width:0; }
+.vehicle-fuel-history { max-width:100%; }
+.vehicle-fuel-history td { vertical-align:middle; min-width:5rem; }
+.vehicle-fuel-history small { max-width:12rem; }
+@media (max-width:575.98px) { .vehicle-fuel-fields { grid-template-columns:minmax(0,1fr); } }

@@ -132,7 +132,7 @@ def display_value(value):
     return text
 
 
-def parse_decimal(value, field_name, required=True):
+def parse_decimal(value, field_name, required=True, *, precision=MONEY):
     if value is None or str(value).strip() == '':
         if required:
             raise ValueError(f"Поле '{field_name}' обязательно для заполнения")
@@ -146,7 +146,7 @@ def parse_decimal(value, field_name, required=True):
             raise ValueError(f"Поле '{field_name}' не может быть отрицательным")
         if result > MAX_MONEY:
             raise ValueError(f"Поле '{field_name}' превышает максимально допустимое значение")
-        return result.quantize(MONEY, rounding=ROUND_HALF_UP)
+        return result.quantize(precision, rounding=ROUND_HALF_UP)
     except InvalidOperation:
         raise ValueError(f"Поле '{field_name}' содержит некорректное число")
 

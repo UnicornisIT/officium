@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Редактировать заправку' if refueling else 'Добавить заправку' }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static',filename='css/vehicles.css') }}">
+<a class="btn btn-outline-secondary" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab='fuel') }}">Заправки</a>
+<h1 class="page-title my-4">{{ 'Редактировать заправку' if refueling else 'Добавить заправку' }}</h1>
+<p>{{ vehicle.name }}</p>
+{% if not vehicle.archived_at and vehicle.status=='active' %}{% include 'vehicles/_fuel_form.html' %}{% else %}<p>Автомобиль доступен только для просмотра заправок.</p>{% endif %}
+{% endblock %}
