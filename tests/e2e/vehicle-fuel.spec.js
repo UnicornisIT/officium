@@ -1,12 +1,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {test, expect} = require('@playwright/test');
+// Screenshots and traces cover this form workflow; avoid Windows video teardown stalls.
+test.use({video:'off'});
 
 for (const width of [390,1440]) for (const theme of ['light','dark']) {
   test(`fuel ${width} ${theme}`, async ({page}, info) => {
-    test.setTimeout(180000);
+    test.setTimeout(300000);
     await page.setViewportSize({width,height:1000});
     await page.addInitScript(t => localStorage.setItem('officiumTheme',t),theme);
+    // Fuel forms do not depend on Telegram's remote SDK.
+    await page.route('https://telegram.org/js/telegram-web-app.js', route => route.fulfill({contentType:'application/javascript', body:''}));
     await page.goto('/dev-login/user', {waitUntil:'domcontentloaded'});
     await page.goto('/vehicles/new', {waitUntil:'domcontentloaded'});
     await page.locator('#v_name').fill(`Топливо ${width} ${theme} ${info.project.name} ${Date.now()}`);
@@ -51,7 +55,7 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) {
     await capture('mileage');
     await page.getByRole('link',{name:'Обзор',exact:true}).click();
     await capture('overview');
-    await page.goto('/dev-login/superadmin', {waitUntil:'domcontentloaded'});
+    await page.request.get('/dev-login/superadmin');
     expect((await page.request.get(`/vehicles/${id}/refueling/new`)).status()).toBe(404);
   });
 }
