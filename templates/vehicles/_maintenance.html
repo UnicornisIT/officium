@@ -1,28 +1,28 @@
 <h2 class="h5">Обслуживание</h2>
 <p class="text-muted">Интервалы типовые, сверяйтесь с регламентом производителя.</p>
 {% if not vehicle.archived_at %}<a class="btn btn-primary mb-3" href="{{ url_for('vehicle_record_service',vehicle_id=vehicle.id) }}">Записать обслуживание</a>{% endif %}
-{% for item,state in maintenance_items %}<article class="card p-3 mb-3 text-break">
+{% for item,state in maintenance_items %}<article class="card vehicle-maintenance-card p-3 mb-3 text-break">
 <h3 class="h6">{{ item.name }} {% if not item.is_active %}(отключено){% endif %}</h3>
 <p><span class="badge text-bg-{{ state.color }}">{{ state.label }}</span></p>
 <p>Заменить {% if state.due_km is not none %}на {{ '{:,}'.format(state.due_km).replace(',', ' ') }} км{% endif %}{% if state.due_km is not none and state.due_date %} или {% endif %}{% if state.due_date %}до {{ state.due_date.strftime('%d.%m.%Y') }}{% endif %}{% if state.due_km is none and not state.due_date %}— укажите последнюю замену{% endif %}</p>
 {% if forecasts[item.id] %}<p class="text-muted">По пробегу: {{ forecasts[item.id].strftime('%d.%m.%Y') }} (оценка)</p>{% endif %}
-{% if not vehicle.archived_at %}<details><summary>Настроить позицию</summary><form class="d-grid gap-2 mt-2" method="post" action="{{ url_for('vehicle_maintenance_edit',vehicle_id=vehicle.id,item_id=item.id) }}">
+{% if not vehicle.archived_at %}<details class="vehicle-disclosure"><summary><span>Настроить позицию</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><form class="vehicle-maintenance-fields mt-3" method="post" action="{{ url_for('vehicle_maintenance_edit',vehicle_id=vehicle.id,item_id=item.id) }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <label>Название<input class="form-control" name="name" value="{{ item.name }}" maxlength="150" required></label>
 {% if vehicle.kind!='trailer' %}<label>Интервал, км<input class="form-control" name="interval_km" type="number" min="1" value="{{ item.interval_km or '' }}"></label>{% endif %}
 <label>Интервал, месяцев<input class="form-control" name="interval_months" type="number" min="1" max="1200" value="{{ item.interval_months or '' }}"></label>
 <label>Последняя замена<input class="form-control" name="last_done_date" type="date" max="{{ today }}" value="{{ item.last_done_date or '' }}"></label>
 {% if vehicle.kind!='trailer' %}<label>Пробег при замене<input class="form-control" name="last_done_km" type="number" min="0" value="{{ item.last_done_km if item.last_done_km is not none else '' }}"></label>{% endif %}
-<label><input type="checkbox" name="is_active" value="1" {% if item.is_active %}checked{% endif %}> Активна</label><input type="hidden" name="is_active" value="0"><button class="btn btn-outline-primary">Сохранить позицию</button></form></details>{% endif %}
+<label class="vehicle-choice"><input type="checkbox" name="is_active" value="1" {% if item.is_active %}checked{% endif %}> Активна</label><input type="hidden" name="is_active" value="0"><button class="btn btn-outline-primary">Сохранить позицию</button></form></details>{% endif %}
 </article>{% else %}<p>Позиций пока нет. Добавьте их из шаблона или задайте свой интервал.</p>{% endfor %}
 {% if not vehicle.archived_at %}
-<details class="mb-3"><summary>Добавить из шаблона</summary><form class="d-grid gap-3 mt-3" method="post" action="{{ url_for('vehicle_maintenance',vehicle_id=vehicle.id) }}">
+<details class="vehicle-disclosure vehicle-disclosure-add mb-3"><summary><span>Добавить из шаблона</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><form class="vehicle-maintenance-fields mt-3" method="post" action="{{ url_for('vehicle_maintenance',vehicle_id=vehicle.id) }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Шаблон<select class="form-select" name="template_id" required>{% for template in maintenance_templates %}<option value="{{ template.id }}">{{ template.name }}</option>{% endfor %}</select></label>
 <label>Последняя замена<input class="form-control" name="last_done_date" type="date" max="{{ today }}"></label>
 {% if vehicle.kind!='trailer' %}<label>Пробег при замене<input class="form-control" name="last_done_km" type="number" min="0"></label>{% endif %}<button class="btn btn-outline-primary">Добавить позицию</button></form></details>
-<details><summary>Добавить свою позицию</summary><form class="d-grid gap-3 mt-3" method="post" action="{{ url_for('vehicle_maintenance',vehicle_id=vehicle.id) }}">
+<details class="vehicle-disclosure"><summary><span>Добавить свою позицию</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><form class="vehicle-maintenance-fields mt-3" method="post" action="{{ url_for('vehicle_maintenance',vehicle_id=vehicle.id) }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Название<input class="form-control" name="name" maxlength="150" required></label>
 {% if vehicle.kind!='trailer' %}<label>Интервал, км<input class="form-control" type="number" min="1" name="interval_km"></label>{% endif %}<label>Интервал, месяцев<input class="form-control" type="number" min="1" max="1200" name="interval_months"></label><button class="btn btn-outline-primary">Добавить позицию</button></form></details>
 {% endif %}
 <h3 class="h5 mt-4">История обслуживания</h3>
-{% for record in vehicle.service_records|sort(attribute='service_date',reverse=true) %}<article class="border rounded p-3 mb-2 text-break"><strong>{{ record.service_date.strftime('%d.%m.%Y') }}</strong>{% if record.odometer_km is not none %} · {{ record.odometer_km }} км{% endif %}<ul>{% for item in record.items %}<li>{{ item.name }}</li>{% endfor %}</ul><p>{{ record.comment or '' }}</p>{% if record.expense_id %}<a href="{{ url_for('edit_expense',expense_id=record.expense_id) }}">Расход на обслуживание</a>{% elif record.vehicle_cost_id %}<a href="{{ url_for('vehicle_cost_detail',cost_id=record.vehicle_cost_id) }}">Трата организации</a>{% endif %}</article>{% else %}<p class="text-muted">Обслуживаний пока нет.</p>{% endfor %}
+{% for record in vehicle.service_records|sort(attribute='service_date',reverse=true) %}<article class="vehicle-service-entry p-3 mb-2 text-break"><strong>{{ record.service_date.strftime('%d.%m.%Y') }}</strong>{% if record.odometer_km is not none %} · {{ record.odometer_km }} км{% endif %}<ul>{% for item in record.items %}<li>{{ item.name }}</li>{% endfor %}</ul><p>{{ record.comment or '' }}</p>{% if record.expense_id %}<a href="{{ url_for('edit_expense',expense_id=record.expense_id) }}">Расход на обслуживание</a>{% elif record.vehicle_cost_id %}<a href="{{ url_for('vehicle_cost_detail',cost_id=record.vehicle_cost_id) }}">Трата организации</a>{% endif %}</article>{% else %}<p class="text-muted">Обслуживаний пока нет.</p>{% endfor %}
