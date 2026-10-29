@@ -1,6 +1,6 @@
 {% macro visual(vehicle) %}
 <svg class="vehicle-visual" viewBox="0 0 360 200" role="img" aria-label="{{ vehicle_bodies[vehicle.body_type] }}: {{ vehicle.name }}" style="color:{{ vehicle.color }}">
-    <use href="{{ url_for('static', filename='images/vehicles/' ~ vehicle.body_type ~ '.svg', v='detail-2') }}#body"/>
+    <use href="#vehicle-body-{{ vehicle.body_type }}"/>
     {% if vehicle.plate %}
     <rect x="94" y="150" width="172" height="32" rx="4" fill="#fff" stroke="#17223b"/>
     <line x1="231" y1="150" x2="231" y2="182" stroke="#000" stroke-width="1"/>

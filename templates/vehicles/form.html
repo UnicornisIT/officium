@@ -4,7 +4,7 @@
 <div class="vehicle-field-heading"><label for="v_{{ key }}">{{ label }}</label>{% if text %}{{ info_hint(text, 'vehicle-hint-' ~ key, 'Подсказка: ' ~ label) }}{% endif %}</div>
 {%- endmacro %}
 {% block title %}{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль — officium{% endblock %}
-{% block content %}
+{% block content %}{% include 'vehicles/_body_symbols.html' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='forest-1') }}">
 <a class="text-decoration-none btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id) if vehicle else url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
 <h1 class="page-title my-4">{{ 'Редактировать' if vehicle else 'Добавить' }} автомобиль</h1>
@@ -61,7 +61,7 @@
     <section class="vehicle-form-preview" aria-label="Предпросмотр автомобиля">
         <div class="vehicle-preview-scene">
         <svg id="vehiclePreview" class="vehicle-visual" viewBox="0 0 360 200" role="img" aria-label="Предпросмотр кузова и цвета">
-            <use id="vehiclePreviewBody" data-base-url="{{ url_for('static', filename='images/vehicles/') }}" href="{{ url_for('static', filename='images/vehicles/sedan.svg', v='detail-2') }}#body"/>
+            <use id="vehiclePreviewBody" href="#vehicle-body-sedan"/>
         </svg>
         </div>
         <div class="vehicle-preview-controls">
@@ -84,5 +84,5 @@
     </section>
     <div class="vehicle-form-actions"><button class="btn btn-primary">Сохранить автомобиль</button></div>
 </form>
-<script src="{{ url_for('static',filename='js/vehicles.js',v='review-fixes-1') }}"></script>
+<script src="{{ url_for('static',filename='js/vehicles.js',v='inline-colors-1') }}"></script>
 {% endblock %}

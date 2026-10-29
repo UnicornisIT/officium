@@ -19,9 +19,14 @@ test('compact vehicle color picker: presets, custom color, keyboard and persiste
       await picker.getByRole('button', { name: 'Красный', exact: true }).click();
       await expect(page.getByLabel('Цвет', { exact: true })).toHaveValue('#dc3545');
       await expect(preview).toHaveCSS('color', 'rgb(220, 53, 69)');
+      const redBody = await preview.screenshot({ animations: 'disabled' });
       await expect(picker.getByRole('button', { name: 'Красный', exact: true })).toHaveAttribute('aria-pressed', 'true');
       await page.getByLabel('Цвет', { exact: true }).fill('#123abc');
       await expect(preview).toHaveCSS('color', 'rgb(18, 58, 188)');
+      // Check rendered pixels: external SVG use can inherit the CSS color while
+      // still painting a black body in iOS WebKit.
+      const blueBody = await preview.screenshot({ animations: 'disabled' });
+      expect(redBody.equals(blueBody)).toBe(false);
       await expect(picker.locator('[aria-pressed="true"]')).toHaveCount(0);
       const supportsEyedropper = await page.evaluate(() => typeof window.EyeDropper === 'function');
       await expect(picker.locator('.vehicle-eyedropper')).toBeVisible({ visible: supportsEyedropper });

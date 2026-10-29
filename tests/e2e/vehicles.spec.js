@@ -71,7 +71,7 @@ for (const width of [1440, 390]) {
       await page.getByLabel('Дата замера', { exact: true }).fill('2020-01-01');
       await page.getByLabel('Пробег (км)', { exact: true }).fill('12300');
       await page.getByRole('button', { name: 'Добавить замер', exact: true }).click();
-      await expect(page.locator('tbody')).toContainText('12300');
+      await expect(page.locator('tbody')).toContainText('12 300');
       await page.getByLabel('Дата замера', { exact: true }).fill('2020-01-02');
       await page.getByLabel('Пробег (км)', { exact: true }).fill('12200');
       await page.getByRole('button', { name: 'Добавить замер', exact: true }).click();

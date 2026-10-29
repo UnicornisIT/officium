@@ -3,6 +3,48 @@
 .vehicle-form-preview{grid-column:1/-1;text-align:center;overflow:hidden;border:1px solid var(--bs-border-color);border-radius:.75rem;background:var(--bs-tertiary-bg)}.vehicle-preview-scene{height:180px;display:grid;place-items:center;overflow:hidden;background-color:#314639;background-image:linear-gradient(180deg,#08111b08,#08111b26),url('../images/vehicles/backgrounds/forest-road.webp');background-size:cover;background-position:center 68%}.vehicle-form-preview .vehicle-visual{position:relative;top:12px;width:88%;max-width:360px;height:180px;max-height:180px;margin-inline:auto;filter:drop-shadow(0 3px 3px #0003)}.vehicle-preview-controls{padding:.75rem;border-top:1px solid var(--bs-border-color)}
 .vehicle-color-picker{max-width:340px;margin-inline:auto}.vehicle-color-toggle{display:inline-flex;align-items:center;gap:.5rem;list-style:none;cursor:pointer}.vehicle-color-toggle::-webkit-details-marker{display:none}.vehicle-color-current{width:1rem;height:1rem;border:1px solid var(--bs-secondary-color);border-radius:50%;background:var(--vehicle-color)}.vehicle-color-panel{margin-top:.75rem;padding:.75rem;border:1px solid var(--bs-border-color);border-radius:.75rem;background:var(--bs-body-bg)}.vehicle-color-swatches{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.5rem}.vehicle-color-swatch{display:flex;align-items:center;justify-content:center;min-width:0;height:32px;background:var(--swatch-color);border:1px solid var(--bs-secondary-color);border-radius:.5rem;cursor:pointer}.vehicle-color-swatch i{visibility:hidden;color:#fff;filter:drop-shadow(0 1px 1px #000) drop-shadow(0 -1px 1px #000)}.vehicle-color-swatch[aria-pressed="true"]{outline:2px solid var(--bs-primary);outline-offset:2px}.vehicle-color-swatch[aria-pressed="true"] i{visibility:visible}.vehicle-color-swatch:focus-visible,.vehicle-color-toggle:focus-visible{outline:3px solid var(--bs-primary);outline-offset:3px}.vehicle-color-custom{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:.5rem;margin-top:.75rem}.vehicle-color-custom-label{display:flex;align-items:center;gap:.5rem;cursor:pointer}.vehicle-color-custom-label input{width:2.5rem;height:2rem;padding:.2rem}.vehicle-eyedropper{display:inline-flex;gap:.4rem}.vehicle-eyedropper[hidden]{display:none}.vehicle-color-status:empty{display:none}.vehicle-color-status{font-size:.85rem;margin-top:.5rem}
 .vehicle-image-link{display:block;text-decoration:none;cursor:pointer}.vehicle-image-link:focus-visible{outline:2px solid var(--bs-primary);outline-offset:3px}
+.vehicle-disclosure{border:1px solid var(--bs-border-color);border-radius:.9rem;background:var(--bs-body-bg);overflow:hidden}
+.vehicle-disclosure>summary{display:flex;align-items:center;justify-content:space-between;gap:1rem;min-height:48px;padding:.8rem 1rem;list-style:none;cursor:pointer;font-weight:500;overflow-wrap:anywhere}
+.vehicle-disclosure>summary::-webkit-details-marker{display:none}
+.vehicle-disclosure>summary::marker{content:""}
+.vehicle-disclosure>summary>i{flex:none;color:var(--bs-secondary-color);font-size:.85rem;transition:transform .18s ease}
+.vehicle-disclosure[open]>summary{border-bottom:1px solid var(--bs-border-color);background:var(--bs-tertiary-bg)}
+.vehicle-disclosure[open]>summary>i{transform:rotate(180deg)}
+.vehicle-disclosure>summary[aria-expanded="false"]>i{transform:rotate(0)}
+.vehicle-disclosure-moving{will-change:height}
+.vehicle-disclosure>summary:hover{background:var(--bs-tertiary-bg)}
+.vehicle-disclosure>summary:focus-visible{outline:3px solid var(--bs-primary);outline-offset:-3px;border-radius:.8rem}
+.vehicle-disclosure>form{padding:0 1rem 1rem}
+.vehicle-disclosure-add{margin-top:.75rem}
+.vehicle-disclosure-add>summary{color:var(--bs-body-color)}
+.vehicle-maintenance-card{border-radius:1rem;box-shadow:0 3px 14px #00000006}
+.vehicle-maintenance-card h3{font-size:1rem;line-height:1.5}
+.vehicle-maintenance-card .badge{font-weight:500;padding:.45em .7em;border-radius:2rem}
+.vehicle-maintenance-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.vehicle-maintenance-fields>label:first-of-type,.vehicle-maintenance-fields>.vehicle-choice,.vehicle-maintenance-fields>button{grid-column:1/-1}
+.vehicle-maintenance-fields>label,.vehicle-service-form>label{min-width:0;display:grid;gap:.4rem}
+.vehicle-maintenance-fields>.vehicle-choice{display:flex}
+.vehicle-choice{display:flex;align-items:center;gap:.75rem;min-height:48px;padding:.75rem 1rem;border:1px solid var(--bs-border-color);border-radius:.75rem;background:var(--bs-body-bg);cursor:pointer;line-height:1.5}
+.vehicle-choice input[type=checkbox]{appearance:none;-webkit-appearance:none;flex:none;width:1.25rem;height:1.25rem;border:1.5px solid var(--bs-secondary-color);border-radius:.35rem;background:var(--bs-body-bg);cursor:pointer;display:grid;place-content:center}
+.vehicle-choice input[type=checkbox]:checked{background:var(--bs-primary);border-color:var(--bs-primary)}
+.vehicle-choice input[type=checkbox]:checked::after{content:"";width:.35rem;height:.65rem;border:solid white;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.vehicle-choice:has(input:checked){border-color:var(--bs-primary);background:var(--bs-primary-bg-subtle)}
+.vehicle-choice input:focus-visible{outline:3px solid var(--bs-primary);outline-offset:3px}
+.vehicle-service-section{padding:1rem;border:0;border-radius:1rem;min-width:0;background:var(--bs-tertiary-bg)}
+.vehicle-service-section legend{float:left;width:100%;padding:0;margin-bottom:.75rem;font-size:1rem;font-weight:500}
+.vehicle-service-section legend+*{clear:both}
+.vehicle-service-section p:last-child{margin-bottom:0}
+.vehicle-service-entry{border-left:3px solid var(--bs-border-color);background:var(--bs-tertiary-bg);border-radius:0 .75rem .75rem 0}
+.vehicle-service-entry ul{padding-left:1.2rem;margin-top:.75rem}
+.vehicle-template-interval{display:block;color:var(--bs-secondary-color);font-size:.85rem;font-weight:400;margin-top:.25rem}
+@media(max-width:575px){.vehicle-maintenance-fields{grid-template-columns:minmax(0,1fr)}.vehicle-service-section{padding:.75rem}.vehicle-disclosure>summary{padding:.75rem}.vehicle-disclosure>form{padding:0 .75rem .75rem}}
+@media(prefers-reduced-motion:reduce){.vehicle-disclosure>summary>i{transition:none}}
+@media(prefers-reduced-motion:no-preference){
+  .vehicle-maintenance-card,.vehicle-service-entry,.vehicle-service-form{animation:vehicle-enter .28s ease-out backwards}
+  .vehicle-disclosure>summary,.vehicle-choice{transition:background-color .18s ease,border-color .18s ease}
+  .vehicle-disclosure button,.vehicle-service-form button,.vehicle-service-entry .btn{transition:transform .15s ease,background-color .18s ease,border-color .18s ease}
+  .vehicle-disclosure button:active,.vehicle-service-form button:active,.vehicle-service-entry .btn:active{transform:scale(.98)}
+}
 .vehicle-form-wide{grid-column:1/-1}
 .vehicle-auxiliary-fields>.vehicle-field-heading{margin-bottom:0}.vehicle-auxiliary-fields>[data-trailer],.vehicle-auxiliary-fields>[data-tractor]{padding-top:1.25rem}.vehicle-revealing{overflow:hidden}
 .vehicle-field{min-width:0}.vehicle-field-heading{display:flex;align-items:center;gap:.35rem;margin-bottom:.25rem}.vehicle-field-heading>label{margin:0}.vehicle-field-heading>.info-hint{flex:0 0 auto;margin-left:0}

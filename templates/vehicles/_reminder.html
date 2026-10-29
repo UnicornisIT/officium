@@ -5,7 +5,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% for vehicle in mileage_due %}
         <input type="hidden" name="vehicle_ids" value="{{ vehicle.id }}">
-        <div><label for="km{{ vehicle.id }}" class="form-label">{{ vehicle.name }} · км</label><input id="km{{ vehicle.id }}" class="form-control" name="km_{{ vehicle.id }}" type="number" min="0" max="2147483647" inputmode="numeric"></div>
+        <div><label for="km{{ vehicle.id }}" class="form-label">{{ vehicle.name }} · км</label><input id="km{{ vehicle.id }}" class="form-control" name="km_{{ vehicle.id }}" type="text" inputmode="numeric" data-vehicle-km pattern="[0-9 ]*"></div>
         {% endfor %}
         <button class="btn btn-primary" name="action" value="save">Обновить пробег</button>
         <button class="btn btn-outline-secondary" name="action" value="snooze">Напомнить через 3 дня</button>

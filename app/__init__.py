@@ -77,13 +77,14 @@ def create_app(config_overrides=None):
     login_manager.init_app(app)
     @app.before_request
     def vehicle_feature_gate():
-        if (request.path == '/vehicles' or request.path.startswith('/vehicles/') or request.path.startswith('/admin/registration-countries')) and not app.config.get('VEHICLES_ENABLED'):
+        if (request.path == '/vehicles' or request.path.startswith('/vehicles/') or request.path.startswith('/admin/registration-countries') or request.path.startswith('/admin/consumable-templates')) and not app.config.get('VEHICLES_ENABLED'):
             abort(404)
 
     csrf = CSRFProtect()
     csrf.init_app(app)
 
     app.jinja_env.filters['money'] = format_currency
+    app.jinja_env.filters['distance'] = lambda value: f'{int(value):,}'.replace(',', ' ') if value is not None else '—'
     app.jinja_env.filters['display'] = display_value
     app.jinja_env.filters['admin_field'] = admin_field_label
     app.jinja_env.filters['admin_role'] = admin_role_label

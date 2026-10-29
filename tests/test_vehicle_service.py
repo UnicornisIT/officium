@@ -192,6 +192,16 @@ class VehicleServiceTestCase(unittest.TestCase):
         self.assertEqual(service.current_mileage(vehicle), 200)
         self.assertEqual(len(vehicle.readings), 3)
 
+    def test_grouped_mileage_keeps_integer_validation(self):
+        vehicle = self.vehicle()
+        for value in ('123 654', '123\u00a0654', '123\u202f654'):
+            self.assertEqual(service._integer(value, 'Пробег'), 123654)
+        for value in ('-123 654', '123,654', '123.654', '2 147 483 648'):
+            with self.assertRaises(ValueError):
+                service._integer(value, 'Пробег')
+        service.add_odometer_reading(self.owner, vehicle.id, '2026-01-10', '123 654')
+        self.assertEqual(service.current_mileage(vehicle), 123654)
+
     def test_reminder_boundaries_and_snooze(self):
         vehicle = self.vehicle()
         day = service.today()

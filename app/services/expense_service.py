@@ -112,7 +112,7 @@ def create_expense(*, user_id, amount, title, expense_date, category=None,
             raise ValueError('Выберите вид траты на автомобиль.')
     if vehicle_id:
         vehicle = _vehicle(user_id, vehicle_id)
-        if vehicle.archived_at or vehicle.status != 'active':
+        if vehicle.archived_at or (vehicle.status != 'active' and not (vehicle.status == 'in_repair' and vehicle_cost_kind == 'service')):
             raise ValueError('Нельзя добавить расход: выберите активный автомобиль вне архива.')
         category = category or 'transport'
     values = _validate(amount=amount, category=category, title=title, expense_date=expense_date,

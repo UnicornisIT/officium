@@ -533,6 +533,81 @@ class Vehicle(db.Model):
     readings = db.relationship('VehicleOdometerReading', cascade='all, delete-orphan', back_populates='vehicle')
 
 
+class ConsumableTemplate(db.Model):
+    __tablename__ = 'consumable_templates'
+    __table_args__ = (
+        db.CheckConstraint("template_set IN ('passenger', 'truck')", name='ck_consumable_template_set'),
+        db.CheckConstraint('(interval_km > 0 OR interval_km IS NULL) AND (interval_months > 0 OR interval_months IS NULL) AND (interval_km IS NOT NULL OR interval_months IS NOT NULL)', name='ck_consumable_template_intervals'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    template_set = db.Column(db.String(20), nullable=False)
+    name = db.Column(db.String(150), nullable=False)
+    interval_km = db.Column(db.Integer)
+    interval_months = db.Column(db.Integer)
+    applies_to_electric = db.Column(db.Boolean, nullable=False, default=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+
+vehicle_service_items = db.Table('vehicle_service_items',
+    db.Column('service_record_id', db.Integer, db.ForeignKey('vehicle_service_records.id', name='fk_service_items_record', ondelete='CASCADE'), primary_key=True),
+    db.Column('maintenance_item_id', db.Integer, db.ForeignKey('vehicle_maintenance_items.id', name='fk_service_items_item', ondelete='CASCADE'), primary_key=True),
+)
+
+
+class VehicleMaintenanceItem(db.Model):
+    __tablename__ = 'vehicle_maintenance_items'
+    __table_args__ = (
+        db.CheckConstraint('(interval_km > 0 OR interval_km IS NULL) AND (interval_months > 0 OR interval_months IS NULL) AND (interval_km IS NOT NULL OR interval_months IS NOT NULL)', name='ck_maintenance_item_intervals'),
+        db.CheckConstraint('last_done_km >= 0 OR last_done_km IS NULL', name='ck_maintenance_item_km'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_maintenance_item_vehicle', ondelete='CASCADE'), nullable=False, index=True)
+    template_id = db.Column(db.Integer, db.ForeignKey('consumable_templates.id', name='fk_maintenance_item_template', ondelete='SET NULL'))
+    name = db.Column(db.String(150), nullable=False)
+    interval_km = db.Column(db.Integer)
+    interval_months = db.Column(db.Integer)
+    last_done_date = db.Column(db.Date)
+    last_done_km = db.Column(db.Integer)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    vehicle = db.relationship('Vehicle', backref=db.backref('maintenance_items', cascade='all, delete-orphan'))
+
+
+class VehicleServiceRecord(db.Model):
+    __tablename__ = 'vehicle_service_records'
+    __table_args__ = (
+        db.CheckConstraint('odometer_km >= 0 OR odometer_km IS NULL', name='ck_service_record_km'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_service_record_vehicle', ondelete='CASCADE'), nullable=False, index=True)
+    service_date = db.Column(db.Date, nullable=False)
+    odometer_km = db.Column(db.Integer)
+    comment = db.Column(db.String(2000))
+    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', name='fk_service_record_expense', ondelete='SET NULL'))
+    vehicle_cost_id = db.Column(db.Integer, db.ForeignKey('vehicle_costs.id', name='fk_service_record_cost', ondelete='SET NULL'))
+    items = db.relationship('VehicleMaintenanceItem', secondary=vehicle_service_items)
+    vehicle = db.relationship('Vehicle', backref=db.backref('service_records', cascade='all, delete-orphan'))
+
+
+class VehicleDefect(db.Model):
+    __tablename__ = 'vehicle_defects'
+    __table_args__ = (
+        db.CheckConstraint("severity IN ('critical', 'attention', 'minor')", name='ck_vehicle_defect_severity'),
+        db.CheckConstraint("status IN ('open', 'fixed')", name='ck_vehicle_defect_status'),
+        db.CheckConstraint("(status = 'open' AND fixed_date IS NULL) OR (status = 'fixed' AND fixed_date IS NOT NULL AND fixed_date >= found_date)", name='ck_vehicle_defect_dates'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_defect_vehicle', ondelete='CASCADE'), nullable=False, index=True)
+    title = db.Column(db.String(150), nullable=False)
+    severity = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='open')
+    found_date = db.Column(db.Date, nullable=False)
+    fixed_date = db.Column(db.Date)
+    service_record_id = db.Column(db.Integer, db.ForeignKey('vehicle_service_records.id', name='fk_defect_service', ondelete='SET NULL'))
+    comment = db.Column(db.String(2000))
+    vehicle = db.relationship('Vehicle', backref=db.backref('defects', cascade='all, delete-orphan'))
+
+
 class VehicleOdometerReading(db.Model):
     __tablename__ = 'vehicle_odometer_readings'
     __table_args__ = (

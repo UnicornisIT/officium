@@ -1,0 +1,111 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const {test, expect} = require('@playwright/test');
+
+for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
+  test(`maintenance ${width} ${theme}`, async ({page}, info) => {
+    test.setTimeout(300000);
+    await page.setViewportSize({width, height: 1000});
+    await page.addInitScript(t => localStorage.setItem('officiumTheme', t), theme);
+    if (width === 390) await page.route('https://telegram.org/js/telegram-web-app.js', route => route.fulfill({contentType:'application/javascript', body:`const noop=()=>{};window.Telegram={WebApp:{initData:'e2e',initDataUnsafe:{user:{id:1}},platform:'android',version:'8.0',colorScheme:'${theme}',themeParams:{},viewportHeight:innerHeight,viewportStableHeight:innerHeight,ready:noop,expand:noop,onEvent:noop,offEvent:noop,setHeaderColor:noop,setBackgroundColor:noop,setBottomBarColor:noop,BackButton:{show:noop,hide:noop,onClick:noop},HapticFeedback:{impactOccurred:noop}}};`}));
+    await page.goto('/dev-login/user');
+    if (width === 390) await page.goto('/telegram-app');
+    await page.goto('/vehicles/new');
+    // All specs share one database: do not match vehicle-costs fixtures in q.
+    const suffix = `maintenance-${width}-${theme}-${info.project.name}-${info.retry}`;
+    await page.locator('#v_name').fill(`Учебный автомобиль ${suffix}`);
+    await page.locator('#v_company').check();
+    await page.getByRole('button', {name:'Сохранить автомобиль', exact:true}).click();
+    await page.waitForURL(/\/vehicles\/\d+$/);
+    const id = page.url().split('/').pop();
+    const root = path.join('docs', 'qa', 'vehicles-stage3');
+    fs.mkdirSync(root, {recursive:true});
+    const capture = async name => {
+      await expect.poll(() => page.evaluate(() => {
+        document.activeElement?.blur();
+        scrollTo({top:0, left:0, behavior:'instant'});
+        return scrollY;
+      })).toBe(0);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({path:path.join(root, `${width}-${theme}-${name}.png`), fullPage:true, animations:'disabled',
+        style:width === 390 ? 'body { position:relative !important; } .telegram-bottom-nav { position:absolute !important; }' : undefined});
+    };
+    const post = async (url, data) => {
+      const csrf = await page.locator('meta[name="csrf-token"]').getAttribute('content');
+      const response = await page.request.post(url, {form:{csrf_token:csrf, ...data}});
+      expect(response.ok()).toBe(true);
+      return response;
+    };
+    await page.goto(`/vehicles/${id}?tab=maintenance`);
+    await page.getByText('Добавить из шаблона', {exact:true}).click();
+    const templateForm = page.locator('form').filter({has:page.locator('select[name="template_id"]')});
+    const templateId = await templateForm.locator('select').inputValue();
+    await templateForm.getByLabel('Последняя замена', {exact:true}).fill('2026-01-01');
+    await templateForm.getByLabel('Пробег при замене').fill('12455');
+    await templateForm.getByRole('button', {name:'Добавить позицию'}).click();
+    const oil = page.locator('article').filter({has:page.getByRole('heading', {name:'Масло ДВС и масляный фильтр', exact:true})});
+    await oil.getByText('Настроить позицию', {exact:true}).click();
+    await oil.getByLabel('Интервал, км', {exact:true}).fill('7000');
+    await oil.getByRole('button', {name:'Сохранить позицию'}).click();
+    await expect(oil).toContainText('19 455 км');
+    const today = await page.locator('input[name="last_done_date"]').first().getAttribute('max');
+    await post(`/vehicles/${id}/odometer`, {reading_date:today, odometer_km:'12455'});
+    await post(`/vehicles/${id}/maintenance`, {name:'Учебный воздушный фильтр', interval_km:'10000', last_done_km:'3000'});
+    await post(`/vehicles/${id}/maintenance`, {name:'Учебные тормозные колодки', interval_km:'10000', last_done_km:'0'});
+    await page.reload();
+    for (const label of ['В порядке', 'Скоро', 'Просрочено']) await expect(page.locator('article .badge').filter({hasText:new RegExp(`^${label}$`)})).toBeVisible();
+    await capture('maintenance');
+    await page.getByRole('link', {name:'Неисправности', exact:true}).click();
+    await page.getByLabel('Название неисправности').fill('Учебная неисправность тормозов');
+    await page.getByLabel('Серьёзность').selectOption('critical');
+    await page.getByRole('button', {name:'Сохранить неисправность'}).click();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByText('Рекомендуем перевести автомобиль в статус «В ремонте».')).toBeVisible({timeout:20000});
+    await expect(page.locator('.vehicle-facts')).toContainText('Активно');
+    await capture('defects');
+    const green = await post('/vehicles/new', {name:`Учебный грузовик ${suffix}`, kind:'truck'});
+    const greenId = green.url().match(/\/vehicles\/(\d+)$/)[1];
+    await page.goto(`/vehicles/${greenId}?tab=maintenance`);
+    await page.getByText('Добавить из шаблона', {exact:true}).click();
+    await templateForm.getByRole('button', {name:'Добавить позицию'}).click();
+    await expect(page.locator('article').first()).toContainText('Масло ДВС и масляный фильтр');
+    const yellow = await post('/vehicles/new', {name:`Учебный городской автомобиль ${suffix}`});
+    const yellowId = yellow.url().match(/\/vehicles\/(\d+)$/)[1];
+    await post(`/vehicles/${yellowId}/odometer`, {reading_date:today, odometer_km:'12455'});
+    await post(`/vehicles/${yellowId}/maintenance`, {name:'Учебный фильтр', interval_km:'10000', last_done_km:'3000'});
+    await page.goto(`/vehicles?attention=1&q=${encodeURIComponent(suffix)}`);
+    await expect(page.getByRole('status').filter({hasText:'Требует обслуживания'}).first()).toBeVisible();
+    await expect(page.locator('.vehicle-card')).toHaveCount(2);
+    await page.goto(`/vehicles?q=${encodeURIComponent(suffix)}`);
+    await expect(page.locator('.vehicle-card')).toHaveCount(3);
+    await capture('conditions');
+    await page.goto(`/vehicles/${id}/service`);
+    await page.getByLabel('Масло ДВС и масляный фильтр', {exact:true}).check();
+    await page.getByLabel('Учебная неисправность тормозов', {exact:true}).check();
+    await page.getByLabel('Сумма (необязательно)').fill('125.50');
+    await page.getByLabel('Кто платит').selectOption('organization');
+    await capture('service-form');
+    await page.getByRole('button', {name:'Сохранить обслуживание'}).click();
+    await expect(page).toHaveURL(new RegExp(`/vehicles/${id}\\?tab=maintenance$`));
+    await expect(page.getByRole('heading', {name:'История обслуживания'})).toBeVisible();
+    await expect(page.locator('article').filter({hasText:'Масло ДВС и масляный фильтр'}).first()).toContainText('19 455 км');
+    await page.goto(`/vehicles/${id}?tab=defects`);
+    await expect(page.locator('article')).toContainText('Устранена');
+    await page.goto('/dev-login/superadmin');
+    await page.goto('/admin/consumable-templates');
+    await expect(page.getByRole('heading', {name:'Легковой набор'})).toBeVisible();
+    await expect(page.getByRole('heading', {name:'Грузовой набор'})).toBeVisible();
+    const template = page.locator(`form[action="/admin/consumable-templates/${templateId}"]`);
+    await template.locator('..').locator('summary').click();
+    await template.getByLabel('Интервал, км', {exact:true}).fill('20000');
+    await Promise.all([
+      page.waitForNavigation({waitUntil:'domcontentloaded'}),
+      template.getByRole('button', {name:'Сохранить шаблон'}).click(),
+    ]);
+    await capture('admin-templates');
+    await page.goto('/dev-login/user');
+    await page.goto(`/vehicles/${id}?tab=maintenance`);
+    await oil.getByText('Настроить позицию', {exact:true}).click();
+    await expect(oil.getByLabel('Интервал, км', {exact:true})).toHaveValue('7 000');
+  });
+}

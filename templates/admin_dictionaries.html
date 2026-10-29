@@ -4,7 +4,7 @@
 {% block admin_topbar_title %}Справочники{% endblock %}
 
 {% block admin_content %}
-{% if vehicles_enabled %}<a class="btn btn-outline-primary mb-3" href="{{ url_for('admin_registration_countries') }}">Страны учёта автомобилей</a>{% endif %}
+{% if vehicles_enabled %}<a class="btn btn-outline-primary mb-3" href="{{ url_for('admin_registration_countries') }}">Страны учёта автомобилей</a> <a class="btn btn-outline-primary mb-3" href="{{ url_for('admin_consumable_templates') }}">Шаблоны расходников</a>{% endif %}
 <header class="admin-page-header"><div><p class="admin-page-kicker">Системные данные</p><h1>Справочники</h1><p>Подсказки, которые пользователи видят в форме долга. Выключенный элемент сохраняется, но не предлагается в формах.</p></div></header>
 {% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
 

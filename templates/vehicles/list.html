@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% from 'vehicles/_visual.html' import visual with context %}
 {% block title %}Автомобили — officium{% endblock %}
-{% block content %}{% if not is_demo %}<a class="text-decoration-none btn btn-outline-primary" href="{{ url_for('vehicle_reports') }}">Отчёты</a>{% endif %}
+{% block content %}{% include 'vehicles/_body_symbols.html' %}{% if not is_demo %}<a class="text-decoration-none btn btn-outline-primary" href="{{ url_for('vehicle_reports') }}">Отчёты</a>{% endif %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='motion-1') }}">
 <header class="vehicle-page-header d-flex flex-wrap justify-content-between gap-3 mb-4"><div><h1 class="page-title">Автомобили</h1><p class="text-muted">Ваш гараж, пробег и расходы</p></div>{% if not is_demo %}<a class="text-decoration-none btn btn-primary align-self-start" href="{{ url_for('new_vehicle') }}">Добавить автомобиль</a>{% endif %}</header>
 {% if mileage_due %}{% include 'vehicles/_reminder.html' %}{% endif %}
@@ -11,6 +11,7 @@
     <label>Статус<select name="status" class="form-select"><option value="">Все статусы</option>{% for key,label in vehicle_statuses.items() %}<option value="{{ key }}" {% if request.args.get('status')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
     <label>Тип<select name="kind" class="form-select"><option value="">Все типы</option>{% for key,label in vehicle_kinds.items() %}<option value="{{ key }}" {% if request.args.get('kind')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
     <label>Архив<select name="archive" class="form-select">{% for key,label in [('active','Вне архива'),('archived','В архиве'),('all','Все автомобили')] %}<option value="{{ key }}" {% if request.args.get('archive','active')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label class="d-flex align-items-center gap-2"><input type="checkbox" name="attention" value="1" {% if request.args.get("attention")=="1" %}checked{% endif %}>Требует внимания</label>
     <button class="btn btn-outline-primary">Найти</button>
 </form>
 <div class="vehicle-grid">
@@ -19,6 +20,7 @@
     <div class="d-flex justify-content-between"><span class="text-muted">{{ vehicle_kinds[vehicle.kind] }}</span><span class="badge {{ 'text-bg-secondary' if vehicle.archived_at else 'text-bg-primary' }}">{{ 'В архиве' if vehicle.archived_at else vehicle_statuses[vehicle.status] }}</span></div>
     <a class="text-decoration-none vehicle-image-link rounded" href="{{ url_for('vehicle_detail', vehicle_id=vehicle.id) }}" aria-label="Открыть карточку: {{ vehicle.name }}">{{ visual(vehicle) }}</a>
     <h2 class="h5"><a class="text-decoration-none btn btn-outline-primary vehicle-button vehicle-related-link" href="{{ url_for('vehicle_detail', vehicle_id=vehicle.id) }}">{{ vehicle.name }}</a></h2><p class="text-muted mb-0">{{ vehicle.make or '' }} {{ vehicle.model or '' }} {{ vehicle.year or '' }}</p>
+    {% set condition=technical_condition(vehicle) %}{% include 'vehicles/_condition.html' %}
     {% if vehicle.tractor %}<p class="mt-2 mb-0">Тягач: {{ vehicle.tractor.name }}</p>{% endif %}
 </article>
 {% else %}<div class="card p-4"><h2 class="h5">Автомобилей пока нет</h2><p class="mb-0">Добавьте автомобиль или измените фильтры.</p></div>{% endfor %}
