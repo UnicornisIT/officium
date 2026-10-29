@@ -72,9 +72,12 @@ class MaintenanceTests(test_vehicle_service.VehicleServiceTestCase):
         with self.assertRaises(NotFound):
             maintenance.save_item(self.owner, electric.id, dict(template_id=template.id))
         trailer = vehicles.create_vehicle(self.owner, dict(name='Учебный прицеп', kind='trailer'))
-        trailer_item = maintenance.save_item(self.owner, trailer.id, dict(template_id=template.id))
+        with self.assertRaises(NotFound):
+            maintenance.save_item(self.owner, trailer.id, dict(template_id=template.id))
+        monthly = self.template(name='Учебная смена шин', interval_km='', interval_months='6', applies_to_electric='on')
+        trailer_item = maintenance.save_item(self.owner, trailer.id, dict(template_id=monthly.id))
         self.assertIsNone(trailer_item.interval_km)
-        self.assertEqual(trailer_item.interval_months, 24)
+        self.assertEqual(trailer_item.interval_months, 6)
         with self.assertRaises(ValueError):
             self.item(trailer)
         self.template(template_set='truck', name='Грузовое масло', interval_km='30000')
@@ -178,6 +181,11 @@ class MaintenanceTests(test_vehicle_service.VehicleServiceTestCase):
         self.assertNotIn(vehicle.name.encode(), response.data)
         self.assertEqual(self.client.get(f'/vehicles/{vehicle.id}').status_code, 404)
         self.assertEqual(self.client.post(f'/vehicles/{vehicle.id}/service', data=self.service_data(item)).status_code, 404)
+        logs = self.client.get('/admin/logs').get_data(as_text=True)
+        self.assertIn('Сохранён шаблон расходника', logs)
+        self.assertIn('Сохранена позиция обслуживания', logs)
+        self.assertNotIn('Неизвестное событие: vehicle_maintenance_save', logs)
+        self.assertNotIn(vehicle.name, logs)
         self.login()
         self.assertEqual(self.client.get('/admin/consumable-templates').status_code, 302)
         self.app.config['WTF_CSRF_ENABLED'] = True

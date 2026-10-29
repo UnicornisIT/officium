@@ -71,7 +71,7 @@ def templates_for(vehicle):
     if vehicle.fuel_type == 'electric':
         query = query.filter_by(applies_to_electric=True)
     if vehicle.kind == 'trailer':
-        query = query.filter(ConsumableTemplate.interval_months.isnot(None))
+        query = query.filter(ConsumableTemplate.interval_months.isnot(None), ConsumableTemplate.interval_km.is_(None))
     return query.order_by(ConsumableTemplate.sort_order, ConsumableTemplate.id).all()
 
 
