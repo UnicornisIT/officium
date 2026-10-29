@@ -102,6 +102,6 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await page.goto('/dev-login/user');
     await page.goto(`/vehicles/${id}?tab=maintenance`);
     await oil.getByText('Настроить позицию', {exact:true}).click();
-    await expect(oil.getByLabel('Интервал, км', {exact:true})).toHaveValue('7000');
+    await expect(oil.getByLabel('Интервал, км', {exact:true})).toHaveValue('7 000');
   });
 }

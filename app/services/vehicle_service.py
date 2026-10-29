@@ -71,6 +71,7 @@ def normalize_plate(plate, country):
 
 
 def _integer(value, label, maximum=2147483647):
+    value = re.sub(r'[ \u00a0\u202f]', '', str(value))
     if not re.fullmatch(r'[0-9]+', str(value)) or not 0 <= int(value) <= maximum:
         raise ValueError(f'{label}: введите целое неотрицательное число.')
     return int(value)

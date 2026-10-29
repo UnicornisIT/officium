@@ -2164,6 +2164,18 @@ a:hover, a:focus {
 }
 
 /* ── Navbar ── */
+/* Mobile browser chrome already occupies the top edge. Keep our navigation
+   in document flow so iOS scrolling cannot leave a floating bar over forms. */
+@media (max-width: 991.98px) {
+    body .navbar, body .telegram-app-bar {
+        position: relative;
+        top: auto;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+    body .navbar { padding: .5rem 0; }
+    body .telegram-app-bar { min-height: 58px; padding: 8px 16px; }
+}
 .navbar {
     background: rgba(255,255,255,0.85);
     backdrop-filter: blur(16px);
