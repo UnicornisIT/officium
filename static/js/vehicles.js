@@ -89,7 +89,7 @@
     preview.style.color = color.value;
     picker.style.setProperty('--vehicle-color', color.value);
     swatches.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.vehicleColor === color.value.toLowerCase())));
-    previewBody.setAttribute('href', `${previewBody.dataset.baseUrl}${body.value}.svg?v=detail-2#body`);
+    previewBody.setAttribute('href', `#vehicle-body-${body.value}`);
   };
   const sync = (animated = false) => {
     const trailer = kind.value === 'trailer';
