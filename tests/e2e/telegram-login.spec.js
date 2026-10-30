@@ -109,17 +109,24 @@ test('blocked popup is explained and the button keeps working', async ({ page })
   await expect(blueButton(page)).not.toHaveAttribute('aria-busy', 'true');
 });
 
-test('SDK load failure is reported and retried on the next click', async ({ page }) => {
+test('SDK load failure is reported and retried on the next activation', async ({ page }) => {
   let attempts = 0;
   await page.route(SDK_PATTERN, (route) => { attempts += 1; return route.abort(); });
   await page.goto('/login', { waitUntil: 'networkidle' });
 
-  await blueButton(page).click();
+  await page.waitForFunction(() => Boolean(window.OfficiumTelegramLogin));
+  await blueButton(page).focus();
+  await blueButton(page).press('Enter');
 
   await expect(page.locator('#telegram-login-status')).toContainText('Не удалось загрузить вход через Telegram');
   await expect(blueButton(page)).toBeVisible();
   await expect(blueButton(page)).not.toHaveAttribute('aria-busy', 'true');
   expect(attempts).toBeGreaterThanOrEqual(2);
+  const previousAttempts = attempts;
+  await blueButton(page).press('Enter');
+  await expect.poll(() => attempts).toBeGreaterThan(previousAttempts);
+  await expect(page.locator('#telegram-login-status')).toContainText('Не удалось загрузить вход через Telegram');
+  await expect(blueButton(page)).not.toHaveAttribute('aria-busy', 'true');
 });
 
 test('Telegram result is handed to /telegram-login with every signed field', async ({ page }) => {

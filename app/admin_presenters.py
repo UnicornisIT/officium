@@ -96,6 +96,8 @@ EVENT_LABELS = {
     'vehicle_mileage': 'Добавлен замер пробега',
     'vehicle_snooze': 'Напоминание о пробеге отложено',
     'vehicle_maintenance_save': 'Сохранена позиция обслуживания',
+    'vehicle_refueling_create': 'Добавлена заправка',
+    'vehicle_refueling_update': 'Изменена заправка',
     'vehicle_service_create': 'Записано обслуживание',
     'vehicle_defect_save': 'Сохранена неисправность',
     'consumable_template_save': 'Сохранён шаблон расходника',

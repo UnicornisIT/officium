@@ -94,7 +94,7 @@ def _values(user, data, existing=None):
         if value not in choices:
             raise ValueError('Выберите корректный тип, кузов, топливо и статус.')
         result[key] = value
-    if existing and existing.kind != result['kind'] and (existing.readings or existing.trailers or existing.maintenance_items or existing.service_records or existing.defects):
+    if existing and existing.kind != result['kind'] and (existing.refuelings or existing.readings or existing.trailers or existing.maintenance_items or existing.service_records or existing.defects):
         raise ValueError('Нельзя менять тип автомобиля с историей пробега, обслуживания, неисправностей или прицепами.')
     if result['kind'] == 'trailer':
         result.update(body_type='trailer', fuel_type='none')

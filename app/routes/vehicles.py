@@ -4,6 +4,7 @@ from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import RegistrationCountry, VehicleOdometerReading, ConsumableTemplate
+from app.services import vehicle_fuel_service as fuel
 from app.services import vehicle_maintenance_service as maintenance
 from app.services import vehicle_service as service
 from app.services import vehicle_cost_service as costs
@@ -64,11 +65,30 @@ def init_app(app):
     @login_required
     def vehicle_detail(vehicle_id):
         vehicle = service.get_vehicle_for_user(current_user, vehicle_id)
+        fuel_detail = _attempt(lambda: fuel.detail(vehicle, request.args.get('date_from'), request.args.get('date_to')))
+        if fuel_detail is None:
+            return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='fuel'))
         return render_template('vehicles/detail.html', vehicle=vehicle, mileage=service.current_mileage(vehicle),
             expenses=service.vehicle_expenses(current_user, vehicle_id), today=service.today(),
             report=costs.vehicle_report(current_user, vehicle_ids=[vehicle_id]),
             organization_costs=costs.vehicle_cost_rows(current_user, vehicle_id) if request.args.get('tab') == 'expenses' else [], cost_kinds=costs.KINDS,
-            readings=VehicleOdometerReading.query.filter_by(vehicle_id=vehicle.id).order_by(VehicleOdometerReading.reading_date.desc()).all(), **maintenance.detail(vehicle))
+            readings=VehicleOdometerReading.query.filter_by(vehicle_id=vehicle.id).order_by(VehicleOdometerReading.reading_date.desc()).all(), **maintenance.detail(vehicle), **fuel_detail)
+
+    @app.route('/vehicles/<int:vehicle_id>/refueling/new')
+    @app.route('/vehicles/<int:vehicle_id>/refueling', methods=['POST'])
+    @app.route('/vehicles/<int:vehicle_id>/refueling/<int:refueling_id>', methods=['GET', 'POST'])
+    @login_required
+    def vehicle_refueling(vehicle_id, refueling_id=None):
+        vehicle = service.get_vehicle_for_user(current_user, vehicle_id)
+        if vehicle.kind == 'trailer':
+            abort(404)
+        row = fuel.get_refueling(vehicle, refueling_id) if refueling_id else None
+        if request.method == 'POST':
+            result = _attempt(lambda: fuel.record_refueling(current_user, vehicle_id, request.form, refueling_id=refueling_id))
+            if result:
+                return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='fuel'))
+        values = request.form if request.method == 'POST' else ({column.name: getattr(row, column.name) for column in row.__table__.columns} if row else {})
+        return render_template('vehicles/refueling_form.html', vehicle=vehicle, refueling=row, form=values, today=service.today())
 
     @app.route('/vehicles/<int:vehicle_id>/maintenance', methods=['POST'])
     @login_required
