@@ -1,5 +1,10 @@
 const { test, expect } = require('@playwright/test');
 
+// Garage and bank-import checks do not depend on Telegram's external SDK.
+test.beforeEach(async ({ page }) => {
+  await page.route('https://telegram.org/js/telegram-web-app.js', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
+});
+
 const dateInMoscow = () => {
   const parts = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
   return ['year', 'month', 'day'].map(key => parts.find(part => part.type === key).value).join('-');
@@ -199,9 +204,10 @@ test('vehicle checklist: country management, code badge and administrator privac
 
 test('vehicle checklist: bank import cannot change an archived vehicle expense', async ({ page }, testInfo) => {
   test.setTimeout(180_000);
-  const title = `Такси учебная ежемесячная перевозка ${testInfo.project.name}`;
+  const suffix = `${testInfo.project.name}-${testInfo.repeatEachIndex}-${testInfo.retry}`;
+  const title = `Такси учебная ежемесячная перевозка ${suffix}`;
   await page.goto('/dev-login/user');
-  const vehiclePath = await createVehicle(page, `Учебное авто импорта ${testInfo.project.name}`);
+  const vehiclePath = await createVehicle(page, `Учебное авто импорта ${suffix}`);
   await page.goto(`${vehiclePath}/expense`);
   await page.locator('[name="title"]').fill(title);
   await page.locator('[name="amount"]').fill('123.45');
@@ -213,13 +219,18 @@ test('vehicle checklist: bank import cannot change an archived vehicle expense',
   await page.goto(vehiclePath);
   await page.getByRole('button', { name: 'Архивировать автомобиль', exact: true }).click();
   await page.getByRole('button', { name: 'В архив', exact: true }).click();
+  await expect(page.locator('.alert-secondary')).toContainText('Автомобиль в архиве');
   await page.goto('/expenses/import');
   const bankDate = dateInMoscow().split('-').reverse().join('.');
   const csv = `Сбербанк Онлайн\nДата операции;Описание операции;Сумма операции;Категория;Карта\n${bankDate};${title};-999,00;Транспорт;*1111\n`;
   await page.locator('[name="statement_file"]').setInputFiles({ name: 'fictional-transport.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8') });
   await page.getByRole('button', { name: 'Разобрать', exact: true }).click();
   await expect(page.locator('[name="action_0"]')).toHaveValue('update_monthly');
-  await page.locator('form[action$="/expenses/import/confirm"] button[type="submit"]').click();
+  const [confirmation] = await Promise.all([
+    page.waitForResponse(response => response.url().endsWith('/expenses/import/confirm') && response.request().method() === 'POST'),
+    page.locator('form[action$="/expenses/import/confirm"] button[type="submit"]').click({ noWaitAfter: true }),
+  ]);
+  expect(confirmation.status()).toBe(400);
   await expect(page.locator('.alert-danger:visible')).toContainText('Автомобиль в архиве');
   await page.goto(editExpense);
   expect(cents(await page.locator('[name="amount"]').inputValue())).toBe(12345);
