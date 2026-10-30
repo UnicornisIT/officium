@@ -6300,13 +6300,13 @@ body.keyboard-open [contenteditable="true"] {
     box-shadow: inset 3px 0 0 var(--success);
 }
 
-/* Monthly expense switch, matching the vehicle form. */
+/* Shared iOS switches; custom admin controls keep their own hidden inputs. */
 .monthly-switch {
     display: inline-flex;
     align-items: center;
     gap: .75rem;
 }
-.monthly-switch-input {
+:is(.monthly-switch-input, body input[type="checkbox"]:not(.admin-publish-toggle input):not(.admin-switch-list input)) {
     appearance: none;
     -webkit-appearance: none;
     position: relative;
@@ -6321,7 +6321,7 @@ body.keyboard-open [contenteditable="true"] {
     cursor: pointer;
     transition: background .18s ease;
 }
-.monthly-switch-input::before {
+:is(.monthly-switch-input, body input[type="checkbox"]:not(.admin-publish-toggle input):not(.admin-switch-list input))::before {
     content: "";
     position: absolute;
     top: 3px;
@@ -6333,9 +6333,9 @@ body.keyboard-open [contenteditable="true"] {
     box-shadow: 0 1px 3px #0003;
     transition: transform .18s ease;
 }
-.monthly-switch-input:checked { background: #34c759; }
-.monthly-switch-input:checked::before { transform: translateX(1.25rem); }
-.monthly-switch-input:focus-visible {
+:is(.monthly-switch-input, body input[type="checkbox"]:not(.admin-publish-toggle input):not(.admin-switch-list input)):checked { background: #34c759; }
+:is(.monthly-switch-input, body input[type="checkbox"]:not(.admin-publish-toggle input):not(.admin-switch-list input)):checked::before { transform: translateX(1.25rem); }
+:is(.monthly-switch-input, body input[type="checkbox"]:not(.admin-publish-toggle input):not(.admin-switch-list input)):focus-visible {
     outline: 3px solid var(--primary);
     outline-offset: 3px;
 }
@@ -6346,7 +6346,7 @@ body.keyboard-open [contenteditable="true"] {
     margin: 0;
 }
 @media (prefers-reduced-motion: reduce) {
-    .monthly-switch-input, .monthly-switch-input::before { transition: none; }
+    :is(.monthly-switch-input, body input[type="checkbox"]:not(.admin-publish-toggle input):not(.admin-switch-list input)), :is(.monthly-switch-input, body input[type="checkbox"]:not(.admin-publish-toggle input):not(.admin-switch-list input))::before { transition: none; }
 }
 
 html[data-theme="dark"] .history-month-count {
@@ -7543,3 +7543,9 @@ html[data-theme="dark"] .toast {
     .modules-menu > button { margin-inline: auto; }
     .modules-menu > .dropdown-menu { position: static; min-width: 0; width: 100%; }
 }
+
+:is(.monthly-switch-input, body input[type="checkbox"]:not(.admin-publish-toggle input):not(.admin-switch-list input))::after { content: none; }
+:is(.monthly-switch-input, body input[type="checkbox"]:not(.admin-publish-toggle input):not(.admin-switch-list input)):disabled { opacity: .5; cursor: not-allowed; }
+
+.form-check:has(> input[type="checkbox"]) { display: flex; align-items: center; gap: .75rem; padding-left: 0; }
+.form-check > input[type="checkbox"] { float: none; }

@@ -9,7 +9,7 @@
 <label>АЗС<input class="form-control" name="station_name" maxlength="150" value="{{ form.get('station_name') or '' }}"></label>
 </div>
 <fieldset><legend class="h6">Кто платит</legend>{% for key,label in [('self','Свои средства'),('organization','Организация')] %}{% if key=='self' or vehicle.is_company %}<label class="me-3"><input type="radio" name="payer" value="{{ key }}" {% if form.get('payer',vehicle.default_payer)==key %}checked{% endif %}> {{ label }}</label>{% endif %}{% endfor %}</fieldset>
-<div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="fuelFullTank" name="is_full_tank" value="1" {% if form.get('is_full_tank',true) in (true,'1','on','true') %}checked{% endif %}><label class="form-check-label" for="fuelFullTank">До полного</label></div><input type="hidden" name="is_full_tank" value="0" data-fuel-unchecked>
+<div class="monthly-switch"><input class="monthly-switch-input" type="checkbox" role="switch" id="fuelFullTank" name="is_full_tank" value="1" {% if form.get('is_full_tank',true) in (true,'1','on','true') %}checked{% endif %}><label class="monthly-switch-label" for="fuelFullTank">До полного</label></div><input type="hidden" name="is_full_tank" value="0" data-fuel-unchecked>
 <label>Комментарий<textarea class="form-control" name="comment" maxlength="2000">{{ form.get('comment') or '' }}</textarea></label>
 <button class="btn btn-primary">Сохранить заправку</button>
 </form>

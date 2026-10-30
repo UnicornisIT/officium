@@ -28,7 +28,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=26" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=27" rel="stylesheet">
     {% block extra_css %}{% endblock %}
 </head>
 <body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
