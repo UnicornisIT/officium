@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo
 
 from flask import abort, current_app
 from sqlalchemy import or_
+from sqlalchemy.orm import selectinload
+from sqlalchemy import inspect
 
 from app.models import Expense, RegistrationCountry, Vehicle, VehicleOdometerReading
 from app.services.personal_access_service import can_use_personal_cabinet
@@ -225,6 +227,9 @@ def add_odometer_reading(user, vehicle_id, reading_date, odometer_km, source='ma
 
 
 def current_mileage(vehicle):
+    if 'readings' not in inspect(vehicle).unloaded:
+        row = max(vehicle.readings, key=lambda r: r.reading_date, default=None)
+        return row.odometer_km if row else None
     row = VehicleOdometerReading.query.filter_by(vehicle_id=vehicle.id).order_by(VehicleOdometerReading.reading_date.desc()).first()
     return row.odometer_km if row else None
 
@@ -234,6 +239,9 @@ def needs_mileage_update(vehicle, today):
         return False
     if vehicle.mileage_snooze_until and vehicle.mileage_snooze_until > today:
         return False
+    if 'readings' not in inspect(vehicle).unloaded:
+        row = max(vehicle.readings, key=lambda r: r.reading_date, default=None)
+        return row is None or (today - row.reading_date).days > vehicle.mileage_reminder_days
     row = VehicleOdometerReading.query.filter_by(vehicle_id=vehicle.id).order_by(VehicleOdometerReading.reading_date.desc()).first()
     return row is None or (today - row.reading_date).days > vehicle.mileage_reminder_days
 
@@ -256,7 +264,7 @@ def snooze(user, vehicle_ids, *, commit=True):
 
 def list_vehicles(user, args):
     _user(user)
-    query = Vehicle.query.filter_by(user_id=user.id)
+    query = Vehicle.query.filter_by(user_id=user.id).options(selectinload(Vehicle.documents), selectinload(Vehicle.maintenance_items), selectinload(Vehicle.defects), selectinload(Vehicle.readings))
     archive = args.get('archive', 'active')
     if archive != 'all':
         query = query.filter(Vehicle.archived_at.isnot(None) if archive == 'archived' else Vehicle.archived_at.is_(None))
@@ -268,7 +276,8 @@ def list_vehicles(user, args):
         query = query.filter(or_(Vehicle.name.ilike(search), Vehicle.make.ilike(search), Vehicle.plate.ilike(search)))
     if args.get('attention') == '1':
         from app.services.vehicle_maintenance_service import technical_condition
-        ids = [v.id for v in query.all() if technical_condition(v) in ('soon', 'overdue')]
+        day = today()
+        ids = [v.id for v in query.all() if technical_condition(v, day=day) in ('soon', 'overdue')]
         query = query.filter(Vehicle.id.in_(ids))
     return query.order_by(Vehicle.created_at.desc(), Vehicle.id.desc()).paginate(page=max(args.get('page', 1, type=int) or 1, 1), per_page=12, error_out=False)
 

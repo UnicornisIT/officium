@@ -138,14 +138,21 @@ def mileage_forecast(vehicle, due_km):
     return last.reading_date + timedelta(days=forecast_days)
 
 
-def document_condition(vehicle):
-    """Extension point for document deadlines in stage 5."""
-    return 'ok'
+def document_condition(vehicle, *, day=None):
+    from app.services.vehicle_document_service import state
+    day = day if day is not None else vehicles.today()
+    return max((state(doc, day)['status'] for doc in vehicle.documents), default='ok', key={'ok': 0, 'soon': 1, 'overdue': 2}.get)
 
 
-def technical_condition(vehicle):
-    states = [document_condition(vehicle)]
-    states.extend(item_state(item, vehicles.current_mileage(vehicle), vehicles.today())['status'] for item in vehicle.maintenance_items if item.is_active)
+_MILEAGE_UNSET = object()
+
+
+def technical_condition(vehicle, *, mileage=_MILEAGE_UNSET, day=None):
+    day = day if day is not None else vehicles.today()
+    if mileage is _MILEAGE_UNSET:
+        mileage = vehicles.current_mileage(vehicle)
+    states = [document_condition(vehicle, day=day)]
+    states.extend(item_state(item, mileage, day)['status'] for item in vehicle.maintenance_items if item.is_active)
     states.extend({'critical': 'overdue', 'attention': 'soon', 'minor': 'ok'}[d.severity] for d in vehicle.defects if d.status == 'open')
     return max(states, key=lambda state: {'unknown': 0, 'ok': 0, 'soon': 1, 'overdue': 2}[state])
 
@@ -216,6 +223,6 @@ def detail(vehicle):
     mileage, day = vehicles.current_mileage(vehicle), vehicles.today()
     items = [(item, item_state(item, mileage, day)) for item in vehicle.maintenance_items]
     return dict(maintenance_items=items, maintenance_templates=templates_for(vehicle),
-                condition=technical_condition(vehicle), maintenance_labels=LABELS,
+                condition=technical_condition(vehicle, mileage=mileage, day=day), maintenance_labels=LABELS,
                 maintenance_colors=COLORS, defect_severities=SEVERITIES,
                 forecasts={item.id: mileage_forecast(vehicle, state['due_km']) for item, state in items})

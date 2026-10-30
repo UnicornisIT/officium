@@ -99,6 +99,7 @@ EVENT_LABELS = {
     'vehicle_refueling_create': 'Добавлена заправка',
     'vehicle_refueling_update': 'Изменена заправка',
     'vehicle_service_create': 'Записано обслуживание',
+    'vehicle_document_save': 'Сохранён документ автомобиля',
     'vehicle_defect_save': 'Сохранена неисправность',
     'consumable_template_save': 'Сохранён шаблон расходника',
     'vehicle_cost_create': 'Добавлена трата организации на автомобиль',

@@ -81,3 +81,10 @@
 .vehicle-fuel-history td { vertical-align:middle; min-width:5rem; }
 .vehicle-fuel-history small { max-width:12rem; }
 @media (max-width:575.98px) { .vehicle-fuel-fields { grid-template-columns:minmax(0,1fr); } }
+
+.vehicle-document-card { border: 1px solid var(--bs-border-color); border-radius: 1rem; min-width: 0; overflow-wrap: anywhere; }
+.vehicle-document-form { display: grid; gap: 1rem; }
+.vehicle-document-form label { display: block; min-width: 0; }
+.vehicle-document-form .form-control, .vehicle-document-form .form-select { max-width: 100%; min-width: 0; }
+.vehicle-document-form .btn { justify-self: start; }
+details:not([open]) > .vehicle-document-form { display: none; }

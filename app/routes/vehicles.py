@@ -4,6 +4,7 @@ from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import RegistrationCountry, VehicleOdometerReading, ConsumableTemplate
+from app.services import vehicle_document_service as documents
 from app.services import vehicle_fuel_service as fuel
 from app.services import vehicle_maintenance_service as maintenance
 from app.services import vehicle_service as service
@@ -69,6 +70,7 @@ def init_app(app):
         if fuel_detail is None:
             return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='fuel'))
         return render_template('vehicles/detail.html', vehicle=vehicle, mileage=service.current_mileage(vehicle),
+            documents=documents.documents_for(vehicle), document_kinds=documents.KINDS,
             expenses=service.vehicle_expenses(current_user, vehicle_id), today=service.today(),
             report=costs.vehicle_report(current_user, vehicle_ids=[vehicle_id]),
             organization_costs=costs.vehicle_cost_rows(current_user, vehicle_id) if request.args.get('tab') == 'expenses' else [], cost_kinds=costs.KINDS,
@@ -89,6 +91,14 @@ def init_app(app):
                 return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='fuel'))
         values = request.form if request.method == 'POST' else ({column.name: getattr(row, column.name) for column in row.__table__.columns} if row else {})
         return render_template('vehicles/refueling_form.html', vehicle=vehicle, refueling=row, form=values, today=service.today())
+
+    @app.route('/vehicles/<int:vehicle_id>/documents', methods=['POST'])
+    @app.route('/vehicles/<int:vehicle_id>/documents/<int:document_id>', methods=['POST'])
+    @login_required
+    def vehicle_document(vehicle_id, document_id=None):
+        service.require_enabled()
+        _attempt(lambda: documents.save_document(current_user, vehicle_id, request.form, document_id))
+        return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='documents'))
 
     @app.route('/vehicles/<int:vehicle_id>/maintenance', methods=['POST'])
     @login_required
