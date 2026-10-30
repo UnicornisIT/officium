@@ -11,7 +11,15 @@ const dateInMoscow = () => {
 };
 const cents = text => Math.round(Number(text.replace(/[^\d,.-]/g, '').replace(',', '.')) * 100);
 const saveVehicle = async page => {
-  await page.getByRole('button', { name: 'Сохранить автомобиль', exact: true }).click();
+  const submit = page.getByRole('button', { name: 'Сохранить автомобиль', exact: true });
+  expect(await submit.evaluate(button => button.form.reportValidity())).toBe(true);
+  const action = await submit.evaluate(button => button.form.action || location.href);
+  await submit.focus();
+  const [saved] = await Promise.all([
+    page.waitForResponse(response => response.request().method() === 'POST' && response.url() === action),
+    submit.press('Enter'),
+  ]);
+  expect(saved.status()).toBe(302);
   await expect(page).toHaveURL(/\/vehicles\/\d+$/);
   return new URL(page.url()).pathname;
 };

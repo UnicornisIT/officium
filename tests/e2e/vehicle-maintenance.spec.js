@@ -8,6 +8,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({width, height: 1000});
     await page.addInitScript(t => localStorage.setItem('officiumTheme', t), theme);
     if (width === 390) await page.route('https://telegram.org/js/telegram-web-app.js', route => route.fulfill({contentType:'application/javascript', body:`const noop=()=>{};window.Telegram={WebApp:{initData:'e2e',initDataUnsafe:{user:{id:1}},platform:'android',version:'8.0',colorScheme:'${theme}',themeParams:{},viewportHeight:innerHeight,viewportStableHeight:innerHeight,ready:noop,expand:noop,onEvent:noop,offEvent:noop,setHeaderColor:noop,setBackgroundColor:noop,setBottomBarColor:noop,BackButton:{show:noop,hide:noop,onClick:noop},HapticFeedback:{impactOccurred:noop}}};`}));
+    if (width !== 390) await page.route('https://telegram.org/js/telegram-web-app.js', route => route.fulfill({contentType:'application/javascript',body:''}));
     await page.goto('/dev-login/user');
     if (width === 390) await page.goto('/telegram-app');
     await page.goto('/vehicles/new');
@@ -98,10 +99,17 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     const template = page.locator(`form[action="/admin/consumable-templates/${templateId}"]`);
     await template.locator('..').locator('summary').click();
     await template.getByLabel('Интервал, км', {exact:true}).fill('20000');
-    await Promise.all([
-      page.waitForNavigation({waitUntil:'domcontentloaded'}),
-      template.getByRole('button', {name:'Сохранить шаблон'}).click(),
+    expect(await template.evaluate(form => form.reportValidity())).toBe(true);
+    const saveTemplate = template.getByRole('button', {name:'Сохранить шаблон'});
+    await saveTemplate.focus();
+    const [saved] = await Promise.all([
+      page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === `/admin/consumable-templates/${templateId}`),
+      saveTemplate.press('Enter'),
     ]);
+    expect(saved.status()).toBe(302);
+    await page.goto('/admin/consumable-templates', {waitUntil:'domcontentloaded'});
+    await template.locator('..').locator('summary').click();
+    await expect(template.getByLabel('Интервал, км', {exact:true})).toHaveValue('20 000');
     await capture('admin-templates');
     await page.goto('/dev-login/user');
     await page.goto(`/vehicles/${id}?tab=maintenance`);
