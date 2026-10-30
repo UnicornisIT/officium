@@ -61,29 +61,29 @@ DEFS = '''<defs>
 
 
 def sedan():
-    """Long low bonnet, rearward cabin and short upright boot identify direction."""
-    body = ('M22 117L27 96Q29 91 45 89L132 81L163 48Q168 43 178 43'
-            'H233Q241 43 248 51L273 80L317 82Q327 83 329 94L332 122'
-            'H307Q304 96 282 96Q260 96 257 123H114Q111 96 89 96'
-            'Q66 96 64 123H28Z')
-    result = '<ellipse cx="180" cy="143" rx="158" ry="8" fill="url(#shadow)"/>'
-    result += '<path d="M35 113H325V130H35Z" fill="#111b29"/>' + paint(body)
-    result += window('M142 78L173 50H202V78Z')
-    result += window('M211 50H234L260 78H211Z')
-    result += '''<path d="M174 51L146 77H159L186 51Z" fill="#e7f4ff" fill-opacity=".2"/>
-      <path d="M35 92L133 84M275 82H317" fill="none" stroke="#e2edf9" stroke-opacity=".6" stroke-width="1.3"/>
-      <path d="M136 84L140 116M207 48V116M264 83L255 116" fill="none" stroke="#182433" stroke-opacity=".7" stroke-width="1"/>
-      <path d="M146 85H257M144 116H251" stroke="#ecf3fa" stroke-opacity=".3" fill="none"/>
-      <path d="M183 87H195M240 87H251" stroke="url(#metal)" stroke-width="2" stroke-linecap="round"/>
-      <path d="M143 79L135 73H126L124 80L141 84Z" fill="currentColor" stroke="#7b8b9d" stroke-width=".8"/>
-      <path d="M28 101L40 99L37 114H24Z" fill="#101924" stroke="#728193" stroke-width=".7"/>
-      <path d="M28 104L37 103M27 108L36 107M26 112L35 111" stroke="#8a98a7" stroke-width=".8"/>
-      <path d="M26 118H59M309 119H330" stroke="#617082" stroke-width="2"/>
-      <path d="M38 95L62 92L58 99L36 101Z" fill="#deedf7" stroke="#7e94a8" stroke-width=".6"/>
-      <path d="M320 86L327 90L329 100L320 98Z" fill="#a62335"/>
-      <path d="M307 110H328M121 123H250" stroke="#101a28" stroke-width="3"/>
+    """Balanced three-box sedan: distinct bonnet, central cabin and separate boot."""
+    body = ('M30 117L34 96Q36 90 51 88L108 82L138 48Q144 42 154 42'
+            'H217Q224 42 232 50L262 82L307 86Q317 89 319 100L322 122'
+            'H289Q286 96 264 96Q242 96 239 123H114Q111 96 89 96'
+            'Q66 96 64 123H35Z')
+    result = '<ellipse cx="176" cy="143" rx="150" ry="8" fill="url(#shadow)"/>'
+    result += '<path d="M40 113H316V130H40Z" fill="#111b29"/>' + paint(body)
+    result += window('M118 79L145 50H179V79Z')
+    result += window('M188 50H216L248 79H188Z')
+    result += '''<path d="M146 51L121 77H133L157 51Z" fill="#e7f4ff" fill-opacity=".2"/>
+      <path d="M42 92L108 85M265 84L307 88" fill="none" stroke="#e2edf9" stroke-opacity=".6" stroke-width="1.3"/>
+      <path d="M112 84L122 116M183 47V116M252 84L237 116" fill="none" stroke="#182433" stroke-opacity=".7" stroke-width="1"/>
+      <path d="M124 85H246M126 116H235" stroke="#ecf3fa" stroke-opacity=".3" fill="none"/>
+      <path d="M163 87H175M219 87H231" stroke="url(#metal)" stroke-width="2" stroke-linecap="round"/>
+      <path d="M120 80L112 74H104L102 81L118 84Z" fill="currentColor" stroke="#7b8b9d" stroke-width=".8"/>
+      <path d="M35 102L46 100L43 114H32Z" fill="#101924" stroke="#728193" stroke-width=".7"/>
+      <path d="M35 105L43 104M34 109L42 108M33 113L41 112" stroke="#8a98a7" stroke-width=".8"/>
+      <path d="M33 118H59M293 119H319" stroke="#617082" stroke-width="2"/>
+      <path d="M43 96L65 93L62 100L40 102Z" fill="#deedf7" stroke="#7e94a8" stroke-width=".6"/>
+      <path d="M309 89L316 93L318 102L309 100Z" fill="#a62335"/>
+      <path d="M293 110H317M126 123H232" stroke="#101a28" stroke-width="3"/>
     '''
-    return result + wheel(89) + wheel(282)
+    return result + wheel(89) + wheel(264)
 
 
 def passenger(kind):
