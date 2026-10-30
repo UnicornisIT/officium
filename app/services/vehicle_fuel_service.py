@@ -82,7 +82,10 @@ def record_refueling(user, vehicle_id, data, *, refueling_id=None):
                     raise ValueError('Перед сменой плательщика снимите отметки оплаты и возмещения.')
                 row.expense_id = row.vehicle_cost_id = None
                 db.session.flush()
-                db.session.delete(old_spend)
+                if isinstance(old_spend, Expense):
+                    expense_service.delete_expense(user_id=user.id, expense_id=old_spend.id, commit=False)
+                else:
+                    db.session.delete(old_spend)
             spend = costs.create_vehicle_spend(user, vehicle, payer, amount=total, cost_date=day.isoformat(), kind='fuel', title=title, comment=comment, commit=False)
             row.expense_id = spend.id if isinstance(spend, Expense) else None
             row.vehicle_cost_id = spend.id if isinstance(spend, VehicleCost) else None
