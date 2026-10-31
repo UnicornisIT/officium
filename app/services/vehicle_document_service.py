@@ -1,8 +1,7 @@
 """Owner-scoped vehicle documents and expiry dates."""
 from datetime import date, timedelta
-from flask import abort
-from app.models import Expense, Vehicle, VehicleDocument
-from app.services import vehicle_service as vehicles, vehicle_cost_service as costs
+from app.models import Expense, Vehicle, VehicleDocument, VehicleCost
+from app.services import vehicle_service as vehicles, vehicle_cost_service as costs, expense_service
 from app.utils import parse_date, parse_decimal, record_activity
 from extensions import db
 
@@ -31,6 +30,33 @@ def expiring_soon(user, days=14):
     return VehicleDocument.query.join(Vehicle).filter(Vehicle.user_id == user.id, Vehicle.archived_at.is_(None), VehicleDocument.expires_at.between(day, day + timedelta(days=days))).order_by(VehicleDocument.expires_at, VehicleDocument.id).all()
 
 
+def _linked_amount(user, vehicle, row, amount, action):
+    if action not in ('', 'update', 'keep'):
+        raise ValueError('Выберите действие для связанной траты.')
+    if not (row.expense_id or row.vehicle_cost_id):
+        return
+    if row.expense_id and row.vehicle_cost_id:
+        raise ValueError('Проверьте привязку траты к документу.')
+    model, spend_id = (Expense, row.expense_id) if row.expense_id else (VehicleCost, row.vehicle_cost_id)
+    spend = model.query.filter_by(id=spend_id, user_id=user.id, vehicle_id=vehicle.id).with_for_update().first_or_404()
+    if amount == spend.amount or action == 'keep':
+        return
+    if not action:
+        raise ValueError('Сумма отличается от связанной траты. Выберите: обновить трату или оставить её сумму прежней.')
+    if amount is None:
+        raise ValueError('Укажите положительную сумму для обновления связанной траты.')
+    if isinstance(spend, Expense):
+        if spend.is_monthly:
+            raise ValueError('Ежемесячную трату измените в разделе расходов или выберите «Оставить сумму траты прежней».')
+        expense_service.update_expense(user_id=user.id, expense_id=spend.id,
+            amount=str(amount), category=spend.category, title=spend.title,
+            expense_date=spend.expense_date.isoformat(), payment_method=spend.payment_method,
+            comment=spend.comment, commit=False)
+    else:
+        spend.amount = amount
+        record_activity('vehicle_cost_update', user, entity_type='vehicle_cost', entity_id=spend.id, commit=False)
+
+
 def save_document(user, vehicle_id, data, document_id=None):
     try:
         vehicle = vehicles.get_vehicle_for_user(user, vehicle_id, for_update=True)
@@ -52,6 +78,7 @@ def save_document(user, vehicle_id, data, document_id=None):
         amount = parse_decimal(data.get('amount'), 'Сумма', required=False)
         if amount is not None and amount <= 0:
             raise ValueError('Сумма должна быть положительной.')
+        _linked_amount(user, vehicle, row, amount, data.get('linked_amount_action', ''))
         row.kind, row.title, row.comment = kind, title, comment
         row.issued_date, row.expires_at, row.amount = issued, expires, amount
         db.session.add(row)

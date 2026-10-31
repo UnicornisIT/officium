@@ -64,13 +64,15 @@ def init_app(app):
 
     @app.route('/vehicles/<int:vehicle_id>')
     @login_required
-    def vehicle_detail(vehicle_id):
+    def vehicle_detail(vehicle_id, *, document_form=None, error_document_id=None):
         vehicle = service.get_vehicle_for_user(current_user, vehicle_id)
         fuel_detail = _attempt(lambda: fuel.detail(vehicle, request.args.get('date_from'), request.args.get('date_to')))
         if fuel_detail is None:
             return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='fuel'))
         return render_template('vehicles/detail.html', vehicle=vehicle, mileage=service.current_mileage(vehicle),
             documents=documents.documents_for(vehicle), document_kinds=documents.KINDS,
+            document_form=document_form, error_document_id=error_document_id,
+            vehicle_tab='documents' if document_form is not None else request.args.get('tab', 'overview'),
             expenses=service.vehicle_expenses(current_user, vehicle_id), today=service.today(),
             report=costs.vehicle_report(current_user, vehicle_ids=[vehicle_id]),
             organization_costs=costs.vehicle_cost_rows(current_user, vehicle_id) if request.args.get('tab') == 'expenses' else [], cost_kinds=costs.KINDS,
@@ -97,7 +99,11 @@ def init_app(app):
     @login_required
     def vehicle_document(vehicle_id, document_id=None):
         service.require_enabled()
-        _attempt(lambda: documents.save_document(current_user, vehicle_id, request.form, document_id))
+        result = _attempt(lambda: documents.save_document(current_user, vehicle_id, request.form, document_id))
+        if result is None:
+            return vehicle_detail(vehicle_id, document_form=request.form, error_document_id=document_id), 422
+        if request.form.get('linked_amount_action') == 'keep':
+            flash('Документ сохранён. Сумма связанной траты оставлена прежней.', 'success')
         return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='documents'))
 
     @app.route('/vehicles/<int:vehicle_id>/maintenance', methods=['POST'])

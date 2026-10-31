@@ -14,7 +14,7 @@
 {% if vehicle.trailers %}<h3 class="h6 mt-3">Прицепы</h3>{% for trailer in vehicle.trailers %}<div class="vehicle-trailer">{{ visual(trailer) }}<a class="text-decoration-none btn btn-outline-primary vehicle-button vehicle-related-link" href="{{ url_for('vehicle_detail',vehicle_id=trailer.id) }}">{{ trailer.name }}</a></div>{% endfor %}{% endif %}
 </section>
 <section class="card p-4">
-{% set tab=request.args.get('tab','overview') %}<nav class="nav nav-pills gap-1 mb-4" aria-label="Вкладки автомобиля">{% for key,label in [('overview','Обзор'),('expenses','Расходы'),('mileage','Пробег'),('fuel','Заправки'),('maintenance','Обслуживание'),('defects','Неисправности'),('documents','Документы')] %}{% if key not in ('mileage','fuel') or vehicle.kind!='trailer' %}<a class="text-decoration-none nav-link {% if tab==key %}active{% endif %}" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab=key) }}">{{ label }}</a>{% endif %}{% endfor %}</nav>
+{% set tab=vehicle_tab|default(request.args.get('tab','overview')) %}<nav class="nav nav-pills gap-1 mb-4" aria-label="Вкладки автомобиля">{% for key,label in [('overview','Обзор'),('expenses','Расходы'),('mileage','Пробег'),('fuel','Заправки'),('maintenance','Обслуживание'),('defects','Неисправности'),('documents','Документы')] %}{% if key not in ('mileage','fuel') or vehicle.kind!='trailer' %}<a class="text-decoration-none nav-link {% if tab==key %}active{% endif %}" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab=key) }}">{{ label }}</a>{% endif %}{% endfor %}</nav>
 {% if tab=='fuel' and vehicle.kind!='trailer' %}{% include 'vehicles/_fuel.html' %}
 {% elif tab=='maintenance' %}{% include 'vehicles/_maintenance.html' %}
 {% elif tab=='documents' %}{% include 'vehicles/_documents.html' %}

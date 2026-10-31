@@ -1,23 +1,32 @@
-{% macro document_form(doc=none) %}
+{% macro render_document_form(doc=none) %}
+{% set retry = document_form is not none and error_document_id == (doc.id if doc else none) %}
+{% set values = document_form if retry else dict(kind=doc.kind, title=doc.title or '', issued_date=doc.issued_date or '', expires_at=doc.expires_at or '', amount=doc.amount or '', comment=doc.comment or '') if doc else {} %}
 <form method="post" action="{{ url_for('vehicle_document',vehicle_id=vehicle.id,document_id=doc.id) if doc else url_for('vehicle_document',vehicle_id=vehicle.id) }}" class="vehicle-document-form mt-3">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<label>Тип документа<select class="form-select" name="kind" required>{% for key,label in document_kinds.items() %}<option value="{{ key }}" {% if doc and doc.kind==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-<label>Название / серия и номер<input class="form-control" name="title" maxlength="150" value="{{ doc.title or '' if doc else '' }}"></label>
-<label>Дата выдачи<input class="form-control" type="date" name="issued_date" value="{{ doc.issued_date or '' if doc else '' }}"></label>
-<label>Дата истечения<input class="form-control" type="date" name="expires_at" value="{{ doc.expires_at or '' if doc else '' }}"><small class="text-muted">Оставьте пустой для бессрочного документа</small></label>
-<label>Сумма<input class="form-control" type="text" inputmode="decimal" data-document-amount pattern="[0-9 ]+([,.][0-9]{1,2})?" maxlength="30" name="amount" value="{{ doc.amount or '' if doc else '' }}"></label>
-<label>Комментарий<textarea class="form-control" name="comment" maxlength="2000">{{ doc.comment or '' if doc else '' }}</textarea></label>
-{% if not doc or not (doc.expense_id or doc.vehicle_cost_id) %}<label><input type="checkbox" name="create_expense"> Создать трату на страховку</label><label>Кто оплачивает<select class="form-select" name="payer"><option value="self">Самостоятельно</option>{% if vehicle.is_company %}<option value="organization">Организация</option>{% endif %}</select></label>{% endif %}
+<label>Тип документа<select class="form-select" name="kind" required>{% for key,label in document_kinds.items() %}<option value="{{ key }}" {% if values.get('kind','osago')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label>Название / серия и номер<input class="form-control" name="title" maxlength="150" value="{{ values.get('title','') }}"></label>
+<label>Дата выдачи<input class="form-control" type="date" name="issued_date" value="{{ values.get('issued_date','') }}"></label>
+<label>Дата истечения<input class="form-control" type="date" name="expires_at" value="{{ values.get('expires_at','') }}"><small class="text-muted">Оставьте пустой для бессрочного документа</small></label>
+<label>Сумма<input class="form-control" type="text" inputmode="decimal" data-document-amount pattern="[0-9 ]+([,.][0-9]{1,2})?" maxlength="30" name="amount" value="{{ values.get('amount','') }}"></label>
+<label>Комментарий<textarea class="form-control" name="comment" maxlength="2000">{{ values.get('comment','') }}</textarea></label>
+{% if not doc or not (doc.expense_id or doc.vehicle_cost_id) %}<label><input type="checkbox" name="create_expense" {% if values.get('create_expense')=='on' %}checked{% endif %}> Создать трату на страховку</label><label>Кто оплачивает<select class="form-select" name="payer"><option value="self" {% if values.get('payer',vehicle.default_payer)=='self' %}selected{% endif %}>Самостоятельно</option>{% if vehicle.is_company %}<option value="organization" {% if values.get('payer',vehicle.default_payer)=='organization' %}selected{% endif %}>Организация</option>{% endif %}</select></label>{% endif %}
+{% if doc and (doc.expense_id or doc.vehicle_cost_id) %}
+<label>При изменении суммы<select class="form-select" name="linked_amount_action">
+<option value="">Выберите действие для связанной траты</option>
+<option value="update" {% if values.get('linked_amount_action')=='update' %}selected{% endif %}>Обновить сумму связанной траты</option>
+<option value="keep" {% if values.get('linked_amount_action')=='keep' %}selected{% endif %}>Оставить сумму траты прежней</option>
+</select><small class="text-muted">Если суммы отличаются, укажите, нужно ли изменить трату. Дата и другие поля траты сохранятся.</small></label>
+{% endif %}
 <button class="btn btn-primary">Сохранить документ</button>
 </form>
 {% endmacro %}
 <h2 class="h5">Документы автомобиля</h2>
-{% if not vehicle.archived_at %}<details class="mb-3"><summary class="btn btn-outline-primary">Добавить документ</summary>{{ document_form() }}</details>{% endif %}
+{% if not vehicle.archived_at %}<details class="mb-3" {% if document_form is not none and error_document_id is none %}open{% endif %}><summary class="btn btn-outline-primary">Добавить документ</summary>{{ render_document_form() }}</details>{% endif %}
 {% for doc,state in documents %}<article class="vehicle-document-card p-3 mb-3">
 <h3 class="h5"><i class="bi bi-file-earmark-text" aria-hidden="true"></i> {{ document_kinds[doc.kind] }}</h3>
 <p class="text-break">{{ doc.title or '' }}</p><span class="badge bg-{{ state.color }}">{{ state.label }}</span>
 <dl class="vehicle-facts mt-3"><dt>Дата выдачи</dt><dd>{{ doc.issued_date.strftime('%d.%m.%Y') if doc.issued_date else 'Не указана' }}</dd><dt>Дата истечения</dt><dd>{{ doc.expires_at.strftime('%d.%m.%Y') if doc.expires_at else 'Бессрочный' }}</dd>{% if state.remaining_days is not none %}<dt>Осталось дней</dt><dd>{{ state.remaining_days }}</dd>{% endif %}{% if doc.amount %}<dt>Сумма</dt><dd>{{ doc.amount|money }}</dd>{% endif %}</dl>
 <p class="text-break">{{ doc.comment or '' }}</p>
-{% if doc.amount and doc.expense_id %}<a href="{{ url_for('edit_expense',expense_id=doc.expense_id) }}">Связанная трата</a>{% elif doc.amount and doc.vehicle_cost_id %}<a href="{{ url_for('vehicle_cost_detail',cost_id=doc.vehicle_cost_id) }}">Связанная трата</a>{% endif %}
-{% if not vehicle.archived_at %}<details class="mt-3"><summary class="btn btn-outline-secondary">Редактировать документ</summary>{{ document_form(doc) }}</details>{% endif %}
+{% if doc.expense_id %}<a href="{{ url_for('edit_expense',expense_id=doc.expense_id) }}">Связанная трата</a>{% elif doc.vehicle_cost_id %}<a href="{{ url_for('vehicle_cost_detail',cost_id=doc.vehicle_cost_id) }}">Связанная трата</a>{% endif %}
+{% if not vehicle.archived_at %}<details class="mt-3" {% if document_form is not none and error_document_id==doc.id %}open{% endif %}><summary class="btn btn-outline-secondary">Редактировать документ</summary>{{ render_document_form(doc) }}</details>{% endif %}
 </article>{% else %}<p class="text-muted">Документов пока нет.</p>{% endfor %}

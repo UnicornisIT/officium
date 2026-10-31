@@ -106,3 +106,110 @@ class VehicleDocumentTests(test_vehicle_service.VehicleServiceTestCase):
             self.save(vehicle, kind='kasko', amount='', create_expense='on')
         self.assertEqual(VehicleDocument.query.count(), 1)
         self.assertEqual(Expense.query.count(), 0)
+
+    def test_create_error_preserves_form_without_saving(self):
+        vehicle = self.vehicle(is_company=True)
+        self.login()
+        response = self.client.post(f'/vehicles/{vehicle.id}/documents', data=dict(
+            kind='kasko', title='Попытка <b>правки</b>', issued_date='2026-05-02',
+            expires_at='2026-05-01', amount='2 500,75', comment='Не потерять',
+            create_expense='on', payer='organization'))
+        self.assertEqual(response.status_code, 422)
+        html = response.get_data(as_text=True)
+        for value in ['value="Попытка &lt;b&gt;правки&lt;/b&gt;"', 'value="2026-05-02"',
+                      'value="2026-05-01"', 'value="2 500,75"', 'Не потерять',
+                      '<option value="kasko" selected>', '<option value="organization" selected>',
+                      'name="create_expense" checked', '<details class="mb-3" open>']:
+            self.assertIn(value, html)
+        self.assertEqual(VehicleDocument.query.count(), 0)
+        self.assertEqual(VehicleCost.query.count(), 0)
+
+    def test_edit_error_preserves_attempt_and_saved_record(self):
+        vehicle = self.vehicle()
+        row = self.save(vehicle, title='Исходное название')
+        self.login()
+        response = self.client.post(f'/vehicles/{vehicle.id}/documents/{row.id}', data=dict(
+            kind='osago', title='Новое название', issued_date='2026-05-02', expires_at='2026-05-01', amount='7500'))
+        self.assertEqual(response.status_code, 422)
+        html = response.get_data(as_text=True)
+        self.assertIn('value="Новое название"', html)
+        self.assertIn('<details class="mt-3" open>', html)
+        self.assertEqual(row.title, 'Исходное название')
+        self.assertEqual(str(row.amount), '15000.00')
+
+    def test_linked_amount_requires_choice_and_updates_both_payers(self):
+        from decimal import Decimal
+        for payer in ['self', 'organization']:
+            vehicle = vehicles.create_vehicle(self.owner, dict(name='Согласование '+payer, is_company=True))
+            row = self.save(vehicle, create_expense='on', payer=payer)
+            model, spend_id = (Expense, row.expense_id) if payer == 'self' else (VehicleCost, row.vehicle_cost_id)
+            spend = db.session.get(model, spend_id)
+            title, original_date = spend.title, spend.expense_date if payer == 'self' else spend.cost_date
+            data = dict(kind='osago', amount='2000')
+            with self.assertRaises(ValueError): documents.save_document(self.owner, vehicle.id, data, row.id)
+            self.assertEqual(row.amount, Decimal('15000'))
+            self.assertEqual(spend.amount, Decimal('15000'))
+            documents.save_document(self.owner, vehicle.id, data | dict(linked_amount_action='keep'), row.id)
+            self.assertEqual(row.amount, Decimal('2000'))
+            self.assertEqual(spend.amount, Decimal('15000'))
+            documents.save_document(self.owner, vehicle.id, data | dict(amount='2200,50', linked_amount_action='update'), row.id)
+            self.assertEqual(row.amount, Decimal('2200.50'))
+            self.assertEqual(spend.amount, Decimal('2200.50'))
+            self.assertEqual(spend.title, title)
+            self.assertEqual(spend.expense_date if payer == 'self' else spend.cost_date, original_date)
+            self.assertEqual(model.query.filter_by(vehicle_id=vehicle.id).count(), 1)
+            self.assertFalse(ActivityLog.query.filter_by(action='vehicle_document_save').order_by(ActivityLog.id.desc()).first().description)
+
+    def test_linked_amount_update_rolls_back_with_document(self):
+        from decimal import Decimal
+        for payer in ['self', 'organization']:
+            vehicle = vehicles.create_vehicle(self.owner, dict(name='Откат '+payer, is_company=True))
+            row = self.save(vehicle, create_expense='on', payer=payer)
+            model, spend_id = (Expense, row.expense_id) if payer == 'self' else (VehicleCost, row.vehicle_cost_id)
+            logs = ActivityLog.query.count()
+            with patch('app.services.vehicle_document_service.record_activity', side_effect=ValueError('failure')):
+                with self.assertRaises(ValueError):
+                    documents.save_document(self.owner, vehicle.id, dict(kind='osago', amount='2000', linked_amount_action='update'), row.id)
+            self.assertEqual(row.amount, Decimal('15000'))
+            self.assertEqual(db.session.get(model, spend_id).amount, Decimal('15000'))
+            self.assertEqual(ActivityLog.query.count(), logs)
+
+    def test_deleted_expense_clears_document_link(self):
+        from app.services import expense_service
+        vehicle = self.vehicle()
+        row = self.save(vehicle, create_expense='on')
+        expense_service.delete_expense(user_id=self.owner.id, expense_id=row.expense_id)
+        self.assertIsNone(row.expense_id)
+        documents.save_document(self.owner, vehicle.id, dict(kind='osago', amount='2000'), row.id)
+        self.assertEqual(Expense.query.count(), 0)
+
+    def test_linked_amount_cannot_update_another_owners_expense(self):
+        from datetime import date
+        from decimal import Decimal
+        vehicle = self.vehicle()
+        row = self.save(vehicle)
+        foreign = Expense(user_id=self.other.id, vehicle_id=vehicle.id,
+            title='Чужая трата', category='transport', amount=1000, expense_date=date(2026, 1, 15))
+        db.session.add(foreign)
+        db.session.flush()
+        row.expense_id = foreign.id
+        db.session.commit()
+        with self.assertRaises(NotFound):
+            documents.save_document(self.owner, vehicle.id, dict(kind='osago', amount='2000', linked_amount_action='update'), row.id)
+        self.assertEqual(foreign.amount, Decimal('1000'))
+        self.assertEqual(row.amount, Decimal('15000'))
+
+    def test_monthly_linked_expense_requires_separate_edit(self):
+        from decimal import Decimal
+        vehicle = self.vehicle()
+        row = self.save(vehicle, create_expense='on')
+        spend = db.session.get(Expense, row.expense_id)
+        spend.is_monthly = True
+        db.session.commit()
+        with self.assertRaisesRegex(ValueError, 'Ежемесячную'):
+            documents.save_document(self.owner, vehicle.id, dict(kind='osago', amount='2000', linked_amount_action='update'), row.id)
+        self.assertEqual(spend.amount, Decimal('15000'))
+        documents.save_document(self.owner, vehicle.id, dict(kind='osago', amount='2000', linked_amount_action='keep'), row.id)
+        self.assertEqual(row.amount, Decimal('2000'))
+        self.assertEqual(spend.amount, Decimal('15000'))
+        self.assertTrue(spend.is_monthly)
