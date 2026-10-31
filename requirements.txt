@@ -12,6 +12,6 @@ Werkzeug==3.1.9
 Authlib==1.9.1
 requests==2.33.0
 python-dateutil==2.8.2
-pypdf==6.21.2
+pypdf==6.21.4
 markdown-it-py==4.2.0
 nh3==0.3.7
