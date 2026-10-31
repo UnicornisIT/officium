@@ -40,3 +40,7 @@ node node_modules/@playwright/test/cli.js test tests/e2e/vehicle-documents.spec.
 | Chromium | [Открыть](chromium-390-light.png) | [Открыть](chromium-390-dark.png) | [Открыть](chromium-1440-light.png) | [Открыть](chromium-1440-dark.png) |
 | WebKit | [Открыть](webkit-390-light.png) | [Открыть](webkit-390-dark.png) | [Открыть](webkit-1440-light.png) | [Открыть](webkit-1440-dark.png) |
 | Firefox | [Открыть](firefox-390-light.png) | [Открыть](firefox-390-dark.png) | Не подтверждено | Не подтверждено |
+
+## Ручная проверка
+
+[Подробный протокол, исправление поля суммы и найденные недочёты](manual.md).
