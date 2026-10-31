@@ -900,3 +900,25 @@ class VehicleRefueling(db.Model):
     comment = db.Column(db.String(2000))
     created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
     vehicle = db.relationship('Vehicle', back_populates='refuelings')
+
+
+class VehicleDocument(db.Model):
+    __tablename__ = 'vehicle_documents'
+    id = db.Column(db.Integer, primary_key=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_document_vehicle', ondelete='CASCADE'), nullable=False, index=True)
+    kind = db.Column(db.String(20), nullable=False)
+    title = db.Column(db.String(150))
+    issued_date = db.Column(db.Date)
+    expires_at = db.Column(db.Date)
+    amount = db.Column(db.Numeric(12, 2))
+    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', name='fk_document_expense', ondelete='SET NULL'))
+    vehicle_cost_id = db.Column(db.Integer, db.ForeignKey('vehicle_costs.id', name='fk_document_cost', ondelete='SET NULL'))
+    comment = db.Column(db.String(2000))
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    vehicle = db.relationship('Vehicle', backref=db.backref('documents', cascade='all, delete-orphan'))
+    __table_args__ = (
+        db.UniqueConstraint('vehicle_id', 'kind', name='uq_vehicle_document_active_kind'),
+        db.CheckConstraint("kind IN ('osago','kasko','tech_inspection','pts','sts','license','other')", name='ck_vehicle_document_kind'),
+        db.CheckConstraint('expires_at IS NULL OR issued_date IS NULL OR expires_at >= issued_date', name='ck_vehicle_document_dates'),
+        db.CheckConstraint('amount IS NULL OR amount > 0', name='ck_vehicle_document_amount_positive'),
+    )

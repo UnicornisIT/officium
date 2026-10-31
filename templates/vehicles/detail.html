@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% from 'vehicles/_visual.html' import visual with context %}
 {% block title %}{{ vehicle.name }} — Автомобили{% endblock %}
-{% block content %}{% include 'vehicles/_body_symbols.html' %}
+{% block content %}<script defer src="{{ url_for('static', filename='js/vehicle-document-amount.js', v='1') }}"></script>{% include 'vehicles/_body_symbols.html' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='maintenance-motion-3') }}">
 <a class="text-decoration-none btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
 <div class="d-flex flex-wrap justify-content-between gap-3 mt-3"><h1 class="page-title">{{ vehicle.name }}</h1>{% if not vehicle.archived_at %}<a class="text-decoration-none btn btn-outline-primary align-self-start" href="{{ url_for('edit_vehicle',vehicle_id=vehicle.id) }}">Редактировать</a>{% endif %}</div>
@@ -14,9 +14,10 @@
 {% if vehicle.trailers %}<h3 class="h6 mt-3">Прицепы</h3>{% for trailer in vehicle.trailers %}<div class="vehicle-trailer">{{ visual(trailer) }}<a class="text-decoration-none btn btn-outline-primary vehicle-button vehicle-related-link" href="{{ url_for('vehicle_detail',vehicle_id=trailer.id) }}">{{ trailer.name }}</a></div>{% endfor %}{% endif %}
 </section>
 <section class="card p-4">
-{% set tab=request.args.get('tab','overview') %}<nav class="nav nav-pills gap-1 mb-4" aria-label="Вкладки автомобиля">{% for key,label in [('overview','Обзор'),('expenses','Расходы'),('mileage','Пробег'),('fuel','Заправки'),('maintenance','Обслуживание'),('defects','Неисправности')] %}{% if key not in ('mileage','fuel') or vehicle.kind!='trailer' %}<a class="text-decoration-none nav-link {% if tab==key %}active{% endif %}" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab=key) }}">{{ label }}</a>{% endif %}{% endfor %}</nav>
+{% set tab=vehicle_tab|default(request.args.get('tab','overview')) %}<nav class="nav nav-pills gap-1 mb-4" aria-label="Вкладки автомобиля">{% for key,label in [('overview','Обзор'),('expenses','Расходы'),('mileage','Пробег'),('fuel','Заправки'),('maintenance','Обслуживание'),('defects','Неисправности'),('documents','Документы')] %}{% if key not in ('mileage','fuel') or vehicle.kind!='trailer' %}<a class="text-decoration-none nav-link {% if tab==key %}active{% endif %}" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab=key) }}">{{ label }}</a>{% endif %}{% endfor %}</nav>
 {% if tab=='fuel' and vehicle.kind!='trailer' %}{% include 'vehicles/_fuel.html' %}
 {% elif tab=='maintenance' %}{% include 'vehicles/_maintenance.html' %}
+{% elif tab=='documents' %}{% include 'vehicles/_documents.html' %}
 {% elif tab=='defects' %}{% include 'vehicles/_defects.html' %}
 {% elif tab=='mileage' and vehicle.kind!='trailer' %}
 <h2 class="h5">История пробега</h2>
@@ -25,6 +26,7 @@
 {% else %}
 {% if tab=='overview' and vehicle.kind!='trailer' %}<p class="text-muted mb-1">Текущий пробег</p><p class="display-6">{{ mileage|distance }} <small class="h5">км</small></p>{% endif %}
 {% if tab=='overview' and vehicle.kind!='trailer' %}<article class="vehicle-maintenance-card p-3 mb-3"><h2 class="h5">Топливо</h2><p>Средний расход за последние 5 заправок: {{ fuel_recent.avg_consumption if fuel_recent.avg_consumption is not none else '—' }} л/100 км</p><p class="mb-0">За месяц: {{ fuel_month.total_amount|money }}</p></article>{% endif %}
+{% if tab=='overview' and documents and documents[0][0].expires_at %}{% set doc,state=documents[0] %}<article class="vehicle-document-card p-3 mb-3"><h2 class="h5">Ближайший срок документа</h2><a href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab='documents') }}">{{ document_kinds[doc.kind] }}</a> · {{ doc.expires_at.strftime('%d.%m.%Y') }} <span class="badge bg-{{ state.color }}">{{ state.label }}</span></article>{% endif %}
 <h2 class="h5">{{ 'Последние расходы' if tab=='overview' else 'Расходы на автомобиль' }}</h2>
 {% if tab=='expenses' %}<p class="mt-3">Текущий месяц: свои {{ report.totals.self|money }}, организация {{ report.totals.organization|money }}, всего {{ report.totals.total|money }}</p>{% endif %}
 {% if not vehicle.archived_at and vehicle.status=='active' %}<a class="text-decoration-none btn btn-primary my-3" href="{{ url_for('vehicle_expense',vehicle_id=vehicle.id) }}">Добавить расход на авто</a>{% endif %}

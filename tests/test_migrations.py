@@ -94,7 +94,8 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20261028_vehicle_cost_details'], '20261028_vehicle_costs')
         self.assertEqual(revisions['20261029_vehicle_maintenance'], '20261028_vehicle_cost_details')
         self.assertEqual(revisions['20261029_vehicle_fuel'], '20261029_vehicle_maintenance')
-        self.assertEqual(heads, {'20261029_vehicle_fuel'})
+        self.assertEqual(revisions['20261105_vehicle_documents'], '20261029_vehicle_fuel')
+        self.assertEqual(heads, {'20261105_vehicle_documents'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))

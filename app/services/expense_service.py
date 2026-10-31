@@ -9,7 +9,7 @@ for future integrations and rejected until explicitly supported.
 
 import uuid
 
-from app.models import Expense, User, Vehicle, VehicleRefueling, VehicleServiceRecord
+from app.models import Expense, User, Vehicle, VehicleRefueling, VehicleServiceRecord, VehicleDocument
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
     generate_monthly_expenses_from_start_date,
@@ -169,7 +169,7 @@ def delete_expense(*, user_id, expense_id, commit=True, **extra_fields):
     )
     # SQLite may run without FK enforcement. Match ON DELETE SET NULL before
     # the numeric expense ID can be reused by an unrelated financial record.
-    for model in (VehicleRefueling, VehicleServiceRecord):
+    for model in (VehicleRefueling, VehicleServiceRecord, VehicleDocument):
         model.query.filter_by(expense_id=expense.id).update(
             {model.expense_id: None}, synchronize_session='fetch',
         )
