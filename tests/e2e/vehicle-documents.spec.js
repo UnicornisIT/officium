@@ -19,6 +19,8 @@ for(const width of [390,1440]) for(const theme of ['light','dark']) {
   await form.locator('[name=issued_date]').fill('2025-01-01');
   await form.locator('[name=expires_at]').fill('2026-01-01');
   await form.locator('[name=amount]').fill('15000');
+  await form.locator('[name=amount]').press('Tab');
+  await expect(form.locator('[name=amount]')).toHaveValue('15 000,00');
   await form.getByRole('button',{name:'Сохранить документ'}).click({noWaitAfter:true});
   await expect(page.locator('.vehicle-document-card')).toContainText('Тестовый полис');
   await expect(page.locator('.vehicle-document-card .badge')).toHaveText('Просрочено');

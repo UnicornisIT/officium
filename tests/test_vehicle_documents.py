@@ -78,3 +78,31 @@ class VehicleDocumentTests(test_vehicle_service.VehicleServiceTestCase):
         self.assertEqual(documents.expiring_soon(self.other),[])
         self.login()
         self.assertIn(vehicle.name.encode(), self.client.get('/vehicles?attention=1').data)
+
+    def test_expiring_query_boundaries_and_archive(self):
+        vehicle = self.vehicle()
+        day = vehicles.today()
+        rows = [self.save(vehicle, kind=kind, issued_date='', expires_at=(day+timedelta(days=days)).isoformat())
+                for kind, days in [('osago', 0), ('kasko', 14), ('sts', 15), ('license', -1)]]
+        self.assertEqual([row.id for row in documents.expiring_soon(self.owner)], [rows[0].id, rows[1].id])
+        vehicles.archive_vehicle(self.owner, vehicle.id, 'sold')
+        self.assertEqual(documents.expiring_soon(self.owner), [])
+
+    def test_edit_document_from_another_vehicle_is_not_found(self):
+        first = self.vehicle()
+        second = vehicles.create_vehicle(self.owner, dict(name='Второй автомобиль'))
+        row = self.save(first)
+        with self.assertRaises(NotFound):
+            documents.save_document(self.owner, second.id, dict(kind='pts'), row.id)
+        self.assertEqual(VehicleDocument.query.one().vehicle_id, first.id)
+        self.assertEqual(VehicleDocument.query.one().kind, 'osago')
+
+    def test_formatted_money_and_missing_spend_amount_rollback(self):
+        from decimal import Decimal
+        vehicle = self.vehicle()
+        row = self.save(vehicle, amount='15 000,50')
+        self.assertEqual(row.amount, Decimal('15000.50'))
+        with self.assertRaises(ValueError):
+            self.save(vehicle, kind='kasko', amount='', create_expense='on')
+        self.assertEqual(VehicleDocument.query.count(), 1)
+        self.assertEqual(Expense.query.count(), 0)
