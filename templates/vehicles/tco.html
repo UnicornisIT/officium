@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}Аналитика автомобилей{% endblock %}
+{% block content %}
+<a class="btn btn-outline-secondary" href="{{ url_for('vehicles') }}">Автомобили</a>
+<h1 class="page-title my-4">Аналитика автомобилей</h1>
+{% include 'vehicles/_tco.html' %}
+{% endblock %}
