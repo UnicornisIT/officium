@@ -21,10 +21,14 @@ STATUSES = dict(active='Активно', in_repair='В ремонте')
 ARCHIVE_REASONS = dict(sold='Продано', written_off='Списано', other='Другое')
 
 
-def today():
+def app_timezone():
     name = current_app.config['APP_TIMEZONE']
     zone = timezone.utc if name.upper() == 'UTC' else timezone(timedelta(hours=3)) if name == 'Europe/Moscow' else ZoneInfo(name)
-    return utc_now().astimezone(zone).date()
+    return zone
+
+
+def today():
+    return utc_now().astimezone(app_timezone()).date()
 
 
 def require_enabled():
@@ -96,7 +100,7 @@ def _values(user, data, existing=None):
         if value not in choices:
             raise ValueError('Выберите корректный тип, кузов, топливо и статус.')
         result[key] = value
-    if existing and existing.kind != result['kind'] and (existing.refuelings or existing.readings or existing.trailers or existing.maintenance_items or existing.service_records or existing.defects):
+    if existing and existing.kind != result['kind'] and (existing.costs or existing.refuelings or existing.readings or existing.trailers or existing.maintenance_items or existing.service_records or existing.defects):
         raise ValueError('Нельзя менять тип автомобиля с историей пробега, обслуживания, неисправностей или прицепами.')
     if result['kind'] == 'trailer':
         result.update(body_type='trailer', fuel_type='none')
@@ -161,7 +165,7 @@ def update_mileage_batch(user, data):
     for vehicle in vehicles:
         _writable(vehicle)
     if data.get('action') == 'snooze':
-        snooze(user, ids)
+        snooze(user, ids, days=data.get("snooze_days", 3))
     else:
         for vehicle in vehicles:
             value = data.get(f'km_{vehicle.id}', '').strip()
@@ -246,17 +250,21 @@ def needs_mileage_update(vehicle, today):
     return row is None or (today - row.reading_date).days > vehicle.mileage_reminder_days
 
 
-def due_vehicles(user):
+def due_vehicles(user, *, day=None):
     _user(user)
-    return [v for v in Vehicle.query.filter_by(user_id=user.id, archived_at=None).all() if needs_mileage_update(v, today())]
+    day = day if day is not None else today()
+    return [v for v in Vehicle.query.filter_by(user_id=user.id, archived_at=None).options(selectinload(Vehicle.readings)).all() if needs_mileage_update(v, day)]
 
 
-def snooze(user, vehicle_ids, *, commit=True):
+def snooze(user, vehicle_ids, *, days=3, commit=True):
+    days = _integer(days, 'Срок напоминания', 365)
+    if days < 1:
+        raise ValueError('Срок напоминания должен быть положительным.')
     vehicles = [get_vehicle_for_user(user, key) for key in vehicle_ids]
     for vehicle in vehicles:
         _writable(vehicle)
     for vehicle in vehicles:
-        vehicle.mileage_snooze_until = today() + timedelta(days=3)
+        vehicle.mileage_snooze_until = today() + timedelta(days=days)
         _audit(user, 'vehicle_snooze', vehicle, False)
     if commit:
         db.session.commit()

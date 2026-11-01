@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily officium vehicle reminders
+
+[Timer]
+OnCalendar=*-*-* @@VEHICLE_NOTIFICATIONS_HOUR@@:00:00 @@APP_TIMEZONE@@
+Persistent=true
+AccuracySec=1min
+Unit=officium-vehicle-notifications.service
+
+[Install]
+WantedBy=timers.target

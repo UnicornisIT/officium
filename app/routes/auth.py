@@ -162,6 +162,7 @@ def init_app(app):
             'telegram_mini_app',
             'telegram_mini_app_login',
             'telegram_webhook',
+            'vehicle_notifications_run',
             'google_login',
             'google_callback',
             'logout',

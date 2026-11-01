@@ -61,6 +61,7 @@ STATUS_LABELS = {
 }
 
 ENTITY_LABELS = {
+    'vehicle_notification': 'Напоминание об автомобиле',
     'vehicle_document': 'Документ автомобиля',
     'vehicle': 'Автомобиль',
     'vehicle_cost': 'Трата организации на автомобиль',
@@ -90,6 +91,7 @@ ENTITY_LABELS = {
 }
 
 EVENT_LABELS = {
+    'vehicle_notification_send': 'Отправка напоминания об автомобиле',
     'vehicle_create': 'Добавлен автомобиль',
     'vehicle_update': 'Изменён автомобиль',
     'vehicle_archive': 'Автомобиль перенесён в архив',

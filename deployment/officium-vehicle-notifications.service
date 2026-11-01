@@ -1,0 +1,20 @@
+[Unit]
+Description=Send officium vehicle notifications
+Documentation=file:@@APP_ROOT@@/current/docs/qa/vehicles-stage6/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@@APP_USER@@
+Group=@@APP_GROUP@@
+WorkingDirectory=@@APP_ROOT@@/current
+EnvironmentFile=@@APP_ROOT@@/shared/.env
+Environment=FLASK_APP=run.py
+ExecStart=@@VENV_DIR@@/bin/python -m flask send-vehicle-notifications
+TimeoutStartSec=15min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=@@APP_ROOT@@/shared

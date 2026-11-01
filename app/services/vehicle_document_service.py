@@ -22,11 +22,11 @@ def documents_for(vehicle, *, day=None):
     return [(doc, state(doc, day)) for doc in rows]
 
 
-def expiring_soon(user, days=14):
+def expiring_soon(user, days=14, *, day=None):
     vehicles._user(user)
     if not isinstance(days, int) or days < 0:
         raise ValueError('Укажите неотрицательное число дней.')
-    day = vehicles.today()
+    day = day if day is not None else vehicles.today()
     return VehicleDocument.query.join(Vehicle).filter(Vehicle.user_id == user.id, Vehicle.archived_at.is_(None), VehicleDocument.expires_at.between(day, day + timedelta(days=days))).order_by(VehicleDocument.expires_at, VehicleDocument.id).all()
 
 
