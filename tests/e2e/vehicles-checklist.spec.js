@@ -104,7 +104,8 @@ test('vehicle checklist: cashflow, mileage, repair, reminders, archive and owner
   await page.getByRole('button', { name: 'Обновить пробег', exact: true }).click();
   await expect(page.locator(`#km${carId}`)).toHaveCount(0);
   await expect(page.locator(`#km${secondId}`)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Напомнить через 3 дня', exact: true }).click();
+  await expect(page.getByRole('spinbutton', { name: 'Срок напоминания в днях' })).toHaveValue('3');
+  await page.getByRole('button', { name: 'Напомнить позже', exact: true }).click();
   await expect(page.locator('.mileage-reminder')).toHaveCount(0);
   await page.goto(`${car}?tab=mileage`);
   await expect(page.locator('tbody tr')).toHaveCount(3);

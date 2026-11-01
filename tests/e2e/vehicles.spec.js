@@ -134,7 +134,8 @@ for (const width of [1440, 390]) {
       await page.getByRole('button', { name: 'Восстановить автомобиль', exact: true }).click();
       await expect(page.getByRole('link', { name: 'Редактировать', exact: true })).toBeVisible();
       await page.goto('/vehicles');
-      await page.getByRole('button', { name: 'Напомнить через 3 дня', exact: true }).click();
+      await expect(page.getByRole('spinbutton', { name: 'Срок напоминания в днях' })).toHaveValue('3');
+      await page.getByRole('button', { name: 'Напомнить позже', exact: true }).click();
       await expect(page.locator('.mileage-reminder')).toHaveCount(0);
       await page.goto(tractorURL);
     });
