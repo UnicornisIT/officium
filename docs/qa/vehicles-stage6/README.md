@@ -67,3 +67,14 @@ tests/test_vehicle_notification_migration.py.
 - [ ] Профиль: 390/1440 px, обе темы.
 
 Скриншоты и успешный запуск systemd не имитируются.
+
+## Результаты 2026-11-01
+
+- [x] 7 целевых проверок: сбор/границы/приватность/архив,
+  дневная идемпотентность и ошибка API, предпочтение профиля,
+  source IP внутреннего runner, пакетная загрузка/snooze,
+  SQLite upgrade существующего пользователя + metadata check,
+  MySQL DDL и forward-only downgrade.
+- [x] bash -n deployment/install-vehicle-notifications.sh.
+- [x] git diff --check.
+- [ ] systemd-analyze недоступен на Windows (WSL не установлен).
