@@ -23,6 +23,7 @@ class User(UserMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     telegram_id = db.Column(db.BigInteger, unique=True, nullable=False)
+    vehicle_notifications_enabled = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
     username = db.Column(db.String(80), nullable=True)
     first_name = db.Column(db.String(100), nullable=True)
     last_name = db.Column(db.String(100), nullable=True)
@@ -922,3 +923,15 @@ class VehicleDocument(db.Model):
         db.CheckConstraint('expires_at IS NULL OR issued_date IS NULL OR expires_at >= issued_date', name='ck_vehicle_document_dates'),
         db.CheckConstraint('amount IS NULL OR amount > 0', name='ck_vehicle_document_amount_positive'),
     )
+
+
+class VehicleNotificationLog(db.Model):
+    __tablename__ = 'vehicle_notification_log'
+    __table_args__ = (db.UniqueConstraint('user_id', 'kind', 'payload_hash', name='uq_notification_log_day'),)
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', name='fk_notification_user', ondelete='CASCADE'), nullable=False, index=True)
+    kind = db.Column(db.String(30), nullable=False)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_notification_vehicle', ondelete='SET NULL'))
+    sent_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    payload_hash = db.Column(db.String(64), nullable=False)
+    delivered = db.Column(db.Boolean, nullable=False, default=False)

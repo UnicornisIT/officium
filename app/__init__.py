@@ -109,6 +109,8 @@ def create_app(config_overrides=None):
     goals.init_app(app)
     whats_new.init_app(app)
     vehicles.init_app(app)
+    from app.routes import vehicle_notifications
+    vehicle_notifications.init_app(app, csrf)
     _register_root_icons(app)
 
     def error_response(status_code):
@@ -324,6 +326,15 @@ def register_cli_commands(app):
             raise SystemExit(2)
         if status.level == 'warning':
             app.logger.warning(line)
+
+    @app.cli.command('send-vehicle-notifications')
+    def send_vehicle_notifications():
+        """Send daily vehicle reminders (also used by the systemd timer)."""
+        from app.services.vehicle_notification_service import send_due_notifications
+        stats = send_due_notifications()
+        click.echo(str(stats))
+        if stats['failed']:
+            raise click.ClickException('Some vehicle notifications failed')
 
     @app.cli.command('generate-monthly-expenses')
     @click.option('--user-id', type=int, default=None, help='Generate for specific user ID')

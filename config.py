@@ -16,6 +16,10 @@ def _read_version():
     return version or 'unknown'
 
 class Config:
+    VEHICLE_NOTIFICATIONS_ENABLED = os.environ.get('VEHICLE_NOTIFICATIONS_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
+    VEHICLE_NOTIFICATIONS_HOUR = int(os.environ.get('VEHICLE_NOTIFICATIONS_HOUR', '10'))
+    VEHICLE_NOTIFICATIONS_BASE_URL = os.environ.get('VEHICLE_NOTIFICATIONS_BASE_URL', '').strip()
+    OFFICIUM_PUBLIC_URL = os.environ.get('OFFICIUM_PUBLIC_URL', '').strip()
     VEHICLES_ENABLED = os.environ.get('VEHICLES_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     ENVIRONMENT = os.environ.get('OFFICIUM_ENV', 'production').strip().lower()
     SECRET_KEY = os.environ.get('SECRET_KEY', '').strip()
