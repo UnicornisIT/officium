@@ -76,6 +76,7 @@ class VehicleTCOTests(unittest.TestCase):
         self.assertEqual(self.client.get('/vehicles/tco').status_code,200)
         self.assertEqual(self.client.get(f'/vehicles/{v.id}?tab=tco').status_code,200)
         response=self.client.get('/vehicles/tco?format=csv')
+        self.assertEqual(response.headers['Content-Disposition'],'attachment; filename=vehicle-tco.csv')
         text=response.data.decode('utf-8-sig')
         self.assertIn("'=SECRET",text)
         self.assertIn('123,45',text)

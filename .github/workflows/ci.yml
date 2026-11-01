@@ -152,9 +152,13 @@ jobs:
           path: test-results/mysql-backup-restore.log
 
   browser-e2e:
-    name: Playwright Chromium Firefox WebKit
+    name: Playwright ${{ matrix.browser }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -169,14 +173,14 @@ jobs:
       - name: Install pinned Playwright and browsers
         run: |
           npm install --ignore-scripts
-          npx playwright install --with-deps chromium firefox webkit
+          npx playwright install --with-deps ${{ matrix.browser }}
       - name: Run browser geometry, accessibility, console and network checks
-        run: npm run test:e2e
+        run: npm run test:e2e -- --project=${{ matrix.browser }}
       - name: Upload Playwright evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-evidence
+          name: playwright-${{ matrix.browser }}-evidence
           path: |
             playwright-report/
             test-results/

@@ -5,7 +5,7 @@
 <label>Конец периода<input class="form-control" type="date" name="date_to" value="{{ tco.period.end }}" required></label>
 {% if vehicle is not defined %}<label>Автомобили<select multiple name="vehicle_id" class="form-select">{% for v in tco.available_vehicles %}<option value="{{ v.id }}" {% if v.id in tco.selected_ids %}selected{% endif %}>{{ v.name }}</option>{% endfor %}</select></label>{% endif %}
 <button class="btn btn-primary align-self-end">Применить</button>
-<button class="btn btn-outline-primary align-self-end" name="format" value="csv" {% if vehicle is defined %}formaction="{{ url_for('vehicle_tco',vehicle_id=vehicle.id) }}"{% endif %}>Скачать CSV</button>
+<a class="btn btn-outline-primary align-self-end text-decoration-none" download="vehicle-tco.csv" href="{{ url_for('vehicle_tco', date_from=tco.period.start, date_to=tco.period.end, vehicle_id=tco.selected_ids|list, format='csv') }}">Скачать CSV</a>
 </form>
 <div class="vehicle-tco-summary mb-4">
 <article class="card p-3"><h2 class="h6">Траты за период</h2><strong>{{ tco.totals.total|money }}</strong></article>
