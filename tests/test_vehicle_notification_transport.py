@@ -1,4 +1,5 @@
 """Offline checks exercise the real Telegram adapter down to its HTTP boundary."""
+import unittest
 from datetime import timedelta
 from unittest.mock import Mock, patch
 import requests
@@ -8,9 +9,11 @@ from app.services import vehicle_service as vehicles, vehicle_notification_servi
 from extensions import db
 
 
-class NotificationTransportTests(test_vehicle_service.VehicleServiceTestCase):
+class NotificationTransportTests(unittest.TestCase):
+    tearDown = test_vehicle_service.VehicleServiceTestCase.tearDown
+    vehicle = test_vehicle_service.VehicleServiceTestCase.vehicle
     def setUp(self):
-        super().setUp()
+        test_vehicle_service.VehicleServiceTestCase.setUp(self)
         self.app.config.update(VEHICLE_NOTIFICATIONS_ENABLED=True,
             OFFICIUM_PUBLIC_URL='https://example.test', TELEGRAM_BOT_TOKEN='offline-test-token')
         vehicle = self.vehicle()
