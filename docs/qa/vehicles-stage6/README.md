@@ -78,3 +78,9 @@ tests/test_vehicle_notification_migration.py.
 - [x] bash -n deployment/install-vehicle-notifications.sh.
 - [x] git diff --check.
 - [ ] systemd-analyze недоступен на Windows (WSL не установлен).
+
+Регрессия `unittest discover -s tests -p 'test_vehicle*.py'`: 411 проверок,
+409 прошли в общем запуске. Две найденные ошибки исправлены и повторно
+проверены отдельно: пропуск login gate для локального runner и ожидание
+нового Alembic head в тесте миграции обслуживания. Оба повторных теста OK.
+Полный повтор всех 411 проверок после этих исправлений не выполнялся.
