@@ -15,6 +15,7 @@ from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
 )
 from app.services import expense_service
+from app.services import vehicle_attachment_service as attachments
 from app.time_utils import utc_now
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS, group_entries_by_month, parse_date, parse_decimal, is_local_test_user
 from flask_login import current_user
@@ -38,13 +39,16 @@ def init_app(app):
             else:
                 try:
                     values = _expense_form_values()
+                    if request.files.get('file') and request.files['file'].filename and not values.get('vehicle_id'):
+                        raise ValueError('Для фото чека выберите автомобиль.')
                     if values.get('vehicle_id'):
                         from app.services import vehicle_service, vehicle_cost_service
                         vehicle = vehicle_service.get_vehicle_for_user(current_user, values['vehicle_id'])
-                        expense = vehicle_cost_service.create_vehicle_spend(current_user, vehicle, request.form.get('payer'),
+                        expense = attachments.save_with_upload(current_user,
+                            lambda **kw: vehicle_cost_service.create_vehicle_spend(current_user, vehicle, request.form.get('payer'),
                             amount=values['amount'], cost_date=values['expense_date'], kind=request.form.get('kind', 'other'),
                             comment=values.get('comment'), paid_by_driver=request.form.get('paid_by_driver'),
-                            title=values.get('title'), payment_method=values.get('payment_method'), is_monthly=values.get('is_monthly',False))
+                            title=values.get('title'), payment_method=values.get('payment_method'), is_monthly=values.get('is_monthly',False), **kw), request.files.get('file'), 'spend')
                         if isinstance(expense, Expense):
                             return redirect(url_for('expenses', success='Расход сохранён', month=month_key(expense.expense_date)))
                         return redirect(url_for('vehicle_reports', vehicle_id=vehicle.id))
@@ -289,9 +293,13 @@ def init_app(app):
 
         if request.method == 'POST':
             try:
-                expense = expense_service.update_expense(
-                    user_id=current_user.id, expense_id=expense_id, **_expense_form_values(),
-                )
+                values = _expense_form_values()
+                photo = request.files.get('file')
+                if photo and photo.filename and not values.get('vehicle_id', expense.vehicle_id):
+                    raise ValueError('Для фото чека выберите автомобиль.')
+                expense = attachments.save_with_upload(current_user,
+                    lambda **kw: expense_service.update_expense(user_id=current_user.id, expense_id=expense_id, **values, **kw),
+                    photo, 'expense')
                 return redirect(url_for(
                     'expenses',
                     success='Расход обновлён',

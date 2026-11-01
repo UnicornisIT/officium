@@ -2,7 +2,8 @@
 {% from '_info_hint.html' import info_hint %}
 {% block title %}Расходы — officium{% endblock %}
 
-{% block content %}
+{% from 'vehicles/_attachments.html' import gallery, assets with context %}
+{% block content %}{% if vehicles_enabled %}{{ assets() }}{% endif %}
 <div class="page-header d-flex align-items-center justify-content-between gap-3 mb-4">
     <div>
         <h1 class="page-title mb-1"><i class="bi bi-basket3 text-danger me-2"></i>Расходы{{ info_hint('Фиксируйте траты и следите за расходами по категориям.', 'hint-expenses') }}</h1>
@@ -30,10 +31,11 @@
             {% set selected_vehicle = (form_data.get('vehicle_id', edit_expense.vehicle_id if edit_expense else request.args.get('vehicle_id', '')) or '') | string %}
             {% set selected_category = form_data.get('category') if form_data else (edit_expense.category if edit_expense else ('transport' if vehicle_expense_context and selected_vehicle else '')) %}
             {% set selected_payment_method = form_data.get('payment_method') if form_data else (edit_expense.payment_method if edit_expense else '') %}
-            <form method="post" novalidate action="{{ url_for('edit_expense', expense_id=edit_expense.id) if edit_expense else url_for('expenses') }}">
+            <form method="post" enctype="multipart/form-data" novalidate action="{{ url_for('edit_expense', expense_id=edit_expense.id) if edit_expense else url_for('expenses') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if vehicle_expense_context %}
                 <input type="hidden" name="vehicle_expense_context" value="1">
+                <label class="mb-3">Фото чека (JPEG, PNG, WebP, до 5 МБ)<input class="form-control" type="file" name="file" accept="image/jpeg,image/png,image/webp"></label>
                 <div class="mb-3"><label class="form-label" for="expenseVehicle">Автомобиль</label>
                     <select id="expenseVehicle" name="vehicle_id" class="form-select" onchange="if(this.value) this.form.elements.category.value='transport'">
                         <option value="">Без автомобиля</option>
@@ -147,7 +149,7 @@
                                         <tr>
                                             <td class="history-title-cell">
                                                 <div class="history-title-wrap history-name">
-                                                    <span class="history-title-text" title="{{ expense.title|display }}">{{ expense.title|display }}</span>
+                                                    <span class="history-title-text" title="{{ expense.title|display }}">{{ expense.title|display }}</span>{% if vehicles_enabled and expense.vehicle_id and expense_receipts %}{{ gallery(expense_receipts.get(expense.id, [])) }}{% endif %}
                                                 {% if expense.is_monthly %}
                                                     <span class="monthly-lock" title="Ежемесячный расход" aria-label="Ежемесячный расход"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
                                                 {% endif %}

@@ -106,6 +106,8 @@ EVENT_LABELS = {
     'vehicle_cost_update': 'Изменена трата организации на автомобиль',
     'vehicle_tco_export': 'Выгружена аналитика стоимости владения',
     'vehicle_document_save': 'Сохранён документ автомобиля',
+    'vehicle_attachment_save': 'Сохранено вложение автомобиля',
+    'vehicle_attachment_delete': 'Удалено вложение автомобиля',
     'vehicle_defect_save': 'Сохранена неисправность',
     'consumable_template_save': 'Сохранён шаблон расходника',
     'vehicle_cost_create': 'Добавлена трата организации на автомобиль',

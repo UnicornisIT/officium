@@ -16,6 +16,9 @@ def _read_version():
     return version or 'unknown'
 
 class Config:
+    VEHICLE_UPLOAD_ROOT = os.environ.get('VEHICLE_UPLOAD_ROOT', '').strip()
+    VEHICLE_UPLOAD_USER_QUOTA_MB = int(os.environ.get('VEHICLE_UPLOAD_USER_QUOTA_MB', '50'))
+    VEHICLE_UPLOAD_VEHICLE_QUOTA_MB = int(os.environ.get('VEHICLE_UPLOAD_VEHICLE_QUOTA_MB', '20'))
     VEHICLE_NOTIFICATIONS_ENABLED = os.environ.get('VEHICLE_NOTIFICATIONS_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
     VEHICLE_NOTIFICATIONS_HOUR = int(os.environ.get('VEHICLE_NOTIFICATIONS_HOUR', '10'))
     VEHICLE_NOTIFICATIONS_BASE_URL = os.environ.get('VEHICLE_NOTIFICATIONS_BASE_URL', '').strip()

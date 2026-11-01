@@ -90,3 +90,23 @@
 details:not([open]) > .vehicle-document-form { display: none; }
 
 .vehicle-detail-grid>section{min-width:0}
+/* Private image gallery and viewer. */
+.vehicle-photo-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1rem; margin-block:1rem; }
+.vehicle-photo { margin:0; min-width:0; }
+.vehicle-photo img { display:block; width:100%; max-width:200px; height:auto; aspect-ratio:1; object-fit:cover; border-radius:.65rem; }
+.vehicle-photo figcaption { margin-block:.5rem; }
+.vehicle-photo-upload { min-width:0; }
+.vehicle-photo-upload input[type=file] { max-width:100%; }
+.photo-dragover { outline:2px dashed var(--bs-primary); outline-offset:4px; }
+.vehicle-lightbox { width:min(95vw,1200px); max-height:95dvh; padding:1rem; border:0; border-radius:.75rem; background:var(--bs-body-bg,#fff); color:var(--bs-body-color,#222); }
+.vehicle-lightbox::backdrop { background:rgb(0 0 0 / .85); }
+.vehicle-lightbox button { display:block; margin:0 0 .75rem auto; }
+.vehicle-lightbox img { display:block; max-width:100%; max-height:80dvh; margin:auto; object-fit:contain; }
+@media(max-width:700px) { .vehicle-photo-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; } .vehicle-lightbox { width:100vw; max-width:100vw; height:100dvh; max-height:100dvh; margin:0; border-radius:0; } }
+@media(max-width:320px) { .vehicle-photo-grid { grid-template-columns:1fr; } }
+
+/* Leave fixed mobile navigation clear when focusing or scrolling photo controls. */
+@media (max-width: 991.98px) {
+  .vehicle-photo-upload :is(input, button, summary),
+  .vehicle-photo :is(a, button) { scroll-margin-block: 6rem 9rem; }
+}

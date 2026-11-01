@@ -925,6 +925,33 @@ class VehicleDocument(db.Model):
     )
 
 
+class VehicleAttachment(db.Model):
+    __tablename__ = 'vehicle_attachments'
+    __table_args__ = (
+        db.CheckConstraint("kind IN ('vehicle','defect','document','expense','vehicle_cost','service_record')", name='ck_attachment_kind'),
+        db.CheckConstraint('size_bytes > 0 AND size_bytes <= 5242880', name='ck_attachment_size'),
+        db.CheckConstraint("mime_type IN ('image/jpeg','image/png','image/webp')", name='ck_attachment_mime'),
+        db.Index('ix_attachment_user_vehicle', 'user_id', 'vehicle_id'),
+        db.Index('ix_attachment_entity', 'kind', 'entity_id'),
+        db.UniqueConstraint('user_id', 'sha256', name='uq_attachment_sha256_user'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE', name='fk_attachment_user'), nullable=False, index=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', ondelete='CASCADE', name='fk_attachment_vehicle'), nullable=False)
+    kind = db.Column(db.String(30), nullable=False)
+    entity_id = db.Column(db.Integer)
+    file_path = db.Column(db.String(255), nullable=False)
+    original_name = db.Column(db.String(255))
+    mime_type = db.Column(db.String(50), nullable=False)
+    size_bytes = db.Column(db.Integer, nullable=False)
+    width = db.Column(db.Integer)
+    height = db.Column(db.Integer)
+    sha256 = db.Column(db.String(64), nullable=False)
+    caption = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    vehicle = db.relationship('Vehicle', backref=db.backref('attachments', cascade='all, delete-orphan'))
+
+
 class VehicleNotificationLog(db.Model):
     __tablename__ = 'vehicle_notification_log'
     __table_args__ = (db.UniqueConstraint('user_id', 'kind', 'payload_hash', name='uq_notification_log_day'),)

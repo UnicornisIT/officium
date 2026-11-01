@@ -26,7 +26,7 @@ def get_refueling(vehicle, refueling_id):
     return VehicleRefueling.query.filter_by(id=refueling_id, vehicle_id=vehicle.id).first_or_404()
 
 
-def record_refueling(user, vehicle_id, data, *, refueling_id=None):
+def record_refueling(user, vehicle_id, data, *, refueling_id=None, commit=True):
     try:
         vehicle = vehicles.get_vehicle_for_user(user, vehicle_id, for_update=True)
         vehicles._writable(vehicle)
@@ -96,7 +96,8 @@ def record_refueling(user, vehicle_id, data, *, refueling_id=None):
         db.session.add(row)
         db.session.flush()
         record_activity('vehicle_refueling_update' if refueling_id else 'vehicle_refueling_create', user, entity_type='vehicle_refueling', entity_id=row.id, commit=False)
-        db.session.commit()
+        if commit:
+            db.session.commit()
         return row
     except Exception:
         db.session.rollback()

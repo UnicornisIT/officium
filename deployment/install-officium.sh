@@ -92,6 +92,7 @@ configure_managed_env() {
 ensure_runtime_dirs() {
     install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$1/shared/instance"
     install -d -o "$APP_USER" -g "$APP_GROUP" -m 0700 "$1/shared/instance/bank_imports"
+    install -d -o "$APP_USER" -g "$APP_GROUP" -m 0750 "$1/shared/instance/vehicle_uploads"
 }
 # realpath -e current/.env must be the permanent shared file.
 verify_current_environment() {

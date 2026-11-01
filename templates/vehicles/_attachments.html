@@ -1,0 +1,30 @@
+{% macro gallery(rows, removable=false) %}
+<div class="vehicle-photo-grid">
+{% for photo in rows %}<figure class="vehicle-photo">
+<a href="{{ photo.original }}" data-vehicle-lightbox aria-label="Открыть фото: {{ photo.caption or 'Вложение' }}"><img src="{{ photo.thumb }}" width="200" height="200" loading="lazy" alt="{{ photo.caption or 'Вложение автомобиля' }}"></a>
+<figcaption class="text-break">{{ photo.caption or '' }}</figcaption>
+{% if removable %}<form method="post" action="{{ url_for('vehicle_attachment_delete',attachment_id=photo.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Удалить фото</button></form>{% endif %}
+</figure>{% endfor %}
+</div>
+{% endmacro %}
+
+{% macro upload(vehicle, kind='vehicle', entity_id=none, label='Загрузить фото') %}
+{% if not vehicle.archived_at %}<details class="my-3 vehicle-photo-upload"><summary class="btn btn-outline-primary">{{ label }}</summary>
+<form method="post" enctype="multipart/form-data" action="{{ url_for('vehicle_attachments',vehicle_id=vehicle.id) }}" class="d-grid gap-3 mt-3" data-photo-drop>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="kind" value="{{ kind }}">
+{% if entity_id is not none %}<input type="hidden" name="entity_id" value="{{ entity_id }}">{% endif %}
+<label>Изображение (JPEG, PNG, WebP, до 5 МБ)<input class="form-control" type="file" name="file" accept="image/jpeg,image/png,image/webp" required></label>
+<p class="text-muted mb-0">Можно перетащить изображение в эту форму.</p>
+<label>Подпись<input class="form-control" name="caption" maxlength="500"></label><button class="btn btn-primary">Сохранить фото</button>
+</form></details>{% endif %}
+{% endmacro %}
+
+{% macro entity_photos(vehicle, rows, kind, entity_id, label='Добавить фото') %}
+{{ gallery(rows|selectattr('kind','equalto',kind)|selectattr('entity_id','equalto',entity_id)|list, true) }}
+{{ upload(vehicle, kind, entity_id, label) }}
+{% endmacro %}
+
+{% macro assets() %}
+<link rel="stylesheet" href="{{ url_for('static',filename='css/vehicles.css',v='attachments-1') }}">
+<script defer src="{{ url_for('static',filename='js/vehicle-attachments.js',v='1') }}"></script>
+{% endmacro %}

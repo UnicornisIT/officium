@@ -1,11 +1,12 @@
 """Thin vehicle HTTP adapters; all ownership and validation live in services."""
-from flask import Response, abort, current_app, flash, redirect, render_template, request, url_for
+from flask import Response, abort, current_app, flash, redirect, render_template, request, url_for, jsonify, send_file
 from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import RegistrationCountry, VehicleOdometerReading, ConsumableTemplate
 from app.services import vehicle_tco_service as tco
 from app.services import vehicle_document_service as documents
+from app.services import vehicle_attachment_service as attachments
 from app.services import vehicle_fuel_service as fuel
 from app.services import vehicle_maintenance_service as maintenance
 from app.services import vehicle_service as service
@@ -26,9 +27,69 @@ def _attempt(operation):
         # Driver exception messages may include VIN, plate or vehicle name.
         current_app.logger.error('Vehicle operation failed; database details withheld')
         flash('Не удалось сохранить данные автомобиля. Повторите попытку.', 'danger')
+    except OSError:
+        db.session.rollback()
+        current_app.logger.error('Vehicle storage unavailable; details withheld')
+        flash('Хранилище изображений недоступно. Повторите попытку.', 'danger')
 
 
 def init_app(app):
+    @app.route('/vehicles/<int:vehicle_id>/attachments', methods=['GET', 'POST'])
+    @login_required
+    def vehicle_attachments(vehicle_id):
+        service.get_vehicle_for_user(current_user, vehicle_id)
+        if request.method == 'GET':
+            return jsonify(attachments.list_attachments(current_user, vehicle_id,
+                kind=request.args.get('kind'), entity_id=request.args.get('entity_id', type=int)))
+        try:
+            row = attachments.save_attachment(current_user, vehicle_id, request.files.get('file'),
+                request.form.get('kind'), request.form.get('entity_id'), request.form.get('caption'))
+        except ValueError as exc:
+            db.session.rollback()
+            if request.accept_mimetypes.best == 'application/json':
+                return jsonify(error=str(exc)), 422
+            flash(str(exc), 'danger')
+        except OSError:
+            current_app.logger.error('Vehicle attachment storage unavailable; details withheld')
+            if request.accept_mimetypes.best == 'application/json':
+                return jsonify(error='Хранилище изображений недоступно. Повторите попытку.'), 503
+            flash('Хранилище изображений недоступно. Повторите попытку.', 'danger')
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.error('Vehicle attachment database operation failed; details withheld')
+            if request.accept_mimetypes.best == 'application/json':
+                return jsonify(error='Не удалось сохранить изображение. Повторите попытку.'), 503
+            flash('Не удалось сохранить изображение. Повторите попытку.', 'danger')
+        else:
+            if request.accept_mimetypes.best == 'application/json':
+                return jsonify(attachments.serialize(row)), 201
+            if row.vehicle_id != vehicle_id:
+                flash('Это изображение уже прикреплено к другому вашему автомобилю. Открыта его галерея.', 'info')
+                return redirect(url_for('vehicle_detail', vehicle_id=row.vehicle_id, tab='photos'))
+            flash('Вложение доступно в галерее. Повторные файлы не дублируются.', 'success')
+        tabs = dict(defect='defects', document='documents', service_record='maintenance', expense='expenses', vehicle_cost='expenses')
+        return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab=tabs.get(request.form.get('kind'), 'photos')))
+
+    @app.route('/vehicles/uploads/<path:filename>')
+    @login_required
+    def vehicle_upload(filename):
+        path = attachments.resolve_upload(current_user, filename)
+        response = send_file(path, conditional=True, max_age=0)
+        response.headers['Cache-Control'] = 'private, no-store'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
+
+    @app.route('/vehicles/attachments/<int:attachment_id>', methods=['DELETE'])
+    @app.route('/vehicles/attachments/<int:attachment_id>/delete', methods=['POST'])
+    @login_required
+    def vehicle_attachment_delete(attachment_id):
+        row = attachments.get_attachment(current_user, attachment_id)
+        vehicle_id = row.vehicle_id
+        attachments.delete_attachment(current_user, attachment_id)
+        if request.method == 'DELETE':
+            return '', 204
+        return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='photos'))
+
     @app.context_processor
     def vehicle_context():
         enabled = bool(app.config.get('VEHICLES_ENABLED'))
@@ -39,6 +100,11 @@ def init_app(app):
             context['mileage_due'] = service.due_vehicles(current_user)
         if personal and request.endpoint in ('expenses', 'edit_expense'):
             context['expense_vehicles'] = service.selectable_vehicles(current_user)
+            from app.models import VehicleAttachment
+            receipt_rows = VehicleAttachment.query.filter_by(user_id=current_user.id, kind='expense').all()
+            context['expense_receipts'] = {}
+            for row in receipt_rows:
+                context['expense_receipts'].setdefault(row.entity_id, []).append(attachments.serialize(row))
         return context
 
     @app.route('/vehicles')
@@ -78,6 +144,7 @@ def init_app(app):
                 return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='tco'))
             forecast = tco.forecast_next_month(current_user, vehicle_id)
         return render_template('vehicles/detail.html', tco=tco_report, forecast=forecast, vehicle=vehicle, mileage=service.current_mileage(vehicle),
+            vehicle_attachments=attachments.list_attachments(current_user, vehicle_id),
             documents=documents.documents_for(vehicle), document_kinds=documents.KINDS,
             document_form=document_form, error_document_id=error_document_id,
             vehicle_tab='documents' if document_form is not None else request.args.get('tab', 'overview'),
@@ -96,7 +163,9 @@ def init_app(app):
             abort(404)
         row = fuel.get_refueling(vehicle, refueling_id) if refueling_id else None
         if request.method == 'POST':
-            result = _attempt(lambda: fuel.record_refueling(current_user, vehicle_id, request.form, refueling_id=refueling_id))
+            result = _attempt(lambda: attachments.save_with_upload(current_user,
+                lambda **kw: fuel.record_refueling(current_user, vehicle_id, request.form, refueling_id=refueling_id, **kw),
+                request.files.get('file'), 'refueling'))
             if result:
                 return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='fuel'))
         values = request.form if request.method == 'POST' else ({column.name: getattr(row, column.name) for column in row.__table__.columns} if row else {})
@@ -107,7 +176,8 @@ def init_app(app):
     @login_required
     def vehicle_document(vehicle_id, document_id=None):
         service.require_enabled()
-        result = _attempt(lambda: documents.save_document(current_user, vehicle_id, request.form, document_id))
+        result = _attempt(lambda: attachments.save_with_upload(current_user,
+            lambda **kw: documents.save_document(current_user, vehicle_id, request.form, document_id, **kw), request.files.get('file'), 'document'))
         if result is None:
             return vehicle_detail(vehicle_id, document_form=request.form, error_document_id=document_id), 422
         if request.form.get('linked_amount_action') == 'keep':
@@ -131,7 +201,8 @@ def init_app(app):
     def vehicle_record_service(vehicle_id):
         vehicle = service.get_vehicle_for_user(current_user, vehicle_id)
         if request.method == 'POST':
-            result = _attempt(lambda: maintenance.record_service(current_user, vehicle_id, request.form))
+            result = _attempt(lambda: attachments.save_with_upload(current_user,
+                lambda **kw: maintenance.record_service(current_user, vehicle_id, request.form, **kw), request.files.get('file'), 'service_record'))
             if result:
                 return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='maintenance'))
         return render_template('vehicles/service_form.html', vehicle=vehicle, today=service.today(), form=request.form,
@@ -140,7 +211,8 @@ def init_app(app):
     @app.route('/vehicles/<int:vehicle_id>/defects', methods=['POST'])
     @login_required
     def vehicle_defect(vehicle_id):
-        _attempt(lambda: maintenance.save_defect(current_user, vehicle_id, request.form))
+        _attempt(lambda: attachments.save_with_upload(current_user,
+            lambda **kw: maintenance.save_defect(current_user, vehicle_id, request.form, **kw), request.files.get('file'), 'defect'))
         return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='defects'))
 
     @app.route('/vehicles/<int:vehicle_id>/defects/<int:defect_id>', methods=['POST'])
@@ -215,10 +287,11 @@ def init_app(app):
     def vehicle_spend(vehicle_id):
         vehicle = service.get_vehicle_for_user(current_user, vehicle_id)
         if request.method == 'POST':
-            result = _attempt(lambda: costs.create_vehicle_spend(current_user, vehicle, request.form.get('payer'),
+            result = _attempt(lambda: attachments.save_with_upload(current_user,
+                lambda **kw: costs.create_vehicle_spend(current_user, vehicle, request.form.get('payer'),
                 amount=request.form.get('amount'), cost_date=request.form.get('cost_date'),
                 kind=request.form.get('kind'), comment=request.form.get('comment'),
-                paid_by_driver=request.form.get('paid_by_driver'), title=request.form.get('title'), payment_method=request.form.get('payment_method')))
+                paid_by_driver=request.form.get('paid_by_driver'), title=request.form.get('title'), payment_method=request.form.get('payment_method'), **kw), request.files.get('file'), 'spend'))
             if result:
                 return redirect(url_for('vehicle_reports', vehicle_id=vehicle.id))
         return render_template('vehicles/spend.html', vehicle=vehicle, kinds=costs.KINDS, today=service.today())
@@ -254,6 +327,7 @@ def init_app(app):
         cost = costs.get_cost_for_user(current_user, cost_id)
         vehicle = service.get_vehicle_for_user(current_user, cost.vehicle_id)
         return render_template('vehicles/cost_detail.html', cost=costs._cost_row(cost), vehicle=vehicle,
+            vehicle_attachments=attachments.list_attachments(current_user, vehicle.id, kind='vehicle_cost', entity_id=cost.id),
             kinds=costs.KINDS, today=service.today())
 
     @app.route('/vehicles/costs/<int:cost_id>/driver-payment', methods=['POST'])
