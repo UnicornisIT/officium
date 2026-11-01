@@ -62,6 +62,7 @@ STATUS_LABELS = {
 
 ENTITY_LABELS = {
     'vehicle_notification': 'Напоминание об автомобиле',
+    'vehicle_tco_export': 'Аналитика автомобилей',
     'vehicle_document': 'Документ автомобиля',
     'vehicle': 'Автомобиль',
     'vehicle_cost': 'Трата организации на автомобиль',
@@ -103,6 +104,7 @@ EVENT_LABELS = {
     'vehicle_refueling_update': 'Изменена заправка',
     'vehicle_service_create': 'Записано обслуживание',
     'vehicle_cost_update': 'Изменена трата организации на автомобиль',
+    'vehicle_tco_export': 'Выгружена аналитика стоимости владения',
     'vehicle_document_save': 'Сохранён документ автомобиля',
     'vehicle_defect_save': 'Сохранена неисправность',
     'consumable_template_save': 'Сохранён шаблон расходника',

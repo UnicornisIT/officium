@@ -56,3 +56,5 @@
   .spend-calendar__markers { margin-top: .35rem; }
   .spend-calendar__hint { font-size: .75rem; }
 }
+
+.vehicle-tco-filters,.vehicle-tco-summary,.vehicle-tco-charts{display:grid;gap:1rem;grid-template-columns:repeat(2,minmax(0,1fr))}.vehicle-tco-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.vehicle-tco-canvas{position:relative;height:280px;min-width:0}.vehicle-tco-charts>*,.vehicle-tco-summary>*{min-width:0}.vehicle-tco-table{min-width:900px}.vehicle-tco-charts tr:focus{outline:2px solid var(--bs-primary);outline-offset:-2px}@media(max-width:767px){.vehicle-tco-filters,.vehicle-tco-summary,.vehicle-tco-charts{grid-template-columns:minmax(0,1fr)}}

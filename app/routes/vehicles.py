@@ -4,6 +4,7 @@ from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import RegistrationCountry, VehicleOdometerReading, ConsumableTemplate
+from app.services import vehicle_tco_service as tco
 from app.services import vehicle_document_service as documents
 from app.services import vehicle_fuel_service as fuel
 from app.services import vehicle_maintenance_service as maintenance
@@ -69,7 +70,14 @@ def init_app(app):
         fuel_detail = _attempt(lambda: fuel.detail(vehicle, request.args.get('date_from'), request.args.get('date_to')))
         if fuel_detail is None:
             return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='fuel'))
-        return render_template('vehicles/detail.html', vehicle=vehicle, mileage=service.current_mileage(vehicle),
+        tco_report = None
+        forecast = None
+        if request.args.get('tab') == 'tco':
+            tco_report = _attempt(lambda: tco.compare_vehicles(current_user, [vehicle_id], request.args.get('date_from'), request.args.get('date_to')))
+            if tco_report is None:
+                return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id, tab='tco'))
+            forecast = tco.forecast_next_month(current_user, vehicle_id)
+        return render_template('vehicles/detail.html', tco=tco_report, forecast=forecast, vehicle=vehicle, mileage=service.current_mileage(vehicle),
             documents=documents.documents_for(vehicle), document_kinds=documents.KINDS,
             document_form=document_form, error_document_id=error_document_id,
             vehicle_tab='documents' if document_form is not None else request.args.get('tab', 'overview'),
@@ -214,6 +222,18 @@ def init_app(app):
             if result:
                 return redirect(url_for('vehicle_reports', vehicle_id=vehicle.id))
         return render_template('vehicles/spend.html', vehicle=vehicle, kinds=costs.KINDS, today=service.today())
+
+    @app.route('/vehicles/tco')
+    @login_required
+    def vehicle_tco():
+        service._user(current_user)
+        report = _attempt(lambda: tco.compare_vehicles(current_user, request.args.getlist('vehicle_id'), request.args.get('date_from'), request.args.get('date_to')))
+        if report is None:
+            return redirect(url_for('vehicle_tco'))
+        if request.args.get('format') == 'csv':
+            return Response(tco.report_csv(current_user, report), content_type='text/csv; charset=utf-8',
+                headers={'Content-Disposition': 'attachment; filename=vehicle-tco.csv'})
+        return render_template('vehicles/tco.html', tco=report, cost_kinds=costs.KINDS)
 
     @app.route('/vehicles/reports')
     @login_required

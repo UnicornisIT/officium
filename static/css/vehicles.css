@@ -88,3 +88,5 @@
 .vehicle-document-form .form-control, .vehicle-document-form .form-select { max-width: 100%; min-width: 0; }
 .vehicle-document-form .btn { justify-self: start; }
 details:not([open]) > .vehicle-document-form { display: none; }
+
+.vehicle-detail-grid>section{min-width:0}
