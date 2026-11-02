@@ -152,6 +152,37 @@ for (const scenario of scenarios) {
 test.describe('Telegram Mini App date field and keyboard handling', () => {
   test.use(pixel7);
 
+  test('scrolling with the keyboard open does not pull the form back to the focused field', async ({ page, browserName }) => {
+    test.skip(browserName === 'firefox', 'Firefox has no mobile emulation');
+    // iOS pans the visual viewport as the user scrolls with the keyboard open.
+    // Desktop engines do not expose this native keyboard behaviour.
+    await page.addInitScript(() => {
+      const viewport = new EventTarget();
+      viewport.height = innerHeight;
+      viewport.offsetTop = 0;
+      Object.defineProperty(window, 'visualViewport', { value: viewport });
+    });
+    await startSession(page, { miniApp: true });
+    const title = page.locator('form[action$="/expenses"] input[name="title"]');
+    await title.focus();
+    await page.evaluate(() => {
+      visualViewport.height = 400;
+      visualViewport.dispatchEvent(new Event('resize'));
+    });
+    await expect(page.locator('body')).toHaveClass(/keyboard-open/);
+    await page.waitForTimeout(500);
+    const scrollTop = await page.evaluate(() => {
+      window.scrollBy({ top: 300, behavior: 'instant' });
+      visualViewport.offsetTop = 20;
+      visualViewport.dispatchEvent(new Event('scroll'));
+      return window.scrollY;
+    });
+    expect(scrollTop).toBeGreaterThan(0);
+    await page.waitForTimeout(350);
+    expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(scrollTop, 0);
+    await expect(title).toBeFocused();
+  });
+
   test('picker focus cycle keeps the value and the submit button usable', async ({ page, browserName }) => {
     test.skip(browserName === 'firefox', 'Firefox has no mobile emulation');
     await startSession(page, { miniApp: true });

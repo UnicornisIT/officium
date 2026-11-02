@@ -360,7 +360,10 @@ function initMobileViewport() {
     };
     if (visualViewport) {
         visualViewport.addEventListener('resize', handleViewportChange);
-        visualViewport.addEventListener('scroll', handleViewportChange);
+        // iOS pans the visual viewport while scrolling with the keyboard open.
+        // Revealing the focused field here fights the user's gesture and pulls
+        // the form back on every scroll. Only a resize needs to reveal it.
+        visualViewport.addEventListener('scroll', updateViewportState);
     }
     window.addEventListener('resize', handleViewportChange);
     window.addEventListener('orientationchange', () => {
