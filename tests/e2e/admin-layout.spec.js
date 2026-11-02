@@ -77,7 +77,7 @@ test('contacts modal is keyboard reachable and validates through the real form',
   await dialog.locator('input[name="label"]').fill(label);
   await dialog.locator('input[name="address"]').fill('https://example.org/help');
   await dialog.locator('#contactIconSelect').selectOption('globe2');
-  await dialog.getByText('Footer', { exact: true }).click();
+  await dialog.getByText('Внизу страниц', { exact: true }).click();
   await dialog.locator('.admin-publish-toggle').click();
   await dialog.getByRole('button', { name: 'Сохранить', exact: true }).click();
   await expect(page.getByText(label, { exact: true })).toBeVisible();

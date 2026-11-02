@@ -197,7 +197,6 @@ def record_service(user, vehicle_id, data, *, commit=True):
             if existing:
                 if existing.odometer_km != km:
                     raise ValueError('На эту дату уже указан другой пробег.')
-                existing.source = 'service'
             else:
                 vehicles.add_odometer_reading(user, vehicle.id, day.isoformat(), km, source='service', commit=False)
         for item in items:

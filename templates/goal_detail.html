@@ -85,7 +85,7 @@
                                         data-operation-comment="{{ item.comment or '' }}">
                                     <i class="bi bi-pencil" aria-hidden="true"></i>
                                 </button>
-                                <form method="post" action="{{ url_for('delete_goal_operation', key=goal.key, transaction_id=item.id) }}" class="history-delete-form" onsubmit="return confirm('Удалить эту операцию?');">
+                                <form method="post" action="{{ url_for('delete_goal_operation', key=goal.key, transaction_id=item.id) }}" class="history-delete-form" data-ui-confirm="Удалить эту операцию?">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="history-icon-btn history-icon-btn-delete" title="Удалить" aria-label="Удалить операцию">
                                         <i class="bi bi-trash" aria-hidden="true"></i>

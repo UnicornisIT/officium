@@ -7,6 +7,37 @@ from extensions import db
 
 
 class NotificationTests(test_vehicle_service.VehicleServiceTestCase):
+    def test_admin_switch_controls_delivery_and_persists(self):
+        from app.routes.admin import SETTINGS_FIELDS, _setting_default
+        from app.utils import get_setting
+        self.vehicle()
+        self.login(self.admin)
+        self.assertIn(b'vehicle_notifications_enabled', self.client.get('/admin/settings').data)
+        form = {key: _setting_default(key) for key in SETTINGS_FIELDS}
+        form['vehicle_notifications_enabled'] = 'false'
+        self.assertEqual(self.client.post('/admin/settings', data=form).status_code, 302)
+        self.assertEqual(get_setting('vehicle_notifications_enabled'), 'false')
+        with patch.object(service.telegram, 'send_telegram_message') as sender:
+            self.assertEqual(service.send_due_notifications(), dict(sent=0, skipped=0, failed=0))
+            sender.assert_not_called()
+        self.assertEqual(self.client.post('/internal/vehicle-notifications/run').status_code, 404)
+        self.app.config['VEHICLE_NOTIFICATIONS_ENABLED'] = False
+        form['vehicle_notifications_enabled'] = 'true'
+        self.assertEqual(self.client.post('/admin/settings', data=form).status_code, 302)
+        self.assertEqual(get_setting('vehicle_notifications_enabled'), 'true')
+        with patch.object(service.telegram, 'send_telegram_message', return_value=True) as sender:
+            self.assertEqual(service.send_due_notifications()['sent'], 1)
+            sender.assert_called_once()
+
+    def test_regular_users_cannot_change_global_switch(self):
+        from app.utils import get_setting
+        for user in (self.owner, self.other):
+            self.login(user)
+            response = self.client.post('/admin/settings', data={
+                'vehicle_notifications_enabled': 'true'})
+            self.assertIn(response.status_code, (302, 403))
+            self.assertIsNone(get_setting('vehicle_notifications_enabled'))
+
     def setUp(self):
         super().setUp()
         self.app.config.update(VEHICLE_NOTIFICATIONS_ENABLED=True, OFFICIUM_PUBLIC_URL='https://example.test')

@@ -226,7 +226,8 @@ def init_app(app):
     def admin_consumable_templates():
         service.require_enabled()
         if request.method == 'POST':
-            _attempt(lambda: maintenance.save_template(current_user, request.form))
+            if _attempt(lambda: maintenance.save_template(current_user, request.form)):
+                return redirect(url_for('admin_consumable_templates'))
         return render_template('vehicles/consumable_templates.html', templates=ConsumableTemplate.query.order_by(ConsumableTemplate.template_set, ConsumableTemplate.sort_order, ConsumableTemplate.id).all())
 
     @app.route('/admin/consumable-templates/<int:template_id>', methods=['POST'])
@@ -286,6 +287,9 @@ def init_app(app):
     @login_required
     def vehicle_spend(vehicle_id):
         vehicle = service.get_vehicle_for_user(current_user, vehicle_id)
+        if request.method == 'GET' and (vehicle.archived_at or vehicle.status != 'active'):
+            flash('Траты можно добавлять только для активного автомобиля вне архива.', 'warning')
+            return redirect(url_for('vehicle_detail', vehicle_id=vehicle_id))
         if request.method == 'POST':
             result = _attempt(lambda: attachments.save_with_upload(current_user,
                 lambda **kw: costs.create_vehicle_spend(current_user, vehicle, request.form.get('payer'),

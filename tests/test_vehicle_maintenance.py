@@ -171,6 +171,22 @@ class MaintenanceTests(test_vehicle_service.VehicleServiceTestCase):
             self.assertEqual(self.client.get(path).status_code, 404)
             self.assertEqual(self.client.post(path).status_code, 404)
 
+    def test_admin_template_post_redirects_only_on_success(self):
+        self.login(self.admin)
+        path = '/admin/consumable-templates'
+        data = dict(template_set='passenger', name='Regression template',
+                    interval_km='10000', sort_order='0', is_active='on')
+        response = self.client.post(path, data=data)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.endswith(path))
+        self.assertEqual(self.client.get(response.location).status_code, 200)
+        self.assertEqual(self.client.get(response.location).status_code, 200)
+        self.assertEqual(ConsumableTemplate.query.count(), 1)
+        response = self.client.post(path, data=data | dict(template_set='invalid'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'<form', response.data)
+        self.assertEqual(ConsumableTemplate.query.count(), 1)
+
     def test_admin_privacy_and_csrf(self):
         vehicle = self.vehicle()
         item = self.item(vehicle)
@@ -202,6 +218,7 @@ class MaintenanceTests(test_vehicle_service.VehicleServiceTestCase):
         vehicles.add_odometer_reading(self.owner, v.id, '2026-03-15', '12455')
         maintenance.record_service(self.owner, v.id, self.service_data(item))
         self.assertEqual(VehicleOdometerReading.query.count(), 1)
+        self.assertEqual(VehicleOdometerReading.query.one().source, 'manual')
         with self.assertRaises(ValueError):
             maintenance.record_service(self.owner, v.id, self.service_data(odometer_km='12500'))
         with self.assertRaises(ValueError):

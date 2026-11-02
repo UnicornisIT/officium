@@ -91,8 +91,8 @@ for (const monthly of [false, true]) {
     await page.waitForURL(/month=2099-01/);
     row = page.locator('tr', { hasText: title });
     await expect(row.locator('.history-amount')).toContainText('87');
-    page.once('dialog', dialog => dialog.accept());
     await row.getByRole('button', { name: 'Удалить', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Продолжить', exact: true }).click();
     await expect(page.locator('.alert-success')).toContainText('Расход удалён');
     await expect(page.locator('tr', { hasText: title })).toHaveCount(0);
     await page.goto('/dev-login/superadmin');

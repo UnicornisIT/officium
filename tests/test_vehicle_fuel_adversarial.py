@@ -51,7 +51,7 @@ class FuelAdversarialTests(test_vehicle_service.VehicleServiceTestCase):
         self.assertEqual(VehicleOdometerReading.query.count(), 2)
         self.assertEqual((service.service_date, service.odometer_km), (date(2026, 3, 1), 1000))
         old = VehicleOdometerReading.query.filter_by(reading_date=date(2026, 3, 1)).one()
-        self.assertEqual(old.source, 'service')
+        self.assertEqual(old.source, 'fuel')
 
     def test_shared_reading_change_rolls_back(self):
         vehicle = self.vehicle()

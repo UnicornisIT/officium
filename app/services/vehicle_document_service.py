@@ -7,6 +7,8 @@ from extensions import db
 
 KINDS = dict(osago='ОСАГО', kasko='КАСКО', tech_inspection='Техосмотр', pts='ПТС/ЭПТС', sts='СТС', license='Водительское удостоверение', other='Другое')
 LABELS = dict(ok='В порядке', soon='Скоро истекает', overdue='Просрочено')
+DOCUMENT_COST_KINDS = dict(osago='insurance', kasko='insurance', tech_inspection='service',
+    pts='other', sts='other', license='other', other='other')
 COLORS = dict(ok='success', soon='warning', overdue='danger')
 
 
@@ -41,10 +43,10 @@ def _linked_amount(user, vehicle, row, amount, action):
     spend = model.query.filter_by(id=spend_id, user_id=user.id, vehicle_id=vehicle.id).with_for_update().first_or_404()
     if amount == spend.amount or action == 'keep':
         return
+    if amount is None:
+        raise ValueError('Сумма удалена: выберите "Оставить сумму траты прежней" или укажите новую сумму.')
     if not action:
         raise ValueError('Сумма отличается от связанной траты. Выберите: обновить трату или оставить её сумму прежней.')
-    if amount is None:
-        raise ValueError('Укажите положительную сумму для обновления связанной траты.')
     if isinstance(spend, Expense):
         if spend.is_monthly:
             raise ValueError('Ежемесячную трату измените в разделе расходов или выберите «Оставить сумму траты прежней».')
@@ -88,7 +90,7 @@ def save_document(user, vehicle_id, data, document_id=None, *, commit=True):
                 raise ValueError('Укажите сумму для создания траты.')
             if row.expense_id or row.vehicle_cost_id:
                 raise ValueError('Трата уже связана с документом.')
-            spend = costs.create_vehicle_spend(user, vehicle, data.get('payer'), amount=str(amount), cost_date=(issued or vehicles.today()).isoformat(), kind='insurance', commit=False)
+            spend = costs.create_vehicle_spend(user, vehicle, data.get('payer'), amount=str(amount), cost_date=(issued or vehicles.today()).isoformat(), kind=DOCUMENT_COST_KINDS[kind], commit=False)
             if isinstance(spend, Expense):
                 row.expense_id = spend.id
             else:

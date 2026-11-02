@@ -53,7 +53,7 @@
         {% for contact in contacts %}
         <article class="admin-contact-card">
             <span class="admin-contact-card__icon"><i class="bi bi-{{ contact.icon }}" aria-hidden="true"></i></span>
-            <div><strong>{{ contact.label }}</strong><small>{{ contact.address }}</small><small>{{ contact.locations|join(', ') }} · порядок {{ contact.order }}</small></div>
+            <div><strong>{{ contact.label }}</strong><small>{{ contact.address }}</small><small>{% for location in contact.locations %}{{ {'footer': 'Внизу страниц', 'login': 'Страница входа', 'help': 'Помощь', 'mini_app': 'Приложение в Telegram'}.get(location, location) }}{% if not loop.last %}, {% endif %}{% endfor %} · порядок {{ contact.order }}</small></div>
             <span class="admin-badge admin-badge--{{ 'success' if contact.published else 'secondary' }}">{{ 'Опубликован' if contact.published else 'Скрыт' }}</span>
             <div class="admin-contact-card__actions">
                 <a class="btn btn-outline-secondary btn-sm" href="{{ contact.href }}" target="_blank" rel="noopener noreferrer nofollow">Предпросмотр</a>
@@ -83,7 +83,7 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save"><input type="hidden" name="contact_id" value="">
                 <label class="admin-control"><span>Тип</span><select name="type" required>{% for value, label in contact_types.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label>
                 <label class="admin-control"><span>Название</span><input name="label" maxlength="80" required></label>
-                <label class="admin-control admin-control--wide"><span>Адрес</span><input name="address" maxlength="500" required placeholder="https://example.org или contact@example.org"><small>Произвольные схемы, credentials, локальные адреса и небезопасные URI отклоняются.</small></label>
+                <label class="admin-control admin-control--wide"><span>Адрес</span><input name="address" maxlength="500" required placeholder="https://example.org или contact@example.org"><small>Укажите ссылку на сайт или адрес электронной почты.</small></label>
                 <div class="admin-control">
                     <span id="contactIconLabel">Иконка</span>
                     <select class="visually-hidden" id="contactIconSelect" name="icon" required aria-labelledby="contactIconLabel">
@@ -95,7 +95,7 @@
                         </button>
                         <ul class="dropdown-menu admin-icon-picker__menu" role="listbox" aria-labelledby="contactIconLabel">
                             {% for icon_name, icon_label in contact_icons.items() %}
-                            <li><button class="dropdown-item admin-icon-picker__option" type="button" role="option" data-icon-picker-option data-icon-value="{{ icon_name }}" data-icon-label="{{ icon_label }}" aria-selected="false"><i class="bi bi-{{ icon_name }}" aria-hidden="true"></i><span><strong>{{ icon_label }}</strong><small>{{ icon_name }}</small></span><i class="bi bi-check-lg admin-icon-picker__check" aria-hidden="true"></i></button></li>
+                            <li><button class="dropdown-item admin-icon-picker__option" type="button" role="option" data-icon-picker-option data-icon-value="{{ icon_name }}" data-icon-label="{{ icon_label }}" aria-selected="false"><i class="bi bi-{{ icon_name }}" aria-hidden="true"></i><span><strong>{{ icon_label }}</strong></span><i class="bi bi-check-lg admin-icon-picker__check" aria-hidden="true"></i></button></li>
                             {% endfor %}
                         </ul>
                     </div>
@@ -105,10 +105,10 @@
                     <legend>Расположение</legend>
                     <small>Выберите страницы, на которых будет показан контакт.</small>
                     <div class="admin-location-grid">
-                        <label class="admin-check-option"><input type="checkbox" name="locations" value="footer"><i aria-hidden="true"></i><span>Footer</span></label>
-                        <label class="admin-check-option"><input type="checkbox" name="locations" value="login"><i aria-hidden="true"></i><span>Login</span></label>
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="footer"><i aria-hidden="true"></i><span>Внизу страниц</span></label>
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="login"><i aria-hidden="true"></i><span>Страница входа</span></label>
                         <label class="admin-check-option"><input type="checkbox" name="locations" value="help"><i aria-hidden="true"></i><span>Помощь</span></label>
-                        <label class="admin-check-option"><input type="checkbox" name="locations" value="mini_app"><i aria-hidden="true"></i><span>Telegram Mini App</span></label>
+                        <label class="admin-check-option"><input type="checkbox" name="locations" value="mini_app"><i aria-hidden="true"></i><span>Приложение в Telegram</span></label>
                     </div>
                 </fieldset>
                 <label class="admin-publish-toggle admin-control--wide">

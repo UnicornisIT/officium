@@ -95,7 +95,7 @@ class RevivedSettingsTestCase(unittest.TestCase):
     def test_retired_settings_are_gone_from_the_form(self):
         self.assertNotIn('default_currency', DEFAULT_SETTINGS)
         self.assertNotIn('overdue_after_date', DEFAULT_SETTINGS)
-        self.assertEqual(set(SETTINGS_FIELDS), set(DEFAULT_SETTINGS))
+        self.assertEqual(set(SETTINGS_FIELDS), set(DEFAULT_SETTINGS) | {'vehicle_notifications_enabled'})
 
     def test_settings_form_explains_every_setting(self):
         with self.app.app_context():

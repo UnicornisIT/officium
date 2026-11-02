@@ -1,16 +1,52 @@
 from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
+from werkzeug.datastructures import MultiDict
 from werkzeug.exceptions import NotFound
 import test_vehicle_service
 from app.models import Expense, VehicleCost, VehicleRefueling, VehicleOdometerReading, ActivityLog
 from app.services import vehicle_fuel_service as fuel, vehicle_service as vehicles
+from app.services import vehicle_maintenance_service as maintenance
 
 
 class VehicleFuelTests(test_vehicle_service.VehicleServiceTestCase):
     def record(self, vehicle, **values):
         data = dict(refuel_date='2026-03-01', liters='40.500', price_per_liter='52.30', total_amount='2118.15', odometer_km='1000') | values
         return fuel.record_refueling(self.owner, vehicle.id, data)
+
+    def test_move_refueling_removes_unshared_fuel_reading(self):
+        vehicle = self.vehicle()
+        row = self.record(vehicle)
+        data = dict(refuel_date='2026-03-02', liters='40.500',
+                    price_per_liter='52.30', total_amount='2118.15', odometer_km='1100')
+        fuel.record_refueling(self.owner, vehicle.id, data, refueling_id=row.id)
+        reading = VehicleOdometerReading.query.one()
+        self.assertEqual(reading.reading_date, date(2026, 3, 2))
+        self.assertEqual(reading.odometer_km, 1100)
+        self.assertEqual(reading.source, 'fuel')
+        self.assertEqual(row.refuel_date, reading.reading_date)
+
+    def test_service_preserves_fuel_source_and_shared_reading_on_move(self):
+        vehicle = self.vehicle()
+        row = self.record(vehicle)
+        reading_id = VehicleOdometerReading.query.one().id
+        service = maintenance.record_service(self.owner, vehicle.id, MultiDict(
+            dict(service_date='2026-03-01', odometer_km='1000')))
+        reading = VehicleOdometerReading.query.one()
+        self.assertEqual(reading.id, reading_id)
+        self.assertEqual(reading.source, 'fuel')
+        data = dict(refuel_date='2026-03-02', liters='40.500',
+                    price_per_liter='52.30', total_amount='2118.15', odometer_km='1100')
+        fuel.record_refueling(self.owner, vehicle.id, data, refueling_id=row.id)
+        readings = VehicleOdometerReading.query.order_by(VehicleOdometerReading.reading_date).all()
+        self.assertEqual(len(readings), 2)
+        self.assertEqual(readings[0].id, reading_id)
+        self.assertEqual(readings[0].reading_date, service.service_date)
+        self.assertEqual(readings[0].odometer_km, service.odometer_km)
+        self.assertEqual(readings[0].source, 'fuel')
+        self.assertEqual(readings[1].reading_date, row.refuel_date)
+        self.assertEqual(readings[1].odometer_km, row.odometer_km)
+        self.assertEqual(readings[1].source, 'fuel')
 
     def test_create_precision_tolerance_and_audit(self):
         vehicle = self.vehicle()

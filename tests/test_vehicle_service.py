@@ -48,6 +48,99 @@ class VehicleServiceTestCase(unittest.TestCase):
         return expenses.create_expense(user_id=self.owner.id, vehicle_id=vehicle.id,
             **(dict(amount='123.45', title='Вымышленная трата', expense_date='2026-01-15') | values))
 
+    def test_create_rejects_case_insensitive_duplicate_names(self):
+        vehicle = service.create_vehicle(self.owner, dict(name=' Лада '))
+        self.assertEqual(vehicle.name, 'Лада')
+        for name in ('лада', ' ЛАДА '):
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(ValueError, '^Автомобиль с таким названием уже существует\\.$'):
+                    service.create_vehicle(self.owner, dict(name=name))
+        other = service.create_vehicle(self.other, dict(name='лада'))
+        self.assertEqual(other.name, 'лада')
+        self.assertEqual(Vehicle.query.filter_by(user_id=self.owner.id).count(), 1)
+
+    def test_search_treats_like_wildcards_and_escape_as_literal(self):
+        for term, decoy in [('100%', '1000'), ('car_one', 'carXone'),
+                            ('car\\one', 'carone')]:
+            with self.subTest(term=term):
+                match = service.create_vehicle(self.owner, dict(name='Test '+term))
+                service.create_vehicle(self.owner, dict(name='Test '+decoy))
+                result = service.list_vehicles(self.owner, MultiDict(dict(q=term)))
+                self.assertEqual([v.id for v in result.items], [match.id])
+
+    def test_spend_get_requires_active_unarchived_vehicle(self):
+        vehicle = self.vehicle()
+        self.login()
+        self.assertEqual(self.client.get(f'/vehicles/{vehicle.id}/spend').status_code, 200)
+        for archived in (False, True):
+            with self.subTest(archived=archived):
+                vehicle.status = 'active' if archived else 'in_repair'
+                if archived:
+                    service.archive_vehicle(self.owner, vehicle.id, 'sold')
+                db.session.commit()
+                response = self.client.get(f'/vehicles/{vehicle.id}/spend')
+                self.assertEqual(response.status_code, 302)
+                self.assertTrue(response.location.endswith(f'/vehicles/{vehicle.id}'))
+                with self.client.session_transaction() as session:
+                    self.assertIn(('warning', 'Траты можно добавлять только для активного автомобиля вне архива.'), session['_flashes'])
+
+    def test_update_allows_own_name_in_different_case(self):
+        vehicle = service.create_vehicle(self.owner, dict(name='Лада'))
+        updated = service.update_vehicle(self.owner, vehicle.id, dict(name=' лАДА '))
+        db.session.refresh(vehicle)
+        self.assertEqual(updated.id, vehicle.id)
+        self.assertEqual(vehicle.name, 'лАДА')
+
+    def test_update_rejects_other_vehicle_name_in_different_case(self):
+        service.create_vehicle(self.owner, dict(name='Лада'))
+        vehicle = service.create_vehicle(self.owner, dict(name='Волга'))
+        with self.assertRaisesRegex(ValueError, '^Автомобиль с таким названием уже существует\\.$'):
+            service.update_vehicle(self.owner, vehicle.id, dict(name=' лАДА '))
+        db.session.refresh(vehicle)
+        self.assertEqual(vehicle.name, 'Волга')
+
+    def test_powered_vehicle_rejects_trailer_fields(self):
+        for kind in ('passenger', 'truck'):
+            for fields in (dict(body_type='trailer'), dict(fuel_type='none'),
+                dict(body_type='trailer', fuel_type='none')):
+                with self.subTest(kind=kind, fields=fields):
+                    with self.assertRaises(ValueError):
+                        self.vehicle(kind=kind, **fields)
+        self.assertEqual(Vehicle.query.count(), 0)
+
+    def test_special_vehicle_fields_are_forced(self):
+        trailer = self.vehicle(kind='trailer', body_type='sedan', fuel_type='diesel')
+        self.assertEqual((trailer.body_type, trailer.fuel_type), ('trailer', 'none'))
+        tractor = service.create_vehicle(self.owner, dict(
+            name='Тягач', kind='tractor_unit', body_type='trailer', fuel_type='diesel'))
+        self.assertEqual((tractor.body_type, tractor.fuel_type), ('tractor_unit', 'diesel'))
+        with self.assertRaises(ValueError):
+            service.update_vehicle(self.owner, tractor.id, dict(fuel_type='none'))
+
+    def test_update_rejects_trailer_fields_for_passenger(self):
+        vehicle = self.vehicle()
+        for fields in (dict(body_type='trailer'), dict(fuel_type='none'),
+            dict(body_type='trailer', fuel_type='none')):
+            with self.subTest(fields=fields):
+                with self.assertRaises(ValueError):
+                    service.update_vehicle(self.owner, vehicle.id, fields)
+                db.session.refresh(vehicle)
+                self.assertEqual((vehicle.kind, vehicle.body_type, vehicle.fuel_type),
+                    ('passenger', 'sedan', 'petrol'))
+
+    def test_change_trailer_kind_requires_valid_powered_fields(self):
+        vehicle = self.vehicle(kind='trailer')
+        for kind in ('passenger', 'truck', 'tractor_unit'):
+            for fields in ({}, dict(body_type='sedan')):
+                with self.subTest(kind=kind, fields=fields):
+                    with self.assertRaises(ValueError):
+                        service.update_vehicle(self.owner, vehicle.id, dict(kind=kind, **fields))
+                    self.assertEqual(vehicle.kind, 'trailer')
+        service.update_vehicle(self.owner, vehicle.id,
+            dict(kind='passenger', body_type='sedan', fuel_type='petrol'))
+        self.assertEqual((vehicle.kind, vehicle.body_type, vehicle.fuel_type),
+            ('passenger', 'sedan', 'petrol'))
+
     def test_plate_normalization(self):
         for incoming, expected in [(' a 123 bc 77 ', 'А123ВС77'), ('x001yx777', 'Х001УХ777'), ('А123ВС777', 'А123ВС777')]:
             self.assertEqual(service.normalize_plate(incoming, self.ru), expected)

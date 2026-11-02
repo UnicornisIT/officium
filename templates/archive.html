@@ -134,7 +134,7 @@ async function requestArchiveAction(url, options, fallbackError) {
 }
 
 async function restoreDebt(id) {
-    if (!confirm('Восстановить эту карточку в активные долги?')) return;
+    if (!await confirmAction('Восстановить эту карточку в активные долги?')) return;
 
     const data = await requestArchiveAction(
         `/api/debts/${id}/restore`,
@@ -149,7 +149,7 @@ async function restoreDebt(id) {
 }
 
 async function deleteDebt(id) {
-    if (!confirm('Удалить карточку навсегда? Это действие необратимо.')) return;
+    if (!await confirmAction('Удалить карточку навсегда? Это действие необратимо.')) return;
 
     const data = await requestArchiveAction(
         `/api/debts/${id}/delete`,

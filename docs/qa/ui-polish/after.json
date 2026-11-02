@@ -1,0 +1,2005 @@
+{
+  "shots": [],
+  "audit": [
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "title": "Дашборд — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/expenses",
+      "status": 200,
+      "overflow": false,
+      "title": "Расходы — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/incomes",
+      "status": 200,
+      "overflow": false,
+      "title": "Доходы — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/finance",
+      "status": 200,
+      "overflow": false,
+      "title": "Куда уходят деньги — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/financial-plan",
+      "status": 200,
+      "overflow": false,
+      "title": "Финансовый план — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/goals",
+      "status": 200,
+      "overflow": false,
+      "title": "Цели — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/mortgages",
+      "status": 200,
+      "overflow": false,
+      "title": "Ипотечные кредиты — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/archive",
+      "status": 200,
+      "overflow": false,
+      "title": "Архив — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/profile",
+      "status": 200,
+      "overflow": false,
+      "title": "Профиль — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/documentation",
+      "status": 200,
+      "overflow": false,
+      "title": "Документация — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/expenses/import",
+      "status": 200,
+      "overflow": false,
+      "title": "Импорт выписки — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/vehicles",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобили — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/vehicles/new",
+      "status": 200,
+      "overflow": false,
+      "title": "Добавить автомобиль — officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/vehicles/1",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобиль для проверки интерфейса — Автомобили"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/vehicles/1/spend",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/vehicles/1/service",
+      "status": 200,
+      "overflow": false,
+      "title": "Записать обслуживание"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/vehicles/reports",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/admin",
+      "status": 200,
+      "overflow": false,
+      "title": "Обзор — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/admin/users",
+      "status": 200,
+      "overflow": false,
+      "title": "Пользователи — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/admin/logs",
+      "status": 200,
+      "overflow": false,
+      "title": "Журнал действий — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/admin/settings",
+      "status": 200,
+      "overflow": false,
+      "title": "Настройки приложения — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/admin/dictionaries",
+      "status": 200,
+      "overflow": false,
+      "title": "Справочники — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/admin/system",
+      "status": 200,
+      "overflow": false,
+      "title": "Состояние системы — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/admin/export",
+      "status": 200,
+      "overflow": false,
+      "title": "Аудит-выгрузка — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "route": "/admin/server-update",
+      "status": 200,
+      "overflow": false,
+      "title": "Обновление сервера — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "title": "Дашборд — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/expenses",
+      "status": 200,
+      "overflow": false,
+      "title": "Расходы — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/incomes",
+      "status": 200,
+      "overflow": false,
+      "title": "Доходы — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/finance",
+      "status": 200,
+      "overflow": false,
+      "title": "Куда уходят деньги — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/financial-plan",
+      "status": 200,
+      "overflow": false,
+      "title": "Финансовый план — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/goals",
+      "status": 200,
+      "overflow": false,
+      "title": "Цели — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/mortgages",
+      "status": 200,
+      "overflow": false,
+      "title": "Ипотечные кредиты — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/archive",
+      "status": 200,
+      "overflow": false,
+      "title": "Архив — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/profile",
+      "status": 200,
+      "overflow": false,
+      "title": "Профиль — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/documentation",
+      "status": 200,
+      "overflow": false,
+      "title": "Документация — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/expenses/import",
+      "status": 200,
+      "overflow": false,
+      "title": "Импорт выписки — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/vehicles",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобили — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/vehicles/new",
+      "status": 200,
+      "overflow": false,
+      "title": "Добавить автомобиль — officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/vehicles/1",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобиль для проверки интерфейса — Автомобили"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/vehicles/1/spend",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/vehicles/1/service",
+      "status": 200,
+      "overflow": false,
+      "title": "Записать обслуживание"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/vehicles/reports",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/admin",
+      "status": 200,
+      "overflow": false,
+      "title": "Обзор — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/admin/users",
+      "status": 200,
+      "overflow": false,
+      "title": "Пользователи — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/admin/logs",
+      "status": 200,
+      "overflow": false,
+      "title": "Журнал действий — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/admin/settings",
+      "status": 200,
+      "overflow": false,
+      "title": "Настройки приложения — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/admin/dictionaries",
+      "status": 200,
+      "overflow": false,
+      "title": "Справочники — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/admin/system",
+      "status": 200,
+      "overflow": false,
+      "title": "Состояние системы — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/admin/export",
+      "status": 200,
+      "overflow": false,
+      "title": "Аудит-выгрузка — Административная панель officium"
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "route": "/admin/server-update",
+      "status": 200,
+      "overflow": false,
+      "title": "Обновление сервера — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "title": "Дашборд — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/expenses",
+      "status": 200,
+      "overflow": false,
+      "title": "Расходы — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/incomes",
+      "status": 200,
+      "overflow": false,
+      "title": "Доходы — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/finance",
+      "status": 200,
+      "overflow": false,
+      "title": "Куда уходят деньги — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/financial-plan",
+      "status": 200,
+      "overflow": false,
+      "title": "Финансовый план — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/goals",
+      "status": 200,
+      "overflow": false,
+      "title": "Цели — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/mortgages",
+      "status": 200,
+      "overflow": false,
+      "title": "Ипотечные кредиты — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/archive",
+      "status": 200,
+      "overflow": false,
+      "title": "Архив — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/profile",
+      "status": 200,
+      "overflow": false,
+      "title": "Профиль — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/documentation",
+      "status": 200,
+      "overflow": false,
+      "title": "Документация — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/expenses/import",
+      "status": 200,
+      "overflow": false,
+      "title": "Импорт выписки — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/vehicles",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобили — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/vehicles/new",
+      "status": 200,
+      "overflow": false,
+      "title": "Добавить автомобиль — officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/vehicles/1",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобиль для проверки интерфейса — Автомобили"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/vehicles/1/spend",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/vehicles/1/service",
+      "status": 200,
+      "overflow": false,
+      "title": "Записать обслуживание"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/vehicles/reports",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/admin",
+      "status": 200,
+      "overflow": false,
+      "title": "Обзор — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/admin/users",
+      "status": 200,
+      "overflow": false,
+      "title": "Пользователи — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/admin/logs",
+      "status": 200,
+      "overflow": false,
+      "title": "Журнал действий — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/admin/settings",
+      "status": 200,
+      "overflow": false,
+      "title": "Настройки приложения — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/admin/dictionaries",
+      "status": 200,
+      "overflow": false,
+      "title": "Справочники — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/admin/system",
+      "status": 200,
+      "overflow": false,
+      "title": "Состояние системы — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/admin/export",
+      "status": 200,
+      "overflow": false,
+      "title": "Аудит-выгрузка — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "route": "/admin/server-update",
+      "status": 200,
+      "overflow": false,
+      "title": "Обновление сервера — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "title": "Дашборд — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/expenses",
+      "status": 200,
+      "overflow": false,
+      "title": "Расходы — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/incomes",
+      "status": 200,
+      "overflow": false,
+      "title": "Доходы — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/finance",
+      "status": 200,
+      "overflow": false,
+      "title": "Куда уходят деньги — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/financial-plan",
+      "status": 200,
+      "overflow": false,
+      "title": "Финансовый план — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/goals",
+      "status": 200,
+      "overflow": false,
+      "title": "Цели — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/mortgages",
+      "status": 200,
+      "overflow": false,
+      "title": "Ипотечные кредиты — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/archive",
+      "status": 200,
+      "overflow": false,
+      "title": "Архив — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/profile",
+      "status": 200,
+      "overflow": false,
+      "title": "Профиль — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/documentation",
+      "status": 200,
+      "overflow": false,
+      "title": "Документация — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/expenses/import",
+      "status": 200,
+      "overflow": false,
+      "title": "Импорт выписки — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/vehicles",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобили — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/vehicles/new",
+      "status": 200,
+      "overflow": false,
+      "title": "Добавить автомобиль — officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/vehicles/1",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобиль для проверки интерфейса — Автомобили"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/vehicles/1/spend",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/vehicles/1/service",
+      "status": 200,
+      "overflow": false,
+      "title": "Записать обслуживание"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/vehicles/reports",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/admin",
+      "status": 200,
+      "overflow": false,
+      "title": "Обзор — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/admin/users",
+      "status": 200,
+      "overflow": false,
+      "title": "Пользователи — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/admin/logs",
+      "status": 200,
+      "overflow": false,
+      "title": "Журнал действий — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/admin/settings",
+      "status": 200,
+      "overflow": false,
+      "title": "Настройки приложения — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/admin/dictionaries",
+      "status": 200,
+      "overflow": false,
+      "title": "Справочники — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/admin/system",
+      "status": 200,
+      "overflow": false,
+      "title": "Состояние системы — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/admin/export",
+      "status": 200,
+      "overflow": false,
+      "title": "Аудит-выгрузка — Административная панель officium"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "route": "/admin/server-update",
+      "status": 200,
+      "overflow": false,
+      "title": "Обновление сервера — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "title": "Дашборд — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/expenses",
+      "status": 200,
+      "overflow": false,
+      "title": "Расходы — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/incomes",
+      "status": 200,
+      "overflow": false,
+      "title": "Доходы — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/finance",
+      "status": 200,
+      "overflow": false,
+      "title": "Куда уходят деньги — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/financial-plan",
+      "status": 200,
+      "overflow": false,
+      "title": "Финансовый план — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/goals",
+      "status": 200,
+      "overflow": false,
+      "title": "Цели — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/mortgages",
+      "status": 200,
+      "overflow": false,
+      "title": "Ипотечные кредиты — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/archive",
+      "status": 200,
+      "overflow": false,
+      "title": "Архив — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/profile",
+      "status": 200,
+      "overflow": false,
+      "title": "Профиль — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/documentation",
+      "status": 200,
+      "overflow": false,
+      "title": "Документация — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/expenses/import",
+      "status": 200,
+      "overflow": false,
+      "title": "Импорт выписки — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/vehicles",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобили — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/vehicles/new",
+      "status": 200,
+      "overflow": false,
+      "title": "Добавить автомобиль — officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/vehicles/1",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобиль для проверки интерфейса — Автомобили"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/vehicles/1/spend",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/vehicles/1/service",
+      "status": 200,
+      "overflow": false,
+      "title": "Записать обслуживание"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/vehicles/reports",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/admin",
+      "status": 200,
+      "overflow": false,
+      "title": "Обзор — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/admin/users",
+      "status": 200,
+      "overflow": false,
+      "title": "Пользователи — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/admin/logs",
+      "status": 200,
+      "overflow": false,
+      "title": "Журнал действий — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/admin/settings",
+      "status": 200,
+      "overflow": false,
+      "title": "Настройки приложения — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/admin/dictionaries",
+      "status": 200,
+      "overflow": false,
+      "title": "Справочники — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/admin/system",
+      "status": 200,
+      "overflow": false,
+      "title": "Состояние системы — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/admin/export",
+      "status": 200,
+      "overflow": false,
+      "title": "Аудит-выгрузка — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "route": "/admin/server-update",
+      "status": 200,
+      "overflow": false,
+      "title": "Обновление сервера — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "title": "Дашборд — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/expenses",
+      "status": 200,
+      "overflow": false,
+      "title": "Расходы — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/incomes",
+      "status": 200,
+      "overflow": false,
+      "title": "Доходы — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/finance",
+      "status": 200,
+      "overflow": false,
+      "title": "Куда уходят деньги — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/financial-plan",
+      "status": 200,
+      "overflow": false,
+      "title": "Финансовый план — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/goals",
+      "status": 200,
+      "overflow": false,
+      "title": "Цели — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/mortgages",
+      "status": 200,
+      "overflow": false,
+      "title": "Ипотечные кредиты — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/archive",
+      "status": 200,
+      "overflow": false,
+      "title": "Архив — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/profile",
+      "status": 200,
+      "overflow": false,
+      "title": "Профиль — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/documentation",
+      "status": 200,
+      "overflow": false,
+      "title": "Документация — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/expenses/import",
+      "status": 200,
+      "overflow": false,
+      "title": "Импорт выписки — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/vehicles",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобили — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/vehicles/new",
+      "status": 200,
+      "overflow": false,
+      "title": "Добавить автомобиль — officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/vehicles/1",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобиль для проверки интерфейса — Автомобили"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/vehicles/1/spend",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/vehicles/1/service",
+      "status": 200,
+      "overflow": false,
+      "title": "Записать обслуживание"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/vehicles/reports",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/admin",
+      "status": 200,
+      "overflow": false,
+      "title": "Обзор — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/admin/users",
+      "status": 200,
+      "overflow": false,
+      "title": "Пользователи — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/admin/logs",
+      "status": 200,
+      "overflow": false,
+      "title": "Журнал действий — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/admin/settings",
+      "status": 200,
+      "overflow": false,
+      "title": "Настройки приложения — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/admin/dictionaries",
+      "status": 200,
+      "overflow": false,
+      "title": "Справочники — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/admin/system",
+      "status": 200,
+      "overflow": false,
+      "title": "Состояние системы — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/admin/export",
+      "status": 200,
+      "overflow": false,
+      "title": "Аудит-выгрузка — Административная панель officium"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "route": "/admin/server-update",
+      "status": 200,
+      "overflow": false,
+      "title": "Обновление сервера — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "title": "Дашборд — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/expenses",
+      "status": 200,
+      "overflow": false,
+      "title": "Расходы — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/incomes",
+      "status": 200,
+      "overflow": false,
+      "title": "Доходы — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/finance",
+      "status": 200,
+      "overflow": false,
+      "title": "Куда уходят деньги — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/financial-plan",
+      "status": 200,
+      "overflow": false,
+      "title": "Финансовый план — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/goals",
+      "status": 200,
+      "overflow": false,
+      "title": "Цели — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/mortgages",
+      "status": 200,
+      "overflow": false,
+      "title": "Ипотечные кредиты — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/archive",
+      "status": 200,
+      "overflow": false,
+      "title": "Архив — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/profile",
+      "status": 200,
+      "overflow": false,
+      "title": "Профиль — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/documentation",
+      "status": 200,
+      "overflow": false,
+      "title": "Документация — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/expenses/import",
+      "status": 200,
+      "overflow": false,
+      "title": "Импорт выписки — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/vehicles",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобили — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/vehicles/new",
+      "status": 200,
+      "overflow": false,
+      "title": "Добавить автомобиль — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/vehicles/1",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобиль для проверки интерфейса — Автомобили"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/vehicles/1/spend",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/vehicles/1/service",
+      "status": 200,
+      "overflow": false,
+      "title": "Записать обслуживание"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/vehicles/reports",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/admin",
+      "status": 200,
+      "overflow": false,
+      "title": "Обзор — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/admin/users",
+      "status": 200,
+      "overflow": false,
+      "title": "Пользователи — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/admin/logs",
+      "status": 200,
+      "overflow": false,
+      "title": "Журнал действий — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/admin/settings",
+      "status": 200,
+      "overflow": false,
+      "title": "Настройки приложения — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/admin/dictionaries",
+      "status": 200,
+      "overflow": false,
+      "title": "Справочники — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/admin/system",
+      "status": 200,
+      "overflow": false,
+      "title": "Состояние системы — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/admin/export",
+      "status": 200,
+      "overflow": false,
+      "title": "Аудит-выгрузка — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "route": "/admin/server-update",
+      "status": 200,
+      "overflow": false,
+      "title": "Обновление сервера — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "title": "Дашборд — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/expenses",
+      "status": 200,
+      "overflow": false,
+      "title": "Расходы — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/incomes",
+      "status": 200,
+      "overflow": false,
+      "title": "Доходы — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/finance",
+      "status": 200,
+      "overflow": false,
+      "title": "Куда уходят деньги — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/financial-plan",
+      "status": 200,
+      "overflow": false,
+      "title": "Финансовый план — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/goals",
+      "status": 200,
+      "overflow": false,
+      "title": "Цели — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/mortgages",
+      "status": 200,
+      "overflow": false,
+      "title": "Ипотечные кредиты — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/archive",
+      "status": 200,
+      "overflow": false,
+      "title": "Архив — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/profile",
+      "status": 200,
+      "overflow": false,
+      "title": "Профиль — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/documentation",
+      "status": 200,
+      "overflow": false,
+      "title": "Документация — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/expenses/import",
+      "status": 200,
+      "overflow": false,
+      "title": "Импорт выписки — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/vehicles",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобили — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/vehicles/new",
+      "status": 200,
+      "overflow": false,
+      "title": "Добавить автомобиль — officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/vehicles/1",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобиль для проверки интерфейса — Автомобили"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/vehicles/1/spend",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/vehicles/1/service",
+      "status": 200,
+      "overflow": false,
+      "title": "Записать обслуживание"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/vehicles/reports",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/admin",
+      "status": 200,
+      "overflow": false,
+      "title": "Обзор — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/admin/users",
+      "status": 200,
+      "overflow": false,
+      "title": "Пользователи — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/admin/logs",
+      "status": 200,
+      "overflow": false,
+      "title": "Журнал действий — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/admin/settings",
+      "status": 200,
+      "overflow": false,
+      "title": "Настройки приложения — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/admin/dictionaries",
+      "status": 200,
+      "overflow": false,
+      "title": "Справочники — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/admin/system",
+      "status": 200,
+      "overflow": false,
+      "title": "Состояние системы — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/admin/export",
+      "status": 200,
+      "overflow": false,
+      "title": "Аудит-выгрузка — Административная панель officium"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "route": "/admin/server-update",
+      "status": 200,
+      "overflow": false,
+      "title": "Обновление сервера — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "title": "Дашборд — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/expenses",
+      "status": 200,
+      "overflow": false,
+      "title": "Расходы — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/incomes",
+      "status": 200,
+      "overflow": false,
+      "title": "Доходы — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/finance",
+      "status": 200,
+      "overflow": false,
+      "title": "Куда уходят деньги — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/financial-plan",
+      "status": 200,
+      "overflow": false,
+      "title": "Финансовый план — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/goals",
+      "status": 200,
+      "overflow": false,
+      "title": "Цели — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/mortgages",
+      "status": 200,
+      "overflow": false,
+      "title": "Ипотечные кредиты — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/archive",
+      "status": 200,
+      "overflow": false,
+      "title": "Архив — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/profile",
+      "status": 200,
+      "overflow": false,
+      "title": "Профиль — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/documentation",
+      "status": 200,
+      "overflow": false,
+      "title": "Документация — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/expenses/import",
+      "status": 200,
+      "overflow": false,
+      "title": "Импорт выписки — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/vehicles",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобили — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/vehicles/new",
+      "status": 200,
+      "overflow": false,
+      "title": "Добавить автомобиль — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/vehicles/1",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобиль для проверки интерфейса — Автомобили"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/vehicles/1/spend",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/vehicles/1/service",
+      "status": 200,
+      "overflow": false,
+      "title": "Записать обслуживание"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/vehicles/reports",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/admin",
+      "status": 200,
+      "overflow": false,
+      "title": "Обзор — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/admin/users",
+      "status": 200,
+      "overflow": false,
+      "title": "Пользователи — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/admin/logs",
+      "status": 200,
+      "overflow": false,
+      "title": "Журнал действий — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/admin/settings",
+      "status": 200,
+      "overflow": false,
+      "title": "Настройки приложения — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/admin/dictionaries",
+      "status": 200,
+      "overflow": false,
+      "title": "Справочники — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/admin/system",
+      "status": 200,
+      "overflow": false,
+      "title": "Состояние системы — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/admin/export",
+      "status": 200,
+      "overflow": false,
+      "title": "Аудит-выгрузка — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "route": "/admin/server-update",
+      "status": 200,
+      "overflow": false,
+      "title": "Обновление сервера — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "title": "Дашборд — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/expenses",
+      "status": 200,
+      "overflow": false,
+      "title": "Расходы — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/incomes",
+      "status": 200,
+      "overflow": false,
+      "title": "Доходы — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/finance",
+      "status": 200,
+      "overflow": false,
+      "title": "Куда уходят деньги — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/financial-plan",
+      "status": 200,
+      "overflow": false,
+      "title": "Финансовый план — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/goals",
+      "status": 200,
+      "overflow": false,
+      "title": "Цели — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/mortgages",
+      "status": 200,
+      "overflow": false,
+      "title": "Ипотечные кредиты — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/archive",
+      "status": 200,
+      "overflow": false,
+      "title": "Архив — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/profile",
+      "status": 200,
+      "overflow": false,
+      "title": "Профиль — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/documentation",
+      "status": 200,
+      "overflow": false,
+      "title": "Документация — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/expenses/import",
+      "status": 200,
+      "overflow": false,
+      "title": "Импорт выписки — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/vehicles",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобили — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/vehicles/new",
+      "status": 200,
+      "overflow": false,
+      "title": "Добавить автомобиль — officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/vehicles/1",
+      "status": 200,
+      "overflow": false,
+      "title": "Автомобиль для проверки интерфейса — Автомобили"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/vehicles/1/spend",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/vehicles/1/service",
+      "status": 200,
+      "overflow": false,
+      "title": "Записать обслуживание"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/vehicles/reports",
+      "status": 200,
+      "overflow": false,
+      "title": "officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/admin",
+      "status": 200,
+      "overflow": false,
+      "title": "Обзор — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/admin/users",
+      "status": 200,
+      "overflow": false,
+      "title": "Пользователи — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/admin/logs",
+      "status": 200,
+      "overflow": false,
+      "title": "Журнал действий — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/admin/settings",
+      "status": 200,
+      "overflow": false,
+      "title": "Настройки приложения — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/admin/dictionaries",
+      "status": 200,
+      "overflow": false,
+      "title": "Справочники — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/admin/system",
+      "status": 200,
+      "overflow": false,
+      "title": "Состояние системы — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/admin/export",
+      "status": 200,
+      "overflow": false,
+      "title": "Аудит-выгрузка — Административная панель officium"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "route": "/admin/server-update",
+      "status": 200,
+      "overflow": false,
+      "title": "Обновление сервера — Административная панель officium"
+    }
+  ]
+}

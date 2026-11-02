@@ -141,7 +141,8 @@
                     <input id="living_minimum" name="living_minimum" type="text" inputmode="decimal"
                            class="form-control number-format" value="{{ '{:.0f}'.format(plan.preferences.living_minimum) }}" aria-describedby="livingMinimumHelp" required>
                     <span class="input-group-text">₽ / мес.</span>
-                </div>
+                </div>
+
             </div>
 
             <fieldset>
@@ -500,7 +501,7 @@
                                 <i class="bi bi-pencil"></i>
                             </button>
                             {% if not goal.is_system and not plan.is_demo %}
-                            <form method="post" action="{{ url_for('delete_financial_goal', goal_id=goal.id, year=plan.period.year, month=plan.period.month) }}" onsubmit="return confirm('Удалить эту цель и всю историю операций?')">
+                            <form method="post" action="{{ url_for('delete_financial_goal', goal_id=goal.id, year=plan.period.year, month=plan.period.month) }}" data-ui-confirm="Удалить эту цель и всю историю операций?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="plan-goal__delete-icon" title="Удалить цель" aria-label="Удалить цель"><i class="bi bi-trash3"></i></button>
                             </form>
@@ -574,7 +575,7 @@
                             </div>
                             <strong>{{ '+' if item.transaction_type == 'deposit' else '−' }} {{ item.amount|money }}</strong>
                             {% if not plan.is_demo %}
-                            <form method="post" action="{{ url_for('delete_emergency_fund_transaction', transaction_id=item.id, year=plan.period.year, month=plan.period.month) if goal.is_system else url_for('delete_financial_goal_transaction', goal_id=goal.id, transaction_id=item.id, year=plan.period.year, month=plan.period.month) }}" onsubmit="return confirm('Удалить эту операцию?')">
+                            <form method="post" action="{{ url_for('delete_emergency_fund_transaction', transaction_id=item.id, year=plan.period.year, month=plan.period.month) if goal.is_system else url_for('delete_financial_goal_transaction', goal_id=goal.id, transaction_id=item.id, year=plan.period.year, month=plan.period.month) }}" data-ui-confirm="Удалить эту операцию?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="plan-fund-transaction__delete" title="Удалить операцию" aria-label="Удалить операцию"><i class="bi bi-trash3"></i></button>
                             </form>

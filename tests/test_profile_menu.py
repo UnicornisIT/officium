@@ -65,12 +65,13 @@ class ProfileMenuTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login', response.headers['Location'])
 
-    def test_profile_shows_name_initial_and_placeholder(self):
+    def test_profile_shows_name_initial_and_notification_settings(self):
         self._login('member')
 
         html = self.client.get('/profile').get_data(as_text=True)
 
-        self.assertIn('Профиль в разработке. Скоро здесь можно будет рассказать о себе и настроить аккаунт.', html)
+        self.assertIn('Ваш аккаунт и настройки уведомлений.', html)
+        self.assertIn('name="vehicle_notifications_enabled"', html)
         self.assertIn('<h1 id="profileTitle">олег</h1>', html)
         self.assertIn('data-avatar-initial="О"', html)
 

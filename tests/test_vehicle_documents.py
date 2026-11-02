@@ -40,6 +40,23 @@ class VehicleDocumentTests(test_vehicle_service.VehicleServiceTestCase):
         documents.save_document(self.owner, vehicle.id, dict(kind='pts'), row.id)
         self.assertEqual(maintenance.document_condition(vehicle, day=day), 'ok')
 
+    def test_document_spend_kind_for_both_payers(self):
+        expected_kinds = dict(osago='insurance', kasko='insurance', tech_inspection='service',
+            pts='other', sts='other', license='other', other='other')
+        for payer in ['self', 'organization']:
+            vehicle = vehicles.create_vehicle(self.owner, dict(name='Документы '+payer, is_company=True))
+            for kind, expected in expected_kinds.items():
+                with self.subTest(payer=payer, kind=kind):
+                    row = self.save(vehicle, kind=kind, create_expense='on', payer=payer)
+                    if payer == 'self':
+                        spend = db.session.get(Expense, row.expense_id)
+                        self.assertEqual(spend.vehicle_cost_kind, expected)
+                        self.assertIsNone(row.vehicle_cost_id)
+                    else:
+                        spend = db.session.get(VehicleCost, row.vehicle_cost_id)
+                        self.assertEqual(spend.kind, expected)
+                        self.assertIsNone(row.expense_id)
+
     def test_spending_and_rollback(self):
         for payer in ['self','organization']:
             vehicle = vehicles.create_vehicle(self.owner, dict(name='Страхование '+payer, is_company=True))
@@ -159,6 +176,27 @@ class VehicleDocumentTests(test_vehicle_service.VehicleServiceTestCase):
             self.assertEqual(spend.expense_date if payer == 'self' else spend.cost_date, original_date)
             self.assertEqual(model.query.filter_by(vehicle_id=vehicle.id).count(), 1)
             self.assertFalse(ActivityLog.query.filter_by(action='vehicle_document_save').order_by(ActivityLog.id.desc()).first().description)
+
+    def test_cleared_linked_amount_requires_choice_or_keeps_spend(self):
+        from decimal import Decimal
+        message = 'Сумма удалена: выберите "Оставить сумму траты прежней" или укажите новую сумму.'
+        for payer in ['self', 'organization']:
+            vehicle = vehicles.create_vehicle(self.owner, dict(name='Очистка '+payer, is_company=True))
+            row = self.save(vehicle, create_expense='on', payer=payer)
+            model, spend_id = (Expense, row.expense_id) if payer == 'self' else (VehicleCost, row.vehicle_cost_id)
+            spend = db.session.get(model, spend_id)
+            for action in ['', 'update']:
+                with self.subTest(payer=payer, action=action):
+                    with self.assertRaises(ValueError) as error:
+                        documents.save_document(self.owner, vehicle.id,
+                            dict(kind='osago', amount='', linked_amount_action=action), row.id)
+                    self.assertEqual(str(error.exception), message)
+                    self.assertEqual(row.amount, Decimal('15000'))
+                    self.assertEqual(spend.amount, Decimal('15000'))
+            documents.save_document(self.owner, vehicle.id,
+                dict(kind='osago', amount='', linked_amount_action='keep'), row.id)
+            self.assertIsNone(row.amount)
+            self.assertEqual(spend.amount, Decimal('15000'))
 
     def test_linked_amount_update_rolls_back_with_document(self):
         from decimal import Decimal

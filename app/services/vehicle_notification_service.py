@@ -10,7 +10,7 @@ from app.models import User, Vehicle, VehicleNotificationLog
 from app.services import vehicle_service as vehicles, vehicle_maintenance_service as maintenance
 from app.services import vehicle_document_service as documents, telegram_bot_service as telegram
 from app.time_utils import utc_now, as_utc
-from app.utils import record_activity
+from app.utils import record_activity, setting_enabled
 from extensions import db
 
 
@@ -55,9 +55,14 @@ def send_to_user(user, kind, text):
     return telegram.send_telegram_message(chat_id=user.telegram_id, text=text)
 
 
+def notifications_enabled():
+    return bool(current_app.config.get('VEHICLES_ENABLED')) and setting_enabled(
+        'vehicle_notifications_enabled', default=bool(current_app.config.get('VEHICLE_NOTIFICATIONS_ENABLED')))
+
+
 def send_due_notifications(now=None):
     stats = dict(sent=0, skipped=0, failed=0)
-    if not current_app.config.get('VEHICLE_NOTIFICATIONS_ENABLED') or not current_app.config.get('VEHICLES_ENABLED'):
+    if not notifications_enabled():
         return stats
     instant = as_utc(now or utc_now())
     day = instant.astimezone(vehicles.app_timezone()).date()

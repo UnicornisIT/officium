@@ -52,18 +52,18 @@
         <span class="admin-section-heading__meta">Найдено: {{ pagination.total }}</span>
     </div>
     <div class="admin-table-wrap">
-        <table class="admin-table admin-table--responsive">
+        <table class="admin-table admin-table--responsive admin-users-table">
             <thead><tr>
                 <th>{{ field_label('id') }}</th><th><span class="admin-field-label"><span>Пользователь</span><button type="button" class="admin-field-info" data-bs-toggle="tooltip" data-bs-title="Поле базы данных: telegram_id" aria-label="Техническое имя идентификатора: telegram_id">{{ icon('info', 15) }}</button></span></th><th>{{ field_label('role') }}</th><th>{{ field_label('is_blocked') }}</th><th>{{ field_label('login_count') }}</th><th>{{ field_label('created_at') }}</th><th><span class="visually-hidden">Действия</span></th>
             </tr></thead>
             <tbody>
             {% for user in users %}
             <tr data-admin-row-href="{{ url_for('admin_user_detail', user_id=user.id) }}">
-                <td data-label="ID"><span class="admin-mono">#{{ user.id }}</span></td>
-                <td data-label="Пользователь">
+                <td class="admin-users-table__id" data-label="ID"><span class="admin-mono">#{{ user.id }}</span></td>
+                <td class="admin-users-table__person" data-label="Пользователь">
                     <div class="admin-person">
                         <span class="admin-person__avatar">{{ (user.first_name or user.username or 'П')[:1]|upper }}</span>
-                        <span><strong>{{ [user.first_name, user.last_name]|select|join(' ') or user.username or 'Без имени' }}</strong><small>{% if user.username %}@{{ user.username }} · {% endif %}{{ user.telegram_id }}</small></span>
+                        <span><strong>{{ [user.first_name, user.last_name]|select|join(' ') or user.username or 'Без имени' }}</strong><small>{% if user.username %}@{{ user.username }} · {% endif %}{{ user.telegram_id }}<span class="admin-users-table__inline-id"> · #{{ user.id }}</span></small></span>
                     </div>
                 </td>
                 <td data-label="Роль">{{ role_badge(user.role) }}</td>

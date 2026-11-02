@@ -90,10 +90,12 @@ def _values(user, data, existing=None):
         if len(value) > length or (key == 'name' and not value):
             raise ValueError('Проверьте название, марку, модель и год автомобиля.')
         result[key] = value or None
-    duplicate = Vehicle.query.filter_by(user_id=user.id, name=result['name'])
+    duplicate = Vehicle.query.with_entities(Vehicle.name).filter_by(user_id=user.id)
     if existing:
         duplicate = duplicate.filter(Vehicle.id != existing.id)
-    if duplicate.first():
+    # SQLite lower() only handles ASCII; compare Unicode consistently on all databases.
+    normalized_name = result['name'].casefold()
+    if any(name.casefold() == normalized_name for (name,) in duplicate):
         raise ValueError('Автомобиль с таким названием уже существует.')
     for key, choices, default in [('kind', KINDS, 'passenger'), ('body_type', BODIES, 'sedan'), ('fuel_type', FUELS, 'petrol'), ('status', STATUSES, 'active')]:
         value = data.get(key, getattr(existing, key, default))
@@ -106,6 +108,11 @@ def _values(user, data, existing=None):
         result.update(body_type='trailer', fuel_type='none')
     if result['kind'] == 'tractor_unit':
         result['body_type'] = 'tractor_unit'
+    if result['kind'] != 'trailer':
+        if result['body_type'] == 'trailer':
+            raise ValueError('Кузов «Прицеп» доступен только для прицепа.')
+        if result['fuel_type'] == 'none':
+            raise ValueError('Топливо «Без топлива» доступно только для прицепа.')
     color = data.get('color', getattr(existing, 'color', '#5276ba'))
     if not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
         raise ValueError('Цвет должен быть в формате #RRGGBB.')
@@ -280,8 +287,10 @@ def list_vehicles(user, args):
         if args.get(key):
             query = query.filter(getattr(Vehicle, key) == args[key])
     if args.get('q'):
-        search = '%' + args['q'].strip()[:150] + '%'
-        query = query.filter(or_(Vehicle.name.ilike(search), Vehicle.make.ilike(search), Vehicle.plate.ilike(search)))
+        term = args['q'].strip()[:150].replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        search = '%' + term + '%'
+        query = query.filter(or_(Vehicle.name.ilike(search, escape='\\'),
+            Vehicle.make.ilike(search, escape='\\'), Vehicle.plate.ilike(search, escape='\\')))
     if args.get('attention') == '1':
         from app.services.vehicle_maintenance_service import technical_condition
         day = today()

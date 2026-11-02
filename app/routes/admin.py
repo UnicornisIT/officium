@@ -169,6 +169,8 @@ SETTINGS_GROUPS = (
         'title': 'Сроки и напоминания',
         'kicker': 'Ближайшие платежи',
         'fields': (
+            {'key': 'vehicle_notifications_enabled', 'type': 'bool', 'label': 'Напоминания об автомобилях в Telegram',
+             'help': 'Общий переключатель отправки всем пользователям. Применяется сразу. Для доставки на сервере должны быть настроены токен бота, публичный адрес и ежедневный запуск; личное отключение в профиле сохраняется.'},
             {'key': 'payment_warning_days', 'type': 'int', 'min': 0, 'max': 365, 'label': 'Предупреждать о платеже за, дней',
              'help': 'Карточка долга подсвечивается жёлтым, и Telegram-бот присылает напоминание за это число дней до платежа.'},
             {'key': 'urgent_payment_days', 'type': 'int', 'min': 0, 'max': 365, 'label': 'Считать платёж срочным за, дней',
@@ -198,6 +200,8 @@ SETTINGS_FIELDS = {field['key']: field for group in SETTINGS_GROUPS for field in
 
 
 def _setting_default(key):
+    if key == 'vehicle_notifications_enabled':
+        return 'true' if current_app.config.get('VEHICLE_NOTIFICATIONS_ENABLED') else 'false'
     if key == 'telegram_login_enabled':
         # Until the admin saves it, the effective value comes from the environment.
         return 'true' if current_app.config.get('TELEGRAM_LOGIN_ENABLED') else 'false'

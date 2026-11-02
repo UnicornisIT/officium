@@ -1606,7 +1606,7 @@ function syncEditBreakdownInputs() {
 }
 
 async function acceptBankRemaining(debtId, paymentId) {
-    if (!confirm('Принять остаток банка? Разбивка платежа станет ручной, следующие платежи будут пересчитаны.')) return;
+    if (!await confirmAction('Принять остаток банка? Разбивка платежа станет ручной, следующие платежи будут пересчитаны.')) return;
 
     try {
         const resp = await jsonFetch(`/api/debts/${debtId}/payments/${paymentId}/accept-bank-remaining`, { method: 'POST' });
@@ -1624,7 +1624,7 @@ async function acceptBankRemaining(debtId, paymentId) {
 }
 
 async function deletePayment(debtId, paymentId) {
-    if (!confirm('Удалить платеж? Остаток, проценты и неустойка по долгу будут пересчитаны.')) return;
+    if (!await confirmAction('Удалить платеж? Остаток, проценты и неустойка по долгу будут пересчитаны.')) return;
 
     try {
         const resp = await jsonFetch(`/api/debts/${debtId}/payments/${paymentId}`, { method: 'DELETE' });

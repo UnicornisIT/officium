@@ -169,7 +169,7 @@
                                                     <a href="{{ url_for('edit_expense', expense_id=expense.id) }}" class="history-icon-btn history-icon-btn-edit" title="Редактировать" aria-label="Редактировать">
                                                         <i class="bi bi-pencil" aria-hidden="true"></i>
                                                     </a>
-                                                    <form method="post" action="{{ url_for('delete_expense', expense_id=expense.id) }}" class="history-delete-form" onsubmit="return confirm('Удалить этот расход?');">
+                                                    <form method="post" action="{{ url_for('delete_expense', expense_id=expense.id) }}" class="history-delete-form" data-ui-confirm="Удалить этот расход?">
                                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                         <button type="submit" class="history-icon-btn history-icon-btn-delete" title="Удалить" aria-label="Удалить">
                                                             <i class="bi bi-trash" aria-hidden="true"></i>

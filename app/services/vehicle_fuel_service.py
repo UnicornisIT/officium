@@ -72,8 +72,8 @@ def record_refueling(user, vehicle_id, data, *, refueling_id=None, commit=True):
             if isinstance(old_spend, Expense):
                 expense_service.update_expense(user_id=user.id, expense_id=old_spend.id, vehicle_id=vehicle.id, amount=total, category='transport', title=title, expense_date=day.isoformat(), comment=comment, payment_method=old_spend.payment_method, commit=False)
             else:
-                if old_spend.reimbursed_at and day > old_spend.reimbursed_at:
-                    raise ValueError('Заправка не может быть позже возмещения.')
+                if old_spend.reimbursed_at and (total != old_spend.amount or day != old_spend.cost_date):
+                    raise ValueError('Трата уже возмещена: изменить сумму или дату нельзя. Снимите возмещение или оставьте значения прежними.')
                 old_spend.amount, old_spend.cost_date = total, day
                 old_spend.title, old_spend.comment = title, comment
         else:

@@ -8,13 +8,13 @@
         {{ user_avatar(current_user, 'user-avatar user-avatar--xl') }}
         <div>
             <h1 id="profileTitle">{{ user_display_name(current_user) }}</h1>
-            <p>Профиль в разработке. Скоро здесь можно будет рассказать о себе и настроить аккаунт.</p>
+            <p>Ваш аккаунт и настройки уведомлений.</p>
         </div>
     </section>
     {% if current_user.telegram_id %}
     <form method="post" class="profile-card">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label><input type="checkbox" name="vehicle_notifications_enabled" {% if current_user.vehicle_notifications_enabled %}checked{% endif %}> Напоминания об автомобилях в Telegram</label>
+        <label class="ui-switch-label"><input type="checkbox" name="vehicle_notifications_enabled" {% if current_user.vehicle_notifications_enabled %}checked{% endif %}><span>Напоминания об автомобилях в Telegram</span></label>
         <button type="submit" class="btn btn-primary">Сохранить</button>
     </form>
     {% endif %}

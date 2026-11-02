@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Скриншот · officium</title><style>
+*{box-sizing:border-box}body{margin:0;background:#e9eef6;color:#172b47;font:14px system-ui,sans-serif}header{position:sticky;top:0;z-index:2;display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:12px 18px;background:#ffffffed;border-bottom:1px solid #d5dfed;backdrop-filter:blur(12px)}strong{margin-right:auto}button,a{font:inherit;color:inherit;padding:9px 14px;border:1px solid #d5dfed;background:#fff;border-radius:9px;text-decoration:none;cursor:pointer;min-height:38px}button:hover,a:hover{background:#eef3ff}button:focus-visible,a:focus-visible{outline:3px solid #78a2f5}output{min-width:58px;text-align:center}main{padding:24px;min-width:100%;width:max-content}img{display:block;max-width:none;height:auto;background:#fff;box-shadow:0 6px 32px #1b31531a}p{padding:24px}</style></head><body><header><strong id="title">Скриншот</strong><button id="minus" aria-label="Уменьшить">−</button><output id="scale">100%</output><button id="plus" aria-label="Увеличить">+</button><button id="actual">100%</button><button id="fit">Вписать в окно</button><button id="marks">Скрыть рамки</button><a id="original" target="_blank" rel="noopener">Открыть оригинал ↗</a></header><main><img id="image" alt="Скриншот интерфейса"></main><p id="error" hidden>Изображение не найдено.</p><script>
+const filename=new URLSearchParams(location.search).get('image')||'';
+const image=document.getElementById('image');let scale=1;
+function resize(value){scale=Math.max(.1,Math.min(4,value));image.style.width=Math.round(image.naturalWidth*scale)+'px';document.getElementById('scale').textContent=Math.round(scale*100)+'%'}
+if(/^(0[1-9]|1[0-7])-(before|after|compare)\.png$/.test(filename)){
+ const parts=filename.replace('.png','').split('-');const label={before:'До',after:'После',compare:'Сравнение'}[parts[1]];
+ document.title=parts[0]+'. '+label+' · officium';document.getElementById('title').textContent=parts[0]+'. '+label;
+ document.getElementById('original').href=filename;image.onload=()=>resize(scale);image.onerror=()=>{document.getElementById('error').hidden=false};image.src=filename.replace('.png','-marked.svg')+'?v=compact11';
+}else{image.hidden=true;document.getElementById('error').hidden=false}
+let marked=true;document.getElementById('marks').onclick=()=>{marked=!marked;image.src=(marked?filename.replace('.png','-marked.svg'):filename)+'?v=compact11';document.getElementById('marks').textContent=marked?'Скрыть рамки':'Показать рамки'};
+document.getElementById('minus').onclick=()=>resize(scale-.25);document.getElementById('plus').onclick=()=>resize(scale+.25);document.getElementById('actual').onclick=()=>resize(1);document.getElementById('fit').onclick=()=>resize(Math.min((innerWidth-48)/image.naturalWidth,(innerHeight-document.querySelector('header').offsetHeight-48)/image.naturalHeight));
+document.addEventListener('keydown',event=>{if(event.key==='+'||event.key==='=')resize(scale+.25);if(event.key==='-')resize(scale-.25);if(event.key==='0')resize(1)});
+</script></body></html>

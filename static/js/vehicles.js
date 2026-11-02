@@ -102,6 +102,10 @@
     if (trailer) {
       document.getElementById('v_fuel_type').value = 'none';
       document.getElementById('v_body_type').value = 'trailer';
+    } else {
+      if (body.value === 'trailer') body.value = 'sedan';
+      const fuel = document.getElementById('v_fuel_type');
+      if (fuel.value === 'none') fuel.value = 'petrol';
     }
     if (kind.value === 'tractor_unit') document.getElementById('v_body_type').value = 'tractor_unit';
     if (!trailer) document.getElementById('v_tractor').value = '';

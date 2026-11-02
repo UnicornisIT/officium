@@ -95,12 +95,32 @@ DB_PORT=3306
 DB_USER=officium
 DB_PASSWORD=<пароль>
 DB_NAME=officium
+VEHICLES_ENABLED=true
 SERVER_UPDATE_ENABLED=true
 SERVER_UPDATE_REPOSITORY=UnicornisIT/officium
 SERVER_UPDATE_SOCKET=/run/officium/updater.sock
 SERVER_UPDATE_APP_DIR=/opt/officium/current
 SERVER_UPDATE_STATUS_PATH=/var/lib/officium/server-update-status.json
 ```
+
+Модуль «Автомобили» включён по умолчанию. При обновлении существующего сервера
+проверьте `shared/.env`: если там осталось `VEHICLES_ENABLED=false`, замените его
+на `true` и перезапустите приложение. Явное `false` по-прежнему отключает модуль.
+
+Общая отправка напоминаний об автомобилях управляется супер-администратором:
+«Настройки → Сроки и напоминания → Напоминания об автомобилях в Telegram».
+Изменения действуют без перезапуска; личный отказ пользователя сохраняется.
+До первого сохранения настройки используется `VEHICLE_NOTIFICATIONS_ENABLED`
+из окружения (по умолчанию `false`). Для доставки задайте `TELEGRAM_BOT_TOKEN`
+и `OFFICIUM_PUBLIC_URL` (либо `VEHICLE_NOTIFICATIONS_BASE_URL`). Один раз
+установите ежедневный запуск из каталога релиза:
+
+```bash
+sudo env APP_ROOT=/opt/officium APP_TIMEZONE=Europe/Moscow VEHICLE_NOTIFICATIONS_HOUR=10 bash deployment/install-vehicle-notifications.sh
+```
+
+Таймер остаётся активным; при выключенной настройке приложение пропускает
+отправку. Переключатель не меняет время запуска и настройки подключения бота.
 
 Пароль БД не передаётся в argv. Backup создаёт временный mode `0600` MySQL
 option-file, запускает `mysqldump --single-transaction --quick
