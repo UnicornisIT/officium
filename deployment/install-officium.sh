@@ -296,6 +296,11 @@ for command in git python3 systemctl systemd-analyze runuser curl; do
     command -v "$command" >/dev/null 2>&1 || fail "Missing command: $command"
 done
 python3 -m venv --help >/dev/null 2>&1 || fail "python3-venv is unavailable."
+# Recovery and unit repair may still operate on an existing older release.
+if [ "$MODE" != recover ] && [ "$MODE" != units ]; then
+    python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 11))' || \
+        fail "Python 3.11 or newer is required for Pillow 13. Upgrade python3 before installation."
+fi
 id "$APP_USER" >/dev/null 2>&1 || fail "Create the dedicated APP_USER before installation: $APP_USER"
 getent group "$APP_GROUP" >/dev/null 2>&1 || fail "Create APP_GROUP before installation: $APP_GROUP"
 id -nG "$APP_USER" | tr ' ' '\n' | grep -qx "$APP_GROUP" || fail "APP_USER is not a member of APP_GROUP."

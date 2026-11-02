@@ -19,6 +19,11 @@ MIN_FREE_MB="${MIN_FREE_MB:-512}"
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 report() { printf '%s\n' "$1" >"$STAGE_FILE"; }
 
+require_python_runtime() {
+    python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 11))' || \
+        fail "Python 3.11 or newer is required for Pillow 13. Upgrade the build interpreter before deploying."
+}
+
 # Every absolute path that a venv/bin file mentions (shebangs, activate
 # scripts) must stay inside the release: console scripts otherwise point at a
 # build directory that no longer exists once the release has been moved.
@@ -62,6 +67,7 @@ main() {
     # runuser keeps the caller's directory; git and pip fail when this user
     # cannot stat it (an installer started from /root/<dir>).
     cd /
+    require_python_runtime
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --release) RELEASE_TAG="${2:-}"; shift 2 ;;

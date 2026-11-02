@@ -95,3 +95,20 @@ teardown() {
     [ "$status" -eq 0 ]
     [ "$output" = "$(realpath -e "$TMP/app/shared/.env")" ]
 }
+
+@test "release preflight rejects Python 3.10 before building" {
+    python3() {
+        command python3 -c 'import sys; sys.version_info = (3, 10, 22); exec(sys.argv[1])' "$2"
+    }
+    run require_python_runtime
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Python 3.11 or newer is required"* ]]
+}
+
+@test "release preflight accepts the Python 3.11 minimum" {
+    python3() {
+        command python3 -c 'import sys; sys.version_info = (3, 11, 0); exec(sys.argv[1])' "$2"
+    }
+    run require_python_runtime
+    [ "$status" -eq 0 ]
+}
