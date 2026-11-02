@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
 {% from 'vehicles/_visual.html' import visual with context %}
+{% from 'vehicles/_attachments.html' import gallery, upload, entity_photos, assets with context %}
 {% block title %}{{ vehicle.name }} — Автомобили{% endblock %}
-{% block content %}<script defer src="{{ url_for('static', filename='js/vehicle-document-amount.js', v='1') }}"></script>{% include 'vehicles/_body_symbols.html' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='maintenance-motion-3') }}">
+{% block content %}{{ assets() }}<script defer src="{{ url_for('static', filename='js/vehicle-document-amount.js', v='1') }}"></script>{% include 'vehicles/_body_symbols.html' %}
+
 <a class="text-decoration-none btn btn-outline-secondary vehicle-button" href="{{ url_for('vehicles') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Автомобили</span></a>
 <div class="d-flex flex-wrap justify-content-between gap-3 mt-3"><h1 class="page-title">{{ vehicle.name }}</h1>{% if not vehicle.archived_at %}<a class="text-decoration-none btn btn-outline-primary align-self-start" href="{{ url_for('edit_vehicle',vehicle_id=vehicle.id) }}">Редактировать</a>{% endif %}</div>
 {% if vehicle.archived_at %}<div class="alert alert-secondary mt-3">Автомобиль в архиве · {{ archive_reasons[vehicle.archive_reason] }}. Только просмотр.<p class="mb-0">{{ vehicle.archive_note or '' }}</p></div>{% endif %}
@@ -14,10 +15,11 @@
 {% if vehicle.trailers %}<h3 class="h6 mt-3">Прицепы</h3>{% for trailer in vehicle.trailers %}<div class="vehicle-trailer">{{ visual(trailer) }}<a class="text-decoration-none btn btn-outline-primary vehicle-button vehicle-related-link" href="{{ url_for('vehicle_detail',vehicle_id=trailer.id) }}">{{ trailer.name }}</a></div>{% endfor %}{% endif %}
 </section>
 <section class="card p-4">
-{% set tab=vehicle_tab|default(request.args.get('tab','overview')) %}<nav class="nav nav-pills gap-1 mb-4" aria-label="Вкладки автомобиля">{% for key,label in [('overview','Обзор'),('expenses','Расходы'),('mileage','Пробег'),('fuel','Заправки'),('maintenance','Обслуживание'),('defects','Неисправности'),('documents','Документы'),('tco','Аналитика')] %}{% if key not in ('mileage','fuel') or vehicle.kind!='trailer' %}<a class="text-decoration-none nav-link {% if tab==key %}active{% endif %}" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab=key) }}">{{ label }}</a>{% endif %}{% endfor %}</nav>
+{% set tab=vehicle_tab|default(request.args.get('tab','overview')) %}<nav class="nav nav-pills gap-1 mb-4" aria-label="Вкладки автомобиля">{% for key,label in [('overview','Обзор'),('expenses','Расходы'),('mileage','Пробег'),('fuel','Заправки'),('maintenance','Обслуживание'),('defects','Неисправности'),('documents','Документы'),('photos','Фото'),('tco','Аналитика')] %}{% if key not in ('mileage','fuel') or vehicle.kind!='trailer' %}<a class="text-decoration-none nav-link {% if tab==key %}active{% endif %}" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab=key) }}">{{ label }}</a>{% endif %}{% endfor %}</nav>
 {% if tab=='fuel' and vehicle.kind!='trailer' %}{% include 'vehicles/_fuel.html' %}
 {% elif tab=='maintenance' %}{% include 'vehicles/_maintenance.html' %}
 {% elif tab=='tco' %}{% include 'vehicles/_tco.html' %}
+{% elif tab=='photos' %}<h2 class="h5">Фото и вложения</h2>{{ upload(vehicle) }}{{ gallery(vehicle_attachments, true) }}{% if not vehicle_attachments %}<p>Фотографий пока нет.</p>{% endif %}
 {% elif tab=='documents' %}{% include 'vehicles/_documents.html' %}
 {% elif tab=='defects' %}{% include 'vehicles/_defects.html' %}
 {% elif tab=='mileage' and vehicle.kind!='trailer' %}
@@ -25,6 +27,7 @@
 {% if not vehicle.archived_at %}<form method="post" action="{{ url_for('vehicle_odometer',vehicle_id=vehicle.id) }}" class="d-flex flex-wrap gap-3 my-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="readingDate">Дата замера<input id="readingDate" type="date" name="reading_date" value="{{ today.isoformat() }}" max="{{ today.isoformat() }}" class="form-control" required></label><label for="readingKm">Пробег (км)<input id="readingKm" type="text" name="odometer_km" class="form-control" required inputmode="numeric" data-vehicle-km pattern="[0-9 ]*"></label><button class="btn btn-primary align-self-end">Добавить замер</button></form>{% endif %}
 <div class="table-responsive"><table class="table"><thead><tr><th>Дата</th><th>Пробег, км</th><th>Источник</th></tr></thead><tbody>{% for row in readings %}<tr><td>{{ row.reading_date.strftime('%d.%m.%Y') }}</td><td>{{ row.odometer_km|distance }}</td><td>{{ {'manual':'Вручную','service':'Обслуживание','fuel':'Заправка','bot':'Бот'}[row.source] }}</td></tr>{% else %}<tr><td colspan="3">Замеров пока нет</td></tr>{% endfor %}</tbody></table></div>
 {% else %}
+{% if tab=='overview' %}{{ gallery((vehicle_attachments|selectattr('kind','equalto','vehicle')|list)[:6]) }}<a href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab='photos') }}">Все фото</a>{% endif %}
 {% if tab=='overview' and vehicle.kind!='trailer' %}<p class="text-muted mb-1">Текущий пробег</p><p class="display-6">{{ mileage|distance }} <small class="h5">км</small></p>{% endif %}
 {% if tab=='overview' and vehicle.kind!='trailer' %}<article class="vehicle-maintenance-card p-3 mb-3"><h2 class="h5">Топливо</h2><p>Средний расход за последние 5 заправок: {{ fuel_recent.avg_consumption if fuel_recent.avg_consumption is not none else '—' }} л/100 км</p><p class="mb-0">За месяц: {{ fuel_month.total_amount|money }}</p></article>{% endif %}
 {% if tab=='overview' and documents and documents[0][0].expires_at %}{% set doc,state=documents[0] %}<article class="vehicle-document-card p-3 mb-3"><h2 class="h5">Ближайший срок документа</h2><a href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab='documents') }}">{{ document_kinds[doc.kind] }}</a> · {{ doc.expires_at.strftime('%d.%m.%Y') }} <span class="badge bg-{{ state.color }}">{{ state.label }}</span></article>{% endif %}
@@ -34,7 +37,7 @@
 {% if tab=='expenses' %}
 <h3 class="h5 mt-3">Личные траты</h3>
 {% for expense in expenses %}<article class="card p-3 mb-2">
-<h4 class="h6 text-break"><a class="text-decoration-none" href="{{ url_for('edit_expense',expense_id=expense.id) }}">{{ expense.title }}</a></h4>
+<h4 class="h6 text-break"><a class="text-decoration-none" href="{{ url_for('edit_expense',expense_id=expense.id) }}">{{ expense.title }}</a></h4>{{ entity_photos(vehicle, vehicle_attachments, 'expense', expense.id, 'Прикрепить чек') }}
 <dl class="row mb-0"><dt class="col-sm-4">Дата</dt><dd class="col-sm-8">{{ expense.expense_date.strftime('%d.%m.%Y') }}</dd><dt class="col-sm-4">Категория</dt><dd class="col-sm-8">{{ vehicle_expense_categories.get(expense.category,expense.category) }}</dd><dt class="col-sm-4">Вид траты</dt><dd class="col-sm-8">{{ cost_kinds.get(expense.vehicle_cost_kind,'Не указан') }}</dd><dt class="col-sm-4">Сумма</dt><dd class="col-sm-8">{{ expense.amount|money }}</dd><dt class="col-sm-4">Способ оплаты</dt><dd class="col-sm-8">{{ vehicle_payment_methods.get(expense.payment_method,'Не указан') }}</dd><dt class="col-sm-4">Комментарий</dt><dd class="col-sm-8 text-break" style="white-space:pre-wrap">{{ expense.comment or 'Не указан' }}</dd></dl>
 </article>{% else %}<p class="text-muted">Личных трат пока нет.</p>{% endfor %}
 {% else %}
@@ -43,7 +46,7 @@
 {% if tab=='expenses' %}
 <h3 class="h5 mt-4">Траты организации</h3>
 {% for cost in organization_costs %}<article class="card p-3 mb-2">
-  <h4 class="h6 text-break"><a class="text-decoration-none" href="{{ url_for('vehicle_cost_detail',cost_id=cost.id) }}">{{ cost.title }}</a></h4>
+  <h4 class="h6 text-break"><a class="text-decoration-none" href="{{ url_for('vehicle_cost_detail',cost_id=cost.id) }}">{{ cost.title }}</a></h4>{{ entity_photos(vehicle, vehicle_attachments, 'vehicle_cost', cost.id, 'Прикрепить чек') }}
   <dl class="row mb-0"><dt class="col-sm-4">Дата</dt><dd class="col-sm-8">{{ cost.date.strftime('%d.%m.%Y') }}</dd><dt class="col-sm-4">Категория</dt><dd class="col-sm-8">Транспорт</dd><dt class="col-sm-4">Вид траты</dt><dd class="col-sm-8">{{ cost_kinds[cost.kind] }}</dd><dt class="col-sm-4">Сумма</dt><dd class="col-sm-8">{{ cost.amount|money }}</dd><dt class="col-sm-4">Способ оплаты</dt><dd class="col-sm-8">{{ vehicle_payment_methods.get(cost.payment_method,'Не указан') }}</dd><dt class="col-sm-4">Комментарий</dt><dd class="col-sm-8 text-break" style="white-space:pre-wrap">{{ cost.comment or 'Не указан' }}</dd></dl>
   {% with cost_vehicle=vehicle, reimbursement_return='vehicle' %}{% include 'vehicles/_reimbursement.html' %}{% endwith %}
 </article>{% else %}<p class="text-muted">Трат организации пока нет.</p>{% endfor %}

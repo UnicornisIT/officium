@@ -1,4 +1,4 @@
-<form method="post" action="{{ url_for('vehicle_refueling',vehicle_id=vehicle.id,refueling_id=refueling.id) if refueling else url_for('vehicle_refueling',vehicle_id=vehicle.id,_method='POST') }}" class="vehicle-fuel-form vehicle-maintenance-card p-3 d-grid gap-3">
+<form method="post" enctype="multipart/form-data" action="{{ url_for('vehicle_refueling',vehicle_id=vehicle.id,refueling_id=refueling.id) if refueling else url_for('vehicle_refueling',vehicle_id=vehicle.id,_method='POST') }}" class="vehicle-fuel-form vehicle-maintenance-card p-3 d-grid gap-3">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="vehicle-fuel-fields">
 <label>Дата заправки<input class="form-control" type="date" name="refuel_date" value="{{ form.get('refuel_date',today.isoformat()) }}" max="{{ today }}" required></label>
@@ -11,6 +11,7 @@
 <fieldset><legend class="h6">Кто платит</legend>{% for key,label in [('self','Свои средства'),('organization','Организация')] %}{% if key=='self' or vehicle.is_company %}<label class="me-3"><input type="radio" name="payer" value="{{ key }}" {% if form.get('payer',vehicle.default_payer)==key %}checked{% endif %}> {{ label }}</label>{% endif %}{% endfor %}</fieldset>
 <div class="monthly-switch"><input class="monthly-switch-input" type="checkbox" role="switch" id="fuelFullTank" name="is_full_tank" value="1" {% if form.get('is_full_tank',true) in (true,'1','on','true') %}checked{% endif %}><label class="monthly-switch-label" for="fuelFullTank">До полного</label></div><input type="hidden" name="is_full_tank" value="0" data-fuel-unchecked>
 <label>Комментарий<textarea class="form-control" name="comment" maxlength="2000">{{ form.get('comment') or '' }}</textarea></label>
+<label>Фото чека (JPEG, PNG, WebP, до 5 МБ)<input class="form-control" type="file" name="file" accept="image/jpeg,image/png,image/webp"></label>
 <button class="btn btn-primary">Сохранить заправку</button>
 </form>
 <script src="{{ url_for('static',filename='js/vehicle-fuel.js',v='2') }}" defer></script>

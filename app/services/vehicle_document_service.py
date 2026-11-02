@@ -57,7 +57,7 @@ def _linked_amount(user, vehicle, row, amount, action):
         record_activity('vehicle_cost_update', user, entity_type='vehicle_cost', entity_id=spend.id, commit=False)
 
 
-def save_document(user, vehicle_id, data, document_id=None):
+def save_document(user, vehicle_id, data, document_id=None, *, commit=True):
     try:
         vehicle = vehicles.get_vehicle_for_user(user, vehicle_id, for_update=True)
         vehicles._writable(vehicle)
@@ -94,7 +94,8 @@ def save_document(user, vehicle_id, data, document_id=None):
             else:
                 row.vehicle_cost_id = spend.id
         record_activity('vehicle_document_save', user, entity_type='vehicle_document', entity_id=row.id, commit=False)
-        db.session.commit()
+        if commit:
+            db.session.commit()
         return row
     except Exception:
         db.session.rollback()

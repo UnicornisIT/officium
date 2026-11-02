@@ -24,7 +24,7 @@
 
 ## Технологии
 
-- Python 3.10+
+- Python 3.11+
 - Flask
 - Flask-SQLAlchemy
 - Flask-Migrate / Alembic

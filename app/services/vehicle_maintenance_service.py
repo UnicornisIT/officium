@@ -157,7 +157,7 @@ def technical_condition(vehicle, *, mileage=_MILEAGE_UNSET, day=None):
     return max(states, key=lambda state: {'unknown': 0, 'ok': 0, 'soon': 1, 'overdue': 2}[state])
 
 
-def save_defect(user, vehicle_id, data, defect_id=None):
+def save_defect(user, vehicle_id, data, defect_id=None, *, commit=True):
     vehicle = vehicles.get_vehicle_for_user(user, vehicle_id, for_update=True)
     vehicles._writable(vehicle)
     row = VehicleDefect.query.filter_by(id=defect_id, vehicle_id=vehicle.id).first_or_404() if defect_id else VehicleDefect(vehicle_id=vehicle.id, status='open')
@@ -170,10 +170,10 @@ def save_defect(user, vehicle_id, data, defect_id=None):
     if row.severity == 'critical' and data.get('set_in_repair') == 'on':
         vehicle.status = 'in_repair'
     db.session.add(row)
-    return _audit(user, 'vehicle_defect_save', row)
+    return _audit(user, 'vehicle_defect_save', row, commit=commit)
 
 
-def record_service(user, vehicle_id, data):
+def record_service(user, vehicle_id, data, *, commit=True):
     """Own the transaction: mileage, spending, replacements and fixes succeed together."""
     try:
         vehicle = vehicles.get_vehicle_for_user(user, vehicle_id, for_update=True)
@@ -213,7 +213,7 @@ def record_service(user, vehicle_id, data):
                 row.vehicle_cost_id = spend.id
         # An old service entry must also clear the mileage reminder until tomorrow.
         vehicle.mileage_snooze_until = vehicles.today() + timedelta(days=1)
-        return _audit(user, 'vehicle_service_create', row)
+        return _audit(user, 'vehicle_service_create', row, commit=commit)
     except Exception:
         db.session.rollback()
         raise
