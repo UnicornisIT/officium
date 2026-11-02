@@ -4870,7 +4870,8 @@ body.keyboard-open [contenteditable="true"] {
     .telegram-more-menu__label-short { display: inline; }
 }
 
-.telegram-more-menu__grid a {
+.telegram-more-menu__grid a,
+.telegram-more-menu__modules {
     display: grid;
     justify-items: start;
     min-width: 0;
@@ -4883,13 +4884,26 @@ body.keyboard-open [contenteditable="true"] {
     text-decoration: none;
 }
 
-.telegram-more-menu__grid a.active {
+.telegram-more-menu__grid a.active,
+.telegram-more-menu__modules.active {
     border-color: color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 36%, transparent);
     color: var(--tg-theme-button-color, var(--primary));
     background: color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 10%, transparent);
 }
 
-.telegram-more-menu__grid a i { font-size: 1.25rem; }
+.telegram-more-menu__grid a i,
+.telegram-more-menu__modules > i { font-size: 1.25rem; }
+.telegram-more-menu__modules { position: relative; font: inherit; text-align: left; }
+.telegram-more-menu__modules > span { align-self: end; font-size: 0.76rem; font-weight: 700; }
+.telegram-more-menu__modules > .telegram-more-menu__modules-chevron {
+    position: absolute;
+    top: 15px;
+    right: 12px;
+    font-size: 0.8rem;
+}
+.telegram-more-menu__modules[aria-expanded="true"] > .telegram-more-menu__modules-chevron { transform: rotate(180deg); }
+.telegram-more-menu__modules-panel { grid-column: 1 / -1; min-width: 0; }
+.telegram-more-menu .telegram-more-menu__modules-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 /* A grid item defaults to min-width: auto, so one long word such as
    "администратора" used to widen the label past the tile. The label may now
    shrink to the tile; a long word is hyphenated where the browser knows

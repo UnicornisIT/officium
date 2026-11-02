@@ -88,6 +88,33 @@ for (const [width, label] of [[360, 'Панель администратора']
   });
 }
 
+test('Telegram modules expand, collapse and open vehicles and goals', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 780 });
+  await startMiniApp(page);
+  await page.goto('/');
+  const menu = page.locator('#telegramMoreMenu');
+  const toggle = menu.getByRole('button', { name: 'Модули', exact: true });
+  const modules = page.locator('#telegramModules');
+  await page.locator('.telegram-app-bar__menu').click();
+  await expect(modules).toBeHidden();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(modules.getByRole('link', { name: 'Автомобили', exact: true })).toBeVisible();
+  await expect(modules.getByRole('link', { name: 'Цели', exact: true })).toBeVisible();
+  await expect(modules).toHaveClass(/\bshow\b/);
+  await page.screenshot({ path: testInfo.outputPath('telegram-modules-expanded.png') });
+  await toggle.click();
+  await expect(modules).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  for (const [label, route] of [['Автомобили', '/vehicles'], ['Цели', '/goals']]) {
+    await toggle.click();
+    await modules.getByRole('link', { name: label, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${route}$`));
+    await page.locator('.telegram-app-bar__menu').click();
+    await expect(toggle).toHaveClass(/\bactive\b/);
+  }
+});
+
 test('what\'s new is shown once and "Понятно" records the release', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 });
   await startMiniApp(page);
