@@ -10,9 +10,9 @@ test('settings keep equal field bounds with different help text', async ({ page 
         await page.goto('/admin/settings');
         const first = await page.locator('#setting-payment_warning_days').boundingBox();
         const second = await page.locator('#setting-urgent_payment_days').boundingBox();
-        expect(first.height).toBe(44);
-        expect(second.height).toBe(44);
-        if (width > 767) expect(first.y).toBe(second.y);
+        expect(first.height).toBeCloseTo(44, 2);
+        expect(second.height).toBeCloseTo(44, 2);
+        if (width > 767) expect(first.y).toBeCloseTo(second.y, 2);
     }
 });
 

@@ -64,7 +64,7 @@ test('header sign-in opens the same Telegram window without reloading /login', a
 test('header sign-in starts Telegram from other public pages too', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await stubSdk(page);
-  await page.goto('/documentation', { waitUntil: 'networkidle' });
+  await page.goto('/documentation', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.__tgAuthCalls);
 
   const [popup] = await Promise.all([page.waitForEvent('popup'), headerButton(page).click()]);

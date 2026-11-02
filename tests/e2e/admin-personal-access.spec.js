@@ -61,7 +61,7 @@ test('avatar menu works from the keyboard', async ({ page }) => {
 
   await page.locator('#userMenu a[href="/profile"]').click();
   await expect(page).toHaveURL(/\/profile$/);
-  await expect(page.getByText('Профиль в разработке')).toBeVisible();
+  await expect(page.getByText('Ваш аккаунт и настройки уведомлений.', { exact: true })).toBeVisible();
 });
 
 test('avatar menu opens inside the mobile navigation', async ({ page }) => {

@@ -60,6 +60,8 @@ body label > input[type="radio"]:not([class]):focus-visible { outline: 3px solid
 
 .vehicle-form, .vehicle-fuel-fields, .vehicle-maintenance-fields { align-items: start; }
 .vehicle-form .vehicle-field-heading { min-height: 28px; }
+.vehicle-form-preview .vehicle-preview-scene { height: 172px; }
+.vehicle-detail-header > .page-title { min-width: 0; max-width: 100%; flex: 1 1 16rem; overflow-wrap: anywhere; }
 .vehicle-fuel-fields > label { align-self: start; }
 .vehicle-spend-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; max-width: 58rem; margin-inline: auto; }
 .vehicle-spend-form > label { min-width: 0; }
