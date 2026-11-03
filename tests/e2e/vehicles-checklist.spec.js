@@ -124,8 +124,9 @@ test('vehicle checklist: cashflow, mileage, repair, reminders, archive and owner
   }
   await page.goto('/dev-login/user');
   await page.goto(car);
-  await page.getByRole('button', { name: 'Архивировать автомобиль', exact: true }).click();
-  await page.locator('[name="reason"]').selectOption('sold');
+  await page.locator('#vehicleArchiveForm > summary').click();
+  await page.locator('#archiveReasonToggle').click();
+  await page.locator('#archiveReasonMenu').getByRole('button', {name:'Продано',exact:true}).click();
   await page.locator('[name="note"]').fill('Вымышленное приватное примечание');
   await page.getByRole('button', { name: 'В архив', exact: true }).click();
   await expect(page.locator('body')).toContainText('Только просмотр');
@@ -226,7 +227,7 @@ test('vehicle checklist: bank import cannot change an archived vehicle expense',
   await page.waitForURL(/month=/);
   const editExpense = await page.locator('tr', { hasText: title }).getByRole('link', { name: 'Редактировать', exact: true }).getAttribute('href');
   await page.goto(vehiclePath);
-  await page.getByRole('button', { name: 'Архивировать автомобиль', exact: true }).click();
+  await page.locator('#vehicleArchiveForm > summary').click();
   await page.getByRole('button', { name: 'В архив', exact: true }).click();
   await expect(page.locator('.alert-secondary')).toContainText('Автомобиль в архиве');
   await page.goto('/expenses/import');
