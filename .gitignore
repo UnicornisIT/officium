@@ -60,3 +60,11 @@ blob-report/
 
 # Local settings
 instance/
+
+# Local worktrees and review/test artifacts (never ship with releases)
+vehicles-stage-0-work/
+v20-test-results/
+docs/qa/privacy-toolbar-20261103/
+tests/vehicle-small-fixes-results.txt
+tests/e2e/* (1).spec.js
+tests/e2e/privacy-toolbar-preview.spec.js

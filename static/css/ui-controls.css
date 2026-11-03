@@ -71,6 +71,20 @@ body label > input[type="radio"]:not([class]):focus-visible { outline: 3px solid
 :is(.vehicle-driver-payment, .ui-switch-label) > span { min-width: 0; }
 .vehicle-spend-form > .btn { justify-self: start; margin-top: 0 !important; }
 .profile-page > form.profile-card { flex-wrap: wrap; justify-content: space-between; gap: 1rem; }
+.profile-notifications-title { flex: 0 0 100%; width: 100%; margin: 0; font-size: 1.25rem; }
+.mileage-reminder .mileage-snooze { display: inline-flex; align-items: center; gap: .5rem; min-height: var(--control-height); margin: 0; white-space: nowrap; }
+.mileage-reminder .mileage-snooze input { flex: 0 0 4.5rem; width: 4.5rem; max-width: 100%; margin: 0; text-align: center; }
+/* The Mini App uses a collapsible Modules panel instead of the browser dropdown. */
+.telegram-more-menu__modules > .telegram-more-menu__modules-chevron { transition: transform .18s ease; }
+.telegram-more-menu__modules-panel.collapsing { transition: height .26s cubic-bezier(.2,.75,.25,1); }
+.telegram-more-menu__grid a, .telegram-more-menu__modules { transition: background-color .15s ease, border-color .15s ease, color .15s ease; }
+.telegram-more-menu__grid a:focus-visible, .telegram-more-menu__modules:focus-visible { outline: 2px solid var(--tg-theme-button-color, var(--primary)); outline-offset: 2px; }
+@media (hover:hover) {
+    .telegram-more-menu__grid a:hover, .telegram-more-menu__modules:hover { border-color: var(--tg-theme-button-color, var(--primary)); background: color-mix(in srgb, var(--tg-theme-button-color, var(--primary)) 12%, var(--tg-theme-bg-color, var(--bg-card-2))); }
+}
+@media (prefers-reduced-motion:reduce) {
+    .telegram-more-menu__modules-panel.collapsing, .telegram-more-menu__modules > .telegram-more-menu__modules-chevron, .telegram-more-menu__grid a, .telegram-more-menu__modules { transition: none; }
+}
 @media (max-width: 575.98px) {
     .vehicle-spend-form { grid-template-columns: minmax(0, 1fr); padding: 1rem !important; }
     .vehicle-spend-form > .btn { width: 100%; }

@@ -1,4 +1,8 @@
 import unittest
+import json
+import re
+from pathlib import Path
+from urllib.parse import urlsplit, unquote
 
 from app import create_app
 from extensions import db
@@ -49,6 +53,31 @@ class DocumentationTestCase(unittest.TestCase):
         self.assertNotIn('mailto:', html)
         self.assertNotIn('github.com/', html)
         self.assertNotIn('site-footer__primary-link', html)
+
+    def test_all_sections_and_current_images(self):
+        html = self.client.get('/documentation').get_data(as_text=True)
+        sections = re.findall(r'<section class="docs-section" id="([^"]+)" data-docs-section>', html)
+        self.assertEqual(len(sections), 12)
+        self.assertEqual(len(set(sections)), 12)
+        for section in sections:
+            self.assertIn(f'href="#{section}"', html)
+            self.assertIn(f'value="#{section}"', html)
+        for text in ['Профиль и личные настройки', 'Автомобили', 'Цели и финансовая подушка',
+                     'GRX130-0000001', 'IANA', 'раз в минуту', 'Денежные графики']:
+            self.assertIn(text, html)
+        root = Path(__file__).resolve().parents[1]
+        manifest = json.loads((root/'static/images/documentation/manifest.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(manifest['images']), 18)
+        for image in manifest['images']:
+            path = root/'static/images/documentation'/image['file']
+            self.assertTrue(path.is_file(), str(path))
+            self.assertGreater(path.stat().st_size, 1000)
+        sources = re.findall(r'<img src="([^"]+)"', html)
+        self.assertGreaterEqual(len(sources), 14)
+        for source in sources:
+            parsed = urlsplit(source.replace('&amp;', '&'))
+            self.assertIn('guide-20261103', parsed.query)
+            self.assertTrue((root/unquote(parsed.path).lstrip('/')).is_file())
 
 
 if __name__ == '__main__':

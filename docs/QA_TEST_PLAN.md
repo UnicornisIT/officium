@@ -28,6 +28,9 @@
 | Telegram Login | unit | valid/expired/forged signed payload | only valid accepted | auth tests |
 | Telegram Mini App | unit + browser mock | signed initData, replay/age/CSRF | secure session only | mini-app tests/trace |
 | Telegram real | iOS/Android MANUAL | Login, Mini App, bot and reminder separately | all four effective states verified | manual checklist/video (not mock) |
+| Профиль | SQLite + browser/Mini App | отдельные формы, CSRF, подмена владельца, dev/Google, IANA/DST, тест Telegram/60 секунд, ошибки API | настройки независимы, нет ложного статуса доставки или дублей | `test_personal_settings.py`, `profile-settings.spec.js` |
+| Приватность сумм | Chromium/WebKit, light/dark, 390/1440 | начальная загрузка, клавиатура, динамические суммы/tooltip/canvas, back/forward, поля и CSV | •••• до раскрытия, графики/подсказки согласованы, данные и экспорт прежние | `profile-settings.spec.js` |
+| Руководство | public/browser/Mini App | 12 разделов, оглавление/поиск, актуальные PNG, версия кэша, мобильная ширина | изображения доступны, ссылки целы, переполнения нет | `test_documentation.py`, `documentation-guide.spec.js`, manifest |
 | Contacts | unit + browser | CRUD, role, CSRF, XSS, unsafe URI, location/order | safe immediate publication | contact tests/trace |
 | Admin UI | Chromium/Firefox/WebKit | 375/390/768/1024/1280/1440/1920, browser zoom 100/110/125/150/200%, light/dark, all routes | no page overflow/clipping/error; navbar becomes icon-only before labels wrap; login/empty states remain complete and symmetric | screenshots/traces/JUnit |
 | Security | unit + audit | role/IDOR/CSRF/XSS/SQLi/link/cookies/dependencies | deny by default, no secrets | security tests + pip-audit JSON |
@@ -43,6 +46,10 @@ health timeout; Flask restart; duplicate/concurrent POST; stale helper protocol.
 наличие безопасной диагностики по `operation_id`.
 
 ## Browser visual review
+
+Иллюстрации пользовательского руководства обновляются отдельно по явному
+запросу: [SCREENSHOTS.md](SCREENSHOTS.md). Это не автоматическое принятие
+pixel-baseline и не замена исторических доказательств в `docs/qa/`.
 
 Playwright сохраняет полностраничные screenshots как artifacts, но не обновляет
 эталоны автоматически. После первого одобренного Ubuntu run владелец переносит

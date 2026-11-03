@@ -83,7 +83,9 @@ def create_app(config_overrides=None):
     csrf = CSRFProtect()
     csrf.init_app(app)
 
-    app.jinja_env.filters['money'] = format_currency
+    from app.amount_privacy import display_money, private_amount
+    app.jinja_env.filters['money'] = display_money
+    app.jinja_env.filters['private_amount'] = private_amount
     app.jinja_env.filters['distance'] = lambda value: f'{int(value):,}'.replace(',', ' ') if value is not None else '—'
     app.jinja_env.filters['display'] = display_value
     app.jinja_env.filters['admin_field'] = admin_field_label

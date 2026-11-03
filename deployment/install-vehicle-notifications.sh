@@ -22,4 +22,5 @@ for extension in service timer; do
 done
 systemd-analyze verify "/etc/systemd/system/$unit.service" "/etc/systemd/system/$unit.timer"
 systemctl daemon-reload
-systemctl enable --now "$unit.timer"
+systemctl enable "$unit.timer"
+systemctl restart "$unit.timer"

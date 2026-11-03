@@ -2,6 +2,7 @@
 
 ## Именование альфа-релизов
 
+- Релизная ветка: `release/vX.Y.Z-alpha`, без префикса `codex/`.
 - Тег: `vX.Y.Z-alpha` (например, `v0.0.14-alpha`); `VERSION` содержит тот же
   тег, заголовок в `CHANGELOG.md` — `## [X.Y.Z-alpha] - ГГГГ-ММ-ДД`.
 - Заголовок релиза на GitHub: `Release vX.Y.Z-alpha`.
@@ -29,6 +30,10 @@ Stable release запрещён, пока любой критический пу
 - [ ] Alembic SQLite + MySQL single head/check PASS.
 - [ ] Monthly timer после reboot/catch-up не создаёт duplicate.
 - [ ] Финансы/import/debts/payments/Decimal/user isolation PASS.
+- [ ] `/profile`: независимые формы, CSRF, изоляция, IANA/DST и rate limit теста бота PASS.
+- [ ] Скрытие сумм: начальный рендер, динамические данные/подсказки/графики, клавиатура; ввод и CSV не изменены.
+- [ ] Установлены миграции идентификаторов автомобиля и личных настроек, `tzdata`; напоминания проверяются каждые 5 минут.
+- [ ] Все иллюстрации `/documentation` пересняты на фиктивных данных, манифест и версии URL обновлены, 12 разделов доступны.
 - [ ] Telegram Login/Mini App/bot synthetic security PASS.
 - [ ] Telegram iOS/Android real checks отмечены MANUAL с доказательством.
 - [ ] Chromium/Firefox/WebKit × все viewports/themes/routes PASS; screenshots reviewed.

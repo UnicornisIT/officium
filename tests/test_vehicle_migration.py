@@ -49,6 +49,8 @@ class VehicleMigrationTestCase(unittest.TestCase):
                     self.assertIsNone(conn.execute(text('SELECT vehicle_id FROM expenses WHERE id=1')).scalar())
                     conn.commit()
                 inspector=inspect(db.engine)
+                vin_column = next(column for column in inspector.get_columns('vehicles') if column['name'] == 'vin')
+                self.assertEqual(vin_column['type'].length, 40)
                 self.assertIn('ix_expenses_vehicle_id',{index['name'] for index in inspector.get_indexes('expenses')})
                 foreign=next(item for item in inspector.get_foreign_keys('vehicles') if item['constrained_columns']==['tractor_id'])
                 self.assertEqual(foreign['options']['ondelete'],'SET NULL')
@@ -66,3 +68,15 @@ class VehicleMigrationTestCase(unittest.TestCase):
         sql=buffer.getvalue()
         for fragment in ['CREATE TABLE vehicles','CREATE TABLE vehicle_odometer_readings','fk_expenses_vehicle_id','ON DELETE SET NULL','uq_vehicles_user_name','uq_vehicle_reading_date','INSERT INTO registration_countries','Абхазия']:
             self.assertIn(fragment,sql)
+
+    def test_mysql_identifier_upgrade_widens_column(self):
+        spec = importlib.util.spec_from_file_location('identifier_migration',
+            ROOT/'migrations/versions/20261121_vehicle_identifiers.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        buffer = io.StringIO()
+        context = MigrationContext.configure(url='mysql+pymysql://',
+            opts=dict(as_sql=True, output_buffer=buffer))
+        with Operations.context(context):
+            module.upgrade()
+        self.assertIn('ALTER TABLE vehicles MODIFY vin VARCHAR(40) NULL', buffer.getvalue())

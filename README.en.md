@@ -18,10 +18,24 @@ quick entry.
   next one, goals and the emergency fund, a daily limit until the next income;
 - sign-in with the Telegram Login Widget, Google OAuth, dev/test modes;
 - one interface for the browser and the Telegram Mini App;
+- vehicles: garage, costs, mileage, fuel, maintenance, defects, documents,
+  photos and analytics; body/chassis identifiers and make/model suggestions;
+- personal profile settings: IANA delivery timezone and time, a rate-limited
+  notification test, and server-persisted screen privacy for monetary values;
+- a compact eye toggle beside page headings or actions in the browser and Mini App;
 - a responsive admin panel: users, activity log, settings, reference lists,
   audit export and diagnostics without access to users' financial data;
 - safe server update to the latest GitHub Release by a superadmin;
 - a Telegram bot with buttons for expenses, incomes, debts and payments.
+
+## Guides and current screenshots
+
+- In the app: `/documentation`, now covering 12 sections with refreshed illustrations.
+- [User guide](docs/USER_GUIDE.md), [personal settings](docs/PROFILE_SETTINGS.md),
+  [vehicles](docs/VEHICLES_GUIDE.md) (Russian).
+- [Deployment](docs/DEPLOYMENT.md): migrations, timezone data and the five-minute reminder timer.
+- [Screenshot capture](docs/SCREENSHOTS.md) and the
+  [current image manifest](static/images/documentation/manifest.json).
 
 ## Technology
 
@@ -66,7 +80,10 @@ $env:FLASK_APP = 'run.py'
 ```
 
 On Windows, `scripts\start.bat` automates the same steps: it creates `.venv`
-and a local `.env` and turns on development mode, SQLite and dev sign-in.
+and a BOM-free local `.env`, enables development mode, SQLite and dev sign-in,
+and applies migrations before starting on `127.0.0.1:5000`. Dependency or
+migration errors stop startup. Restart the old process after Python changes:
+Waitress does not automatically reload route handlers.
 
 ### Bash
 

@@ -1,0 +1,244 @@
+{
+  "capturedAt": "2026-11-03T11:30:28.366Z",
+  "data": "Fictional, isolated Playwright database",
+  "telegram": "SDK stub; not a native client screenshot or delivery confirmation",
+  "command": "UPDATE_DOCUMENTATION_SCREENSHOTS=1 npx playwright test tests/e2e/documentation-capture.spec.js --project=chromium",
+  "images": [
+    {
+      "file": "dashboard.png",
+      "route": "/",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "expenses.png",
+      "route": "/expenses",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "incomes.png",
+      "route": "/incomes",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "analytics.png",
+      "route": "/finance",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "financial-plan.png",
+      "route": "/financial-plan",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "goals.png",
+      "route": "/goals",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000,
+      "capturedAt": "2026-11-03T11:37:14.396Z"
+    },
+    {
+      "file": "import.png",
+      "route": "/expenses/import",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "vehicles.png",
+      "route": "/vehicles",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "vehicle-detail.png",
+      "route": "/vehicles/1",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "vehicle-form.png",
+      "route": "/vehicles/1/edit",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "debts.png",
+      "route": "/",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "vehicle-menu.png",
+      "route": "/vehicles/1",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "vehicle-documents.png",
+      "route": "/vehicles/1?tab=documents",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": true,
+      "width": 1440,
+      "height": 2088
+    },
+    {
+      "file": "profile.png",
+      "route": "/profile",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": true,
+      "width": 1440,
+      "height": 1351
+    },
+    {
+      "file": "privacy-hidden.png",
+      "route": "/finance",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "telegram-mini-app.png",
+      "route": "/profile",
+      "mode": "telegram-sdk-stub",
+      "theme": "dark",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": false,
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "profile-mobile.png",
+      "route": "/profile",
+      "mode": "telegram-sdk-stub",
+      "theme": "dark",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": false,
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "documentation-preview.png",
+      "route": "/documentation",
+      "mode": "browser",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": false,
+      "width": 1440,
+      "height": 1000
+    }
+  ],
+  "updatedAt": "2026-11-03T11:37:14.396Z"
+}

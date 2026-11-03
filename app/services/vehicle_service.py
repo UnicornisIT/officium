@@ -11,6 +11,7 @@ from sqlalchemy import inspect
 from app.models import Expense, RegistrationCountry, Vehicle, VehicleOdometerReading
 from app.services.personal_access_service import can_use_personal_cabinet
 from app.time_utils import utc_now
+from app.vehicle_catalog import VEHICLE_CATALOG
 from app.utils import parse_date, record_activity
 from extensions import db
 
@@ -118,8 +119,13 @@ def _values(user, data, existing=None):
         raise ValueError('Цвет должен быть в формате #RRGGBB.')
     result['color'] = color
     vin = str(data.get('vin', getattr(existing, 'vin', '') or '')).strip().upper()
-    if vin and not re.fullmatch('[A-HJ-NPR-Z0-9]{17}', vin):
-        raise ValueError('VIN: 17 латинских букв и цифр, без I, O, Q.')
+    # Modern VINs and older/local body or chassis identifiers share this field.
+    if vin and not re.fullmatch(r'[A-Z0-9]+(?:-[A-Z0-9]+)*', vin):
+        raise ValueError('VIN / номер кузова: используйте латинские буквы, цифры и дефис между группами.')
+    if len(vin) > 40:
+        raise ValueError('VIN / номер кузова: не более 40 символов.')
+    if len(vin) == 17 and '-' not in vin and not re.fullmatch('[A-HJ-NPR-Z0-9]{17}', vin):
+        raise ValueError('VIN из 17 символов не должен содержать буквы I, O, Q.')
     result['vin'] = vin or None
     country_id = data.get('registration_country_id', getattr(existing, 'registration_country_id', None))
     country = None
@@ -306,7 +312,8 @@ def selectable_vehicles(user):
 
 def form_options(user):
     _user(user)
-    return dict(countries=RegistrationCountry.query.order_by(RegistrationCountry.sort_order, RegistrationCountry.name).all(),
+    return dict(vehicle_catalog=VEHICLE_CATALOG,
+        countries=RegistrationCountry.query.order_by(RegistrationCountry.sort_order, RegistrationCountry.name).all(),
         tractors=Vehicle.query.filter_by(user_id=user.id, kind='tractor_unit', archived_at=None).order_by(Vehicle.name).all())
 
 

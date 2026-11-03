@@ -220,6 +220,39 @@ class VehicleServiceTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.vehicle()
 
+    def test_body_chassis_and_legacy_identifiers_round_trip(self):
+        vehicle = self.vehicle(vin=' grx130-1234567 ')
+        self.assertEqual(vehicle.vin, 'GRX130-1234567')
+        for identifier in ['grx1301234567', '1234567', 'AE86-0012345',
+                           'S30-12345', 'A' * 39 + '1', '', 'ABCDEFGHJKLMN1234']:
+            with self.subTest(identifier=identifier):
+                service.update_vehicle(self.owner, vehicle.id, dict(vin=identifier))
+                db.session.expire_all()
+                self.assertEqual(vehicle.vin, identifier.upper() or None)
+        for identifier in ['A' * 41, 'GRX130 1234567', 'ГРХ130-1234567',
+                           'GRX130/1234567', 'GRX130--1234567', '-1234567', '<script>', 'I' * 17]:
+            with self.subTest(identifier=identifier):
+                with self.assertRaises(ValueError):
+                    service.update_vehicle(self.owner, vehicle.id, dict(vin=identifier))
+
+    def test_create_and_edit_forms_include_catalog_and_keep_custom_values(self):
+        self.login()
+        response = self.client.post('/vehicles/new', data=dict(
+            name='Японский автомобиль', make='Toyota', model='Mark X', vin='GRX130-1234567'))
+        self.assertEqual(response.status_code, 302)
+        vehicle = Vehicle.query.one()
+        self.assertEqual((vehicle.make, vehicle.model, vehicle.vin),
+                         ('Toyota', 'Mark X', 'GRX130-1234567'))
+        for url in ['/vehicles/new', f'/vehicles/{vehicle.id}/edit']:
+            html = self.client.get(url).get_data(as_text=True)
+            self.assertIn('vehicle-make-options', html)
+            self.assertIn('vehicle-model-options', html)
+            self.assertIn('value="Toyota"', html)
+            self.assertIn('value="LADA"', html)
+            self.assertIn('maxlength="40"', html)
+        service.update_vehicle(self.owner, vehicle.id, dict(make='Своя марка', model='Своя модель'))
+        self.assertEqual((vehicle.make, vehicle.model), ('Своя марка', 'Своя модель'))
+
     def test_disabled_country_and_unique_names_include_archive(self):
         vehicle = self.vehicle(plate='a123bc77', registration_country_id=self.ru.id)
         self.ru.is_active = False

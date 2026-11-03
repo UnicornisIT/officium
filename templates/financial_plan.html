@@ -8,7 +8,10 @@
     <header class="plan-header">
         <div>
             <div class="plan-eyebrow"><i class="bi bi-stars"></i> Автоматический расчет</div>
-            <h1>Финансовый план{{ info_hint('План на ' ~ plan.period.label ~ ' на основе доходов, долгов и регулярных расходов.', 'hint-plan') }}</h1>
+            <div class="amount-heading">
+                <h1>Финансовый план{{ info_hint('План на ' ~ plan.period.label ~ ' на основе доходов, долгов и регулярных расходов.', 'hint-plan') }}</h1>
+                <div data-amount-privacy-slot></div>
+            </div>
         </div>
         <div class="plan-header__actions">
             <form method="get" class="plan-period" aria-label="Выбор месяца финансового плана">

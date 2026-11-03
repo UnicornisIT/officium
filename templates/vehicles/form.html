@@ -21,12 +21,15 @@
         <select id="v_{{ key }}" aria-label="{{ label }}" name="{{ key }}" class="form-select">{% for value,title in options.items() %}<option value="{{ value }}" {% if form.get(key,vehicle|attr(key) if vehicle else default)==value %}selected{% endif %}>{{ title }}</option>{% endfor %}</select>
     </div>
     {% endfor %}
-    {% for key,label,length,hint in [('make','Марка',80,''),('model','Модель',80,''),('year','Год',20,''),('vin','VIN',17,'Идентификационный номер автомобиля из документов.')] %}
+    {% for key,label,length,hint in [('make','Марка',80,''),('model','Модель',80,''),('year','Год',20,''),('vin','VIN',40,'VIN, номер кузова или шасси из документов: например, GRX130-1234567. До 40 латинских букв, цифр и дефисов. VIN из 17 символов — без I, O, Q.')] %}
     <div class="vehicle-field" data-vehicle-field="{{ key }}">
         {{ field_heading(key,label,hint) }}
-        <input id="v_{{ key }}" name="{{ key }}" maxlength="{{ length }}" class="form-control" value="{{ form.get(key,(vehicle|attr(key) or '') if vehicle else '') }}">
+        <input id="v_{{ key }}" name="{{ key }}" maxlength="{{ length }}" class="form-control" {% if key in ('make','model') %}list="vehicle-{{ key }}-options" autocomplete="off" aria-describedby="vehicle-catalog-help"{% endif %} value="{{ form.get(key,(vehicle|attr(key) or '') if vehicle else '') }}">
+        {% if key == 'make' %}<datalist id="vehicle-make-options">{% for entry in vehicle_catalog %}<option value="{{ entry.make }}" label="{{ entry.aliases|join(', ') }}"></option>{% endfor %}</datalist>{% endif %}
+        {% if key == 'model' %}<datalist id="vehicle-model-options"></datalist>{% endif %}
     </div>
     {% endfor %}
+    <p id="vehicle-catalog-help" class="text-muted vehicle-form-wide mb-0">Начните вводить марку и выберите подсказку. Модели зависят от марки. Если нужного варианта нет, впишите свой.</p>
     <div class="vehicle-field" data-vehicle-field="plate">
         {{ field_heading('plate','Госномер','Номер РФ: А123ВС77 или А123ВС777. Латинские буквы будут заменены кириллицей.') }}
         <input id="v_plate" name="plate" maxlength="12" class="form-control" value="{{ form.get('plate',(vehicle.plate or '') if vehicle else '') }}">
@@ -84,5 +87,7 @@
     </section>
     <div class="vehicle-form-actions"><button class="btn btn-primary">Сохранить автомобиль</button></div>
 </form>
+<script id="vehicle-catalog" type="application/json">{{ vehicle_catalog|tojson }}</script>
+<script src="{{ url_for('static',filename='js/vehicle-catalog.js',v='1') }}"></script>
 <script src="{{ url_for('static',filename='js/vehicles.js',v='inline-colors-1') }}"></script>
 {% endblock %}

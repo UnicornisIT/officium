@@ -1,6 +1,6 @@
 [Unit]
 Description=Send officium vehicle notifications
-Documentation=file:@@APP_ROOT@@/current/docs/qa/vehicles-stage6/README.md
+Documentation=file:@@APP_ROOT@@/current/docs/DEPLOYMENT.md
 Wants=network-online.target
 After=network-online.target
 

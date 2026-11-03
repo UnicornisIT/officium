@@ -41,6 +41,8 @@ class NotificationTests(test_vehicle_service.VehicleServiceTestCase):
     def setUp(self):
         super().setUp()
         self.app.config.update(VEHICLE_NOTIFICATIONS_ENABLED=True, OFFICIUM_PUBLIC_URL='https://example.test')
+        self.owner.notification_delivery_time = '00:00'
+        db.session.commit()
 
     def test_collect_boundaries_privacy_archive(self):
         vehicle = self.vehicle(vin='SECRET12345678901', plate='А123ВС77', registration_country_id=self.ru.id)

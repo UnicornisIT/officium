@@ -5,7 +5,7 @@ from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
 basedir = os.path.abspath(os.path.dirname(__file__))
-load_dotenv()
+load_dotenv(encoding='utf-8-sig')
 
 
 def _read_version():

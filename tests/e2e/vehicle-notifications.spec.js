@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const {test, expect} = require('@playwright/test');
+const { seedPersonalAccount } = require('./helpers/personal-account');
 
 test.use({video: 'off', trace: 'off'});
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
@@ -8,9 +9,10 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.addInitScript(t => localStorage.setItem('officiumTheme', t), theme);
     await page.route('https://telegram.org/js/telegram-web-app.js', r => r.fulfill({contentType: 'application/javascript', body: ''}));
     await page.goto('/dev-login/user', {waitUntil: 'domcontentloaded'});
+    seedPersonalAccount();
     await page.goto('/profile', {waitUntil: 'domcontentloaded'});
     const checkbox = page.getByRole('checkbox', {name: 'Напоминания об автомобилях в Telegram'});
-    const save = page.getByRole('button', {name: 'Сохранить', exact: true});
+    const save = page.getByRole('region', {name: 'Уведомления', exact: true}).getByRole('button', {name: 'Сохранить', exact: true});
     await checkbox.check();
     await save.click();
     await expect(checkbox).toBeChecked();

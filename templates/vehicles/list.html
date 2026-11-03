@@ -1,9 +1,15 @@
 {% extends 'base.html' %}
 {% from 'vehicles/_visual.html' import visual with context %}
 {% block title %}Автомобили — officium{% endblock %}
-{% block content %}{% include 'vehicles/_body_symbols.html' %}{% if not is_demo %}<a class="text-decoration-none btn btn-outline-primary" href="{{ url_for('vehicle_reports') }}">Отчёты</a> <a class="btn btn-outline-primary" href="{{ url_for('vehicle_tco') }}">Аналитика</a>{% endif %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='motion-1') }}">
-<header class="vehicle-page-header d-flex flex-wrap justify-content-between gap-3 mb-4"><div><h1 class="page-title">Автомобили</h1><p class="text-muted">Ваш гараж, пробег и расходы</p></div>{% if not is_demo %}<a class="text-decoration-none btn btn-primary align-self-start" href="{{ url_for('new_vehicle') }}">Добавить автомобиль</a>{% endif %}</header>
+{% block content %}{% include 'vehicles/_body_symbols.html' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vehicles.css', v='filters-attention-1') }}">
+<header class="vehicle-page-header d-flex flex-wrap justify-content-between gap-3 mb-4">
+    <div><h1 class="page-title">Автомобили</h1><p class="text-muted">Ваш гараж, пробег и расходы</p></div>
+    <div class="vehicle-page-controls">
+        {% if not is_demo %}<a class="btn btn-primary" href="{{ url_for('new_vehicle') }}">Добавить автомобиль</a>{% endif %}
+        <div class="page-actions vehicle-page-actions"><div data-amount-privacy-slot></div>{% if not is_demo %}<a class="btn btn-outline-primary" href="{{ url_for('vehicle_reports') }}">Отчёты</a><a class="btn btn-outline-primary" href="{{ url_for('vehicle_tco') }}">Аналитика</a>{% endif %}</div>
+    </div>
+</header>
 {% if mileage_due %}{% include 'vehicles/_reminder.html' %}{% endif %}
 {% if is_demo %}<div class="alert alert-info">Локальный тестовый режим: сохранение автомобилей отключено.</div>{% endif %}
 <form method="get" class="card p-3 mb-4 vehicle-filters">
@@ -11,7 +17,7 @@
     <label>Статус<select name="status" class="form-select"><option value="">Все статусы</option>{% for key,label in vehicle_statuses.items() %}<option value="{{ key }}" {% if request.args.get('status')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
     <label>Тип<select name="kind" class="form-select"><option value="">Все типы</option>{% for key,label in vehicle_kinds.items() %}<option value="{{ key }}" {% if request.args.get('kind')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
     <label>Архив<select name="archive" class="form-select">{% for key,label in [('active','Вне архива'),('archived','В архиве'),('all','Все автомобили')] %}<option value="{{ key }}" {% if request.args.get('archive','active')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-    <label class="d-flex align-items-center gap-2"><input type="checkbox" name="attention" value="1" {% if request.args.get("attention")=="1" %}checked{% endif %}>Требует внимания</label>
+    <label class="d-flex align-items-center gap-2 vehicle-filter-attention"><input type="checkbox" name="attention" value="1" {% if request.args.get("attention")=="1" %}checked{% endif %}><span>Требует внимания</span></label>
     <button class="btn btn-outline-primary">Найти</button>
 </form>
 <div class="vehicle-grid">

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_documentation_screenshot.html' import screenshot with context %}
 {% block title %}Документация — officium{% endblock %}
 
 {% block content %}
@@ -7,7 +8,7 @@
         <div class="docs-hero__content">
             <div class="docs-eyebrow"><i class="bi bi-journal-bookmark-fill"></i> Руководство пользователя</div>
             <h1>Как работает officium</h1>
-            <p>От первой записи до понятного финансового плана: здесь собраны основные сценарии работы с доходами, расходами, долгами и целями.</p>
+            <p>От первой записи до понятного финансового плана: здесь собраны основные сценарии работы с финансами, целями, автомобилями и личными настройками.</p>
             <div class="docs-hero__actions">
                 <a href="#quick-start" class="btn btn-primary"><i class="bi bi-play-fill me-1"></i>Начать знакомство</a>
                 <a href="#faq" class="btn btn-outline-secondary">Частые вопросы</a>
@@ -16,12 +17,12 @@
         <div class="docs-hero__summary" aria-label="Содержание руководства">
             <div class="docs-summary-card">
                 <span class="docs-summary-card__icon"><i class="bi bi-compass"></i></span>
-                <strong>9 разделов</strong>
-                <span>От входа до аналитики</span>
+                <strong>12 разделов</strong>
+                <span>От входа до личных настроек</span>
             </div>
             <div class="docs-summary-card">
                 <span class="docs-summary-card__icon"><i class="bi bi-clock-history"></i></span>
-                <strong>≈ 7 минут</strong>
+                <strong>≈ 12 минут</strong>
                 <span>На первое знакомство</span>
             </div>
             <div class="docs-summary-card docs-summary-card--accent">
@@ -35,15 +36,32 @@
     <div class="docs-mobile-nav">
         <label for="docsSectionSelect">Перейти к разделу</label>
         <select class="form-select" id="docsSectionSelect">
-            <option value="#quick-start">Быстрый старт</option>
-            <option value="#dashboard">Дашборд</option>
-            <option value="#debts">Долги и платежи</option>
-            <option value="#cashflow">Доходы и расходы</option>
-            <option value="#import">Импорт выписки</option>
-            <option value="#analytics">Аналитика</option>
-            <option value="#financial-plan">Финансовый план</option>
-            <option value="#telegram">Telegram-бот</option>
-            <option value="#faq">Частые вопросы</option>
+            <optgroup label="Основы">
+                <option value="#quick-start">Быстрый старт</option>
+                <option value="#dashboard">Дашборд</option>
+            </optgroup>
+            <optgroup label="Учёт">
+                <option value="#debts">Долги и платежи</option>
+                <option value="#cashflow">Доходы и расходы</option>
+                <option value="#import">Импорт выписки</option>
+            </optgroup>
+            <optgroup label="Планирование">
+                <option value="#analytics">Аналитика</option>
+                <option value="#financial-plan">Финансовый план</option>
+            </optgroup>
+            <optgroup label="Модули">
+                <option value="#goals">Цели и подушка</option>
+                <option value="#vehicles">Автомобили</option>
+            </optgroup>
+            <optgroup label="Настройки">
+                <option value="#profile">Профиль и личные настройки</option>
+            </optgroup>
+            <optgroup label="Telegram">
+                <option value="#telegram">Telegram-бот и Mini App</option>
+            </optgroup>
+            <optgroup label="FAQ">
+                <option value="#faq">Частые вопросы</option>
+            </optgroup>
         </select>
     </div>
 
@@ -66,7 +84,14 @@
                     <div class="docs-toc__label">Планирование</div>
                     <a href="#analytics"><i class="bi bi-pie-chart"></i>Аналитика</a>
                     <a href="#financial-plan"><i class="bi bi-signpost-split"></i>Финансовый план</a>
-                    <a href="#telegram"><i class="bi bi-telegram"></i>Telegram-бот</a>
+                    <div class="docs-toc__label">Модули</div>
+                    <a href="#goals"><i class="bi bi-bullseye"></i>Цели и подушка</a>
+                    <a href="#vehicles"><i class="bi bi-car-front"></i>Автомобили</a>
+                    <div class="docs-toc__label">Настройки</div>
+                    <a href="#profile"><i class="bi bi-person-gear"></i>Профиль</a>
+                    <div class="docs-toc__label">Telegram</div>
+                    <a href="#telegram"><i class="bi bi-telegram"></i>Telegram-бот и Mini App</a>
+                    <div class="docs-toc__label">FAQ</div>
                     <a href="#faq"><i class="bi bi-question-circle"></i>Частые вопросы</a>
                 </nav>
                 <div class="docs-sidebar__hint">
@@ -93,7 +118,7 @@
                         <div>
                             <h3>Добавьте доход</h3>
                             <p>Укажите сумму, категорию, источник и дату поступления. Доход попадёт в сводку выбранного месяца.</p>
-                            <a href="{{ url_for('incomes') if current_user.is_authenticated else url_for('login') }}">Открыть доходы <i class="bi bi-arrow-right"></i></a>
+                            <a href="{{ url_for('incomes') if current_user.is_authenticated else url_for('login') }}" class="btn btn-outline-primary">Открыть доходы <i class="bi bi-arrow-right"></i></a>
                         </div>
                     </div>
                     <div class="docs-step">
@@ -101,7 +126,7 @@
                         <div>
                             <h3>Зафиксируйте обязательства</h3>
                             <p>Добавьте кредиты, карты, ипотеку или рассрочку вместе с остатком, ставкой и датой платежа.</p>
-                            <a href="{{ url_for('index') if current_user.is_authenticated else url_for('login') }}">Перейти к долгам <i class="bi bi-arrow-right"></i></a>
+                            <a href="{{ url_for('index') if current_user.is_authenticated else url_for('login') }}" class="btn btn-outline-primary">Перейти к долгам <i class="bi bi-arrow-right"></i></a>
                         </div>
                     </div>
                     <div class="docs-step">
@@ -109,7 +134,7 @@
                         <div>
                             <h3>Внесите расходы</h3>
                             <p>Добавляйте их вручную или загрузите банковскую выписку. Повторяющиеся траты можно отметить как ежемесячные.</p>
-                            <a href="{{ url_for('expenses') if current_user.is_authenticated else url_for('login') }}">Открыть расходы <i class="bi bi-arrow-right"></i></a>
+                            <a href="{{ url_for('expenses') if current_user.is_authenticated else url_for('login') }}" class="btn btn-outline-primary">Открыть расходы <i class="bi bi-arrow-right"></i></a>
                         </div>
                     </div>
                 </div>
@@ -130,11 +155,7 @@
                     </div>
                 </div>
 
-                <figure class="docs-screenshot">
-                    <div class="docs-screenshot__bar"><span></span><span></span><span></span><em>Тестовый стенд · Дашборд</em></div>
-                    <img src="{{ url_for('static', filename='images/documentation/dashboard.png') }}" alt="Дашборд officium с финансовой сводкой и карточками долгов" loading="lazy">
-                    <figcaption><i class="bi bi-camera"></i> Обезличенные демонстрационные данные, созданные на отдельном тестовом стенде.</figcaption>
-                </figure>
+                {{ screenshot('dashboard.png','Дашборд','Дашборд с актуальной навигацией и вымышленной финансовой сводкой') }}
 
                 <div class="docs-feature-grid">
                     <div class="docs-feature"><i class="bi bi-calculator"></i><h3>Сводка месяца</h3><p>Доходы, расходы, платежи, свободные средства и ориентир на один день.</p></div>
@@ -153,6 +174,8 @@
                         <p>officium хранит условия долга и историю фактических платежей отдельно — так остаток и прогресс остаются прозрачными.</p>
                     </div>
                 </div>
+
+                {{ screenshot('debts.png','Долги','Актуальная форма добавления долга') }}
 
                 <h3 class="docs-subtitle">Поддерживаемые типы</h3>
                 <div class="docs-type-grid">
@@ -200,11 +223,9 @@
                     </div>
                 </div>
 
-                <figure class="docs-screenshot">
-                    <div class="docs-screenshot__bar"><span></span><span></span><span></span><em>Тестовый стенд · Расходы</em></div>
-                    <img src="{{ url_for('static', filename='images/documentation/expenses.png') }}" alt="Форма добавления и история расходов в officium" loading="lazy">
-                    <figcaption><i class="bi bi-camera"></i> Форма и история расходов на тестовых данных.</figcaption>
-                </figure>
+                {{ screenshot('expenses.png','Расходы','Текущие форма и история расходов на вымышленных данных') }}
+
+                {{ screenshot('incomes.png','Доходы','Форма и история доходов в текущем интерфейсе') }}
 
                 <div class="docs-compare">
                     <div>
@@ -231,6 +252,8 @@
                         <p>Загрузка выписки экономит время, но перед сохранением приложение всегда показывает предварительный просмотр.</p>
                     </div>
                 </div>
+
+                {{ screenshot('import.png','Импорт выписки','Текущая форма импорта банковской выписки') }}
 
                 <div class="docs-import-card">
                     <div class="docs-import-card__formats">
@@ -259,11 +282,7 @@
                     </div>
                 </div>
 
-                <figure class="docs-screenshot">
-                    <div class="docs-screenshot__bar"><span></span><span></span><span></span><em>Тестовый стенд · Аналитика</em></div>
-                    <img src="{{ url_for('static', filename='images/documentation/analytics.png') }}" alt="Месячная аналитика расходов и обязательных платежей в officium" loading="lazy">
-                    <figcaption><i class="bi bi-camera"></i> Аналитика построена на отдельном демонстрационном наборе операций.</figcaption>
-                </figure>
+                {{ screenshot('analytics.png','Аналитика','Актуальная месячная аналитика финансов') }}
 
                 <div class="docs-metric-list">
                     <div><span>01</span><strong>Денежный поток</strong><p>Доходы, обычные расходы, обязательные списания и прогноз остатка.</p></div>
@@ -282,11 +301,7 @@
                     </div>
                 </div>
 
-                <figure class="docs-screenshot">
-                    <div class="docs-screenshot__bar"><span></span><span></span><span></span><em>Тестовый стенд · Финансовый план</em></div>
-                    <img src="{{ url_for('static', filename='images/documentation/financial-plan.png') }}" alt="Финансовый план с приоритетами и прогнозом в officium" loading="lazy">
-                    <figcaption><i class="bi bi-camera"></i> Пример стратегии и целей без использования основной базы данных.</figcaption>
-                </figure>
+                {{ screenshot('financial-plan.png','Финансовый план','Текущий финансовый план с обязательствами, подушкой и целями') }}
 
                 <div class="docs-plan-path">
                     <div><span><i class="bi bi-cash-stack"></i></span><strong>Поступление</strong><p>Зарплата, аванс или другой доход</p></div>
@@ -311,16 +326,21 @@
                 </div>
             </section>
 
+            {% include '_documentation_personal_sections.html' %}
+
             <section class="docs-section" id="telegram" data-docs-section>
                 <div class="docs-section__heading">
-                    <span class="docs-section__number">08</span>
+                    <span class="docs-section__number">11</span>
                     <div>
                         <div class="docs-kicker">На ходу</div>
-                        <h2>Telegram-бот</h2>
+                        <h2>Telegram-бот и Mini App</h2>
                         <p>Бот помогает внести операцию сразу после покупки или быстро проверить итог, не открывая браузер.</p>
                     </div>
                 </div>
 
+                <p>Mini App — тот же интерфейс officium внутри Telegram. В верхнем меню «Все разделы» откройте «Модули», затем «Автомобили» или «Цели». Профиль доступен через аватар; расписание уведомлений и приватность сохраняются на сервере и действуют в браузере и Mini App.</p>
+                {{ screenshot('telegram-mini-app.png','Telegram Mini App','Профиль и личные настройки в мобильном интерфейсе Telegram','Эмуляция Telegram SDK на вымышленных данных. Это снимок интерфейса Mini App, а не реального чата или подтверждение доставки.', mobile=true) }}
+                <p>Меню и раскрывающиеся блоки открываются и закрываются плавно. Если в системе включено уменьшение движения, анимации отключаются. Вход через Telegram, открытие Mini App и разрешение боту отправлять сообщения — разные действия: для напоминаний сначала запустите бота.</p>
                 <div class="docs-telegram">
                     <div class="docs-telegram__phone" aria-label="Пример сообщения Telegram-боту">
                         <div class="docs-telegram__head"><i class="bi bi-telegram"></i><span><strong>officium bot</strong><small>бот</small></span></div>
@@ -341,7 +361,7 @@
 
             <section class="docs-section" id="faq" data-docs-section>
                 <div class="docs-section__heading">
-                    <span class="docs-section__number">09</span>
+                    <span class="docs-section__number">12</span>
                     <div>
                         <div class="docs-kicker">Подсказки</div>
                         <h2>Частые вопросы</h2>
@@ -350,6 +370,22 @@
                 </div>
 
                 <div class="accordion docs-faq" id="docsFaq">
+                    <div class="accordion-item">
+                        <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqNotifications">Почему не пришло автомобильное уведомление?</button></h3>
+                        <div id="faqNotifications" class="accordion-collapse collapse" data-bs-parent="#docsFaq"><div class="accordion-body">Проверьте запуск бота, личный и общий переключатели, часовой пояс и время в профиле. Нажмите «Проверить уведомление»; повтор доступен раз в минуту. Вход через Telegram сам по себе не разрешает доставку. Простой отправщика может задержать напоминание.</div></div>
+                    </div>
+                    <div class="accordion-item">
+                        <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqPrivacy">Почему вместо сумм показаны ••••?</button></h3>
+                        <div id="faqPrivacy" class="accordion-collapse collapse" data-bs-parent="#docsFaq"><div class="accordion-body">В профиле включено скрытие сумм при открытии. Нажмите кнопку с иконкой глаза (подсказка «Показать суммы») рядом с заголовком или действиями страницы для временного раскрытия или измените сохранённую настройку в карточке «Приватность». Поля ввода, расчёты и экспорт не меняются.</div></div>
+                    </div>
+                    <div class="accordion-item">
+                        <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqVehicleVin">Можно ли добавить автомобиль с японским номером кузова?</button></h3>
+                        <div id="faqVehicleVin" class="accordion-collapse collapse" data-bs-parent="#docsFaq"><div class="accordion-body">Да. В поле VIN можно указать номер кузова или шасси, например GRX130-0000001. Допустимы до 40 латинских букв, цифр и дефисов между группами. Пример вымышленный. Для стандартного VIN из 17 символов сохраняется запрет I, O, Q.</div></div>
+                    </div>
+                    <div class="accordion-item">
+                        <h3 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqMotion">Куда переместились вкладки и почему нет анимации?</button></h3>
+                        <div id="faqMotion" class="accordion-collapse collapse" data-bs-parent="#docsFaq"><div class="accordion-body">При сужении карточки автомобиля пункты перемещаются в «Ещё», все доступные разделы сохраняются. Меню работает в браузере и Mini App. Если в системе включено уменьшение движения, плавные переходы отключаются.</div></div>
+                    </div>
                     <div class="accordion-item">
                         <h3 class="accordion-header"><button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faqBalance">Почему свободный остаток отличается от баланса карты?</button></h3>
                         <div id="faqBalance" class="accordion-collapse collapse show" data-bs-parent="#docsFaq"><div class="accordion-body">officium считает только внесённые в приложение доходы, расходы и платежи выбранного месяца. Банковский баланс может учитывать операции, которых здесь ещё нет.</div></div>
@@ -392,18 +428,54 @@
         const sectionSelect = document.getElementById('docsSectionSelect');
 
         const setActiveLink = (id) => {
-            tocLinks.forEach(link => link.classList.toggle('active', link.getAttribute('href') === `#${id}`));
-            if (sectionSelect) sectionSelect.value = `#${id}`;
+            tocLinks.forEach(link => {
+                const active = Boolean(id) && link.getAttribute('href') === `#${id}`;
+                link.classList.toggle('active', active);
+                if (active) link.setAttribute('aria-current', 'location');
+                else link.removeAttribute('aria-current');
+            });
+            if (sectionSelect) sectionSelect.value = id ? `#${id}` : '';
         };
 
-        const observer = new IntersectionObserver((entries) => {
-            const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-            if (visible) setActiveLink(visible.target.id);
-        }, { rootMargin: '-18% 0px -68% 0px', threshold: [0.05, 0.25, 0.6] });
-        sections.forEach(section => observer.observe(section));
+        const updateActiveSection = () => {
+            const visible = sections.filter(section => !section.hidden);
+            if (!visible.length) return setActiveLink(null);
+            const headerBottom = [...document.querySelectorAll('.navbar, .telegram-app-bar')]
+                .reduce((bottom, header) => {
+                    const rect = header.getBoundingClientRect();
+                    return rect.top <= 0 && rect.bottom > 0 ? Math.max(bottom, rect.bottom) : bottom;
+                }, 0);
+            // Follow heading positions, not the visible fraction of a long section.
+            // The reading line sits in the upper quarter, below the fixed header.
+            const readingLine = Math.max(headerBottom + 24, Math.min(innerHeight * .25, 240));
+            let active = visible[0];
+            for (const section of visible) {
+                if (section.getBoundingClientRect().top > readingLine) break;
+                active = section;
+            }
+            if (scrollY + innerHeight >= document.documentElement.scrollHeight - 2) {
+                active = visible[visible.length - 1];
+            }
+            setActiveLink(active.id);
+        };
+        let scrollFrame;
+        const scheduleActiveSection = () => {
+            if (scrollFrame) return;
+            scrollFrame = requestAnimationFrame(() => {
+                scrollFrame = null;
+                updateActiveSection();
+            });
+        };
+        window.addEventListener('scroll', scheduleActiveSection, { passive: true });
+        window.addEventListener('resize', scheduleActiveSection);
+        window.addEventListener('hashchange', scheduleActiveSection);
+        window.addEventListener('pageshow', scheduleActiveSection);
+        new ResizeObserver(scheduleActiveSection).observe(document.getElementById('docsContent'));
+        updateActiveSection();
 
         sectionSelect?.addEventListener('change', event => {
-            document.querySelector(event.target.value)?.scrollIntoView({ behavior: 'smooth' });
+            const behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+            document.querySelector(event.target.value)?.scrollIntoView({ behavior });
         });
 
         const filterSections = () => {
@@ -419,6 +491,7 @@
                 link.hidden = Boolean(query) && section?.hidden;
             });
             emptyState.hidden = visibleCount !== 0;
+            scheduleActiveSection();
         };
         search?.addEventListener('input', filterSections);
 

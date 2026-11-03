@@ -11,6 +11,8 @@ from app.services import vehicle_service as vehicles, vehicle_maintenance_servic
 from app.services import vehicle_document_service as documents, telegram_bot_service as telegram
 from app.time_utils import utc_now, as_utc
 from app.utils import record_activity, setting_enabled
+from app.services.personal_settings_service import delivery_preferences
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from extensions import db
 
 
@@ -65,12 +67,25 @@ def send_due_notifications(now=None):
     if not notifications_enabled():
         return stats
     instant = as_utc(now or utc_now())
-    day = instant.astimezone(vehicles.app_timezone()).date()
     users = User.query.filter(User.telegram_id.isnot(None), User.telegram_id > 0,
                               User.vehicle_notifications_enabled.is_(True), User.is_blocked.is_(False)).all()
     for user in users:
         if getattr(user, 'is_local_test_user', False):
             continue
+        zone, clock = delivery_preferences(user)
+        try:
+            local = instant.astimezone(ZoneInfo(zone))
+            hour, minute = map(int, clock.split(':'))
+        except (ZoneInfoNotFoundError, ValueError):
+            current_app.logger.warning('Invalid notification schedule: user_id=%s', user.id)
+            stats['skipped'] += 1
+            continue
+        # Convert from a real UTC instant, never construct a potentially imaginary
+        # local datetime. A skipped DST time is delivered at the first later tick;
+        # a repeated local time has the same daily hash and cannot send twice.
+        if local.hour * 60 + local.minute < hour * 60 + minute:
+            continue
+        day = local.date()
         for notice in due_notifications(user, day=day):
             row = VehicleNotificationLog(user_id=user.id, kind=notice['kind'],
                 vehicle_id=notice['vehicle_id'], payload_hash=notice['payload_hash'], sent_at=instant, delivered=False)

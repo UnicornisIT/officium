@@ -97,7 +97,9 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20261105_vehicle_documents'], '20261029_vehicle_fuel')
         self.assertEqual(revisions['20261106_vehicle_notifications'], '20261105_vehicle_documents')
         self.assertEqual(revisions['20261120_vehicle_attachments'], '20261106_vehicle_notifications')
-        self.assertEqual(heads, {'20261120_vehicle_attachments'})
+        self.assertEqual(revisions['20261121_vehicle_identifiers'], '20261120_vehicle_attachments')
+        self.assertEqual(revisions['20261122_personal_settings'], '20261121_vehicle_identifiers')
+        self.assertEqual(heads, {'20261122_personal_settings'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))
@@ -185,4 +187,13 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertIn('OFFICIUM_ENV=development', start_text)
         self.assertIn('DB_ENGINE=sqlite', start_text)
         self.assertIn('DEV_LOGIN_ENABLED=true', start_text)
+        self.assertIn('FLASK_DEBUG=true', start_text)
+        self.assertIn('HOST=127.0.0.1', start_text)
+        self.assertIn('Text.UTF8Encoding($false)', start_text)
         self.assertNotIn('pip install --upgrade pip', start_text)
+        self.assertIn('python -m flask --app run:app db upgrade', start_text)
+        self.assertLess(start_text.index('python -m pip install -r requirements.txt'),
+                        start_text.index('python -m flask --app run:app db upgrade'))
+        self.assertLess(start_text.index('python -m flask --app run:app db upgrade'),
+                        start_text.index('python run.py'))
+        self.assertIn('if errorlevel 1', start_text.split('db upgrade', 1)[1].split('python run.py', 1)[0])

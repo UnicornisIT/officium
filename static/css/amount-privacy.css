@@ -1,0 +1,39 @@
+.money-mask, .money-chart-message { display: none; }
+.amounts-hidden .money-value { display: none !important; }
+.amounts-hidden .money-mask { display: inline; letter-spacing: .08em; }
+.amounts-hidden canvas { visibility: hidden !important; pointer-events: none; }
+.amounts-hidden .money-chart-message { display: block; color: var(--text-muted); font-size: .875rem; }
+.amounts-pending main { visibility: hidden; }
+#amountPrivacyToggle { width: 42px; min-width: 42px; max-width: 42px; height: 42px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 42px; }
+.amount-privacy-toggle i { margin: 0 !important; font-size: 1.1rem; }
+[data-amount-privacy-slot]:empty { display: none; }
+[data-amount-privacy-slot] { display: inline-flex; flex: 0 0 auto; }
+.amount-heading, .page-actions { display: flex; align-items: center; gap: .75rem; }
+.amount-heading { min-width: 0; }
+.amount-heading > h1 { margin-bottom: 0; }
+.page-actions { flex-wrap: wrap; }
+.vehicle-page-controls { display: flex; flex-direction: column; align-items: flex-end; gap: .75rem; }
+.vehicle-page-actions { flex-wrap: nowrap; gap: .5rem; }
+.vehicle-page-actions .btn { white-space: nowrap; }
+.amount-privacy-corner { float: right; margin-left: .75rem; }
+@media(max-width:575px) {
+  .amount-heading { gap: .5rem; }
+  .amount-heading > h1 { min-width: 0; }
+  .vehicle-page-controls { margin-left: auto; }
+}
+.profile-settings { display: grid; gap: 1.5rem; }
+.profile-settings .profile-settings-card { display: flex; flex-direction: column; align-items: stretch; text-align: left; gap: 1rem; min-width: 0; }
+.profile-account-identity { display: flex; align-items: center; gap: 1.25rem; min-width: 0; }
+.profile-account-identity > .user-avatar { flex-shrink: 0; }
+.profile-account-copy { min-width: 0; overflow-wrap: anywhere; }
+.profile-account-copy p + p { margin-top: .25rem; }
+.profile-settings-form { display: grid; gap: 1rem; min-width: 0; }
+.profile-settings-form > .btn { justify-self: start; }
+.profile-delivery-fields { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 1rem; }
+.profile-delivery-fields label { min-width: 0; }
+.profile-bot-actions, .profile-bot-actions form { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+@media(max-width:575px) {
+  .profile-delivery-fields { grid-template-columns: minmax(0, 1fr); }
+  .profile-account-identity { gap: 1rem; }
+  .profile-settings .profile-settings-card { padding: 1.25rem; }
+}

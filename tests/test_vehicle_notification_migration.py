@@ -39,7 +39,21 @@ class NotificationMigrationTests(unittest.TestCase):
                     upgrade(directory=str(ROOT/'migrations'))
                     self.assertIn('vehicle_notification_log',inspect(db.engine).get_table_names())
                     self.assertEqual(db.session.execute(text('SELECT vehicle_notifications_enabled FROM users WHERE id=999')).scalar(),1)
+                    row = db.session.execute(text('SELECT hide_amounts_on_open, notification_timezone, notification_delivery_time, notification_test_requested_at FROM users WHERE id=999')).one()
+                    self.assertEqual(tuple(row), (0, None, None, None))
                     check(directory=str(ROOT/'migrations'))
                 finally:
                     db.session.remove()
                     db.engine.dispose()
+
+    def test_personal_settings_mysql_ddl(self):
+        spec = importlib.util.spec_from_file_location('personal_settings_migration', ROOT/'migrations/versions/20261122_personal_settings.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        buffer = io.StringIO()
+        context = MigrationContext.configure(url='mysql+pymysql://', opts=dict(as_sql=True, output_buffer=buffer))
+        with Operations.context(context):
+            module.upgrade()
+        for fragment in ['notification_timezone VARCHAR(64)', 'notification_delivery_time VARCHAR(5)',
+                         'notification_test_requested_at DATETIME', 'hide_amounts_on_open BOOL NOT NULL DEFAULT false']:
+            self.assertIn(fragment, buffer.getvalue())

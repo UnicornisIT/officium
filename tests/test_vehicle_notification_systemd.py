@@ -32,5 +32,5 @@ class NotificationSystemdTests(unittest.TestCase):
                 paths.append(str(path))
             result = subprocess.run(['systemd-analyze','verify',*paths],capture_output=True,text=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-            result = subprocess.run(['systemd-analyze','calendar','*-*-* 10:00:00 Europe/Moscow'],capture_output=True,text=True,timeout=30)
+            result = subprocess.run(['systemd-analyze','calendar','*-*-* *:0/5:00 UTC'],capture_output=True,text=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)

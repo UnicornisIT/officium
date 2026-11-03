@@ -6,7 +6,7 @@
 <div class="finance-page">
     <div class="finance-header mb-4">
         <div>
-            <h1 class="page-title mb-1"><i class="bi bi-pie-chart text-primary me-2"></i>Куда уходят деньги{{ info_hint('Итог месяца, главные категории и самые заметные списания.', 'hint-finance') }}</h1>
+            <div class="amount-heading"><h1 class="page-title mb-1"><i class="bi bi-pie-chart text-primary me-2"></i>Куда уходят деньги{{ info_hint('Итог месяца, главные категории и самые заметные списания.', 'hint-finance') }}</h1><div data-amount-privacy-slot></div></div>
         </div>
         <div class="finance-actions">
             <a href="{{ url_for('expenses') }}" class="btn btn-danger">

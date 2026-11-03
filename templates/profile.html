@@ -1,22 +1,73 @@
 {% extends 'base.html' %}
 {% from '_avatar.html' import user_avatar, user_display_name %}
-{% block title %}Профиль — {{ app_name }}{% endblock %}
-
+{% block title %}Профиль и личные настройки — {{ app_name }}{% endblock %}
+{% macro feedback(section) %}
+{% if saved_section == section %}<p class="alert alert-success py-2 mb-0" role="status">Сохранено</p>{% endif %}
+{% if profile_errors.get(section) %}<p class="alert alert-danger py-2 mb-0" role="alert">{{ profile_errors[section] }}</p>{% endif %}
+{% endmacro %}
 {% block content %}
-<div class="profile-page">
-    <section class="profile-card" aria-labelledby="profileTitle">
-        {{ user_avatar(current_user, 'user-avatar user-avatar--xl') }}
-        <div>
-            <h1 id="profileTitle">{{ user_display_name(current_user) }}</h1>
-            <p>Ваш аккаунт и настройки уведомлений.</p>
+<div class="profile-page profile-settings">
+    {% if profile_errors.get('general') %}<p class="alert alert-danger" role="alert">{{ profile_errors['general'] }}</p>{% endif %}
+    <section class="profile-card profile-settings-card" aria-labelledby="accountTitle">
+        <h2 id="accountTitle" class="h5 mb-0"><i class="bi bi-person-circle" aria-hidden="true"></i> Аккаунт</h2>
+        <div class="profile-account-identity">
+            {{ user_avatar(current_user, 'user-avatar user-avatar--xl') }}
+            <div class="profile-account-copy">
+                <h1 id="profileTitle">{{ user_display_name(current_user) }}</h1>
+                {% if current_user.username %}<p>@{{ current_user.username|replace('@','') }}</p>{% endif %}
+                {% if telegram_account %}<p>Вход через Telegram</p>
+                {% elif current_user.is_local_test_user|default(false) or (persistent_account and current_user.telegram_id < 0 and not current_user.google_id) %}<p>Локальный dev-аккаунт</p>
+                {% else %}<p>Аккаунт без Telegram</p>{% endif %}
+                {% if current_user.created_at %}<p>Дата регистрации: <time datetime="{{ current_user.created_at.isoformat() }}">{{ current_user.created_at.strftime('%d.%m.%Y') }}</time></p>{% endif %}
+            </div>
         </div>
+        <p class="small">Ваш аккаунт и настройки уведомлений.</p>
     </section>
-    {% if current_user.telegram_id %}
-    <form method="post" class="profile-card">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label class="ui-switch-label"><input type="checkbox" name="vehicle_notifications_enabled" {% if current_user.vehicle_notifications_enabled %}checked{% endif %}><span>Напоминания об автомобилях в Telegram</span></label>
-        <button type="submit" class="btn btn-primary">Сохранить</button>
-    </form>
-    {% endif %}
+    <section class="profile-card profile-settings-card" aria-labelledby="profileNotificationsTitle">
+        <h2 id="profileNotificationsTitle" class="h5 mb-0"><i class="bi bi-bell" aria-hidden="true"></i> Уведомления</h2>
+        {% if telegram_account %}
+        <form method="post" class="profile-settings-form" data-profile-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="section" value="notifications">
+            {% set notification_checked = request.form.get('vehicle_notifications_enabled') == 'on' if profile_errors.get('notifications') else current_user.vehicle_notifications_enabled %}
+            <label class="ui-switch-label"><input type="checkbox" name="vehicle_notifications_enabled" {% if notification_checked %}checked{% endif %}><span>Напоминания об автомобилях в Telegram</span></label>
+            <div class="profile-delivery-fields">
+                <label for="notificationTimezone">Часовой пояс
+                    <select id="notificationTimezone" aria-label="Часовой пояс" class="form-select" name="notification_timezone" required>{% for zone in timezone_choices %}<option value="{{ zone }}" {% if zone == (request.form.get('notification_timezone', notification_zone) if profile_errors.get('notifications') else notification_zone) %}selected{% endif %}>{{ zone }}</option>{% endfor %}</select>
+                </label>
+                <label for="notificationClock">Время доставки
+                    <input id="notificationClock" class="form-control" type="time" name="notification_delivery_time" step="60" value="{{ request.form.get('notification_delivery_time', notification_clock) if profile_errors.get('notifications') else notification_clock }}" required>
+                </label>
+            </div>
+            <p class="small text-muted mb-0">После указанного времени по выбранному часовому поясу; расписание проверяется каждые 5 минут. При пропуске времени из-за перевода часов — после перехода. Сроки ТО и документов задаются в автомобиле.</p>
+            {% if not automated_notifications_enabled %}<p class="small text-muted mb-0">Автоматические автомобильные напоминания отключены в настройках сервера. Ваши предпочтения сохраняются.</p>{% endif %}
+            {{ feedback('notifications') }}
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+        </form>
+        <div class="profile-bot-actions">
+            {% if bot_url %}<a class="btn btn-outline-secondary" href="{{ bot_url }}" target="_blank" rel="noopener noreferrer" data-profile-bot-link><i class="bi bi-telegram" aria-hidden="true"></i> Открыть бота</a>{% else %}<p class="small text-muted mb-0">Ссылка на бота не настроена на сервере.</p>{% endif %}
+            {% if bot_configured %}<form method="post" action="{{ url_for('profile_test_notification') }}" data-profile-form data-profile-test>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-outline-primary" type="submit">Проверить уведомление</button>
+                <span class="small" role="status" data-profile-pending></span>
+            </form>{% else %}<p class="small text-muted mb-0">Проверка недоступна: Telegram-бот не настроен на сервере.</p>{% endif %}
+        </div>
+        <p class="small text-muted mb-0">Для получения сообщений откройте бота и нажмите «Запустить». Проверка отправляет тестовое сообщение только по нажатию, не чаще одного раза в минуту. Сам вход через Telegram не подтверждает доставку.</p>
+        {% if test_result %}<p class="alert alert-{{ 'success' if test_result[0] else 'danger' }} py-2 mb-0" role="{{ 'status' if test_result[0] else 'alert' }}">{{ test_result[1] }}</p>{% endif %}
+        {% else %}<p class="mb-0">Уведомления недоступны: этот аккаунт не связан с Telegram. Для получения сообщений нужен вход через Telegram и запущенный бот.</p>{% endif %}
+    </section>
+    <section class="profile-card profile-settings-card" aria-labelledby="privacyTitle">
+        <h2 id="privacyTitle" class="h5 mb-0"><i class="bi bi-eye-slash" aria-hidden="true"></i> Приватность</h2>
+        {% if persistent_account %}<form method="post" class="profile-settings-form" data-profile-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="section" value="privacy">
+            {% set privacy_checked = request.form.get('hide_amounts_on_open') == 'on' if profile_errors.get('privacy') else current_user.hide_amounts_on_open %}
+            <label class="ui-switch-label"><input type="checkbox" name="hide_amounts_on_open" {% if privacy_checked %}checked{% endif %}><span>Скрывать суммы при открытии</span></label>
+            <p class="small text-muted mb-0">Суммы и денежные графики будут скрыты при открытии страницы. Кнопка «Показать суммы» раскрывает их до следующего перехода. Повторное нажатие скрывает суммы. Ввод, расчёты и экспорт сохраняются.</p>
+            {{ feedback('privacy') }}
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+        </form>{% else %}<p class="mb-0">Сохранение личных настроек недоступно для временного локального аккаунта.</p>{% endif %}
+    </section>
 </div>
+<script defer src="{{ url_for('static',filename='js/profile-settings.js',v='1') }}"></script>
 {% endblock %}

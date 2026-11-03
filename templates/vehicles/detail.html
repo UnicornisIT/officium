@@ -15,10 +15,11 @@
 {% if vehicle.trailers %}<h3 class="h6 mt-3">Прицепы</h3>{% for trailer in vehicle.trailers %}<div class="vehicle-trailer">{{ visual(trailer) }}<a class="text-decoration-none btn btn-outline-primary vehicle-button vehicle-related-link" href="{{ url_for('vehicle_detail',vehicle_id=trailer.id) }}">{{ trailer.name }}</a></div>{% endfor %}{% endif %}
 </section>
 <section class="card p-4">
-{% set tab=vehicle_tab|default(request.args.get('tab','overview')) %}<nav class="nav nav-pills gap-1 mb-4" aria-label="Вкладки автомобиля">{% for key,label in [('overview','Обзор'),('expenses','Расходы'),('mileage','Пробег'),('fuel','Заправки'),('maintenance','Обслуживание'),('defects','Неисправности'),('documents','Документы'),('photos','Фото'),('tco','Аналитика')] %}{% if key not in ('mileage','fuel') or vehicle.kind!='trailer' %}<a class="text-decoration-none nav-link {% if tab==key %}active{% endif %}" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.id,tab=key) }}">{{ label }}</a>{% endif %}{% endfor %}</nav>
+{% set tab=vehicle_tab|default(request.args.get('tab','overview')) %}
+{% include 'vehicles/_navigation.html' %}
 {% if tab=='fuel' and vehicle.kind!='trailer' %}{% include 'vehicles/_fuel.html' %}
 {% elif tab=='maintenance' %}{% include 'vehicles/_maintenance.html' %}
-{% elif tab=='tco' %}{% include 'vehicles/_tco.html' %}
+{% elif tab=='tco' %}<h2 class="h5">Аналитика</h2>{% include 'vehicles/_tco.html' %}
 {% elif tab=='photos' %}<h2 class="h5">Фото и вложения</h2>{{ upload(vehicle) }}{{ gallery(vehicle_attachments, true) }}{% if not vehicle_attachments %}<p>Фотографий пока нет.</p>{% endif %}
 {% elif tab=='documents' %}{% include 'vehicles/_documents.html' %}
 {% elif tab=='defects' %}{% include 'vehicles/_defects.html' %}
@@ -55,8 +56,9 @@
 {% endif %}
 </section>
 </div>
-<section class="card p-4 mt-4">
+<section class="card p-4 mt-4 vehicle-archive-panel">
 {% if vehicle.archived_at %}<form method="post" action="{{ url_for('restore_vehicle',vehicle_id=vehicle.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary">Восстановить автомобиль</button></form>
-{% else %}<button class="btn btn-outline-secondary vehicle-button" type="button" data-bs-toggle="collapse" data-bs-target="#vehicleArchiveForm" aria-expanded="false" aria-controls="vehicleArchiveForm">Архивировать автомобиль</button><div class="collapse" id="vehicleArchiveForm"><form method="post" action="{{ url_for('archive_vehicle',vehicle_id=vehicle.id) }}" class="mt-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="archiveReason" class="vehicle-archive-reason">Причина<select id="archiveReason" name="reason" class="form-select vehicle-select-centered">{% for key,label in archive_reasons.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><label for="archiveNote" class="d-block mt-3">Примечание<textarea id="archiveNote" name="note" maxlength="2000" class="form-control"></textarea></label><button class="btn btn-outline-danger mt-3">В архив</button></form></div>{% endif %}
+{% else %}<details class="vehicle-disclosure vehicle-archive-disclosure" id="vehicleArchiveForm"><summary><span>Архивировать автомобиль</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><form method="post" action="{{ url_for('archive_vehicle',vehicle_id=vehicle.id) }}" class="mt-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="archiveReason" class="vehicle-archive-reason">Причина<select id="archiveReason" name="reason" class="form-select">{% for key,label in archive_reasons.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><label for="archiveNote" class="d-block mt-3">Примечание<textarea id="archiveNote" name="note" maxlength="2000" class="form-control"></textarea></label><button class="btn btn-outline-danger mt-3">В архив</button></form></details>{% endif %}
 </section>
+<script defer src="{{ url_for('static', filename='js/vehicle-archive.js', v='1') }}"></script>
 {% endblock %}

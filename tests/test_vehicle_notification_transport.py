@@ -16,6 +16,7 @@ class NotificationTransportTests(unittest.TestCase):
         test_vehicle_service.VehicleServiceTestCase.setUp(self)
         self.app.config.update(VEHICLE_NOTIFICATIONS_ENABLED=True,
             OFFICIUM_PUBLIC_URL='https://example.test', TELEGRAM_BOT_TOKEN='offline-test-token')
+        self.owner.notification_delivery_time = '00:00'
         vehicle = self.vehicle()
         day = vehicles.today()
         db.session.add_all([

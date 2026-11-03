@@ -1,0 +1,26 @@
+{% set sections = [
+    ('overview', 'Обзор', 'grid'),
+    ('expenses', 'Расходы', 'wallet2'),
+    ('mileage', 'Пробег', 'speedometer2'),
+    ('fuel', 'Заправки', 'fuel-pump'),
+    ('maintenance', 'Обслуживание', 'wrench'),
+    ('defects', 'Неисправности', 'exclamation-triangle'),
+    ('documents', 'Документы', 'file-earmark-text'),
+    ('photos', 'Фото', 'images'),
+    ('tco', 'Аналитика', 'bar-chart')
+] %}
+{% macro section_link(key, label, icon, primary=false) -%}
+<a class="text-decoration-none {{ 'nav-link' if primary else 'dropdown-item' }}{% if tab == key %} active{% endif %}" data-vehicle-section="{{ key }}"{% if primary %} data-vehicle-primary{% endif %}{% if tab == key %} aria-current="page"{% endif %} href="{{ url_for('vehicle_detail', vehicle_id=vehicle.id, tab=key) }}"><i class="bi bi-{{ icon }}" aria-hidden="true"></i><span>{{ label }}</span></a>
+{%- endmacro %}
+<nav class="nav nav-pills vehicle-navigation mb-4" aria-label="Вкладки автомобиля">
+    {% for key, label, icon in sections[:4] if key not in ('mileage', 'fuel') or vehicle.kind != 'trailer' %}
+        {{ section_link(key, label, icon, true) }}
+    {% endfor %}
+    <div class="dropdown vehicle-navigation-more">
+        <button class="nav-link vehicle-navigation-toggle{% if tab in ['maintenance', 'defects', 'documents', 'photos', 'tco'] %} active{% endif %}" type="button" id="vehicleMoreToggle" data-bs-toggle="dropdown" aria-expanded="false" aria-controls="vehicleMoreMenu"><i class="bi bi-three-dots" aria-hidden="true"></i><span>Ещё</span><i class="bi bi-chevron-down vehicle-navigation-chevron" aria-hidden="true"></i></button>
+        <div class="dropdown-menu dropdown-menu-end" id="vehicleMoreMenu" aria-labelledby="vehicleMoreToggle">
+            {% for key, label, icon in sections[4:] %}{{ section_link(key, label, icon) }}{% endfor %}
+        </div>
+    </div>
+</nav>
+<script defer src="{{ url_for('static', filename='js/vehicle-navigation.js', v='2') }}"></script>

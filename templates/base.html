@@ -1,5 +1,5 @@
 {% from '_brand.html' import brand_mark %}{% from '_avatar.html' import user_avatar, user_display_name, user_menu %}<!DOCTYPE html>
-<html lang="ru" data-theme="dark" data-bs-theme="dark">
+<html lang="ru" data-theme="dark" data-bs-theme="dark"{% if amount_privacy_available %} data-amounts-default-hidden="{{ 'true' if amounts_initially_hidden else 'false' }}"{% endif %}{% if amounts_initially_hidden %} class="amounts-hidden amounts-pending"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -28,9 +28,11 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=29" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=33" rel="stylesheet">
     {% block extra_css %}{% endblock %}
-    <link href="{{ url_for('static', filename='css/ui-controls.css', v='1') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/ui-controls.css', v='3') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/amount-privacy.css', v='3') }}" rel="stylesheet">
+    {% if amount_privacy_available %}<script defer src="{{ url_for('static', filename='js/amount-privacy.js', v='3') }}"></script>{% endif %}
 </head>
 <body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
 
@@ -247,6 +249,7 @@
 
 <!-- Основной контент -->
 <main class="app-main container-fluid px-4 py-4">
+    {% if amount_privacy_available %}<div id="amountPrivacySource" class="amount-privacy-corner"><button type="button" id="amountPrivacyToggle" class="btn btn-outline-secondary amount-privacy-toggle" title="{{ 'Показать суммы' if amounts_initially_hidden else 'Скрыть суммы' }}" aria-pressed="{{ 'true' if amounts_initially_hidden else 'false' }}"><i class="bi bi-{{ 'eye' if amounts_initially_hidden else 'eye-slash' }}" aria-hidden="true"></i><span class="visually-hidden">{{ 'Показать суммы' if amounts_initially_hidden else 'Скрыть суммы' }}</span></button></div>{% endif %}
     {% block content %}{% endblock %}
 </main>
 
@@ -775,7 +778,7 @@
 {% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=8"></script>
-<script src="{{ url_for('static', filename='js/modules-menu.js', v='3') }}"></script>
+<script src="{{ url_for('static', filename='js/modules-menu.js', v='4') }}"></script>
 {% if telegram_login_launch %}
 <script src="{{ url_for('static', filename='js/telegram-login.js') }}?v={{ config.APP_VERSION|urlencode }}" data-available="{{ 'true' if telegram_login_launch.available else 'false' }}" data-bot-id="{{ telegram_login_launch.bot_id or '' }}" data-auth-url="{{ telegram_login_launch.auth_url }}"></script>
 {% endif %}

@@ -11,6 +11,14 @@ for (const width of [1440, 390]) {
       if (width < 992) await page.locator('.navbar-toggler').click();
       const toggle = page.getByRole('button', { name: 'Модули', exact: true });
       const menu = page.locator('#modulesMenu');
+      await toggle.evaluate(button => {
+        for (const event of ['shown.bs.dropdown', 'hide.bs.dropdown']) {
+          button.addEventListener(event, () => {
+            button.dataset[event.startsWith('shown') ? 'openAnimations' : 'closeAnimations'] =
+              document.getElementById('modulesMenu').getAnimations().length;
+          });
+        }
+      });
       await expect(menu).toBeHidden();
       const order = await page.locator('#navbarNav > ul > li').evaluateAll(items => items.map(item => {
         const link = item.querySelector(':scope > a');
@@ -27,6 +35,7 @@ for (const width of [1440, 390]) {
       else await toggle.click();
       await expect(menu).toBeVisible();
       await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(toggle).toHaveAttribute('data-open-animations', '1');
       await expect(menu.getByRole('link', { name: 'Автомобили', exact: true })).toBeVisible();
       await expect(menu.getByRole('link', { name: 'Цели', exact: true })).toBeVisible();
       const bounds = await menu.boundingBox();
@@ -38,6 +47,7 @@ for (const width of [1440, 390]) {
         await expect(menu).toBeVisible();
         await page.locator('h1').hover();
         await expect(menu).toBeHidden();
+        await expect(toggle).toHaveAttribute('data-close-animations', '1');
         await expect(toggle).toHaveAttribute('aria-expanded', 'false');
         await expect(toggle).not.toBeFocused();
         await expect(toggle.locator('.nav-expand__full')).toBeHidden();
@@ -57,6 +67,14 @@ for (const width of [1440, 390]) {
       await menu.getByRole('link', { name: 'Цели', exact: true }).press('Enter');
       await expect(page).toHaveURL(/\/goals$/);
       await expect(page.locator('#modulesMenuToggle')).toHaveClass(/active/);
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      if (width < 992) await page.locator('.navbar-toggler').click();
+      await toggle.press('ArrowDown');
+      await expect(menu).toBeVisible();
+      expect(await menu.evaluate(element => element.getAnimations().length)).toBe(0);
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     });
   }
 }

@@ -1,0 +1,10 @@
+{% macro screenshot(filename, label, alt, caption='Вымышленные данные отдельного тестового стенда. Нажмите на снимок, чтобы открыть полный размер.', mobile=false) -%}
+{% set metadata = (documentation_images|default({})).get(filename,{}) %}
+<figure class="docs-screenshot{% if mobile %} docs-screenshot--mobile{% endif %}">
+    <div class="docs-screenshot__bar"><span></span><span></span><span></span><em>Актуальный интерфейс · {{ label }}</em></div>
+    <a href="{{ url_for('static',filename='images/documentation/' ~ filename,v='guide-20261103-privacy-3') }}" target="_blank" rel="noopener noreferrer" aria-label="Открыть снимок: {{ label }}">
+        <img src="{{ url_for('static',filename='images/documentation/' ~ filename,v='guide-20261103-privacy-3') }}" alt="{{ alt }}"{% if metadata.get('width') and metadata.get('height') %} width="{{ metadata.width }}" height="{{ metadata.height }}"{% endif %} loading="lazy">
+    </a>
+    <figcaption><i class="bi bi-camera" aria-hidden="true"></i> {{ caption }}</figcaption>
+</figure>
+{%- endmacro %}

@@ -7,7 +7,7 @@ name: Deployment integration
 
 on:
   push:
-    branches: [master, 'feat/**']
+    branches: [master, 'feat/**', 'release/**']
   pull_request:
     branches: [master]
   workflow_dispatch:
