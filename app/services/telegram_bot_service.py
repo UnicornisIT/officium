@@ -7,13 +7,11 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional, Union
 
-import requests
-
-from app.services.telegram_transport import api_request, require_accepted
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 
 from app.models import Debt, Income, TelegramConversationState, TelegramProcessedUpdate, User
+from app.services.telegram_transport import api_request, require_accepted
 from app.services.debt_accrual_service import accrual_start_date, default_penalty_rate
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import add_payment
@@ -396,7 +394,7 @@ def process_telegram_text_result(user, text, chat_id=None):
     except ValueError as exc:
         db.session.rollback()
         return _result(chat_id or user.telegram_id, f'Не записал: {exc}', MAIN_MENU_KEYBOARD)
-    except Exception as exc:  # pragma: no cover - defensive logging for production webhooks
+    except Exception:  # pragma: no cover - defensive logging for production webhooks
         db.session.rollback()
         try:
             current_app.logger.warning('Telegram bot command failed.')
@@ -448,7 +446,7 @@ def process_telegram_callback_result(user, chat_id, callback_data):
     except ValueError as exc:
         db.session.rollback()
         return _result(chat_id, f'Не записал: {exc}', MAIN_MENU_KEYBOARD, callback_answer_text='Ошибка')
-    except Exception as exc:  # pragma: no cover
+    except Exception:  # pragma: no cover
         db.session.rollback()
         try:
             current_app.logger.warning('Telegram bot callback failed.')
@@ -457,7 +455,7 @@ def process_telegram_callback_result(user, chat_id, callback_data):
         return _result(chat_id, 'Не получилось обработать кнопку. Попробуйте позже.', MAIN_MENU_KEYBOARD)
 
 
-def send_telegram_message(chat_id, text, bot_token=None, reply_markup=None):
+def send_telegram_message(chat_id, text, bot_token=None, reply_markup=None, parse_mode=None):
     token = bot_token
     if token is None:
         token = current_app.config.get('TELEGRAM_BOT_TOKEN', '')
@@ -467,6 +465,8 @@ def send_telegram_message(chat_id, text, bot_token=None, reply_markup=None):
     payload = {'chat_id': chat_id, 'text': text}
     if reply_markup is not None:
         payload['reply_markup'] = reply_markup
+    if parse_mode is not None:
+        payload['parse_mode'] = parse_mode
 
     result, _ = api_request('sendMessage', payload, token)
     return require_accepted(result)

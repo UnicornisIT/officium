@@ -7,6 +7,7 @@ from sqlalchemy import and_, cast, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from app.models import ActivityLog, DictionaryEntry, User
 from app.services import impersonation_service as impersonation
+from app.services import update_notifier
 from app.services.contact_service import (
     CONTACT_ICONS,
     CONTACT_LOCATIONS,
@@ -484,6 +485,18 @@ def init_app(app):
         )
         return redirect(url_for('admin_server_update'))
 
+    def render_settings_page(settings=None, error_message=None):
+        if settings is None:
+            settings = {key: str(get_setting(key, _setting_default(key))) for key in SETTINGS_FIELDS}
+        return render_template(
+            'admin_settings.html', settings=settings, settings_groups=SETTINGS_GROUPS,
+            contacts=load_contacts(), contact_types=CONTACT_TYPES, contact_icons=CONTACT_ICONS,
+            contact_locations=CONTACT_LOCATIONS, error_message=error_message,
+            update_settings=update_notifier.load_settings(),
+            update_status_labels=update_notifier.STATUS_LABELS,
+            update_bot_configured=bool(current_app.config.get('TELEGRAM_BOT_TOKEN')),
+        )
+
     @app.route('/admin/settings', methods=['GET', 'POST'])
     @superadmin_required
     def admin_settings():
@@ -517,16 +530,54 @@ def init_app(app):
             }
         else:
             settings = {key: str(get_setting(key, _setting_default(key))) for key in SETTINGS_FIELDS}
-        return render_template(
-            'admin_settings.html',
-            settings=settings,
-            settings_groups=SETTINGS_GROUPS,
-            contacts=load_contacts(),
-            contact_types=CONTACT_TYPES,
-            contact_icons=CONTACT_ICONS,
-            contact_locations=CONTACT_LOCATIONS,
-            error_message=error_message,
-        )
+        return render_settings_page(settings, error_message)
+
+    def require_notification_superadmin():
+        if (not current_user.is_authenticated or not current_user.is_superadmin
+                or getattr(current_user, 'is_blocked', False)):
+            abort(403)
+
+    @app.post('/admin/settings/update-notifications')
+    def admin_update_notification_settings():
+        require_notification_superadmin()
+        try:
+            values = update_notifier.validate_settings(request.form)
+            previous = update_notifier.load_settings()
+            for key, value in values.items():
+                if previous[key] != value:
+                    set_setting(key, value, commit=False)
+                    record_activity('Изменил настройки уведомлений об обновлениях', current_user,
+                        entity_type='setting', description=f'{key}: {previous[key]} → {value}',
+                        ip_address=client_ip(), commit=False)
+            db.session.commit()
+        except ValueError as exc:
+            db.session.rollback()
+            return render_settings_page(error_message=str(exc)), 400
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.warning('Update notification settings could not be saved.')
+            return 'Не удалось сохранить настройки уведомлений.', 503
+        flash('Настройки уведомлений сохранены.', 'success')
+        return redirect(url_for('admin_settings'))
+
+    @app.post('/admin/settings/update-notifications/test')
+    def admin_update_notification_test():
+        require_notification_superadmin()
+        try:
+            ok, message = update_notifier.send_test(current_user._get_current_object())
+        except SQLAlchemyError:
+            db.session.rollback()
+            ok, message = False, 'Хранилище уведомлений недоступно.'
+        flash(message, 'success' if ok else 'warning')
+        return redirect(url_for('admin_settings'))
+
+    @app.post('/admin/settings/update-notifications/check')
+    def admin_update_notification_check():
+        require_notification_superadmin()
+        result = update_notifier.notify_updates(force=True)
+        message = update_notifier.STATUS_LABELS.get(result['status'], 'Проверка завершена.')
+        flash(message, 'info')
+        return redirect(url_for('admin_settings'))
 
     @app.route('/admin/settings/contacts', methods=['POST'])
     @superadmin_required

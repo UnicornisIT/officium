@@ -752,6 +752,20 @@ class AppSetting(db.Model):
         return f'<AppSetting {self.key}>'
 
 
+class UpdateNotificationDelivery(db.Model):
+    __tablename__ = 'update_notification_deliveries'
+    __table_args__ = (
+        db.UniqueConstraint('event_key', 'user_id', name='uq_update_notification_recipient'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    event_key = db.Column(db.String(180), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    status = db.Column(db.String(16), nullable=False, default='reserved')
+    failure_kind = db.Column(db.String(40), nullable=True)
+    attempted_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+
+
 class DictionaryEntry(db.Model):
     __tablename__ = 'dictionary_entries'
     __table_args__ = (
