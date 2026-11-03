@@ -61,7 +61,8 @@ for (const scenario of [
     await page.getByRole('button', { name: 'Почему вместо сумм показаны ••••?' }).click();
     await expect(page.locator('#faqPrivacy')).toBeVisible();
     await expect(page.locator('#faqPrivacy')).toContainText('Показать суммы');
-    await page.screenshot({ path: info.outputPath('documentation-current.png'), fullPage: true });
+    // WebKit limits raster dimensions; image and section geometry are checked above.
+    await page.screenshot({ path: info.outputPath('documentation-current.png'), fullPage: false });
     expect(errors).toEqual([]);
   });
 }

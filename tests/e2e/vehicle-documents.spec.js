@@ -11,8 +11,10 @@ for(const width of [390,1440]) for(const theme of ['light','dark']) {
   await page.goto('/dev-login/user',{waitUntil:'domcontentloaded'});
   await page.goto('/vehicles/new',{waitUntil:'domcontentloaded'});
   await page.locator('#v_name').fill(`Документы ${info.project.name} ${width} ${theme} ${Date.now()}`);
-  await page.getByRole('button',{name:'Сохранить автомобиль',exact:true}).click({noWaitAfter:true});
-  await page.waitForURL(/\/vehicles\/\d+$/,{waitUntil:'domcontentloaded'});
+  await Promise.all([
+    page.waitForURL(/\/vehicles\/\d+$/, {waitUntil:'domcontentloaded'}),
+    page.getByRole('button',{name:'Сохранить автомобиль',exact:true}).click(),
+  ]);
   await openVehicleTab(page, 'Документы', {noWaitAfter:true});
   await page.getByText('Добавить документ',{exact:true}).click({noWaitAfter:true});
   const form=page.locator('.vehicle-document-form');

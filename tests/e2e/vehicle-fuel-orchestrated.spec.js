@@ -65,7 +65,9 @@ test('orchestrated fuel checkbox tolerance period payer date archive trailer', a
   await page.goto(`/vehicles/${id}/refueling/new`,{waitUntil:'domcontentloaded'});
   await fill(page,{refuel_date:'2026-03-04',odometer_km:'1300',liters:'10',price_per_liter:'50',total_amount:'500.60'});
   await page.getByRole('button',{name:'Сохранить заправку'}).click({noWaitAfter:true});
-  await expect(page.getByText('Итог отличается от объёма × цены более чем на 0,50 ₽.',{exact:true})).toBeVisible();
+  const mismatch = page.getByRole('alert').filter({hasText:'Итог отличается от объёма × цены более чем на'});
+  await expect(mismatch).toBeVisible();
+  await expect(mismatch).toContainText(/0,50\s*₽/);
   await page.goto(`/vehicles/${id}?tab=fuel`,{waitUntil:'domcontentloaded'});
   await expect(page.locator('.vehicle-fuel-history tbody tr')).toHaveCount(2);
   expect((await post(`/vehicles/${id}/archive`,{reason:'sold'})).ok()).toBe(true);

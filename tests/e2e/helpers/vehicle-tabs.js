@@ -13,7 +13,9 @@ async function revealVehicleTab(page, name) {
 }
 
 async function openVehicleTab(page, name, options = {}) {
-  await (await revealVehicleTab(page, name)).click(options);
+  const link = await revealVehicleTab(page, name);
+  const destination = new URL(await link.getAttribute('href'), page.url()).href;
+  await Promise.all([page.waitForURL(destination, {waitUntil:'domcontentloaded'}), link.click(options)]);
 }
 
 module.exports = { revealVehicleTab, openVehicleTab };
