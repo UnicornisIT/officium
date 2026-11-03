@@ -31,12 +31,14 @@ def init_app(app, csrf=None):
         result = handle_telegram_update_once(update)
         if result.callback_query_id:
             try:
-                answer_telegram_callback_query(result.callback_query_id, result.callback_answer_text)
+                if not answer_telegram_callback_query(result.callback_query_id, result.callback_answer_text):
+                    current_app.logger.warning('Telegram callback answer rejected.')
             except Exception:
                 current_app.logger.warning('Telegram callback answer failed.')
         if result.chat_id is not None and result.reply_text:
             try:
-                send_telegram_message(result.chat_id, result.reply_text, reply_markup=result.reply_markup)
+                if not send_telegram_message(result.chat_id, result.reply_text, reply_markup=result.reply_markup):
+                    current_app.logger.warning('Telegram webhook reply rejected.')
             except Exception:
                 current_app.logger.warning('Telegram webhook reply delivery failed.')
         return jsonify({'ok': True})

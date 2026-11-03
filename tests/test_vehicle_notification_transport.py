@@ -27,8 +27,9 @@ class NotificationTransportTests(unittest.TestCase):
 
     def test_real_adapter_payload_and_dedup(self):
         response = Mock()
+        response.status_code = 200
         response.json.return_value = {'ok': True}
-        with patch('app.services.telegram_bot_service.requests.post', return_value=response) as post:
+        with patch('app.services.telegram_transport.requests.post', return_value=response) as post:
             self.assertEqual(self.client.post('/internal/vehicle-notifications/run').json,
                              dict(sent=3, skipped=0, failed=0))
             self.assertEqual(post.call_count, 3)
@@ -43,7 +44,7 @@ class NotificationTransportTests(unittest.TestCase):
         self.assertEqual(VehicleNotificationLog.query.filter_by(delivered=True).count(), 3)
 
     def test_http_error_is_private_and_not_retried_today(self):
-        with patch('app.services.telegram_bot_service.requests.post', side_effect=requests.Timeout('secret-token')) as post:
+        with patch('app.services.telegram_transport.requests.post', side_effect=requests.Timeout('secret-token')) as post:
             with self.assertLogs(self.app.logger, level='WARNING') as log:
                 self.assertEqual(notifications.send_due_notifications()['failed'], 3)
             self.assertNotIn('secret-token', str(log.output))
@@ -53,7 +54,8 @@ class NotificationTransportTests(unittest.TestCase):
 
     def test_api_false_is_failure(self):
         response = Mock()
+        response.status_code = 200
         response.json.return_value = {'ok': False}
-        with patch('app.services.telegram_bot_service.requests.post', return_value=response):
+        with patch('app.services.telegram_transport.requests.post', return_value=response):
             self.assertEqual(notifications.send_due_notifications()['failed'], 3)
         self.assertEqual(VehicleNotificationLog.query.filter_by(delivered=False).count(), 3)

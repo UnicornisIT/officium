@@ -24,6 +24,7 @@ def init_app(app):
             timezone_choices=settings.timezone_choices(), bot_url=settings.bot_url(),
             automated_notifications_enabled=notifications_enabled(),
             bot_configured=bool(app.config.get('TELEGRAM_BOT_TOKEN')),
+            bot_commands_enabled=bool(app.config.get('TELEGRAM_BOT_ENABLED')),
             profile_errors=errors or {}, test_result=test_result or session.pop('profile_test_result', None),
             saved_section=session.pop('profile_saved_section', None)), status
 

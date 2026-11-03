@@ -11,7 +11,7 @@ from flask_wtf.csrf import CSRFProtect
 from sqlalchemy.exc import SQLAlchemyError
 from config import Config
 from extensions import db
-from app.models import AppSetting, ActivityLog, Debt, DictionaryEntry, EmergencyFundTransaction, Expense, FinancialGoal, FinancialGoalTransaction, FinancialPlanPreference, Income, Payment, SplitPurchase, TelegramConversationState, TelegramProcessedUpdate, User
+from app.models import User
 from app.admin_presenters import (
     admin_entity_label,
     admin_event_icon,
@@ -22,7 +22,7 @@ from app.admin_presenters import (
     admin_status_label,
 )
 from app.services.telegram_frame_service import TelegramFrameSessionInterface, apply_frame_headers
-from app.utils import display_value, format_currency
+from app.utils import display_value
 
 login_manager = LoginManager()
 login_manager.login_view = 'login'
@@ -271,8 +271,6 @@ def register_cli_commands(app):
     @app.cli.command('create-superadmin')
     @click.argument('telegram_id')
     def create_superadmin(telegram_id):
-        from app.models import User
-
         try:
             telegram_id_int = int(telegram_id)
         except ValueError:
@@ -329,6 +327,23 @@ def register_cli_commands(app):
         if status.level == 'warning':
             app.logger.warning(line)
 
+    @app.cli.command('notify-updates')
+    @click.option('--dry-run', is_flag=True, help='Inspect notifications without sending or saving anything.')
+    @click.option('--force', is_flag=True, help='Ignore the release check interval.')
+    def notify_updates(dry_run, force):
+        """Notify administrators about releases and completed server updates."""
+        import json
+        from app.services.update_notifier import notify_updates as notify
+        click.echo(json.dumps(notify(dry_run=dry_run, force=force), ensure_ascii=False, sort_keys=True))
+
+    @app.cli.command('telegram-diagnostics')
+    @click.option('--network', is_flag=True, help='Explicitly query getMe/getWebhookInfo (once per 60 seconds).')
+    def telegram_diagnostics(network):
+        """Operator-only diagnostics. Never sends a message or changes a webhook."""
+        import json
+        from app.services.telegram_diagnostics_service import diagnose
+        click.echo(json.dumps(diagnose(network=network), ensure_ascii=False, sort_keys=True))
+
     @app.cli.command('send-vehicle-notifications')
     def send_vehicle_notifications():
         """Send daily vehicle reminders (also used by the systemd timer)."""
@@ -377,3 +392,5 @@ def register_cli_commands(app):
         click.echo(f"Users checked: {stats['users_checked']}")
         click.echo(f"Messages: {stats['messages']}")
         click.echo(f"Errors: {stats['errors']}")
+        if stats['errors']:
+            raise click.ClickException('Some Telegram reminders failed; do not blindly retry the batch.')
