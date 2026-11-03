@@ -1,7 +1,7 @@
 const fs=require('node:fs');
 const {test,expect}=require('@playwright/test');
 const { openVehicleTab } = require('./helpers/vehicle-tabs');
-test.use({video:'off',trace:'off'});
+test.use({video:'off'});
 for(const width of [390,1440]) for(const theme of ['light','dark']) {
  test(`documents ${width} ${theme}`,async({page},info)=>{
   test.setTimeout(60000);
