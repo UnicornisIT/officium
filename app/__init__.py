@@ -329,6 +329,14 @@ def register_cli_commands(app):
         if status.level == 'warning':
             app.logger.warning(line)
 
+    @app.cli.command('telegram-diagnostics')
+    @click.option('--network', is_flag=True, help='Explicitly query getMe/getWebhookInfo (once per 60 seconds).')
+    def telegram_diagnostics(network):
+        """Operator-only diagnostics. Never sends a message or changes a webhook."""
+        import json
+        from app.services.telegram_diagnostics_service import diagnose
+        click.echo(json.dumps(diagnose(network=network), ensure_ascii=False, sort_keys=True))
+
     @app.cli.command('send-vehicle-notifications')
     def send_vehicle_notifications():
         """Send daily vehicle reminders (also used by the systemd timer)."""
@@ -377,3 +385,5 @@ def register_cli_commands(app):
         click.echo(f"Users checked: {stats['users_checked']}")
         click.echo(f"Messages: {stats['messages']}")
         click.echo(f"Errors: {stats['errors']}")
+        if stats['errors']:
+            raise click.ClickException('Some Telegram reminders failed; do not blindly retry the batch.')

@@ -8,6 +8,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional, Union
 
 import requests
+
+from app.services.telegram_transport import api_request, require_accepted
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 
@@ -397,7 +399,7 @@ def process_telegram_text_result(user, text, chat_id=None):
     except Exception as exc:  # pragma: no cover - defensive logging for production webhooks
         db.session.rollback()
         try:
-            current_app.logger.exception('Telegram bot command failed: %s', exc)
+            current_app.logger.warning('Telegram bot command failed.')
         except RuntimeError:
             pass
         return _result(chat_id or user.telegram_id, 'Не получилось сохранить запись. Попробуйте позже.', MAIN_MENU_KEYBOARD)
@@ -449,7 +451,7 @@ def process_telegram_callback_result(user, chat_id, callback_data):
     except Exception as exc:  # pragma: no cover
         db.session.rollback()
         try:
-            current_app.logger.exception('Telegram bot callback failed: %s', exc)
+            current_app.logger.warning('Telegram bot callback failed.')
         except RuntimeError:
             pass
         return _result(chat_id, 'Не получилось обработать кнопку. Попробуйте позже.', MAIN_MENU_KEYBOARD)
@@ -466,13 +468,8 @@ def send_telegram_message(chat_id, text, bot_token=None, reply_markup=None):
     if reply_markup is not None:
         payload['reply_markup'] = reply_markup
 
-    response = requests.post(
-        f'https://api.telegram.org/bot{token}/sendMessage',
-        json=payload,
-        timeout=10,
-    )
-    response.raise_for_status()
-    return bool(response.json().get('ok'))
+    result, _ = api_request('sendMessage', payload, token)
+    return require_accepted(result)
 
 
 def answer_telegram_callback_query(callback_query_id, text=None, bot_token=None):
@@ -487,13 +484,8 @@ def answer_telegram_callback_query(callback_query_id, text=None, bot_token=None)
     payload = {'callback_query_id': callback_query_id}
     if text:
         payload['text'] = text[:200]
-    response = requests.post(
-        f'https://api.telegram.org/bot{token}/answerCallbackQuery',
-        json=payload,
-        timeout=10,
-    )
-    response.raise_for_status()
-    return bool(response.json().get('ok'))
+    result, _ = api_request('answerCallbackQuery', payload, token)
+    return require_accepted(result)
 
 
 def send_debt_reminders(days=None, dry_run=False, sender=send_telegram_message):
@@ -514,10 +506,12 @@ def send_debt_reminders(days=None, dry_run=False, sender=send_telegram_message):
         if dry_run:
             continue
         try:
-            sender(user.telegram_id, message, reply_markup=MAIN_MENU_KEYBOARD)
-        except Exception as exc:  # pragma: no cover - depends on Telegram network availability
+            if not sender(user.telegram_id, message, reply_markup=MAIN_MENU_KEYBOARD):
+                stats['errors'] += 1
+                current_app.logger.warning('Telegram reminder rejected: user_id=%s', user.id)
+        except Exception:
             stats['errors'] += 1
-            current_app.logger.warning('Telegram reminder failed for user %s: %s', user.id, exc)
+            current_app.logger.warning('Telegram reminder failed: user_id=%s', user.id)
     return stats
 
 

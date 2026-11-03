@@ -44,6 +44,7 @@
             {{ feedback('notifications') }}
             <button type="submit" class="btn btn-primary">Сохранить</button>
         </form>
+        {% if not bot_commands_enabled %}<p class="small text-muted">Команды бота отключены на сервере (TELEGRAM_BOT_ENABLED=false). Вход через Telegram и тест исходящего сообщения проверяются отдельно.</p>{% endif %}
         <div class="profile-bot-actions">
             {% if bot_url %}<a class="btn btn-outline-secondary" href="{{ bot_url }}" target="_blank" rel="noopener noreferrer" data-profile-bot-link><i class="bi bi-telegram" aria-hidden="true"></i> Открыть бота</a>{% else %}<p class="small text-muted mb-0">Ссылка на бота не настроена на сервере.</p>{% endif %}
             {% if bot_configured %}<form method="post" action="{{ url_for('profile_test_notification') }}" data-profile-form data-profile-test>

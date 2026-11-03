@@ -77,6 +77,34 @@ class TelegramBotTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_webhook_disabled_and_start_help_menu(self):
+        headers = {'X-Telegram-Bot-Api-Secret-Token': 'test-secret'}
+        self.app.config['TELEGRAM_BOT_ENABLED'] = False
+        with patch('app.routes.telegram_bot.send_telegram_message') as sender:
+            response = self.client.post('/telegram/webhook', json=self._private_update('/start'), headers=headers)
+            self.assertEqual(response.status_code, 404)
+            sender.assert_not_called()
+        self.app.config['TELEGRAM_BOT_ENABLED'] = True
+        for index, command in enumerate(('/start', '/help'), start=50):
+            update = self._private_update(command)
+            update['update_id'] = index
+            with patch('app.routes.telegram_bot.send_telegram_message', return_value=True) as sender:
+                self.assertEqual(self.client.post('/telegram/webhook', json=update, headers=headers).status_code, 200)
+                self.assertIn('Выберите действие', sender.call_args.args[1])
+                self.assertIn('keyboard', sender.call_args.kwargs['reply_markup'])
+                self.client.post('/telegram/webhook', json=update, headers=headers)
+                sender.assert_called_once()
+
+    def test_webhook_failed_reply_is_acknowledged_without_duplicate(self):
+        headers = {'X-Telegram-Bot-Api-Secret-Token': 'test-secret'}
+        update = self._private_update('/start')
+        with patch('app.routes.telegram_bot.send_telegram_message', return_value=False) as sender:
+            with self.assertLogs(self.app.logger, level='WARNING') as logs:
+                self.assertEqual(self.client.post('/telegram/webhook', json=update, headers=headers).status_code, 200)
+            self.assertIn('reply rejected', str(logs.output))
+            self.client.post('/telegram/webhook', json=update, headers=headers)
+            sender.assert_called_once()
+
     def test_webhook_rejects_requests_with_wrong_secret(self):
         response = self.client.post(
             '/telegram/webhook',

@@ -27,6 +27,7 @@ class NotificationTransportTests(unittest.TestCase):
 
     def test_real_adapter_payload_and_dedup(self):
         response = Mock()
+        response.status_code = 200
         response.json.return_value = {'ok': True}
         with patch('app.services.telegram_bot_service.requests.post', return_value=response) as post:
             self.assertEqual(self.client.post('/internal/vehicle-notifications/run').json,
@@ -53,6 +54,7 @@ class NotificationTransportTests(unittest.TestCase):
 
     def test_api_false_is_failure(self):
         response = Mock()
+        response.status_code = 200
         response.json.return_value = {'ok': False}
         with patch('app.services.telegram_bot_service.requests.post', return_value=response):
             self.assertEqual(notifications.send_due_notifications()['failed'], 3)

@@ -9,6 +9,7 @@ from sqlalchemy import or_
 
 from app.models import User
 from app.services import telegram_bot_service as telegram
+from app.services.telegram_transport import TelegramDeliveryError, delivery_error_message
 from app.time_utils import as_utc, utc_now
 from extensions import db
 
@@ -90,9 +91,12 @@ def test_notification(user, *, now=None):
     try:
         delivered = bool(telegram.send_telegram_message(user.telegram_id,
             'Проверка уведомлений officium. Это тестовое сообщение по вашему запросу из профиля.'))
+    except TelegramDeliveryError as exc:
+        status = 429 if exc.result.failure_kind == 'rate_limited' else 502
+        return False, delivery_error_message(exc.result), status
     except Exception:
         delivered = False
     if delivered:
         return True, 'Telegram принял тестовое сообщение. Проверьте чат с ботом.', 200
     current_app.logger.warning('Profile notification test failed: user_id=%s', user.id)
-    return False, 'Не удалось отправить сообщение. Откройте бота и нажмите «Запустить». Повторите проверку через минуту.', 502
+    return False, 'Не удалось подтвердить отправку сообщения. Обратитесь к администратору. Повторите проверку через минуту.', 502
