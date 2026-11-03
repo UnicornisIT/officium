@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { test, expect } = require('@playwright/test');
+const { openVehicleTab } = require('./helpers/vehicle-tabs');
 
 // Only fictional data, in the disposable database from scripts/e2e_server.py.
 for (const width of [1440, 390]) {
@@ -67,7 +68,7 @@ for (const width of [1440, 390]) {
       await page.getByLabel('Госномер', { exact: true }).fill('a123bc77');
       const carURL = await saveVehicle();
       await expect(page.locator('.vehicle-visual text').first()).toHaveText('А123ВС77');
-      await page.getByRole('link', { name: 'Пробег', exact: true }).click();
+      await openVehicleTab(page, 'Пробег');
       await page.getByLabel('Дата замера', { exact: true }).fill('2020-01-01');
       await page.getByLabel('Пробег (км)', { exact: true }).fill('12300');
       await page.getByRole('button', { name: 'Добавить замер', exact: true }).click();

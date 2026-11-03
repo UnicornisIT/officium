@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {test, expect} = require('@playwright/test');
+const { openVehicleTab } = require('./helpers/vehicle-tabs');
 // Screenshots and traces cover this form workflow; avoid Windows video teardown stalls.
 test.use({video:'off'});
 
@@ -18,7 +19,7 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) {
     await page.getByRole('button',{name:'Сохранить автомобиль',exact:true}).click({noWaitAfter:true});
     await page.waitForURL(/\/vehicles\/\d+$/, {waitUntil:'domcontentloaded'});
     const id=page.url().split('/').pop();
-    await page.getByRole('link',{name:'Заправки',exact:true}).click({noWaitAfter:true});
+    await openVehicleTab(page, 'Заправки', {noWaitAfter:true});
     await page.getByText('Добавить заправку',{exact:true}).click({noWaitAfter:true});
     const form=page.locator('.vehicle-fuel-form');
     await form.getByLabel('Дата заправки').fill('2026-03-01');
@@ -27,7 +28,7 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) {
     await form.getByLabel('Цена за литр').fill('50');
     await expect(form.locator('[name="total_amount"]')).toHaveValue('2000.00');
     await form.getByLabel('АЗС',{exact:true}).fill('Учебная АЗС');
-    const root=path.join('docs','qa','vehicles-stage4');
+    const root=info.outputPath('screenshots');
     fs.mkdirSync(root,{recursive:true});
     const capture=async name => {
       await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -50,10 +51,10 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) {
     await page.getByLabel('Литры',{exact:true}).fill('41');
     await page.getByRole('button',{name:'Сохранить заправку'}).click({noWaitAfter:true});
     await expect(page.locator('.vehicle-fuel-history')).toContainText('41.000');
-    await page.getByRole('link',{name:'Пробег',exact:true}).click({noWaitAfter:true});
+    await openVehicleTab(page, 'Пробег', {noWaitAfter:true});
     await expect(page.locator('tbody')).toContainText('Заправка');
     await capture('mileage');
-    await page.getByRole('link',{name:'Обзор',exact:true}).click({noWaitAfter:true});
+    await openVehicleTab(page, 'Обзор', {noWaitAfter:true});
     await expect(page.getByRole('heading',{name:'Топливо',exact:true})).toBeVisible();
     await capture('overview');
     await page.request.get('/dev-login/superadmin');

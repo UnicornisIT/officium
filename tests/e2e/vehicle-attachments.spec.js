@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const { test, expect } = require('@playwright/test');
+const { revealVehicleTab, openVehicleTab } = require('./helpers/vehicle-tabs');
 
 test.use({ video: 'off', trace: 'off', actionTimeout: 15000, navigationTimeout: 30000 });
 const image = fs.readFileSync('tests/e2e/fixtures/vehicle-photo.png');
@@ -17,7 +18,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: 'Сохранить автомобиль', exact: true }).click();
     await page.waitForURL(/\/vehicles\/\d+$/);
     const vehicleId = page.url().split('/').pop();
-    await page.getByRole('link', { name: 'Фото', exact: true }).click();
+    await openVehicleTab(page, 'Фото');
     await page.getByText('Загрузить фото', { exact: true }).click();
     let form = page.locator('[data-photo-drop]');
     await form.locator('[name=file]').setInputFiles({ name: 'car.png', mimeType: 'image/png', buffer: Buffer.concat([image, Buffer.from(unique)]) });
@@ -29,12 +30,13 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await expect.poll(() => photos.locator('img').evaluate(img => img.complete && img.naturalWidth === 200)).toBe(true);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await page.locator('.vehicle-photo-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(width === 390 ? 2 : 4);
-    fs.mkdirSync('docs/qa/vehicles-stage8', { recursive: true });
-    await page.screenshot({ path: `docs/qa/vehicles-stage8/${info.project.name}-${width}-${theme}-gallery.png`, fullPage: true });
+    const root = info.outputPath('screenshots');
+    fs.mkdirSync(root, { recursive: true });
+    await page.screenshot({ path: `${root}/${info.project.name}-${width}-${theme}-gallery.png`, fullPage: true });
     await photos.locator('a').click();
     await expect(page.locator('dialog')).toBeVisible();
     await expect.poll(() => page.locator('dialog img').evaluate(img => img.complete && img.naturalWidth === 640)).toBe(true);
-    await page.screenshot({ path: `docs/qa/vehicles-stage8/${info.project.name}-${width}-${theme}-lightbox.png` });
+    await page.screenshot({ path: `${root}/${info.project.name}-${width}-${theme}-lightbox.png` });
     await page.getByRole('button', { name: 'Закрыть фото' }).click();
     await expect(page.locator('dialog')).not.toBeVisible();
     await photos.locator('a').click();
@@ -64,7 +66,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       await expect(container.locator('[data-vehicle-lightbox] img').first()).toBeVisible();
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (info.project.name === 'chromium') {
-        await page.screenshot({ path: `docs/qa/vehicles-stage8/${info.project.name}-${width}-${theme}-${name}.png`, fullPage: true });
+        await page.screenshot({ path: `${root}/${info.project.name}-${width}-${theme}-${name}.png`, fullPage: true });
       }
     };
     await page.goto(`/vehicles/${vehicleId}?tab=documents`);
@@ -108,8 +110,8 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await verifyContext('expenses', receipt);
     // The stage 7 analytics tab must remain available after adding the photo tab.
     await page.goto(`/vehicles/${vehicleId}?tab=tco`, { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('link', { name: 'Фото', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Аналитика', exact: true })).toBeVisible();
+    await revealVehicleTab(page, 'Фото');
+    await revealVehicleTab(page, 'Аналитика');
     await expect(page.locator('.vehicle-tco-summary')).toContainText('200');
     await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('canvas')].filter(c => window.Chart?.getChart(c)).length)).toBe(3);
     await expect(page.getByRole('link', { name: 'Скачать CSV' })).toHaveAttribute('download', 'vehicle-tco.csv');

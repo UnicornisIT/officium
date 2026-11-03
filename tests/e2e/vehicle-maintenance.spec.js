@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {test, expect} = require('@playwright/test');
+const { openVehicleTab } = require('./helpers/vehicle-tabs');
 
 for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
   test(`maintenance ${width} ${theme}`, async ({page}, info) => {
@@ -19,7 +20,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', {name:'Сохранить автомобиль', exact:true}).click();
     await page.waitForURL(/\/vehicles\/\d+$/);
     const id = page.url().split('/').pop();
-    const root = path.join('docs', 'qa', 'vehicles-stage3');
+    const root = info.outputPath('screenshots');
     fs.mkdirSync(root, {recursive:true});
     const capture = async name => {
       await expect.poll(() => page.evaluate(() => {
@@ -56,7 +57,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await page.reload();
     for (const label of ['В порядке', 'Скоро', 'Просрочено']) await expect(page.locator('article .badge').filter({hasText:new RegExp(`^${label}$`)})).toBeVisible();
     await capture('maintenance');
-    await page.getByRole('link', {name:'Неисправности', exact:true}).click();
+    await openVehicleTab(page, 'Неисправности');
     await page.getByLabel('Название неисправности').fill('Учебная неисправность тормозов');
     await page.getByLabel('Серьёзность').selectOption('critical');
     await page.getByRole('button', {name:'Сохранить неисправность'}).click();

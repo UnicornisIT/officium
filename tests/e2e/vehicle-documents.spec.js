@@ -1,5 +1,6 @@
 const fs=require('node:fs');
 const {test,expect}=require('@playwright/test');
+const { openVehicleTab } = require('./helpers/vehicle-tabs');
 test.use({video:'off',trace:'off'});
 for(const width of [390,1440]) for(const theme of ['light','dark']) {
  test(`documents ${width} ${theme}`,async({page},info)=>{
@@ -12,7 +13,7 @@ for(const width of [390,1440]) for(const theme of ['light','dark']) {
   await page.locator('#v_name').fill(`Документы ${info.project.name} ${width} ${theme} ${Date.now()}`);
   await page.getByRole('button',{name:'Сохранить автомобиль',exact:true}).click({noWaitAfter:true});
   await page.waitForURL(/\/vehicles\/\d+$/,{waitUntil:'domcontentloaded'});
-  await page.getByRole('link',{name:'Документы',exact:true}).click({noWaitAfter:true});
+  await openVehicleTab(page, 'Документы', {noWaitAfter:true});
   await page.getByText('Добавить документ',{exact:true}).click({noWaitAfter:true});
   const form=page.locator('.vehicle-document-form');
   await form.locator('[name=title]').fill('Тестовый полис');
@@ -25,8 +26,9 @@ for(const width of [390,1440]) for(const theme of ['light','dark']) {
   await expect(page.locator('.vehicle-document-card')).toContainText('Тестовый полис');
   await expect(page.locator('.vehicle-document-card .badge')).toHaveText('Просрочено');
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  fs.mkdirSync('docs/qa/vehicles-stage5',{recursive:true});
-  await page.screenshot({path:`docs/qa/vehicles-stage5/${info.project.name}-${width}-${theme}.png`,fullPage:true});
+  const root = info.outputPath('screenshots');
+  fs.mkdirSync(root,{recursive:true});
+  await page.screenshot({path:`${root}/${info.project.name}-${width}-${theme}.png`,fullPage:true});
 
  });
 }
