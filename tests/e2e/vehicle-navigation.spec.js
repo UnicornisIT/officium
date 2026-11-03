@@ -68,6 +68,8 @@ test('all nine URL sections, dropdown keyboard and dismissal remain available', 
       await expect.poll(async () => (await selected.evaluate(element => getComputedStyle(element).backgroundColor)) !==
         (await normal.evaluate(element => getComputedStyle(element).backgroundColor))).toBe(true);
       await page.keyboard.press('Escape');
+      await expect(more).toHaveAttribute('aria-expanded', 'false');
+      await expect(nav.locator('.dropdown-menu')).toBeHidden();
       await expect(page.locator('.vehicle-detail-grid > section').nth(1).locator('h2').first()).toBeVisible();
     } else await expect(more).not.toHaveClass(/active/);
   }
@@ -104,10 +106,9 @@ test('More animates, highlights hovered items and respects reduced motion', asyn
   await expect(more).toHaveAttribute('data-open-animations', '1');
   await expect(page.locator('link[href*="css/vehicles.css"]')).toHaveAttribute('href', /v=navigation-menu-4/);
   const item = nav.locator('.dropdown-item').first();
-  const nextItem = nav.locator('.dropdown-item').nth(1);
-  const firstBounds = await item.boundingBox();
-  const nextBounds = await nextItem.boundingBox();
-  expect(nextBounds.y - firstBounds.y - firstBounds.height).toBeCloseTo(8, 0);
+  // Read both bounds in one frame while the parent menu may still animate.
+  const gap = await item.evaluate(element => element.nextElementSibling.getBoundingClientRect().top - element.getBoundingClientRect().bottom);
+  expect(gap).toBeCloseTo(8, 0);
   const background = await item.evaluate(element => getComputedStyle(element).backgroundColor);
   await item.hover();
   await expect.poll(() => item.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe(background);

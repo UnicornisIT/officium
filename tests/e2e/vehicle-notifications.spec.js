@@ -13,22 +13,27 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.goto('/profile', {waitUntil: 'domcontentloaded'});
     const checkbox = page.getByRole('checkbox', {name: 'Напоминания об автомобилях в Telegram'});
     const save = page.getByRole('region', {name: 'Уведомления', exact: true}).getByRole('button', {name: 'Сохранить', exact: true});
+    const savePreference = async () => {
+      await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}), save.click()]);
+      await expect(page.getByRole('region', {name:'Уведомления',exact:true}).getByRole('status').filter({hasText:/^Сохранено$/})).toBeVisible();
+    };
     await checkbox.check();
-    await save.click();
+    await savePreference();
     await expect(checkbox).toBeChecked();
     await checkbox.uncheck();
-    await save.click();
+    await savePreference();
     await page.reload();
     await expect(checkbox).not.toBeChecked();
     await checkbox.check();
-    await save.click();
+    await savePreference();
     await expect(checkbox).toBeChecked();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const box = await checkbox.boundingBox();
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
-    fs.mkdirSync('docs/qa/vehicles-stage6', {recursive: true});
-    await page.screenshot({path: `docs/qa/vehicles-stage6/profile-${info.project.name}-${width}-${theme}.png`, fullPage: true, animations: 'disabled'});
+    const root=info.outputPath('screenshots');
+    fs.mkdirSync(root, {recursive: true});
+    await page.screenshot({path: `${root}/profile-${info.project.name}-${width}-${theme}.png`, fullPage: true, animations: 'disabled'});
   });
 }
