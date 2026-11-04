@@ -1,5 +1,6 @@
 """Owner-scoped vehicle documents and expiry dates."""
 from datetime import date, timedelta
+from flask import current_app
 from app.models import Expense, Vehicle, VehicleDocument, VehicleCost
 from app.services import vehicle_service as vehicles, vehicle_cost_service as costs, expense_service
 from app.utils import parse_date, parse_decimal, record_activity
@@ -65,6 +66,11 @@ def save_document(user, vehicle_id, data, document_id=None, *, commit=True):
         vehicle = vehicles.get_vehicle_for_user(user, vehicle_id, for_update=True)
         vehicles._writable(vehicle)
         row = VehicleDocument.query.filter_by(id=document_id, vehicle_id=vehicle.id).first_or_404() if document_id else VehicleDocument(vehicle_id=vehicle.id)
+        create_expense = data.get('create_expense') in ('on', '1', True)
+        if create_expense and document_id is not None and (row.expense_id or row.vehicle_cost_id):
+            # Cached forms may retain this flag after a spend has already been linked.
+            current_app.logger.warning('Ignoring stale create_expense flag for linked vehicle document %s', row.id)
+            create_expense = False
         kind = data.get('kind')
         if kind not in KINDS:
             raise ValueError('Выберите тип документа.')
@@ -86,7 +92,7 @@ def save_document(user, vehicle_id, data, document_id=None, *, commit=True):
         row.issued_date, row.expires_at, row.amount = issued, expires, amount
         db.session.add(row)
         db.session.flush()
-        if data.get('create_expense') in ('on', '1', True):
+        if create_expense:
             if amount is None:
                 raise ValueError('Укажите сумму для создания траты.')
             if row.expense_id or row.vehicle_cost_id:
