@@ -1062,6 +1062,8 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
         debt = Debt.query.filter_by(id=int(data['debt_id']), user_id=user.id, status='active').first()
         if not debt:
             raise ValueError('Долг не найден.')
+        # add_payment commits both the payment and the completed conversation.
+        _clear_state(user)
         payment = add_payment(
             debt,
             _parse_money(data['amount']),
@@ -1069,11 +1071,19 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
             comment='Telegram',
             is_early_repayment=bool(data.get('is_early_repayment')),
         )
-        _clear_state(user)
-        db.session.commit()
+        db.session.refresh(debt)
+        remaining = debt.remaining_amount
+        # States exclude payments on as_of itself, including future payments.
+        total = debt.total_debt(today=max(date.today(), payment.payment_date + timedelta(days=1)))
+        balance_text = f'Задолженность: {_format_money(remaining)}.'
+        if total != remaining:
+            balance_text = (
+                f'Остаток основного долга: {_format_money(remaining)}.\n'
+                f'Задолженность с процентами: {_format_money(total)}.'
+            )
         return _result(
             chat_id,
-            f'Записал платеж: {_format_money(payment.amount)} по долгу #{debt.id} {debt.bank_name} {debt.product_name}.\nЗадолженность: {_format_money(debt.total_debt())}.',
+            f'Записал платеж: {_format_money(payment.amount)} по долгу #{debt.id} {debt.bank_name} {debt.product_name}.\n{balance_text}',
             MAIN_MENU_KEYBOARD,
             callback_answer_text,
         )
