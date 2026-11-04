@@ -455,6 +455,23 @@ def process_telegram_callback_result(user, chat_id, callback_data):
         return _result(chat_id, 'Не получилось обработать кнопку. Попробуйте позже.', MAIN_MENU_KEYBOARD)
 
 
+def deliver_telegram_result(result, *, sender=None, callback_answerer=None):
+    sender = sender or send_telegram_message
+    callback_answerer = callback_answerer or answer_telegram_callback_query
+    if result.callback_query_id:
+        try:
+            if not callback_answerer(result.callback_query_id, result.callback_answer_text):
+                current_app.logger.warning('Telegram callback answer rejected.')
+        except Exception:
+            current_app.logger.warning('Telegram callback answer failed.')
+    if result.chat_id is not None and result.reply_text:
+        try:
+            if not sender(result.chat_id, result.reply_text, reply_markup=result.reply_markup):
+                current_app.logger.warning('Telegram reply rejected.')
+        except Exception:
+            current_app.logger.warning('Telegram reply delivery failed.')
+
+
 def send_telegram_message(chat_id, text, bot_token=None, reply_markup=None, parse_mode=None):
     token = bot_token
     if token is None:

@@ -30,6 +30,7 @@ class TelegramDeliveryTests(unittest.TestCase):
             (400, {'description': 'Bad Request: other private content'}, 'bad_request'),
             (401, {}, 'invalid_token'), (404, {}, 'invalid_token'),
             (403, {}, 'blocked'), (429, {'parameters': {'retry_after': 95}}, 'rate_limited'),
+            (409, {}, 'conflict'),
             (500, {}, 'telegram_unavailable'), (502, {}, 'telegram_unavailable'),
             (200, {}, 'invalid_response'), (200, {'ok': 'true'}, 'invalid_response'),
         ]

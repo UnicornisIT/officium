@@ -26,7 +26,7 @@ def _integer(value):
     return value if type(value) is int and 0 <= value <= 2147483647 else None
 
 
-def api_request(method, payload, bot_token=None):
+def api_request(method, payload, bot_token=None, *, timeout=10):
     """Return sanitized status and successful API data to trusted internal callers.
 
     No retries: a timeout may occur after Telegram accepted a message.
@@ -45,7 +45,7 @@ def api_request(method, payload, bot_token=None):
         return failed('not_configured')
     try:
         response = requests.post(f'https://api.telegram.org/bot{token}/{method}',
-                                 json=payload, timeout=10)
+                                 json=payload, timeout=timeout)
     except requests.Timeout:
         return failed('timeout')
     except requests.exceptions.SSLError:
@@ -71,6 +71,8 @@ def api_request(method, payload, bot_token=None):
         parameters = data.get('parameters') if valid else None
         retry = _integer(parameters.get('retry_after')) if isinstance(parameters, dict) else None
         return failed('rate_limited', code, retry)
+    if code == 409:
+        return failed('conflict', code)
     if code is not None and code >= 500:
         return failed('telegram_unavailable', code)
     if code == 400:

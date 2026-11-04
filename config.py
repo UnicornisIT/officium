@@ -35,6 +35,7 @@ class Config:
     TELEGRAM_WEB_FRAME_ANCESTORS = os.environ.get('TELEGRAM_WEB_FRAME_ANCESTORS', 'https://web.telegram.org')
     TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS = int(os.environ.get('TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS', '86400'))
     TELEGRAM_BOT_ENABLED = os.environ.get('TELEGRAM_BOT_ENABLED', 'false').lower() in ('1', 'true', 'yes', 'on')
+    TELEGRAM_RECEIVE_MODE = os.environ.get('TELEGRAM_RECEIVE_MODE', 'webhook').strip().lower()
     TELEGRAM_WEBHOOK_SECRET = os.environ.get('TELEGRAM_WEBHOOK_SECRET', '')
     TELEGRAM_PRIVATE_CHAT_ONLY = os.environ.get('TELEGRAM_PRIVATE_CHAT_ONLY', 'true').lower() in ('1', 'true', 'yes', 'on')
     TELEGRAM_BOT_RATE_LIMIT_PER_MINUTE = int(os.environ.get('TELEGRAM_BOT_RATE_LIMIT_PER_MINUTE', '20'))

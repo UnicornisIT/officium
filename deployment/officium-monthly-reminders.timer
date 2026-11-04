@@ -1,0 +1,11 @@
+[Unit]
+Description=Check officium monthly expense reminders every five minutes
+
+[Timer]
+OnCalendar=*-*-* *:0/5:00 UTC
+Persistent=true
+AccuracySec=30s
+Unit=@@SERVICE_NAME@@-monthly-reminders.service
+
+[Install]
+WantedBy=timers.target

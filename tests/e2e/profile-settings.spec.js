@@ -30,10 +30,22 @@ for (const mode of [
     if (mode.mini) await page.goto('/telegram-app');
     await page.goto('/profile');
     if (mode.mini) await expect(page.locator('body')).toHaveClass(/telegram-mini-app/);
-    const notifications = page.getByRole('region', { name: 'Уведомления', exact: true });
+    const notificationPanel = page.getByRole('region', { name: 'Уведомления', exact: true });
+    const notifications = notificationPanel.getByRole('region', { name: 'Напоминания об автомобилях', exact: true });
     const privacy = page.getByRole('region', { name: 'Приватность', exact: true });
     await expect(page.getByRole('region', { name: 'Аккаунт', exact: true })).toContainText('Вход через Telegram');
     await expect(page.locator('.profile-settings-card')).toHaveCount(3);
+    const monthly = notificationPanel.getByRole('region', { name: 'Напоминания о ежемесячных расходах', exact: true });
+    expect(await notificationPanel.locator(':scope > section').evaluateAll(elements => elements.map(element => element.getAttribute('aria-labelledby')))).toEqual(['monthlyRemindersTitle', 'vehicleRemindersTitle']);
+    await expect(notificationPanel.locator(':scope > hr')).toHaveCount(1);
+    await monthly.getByLabel('Напоминать', { exact: true }).selectOption('3');
+    await monthly.getByLabel('Время напоминания', { exact: true }).fill('11:25');
+    await monthly.getByLabel('Часовой пояс', { exact: true }).selectOption('Europe/Moscow');
+    await monthly.getByRole('button', { name: 'Сохранить', exact: true }).click();
+    await expect(monthly.getByRole('status')).toHaveText('Сохранено');
+    await page.reload();
+    await expect(monthly.getByLabel('Напоминать', { exact: true })).toHaveValue('3');
+    await expect(monthly.getByLabel('Время напоминания', { exact: true })).toHaveValue('11:25');
     await notifications.getByLabel('Часовой пояс', { exact: true }).selectOption('Asia/Vladivostok');
     await notifications.getByLabel('Время доставки', { exact: true }).fill('08:35');
     await notifications.getByRole('button', { name: 'Сохранить', exact: true }).click();
@@ -45,6 +57,14 @@ for (const mode of [
     await expect(notifications.getByLabel('Часовой пояс', { exact: true })).toHaveValue('Asia/Vladivostok');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath('profile.png'), fullPage: true });
+    await page.setViewportSize({ width: mode.width, height: 2400 });
+    if (mode.mini) await page.evaluate(() => {
+      window.Telegram.WebApp.viewportHeight = innerHeight;
+      window.Telegram.WebApp.viewportStableHeight = innerHeight;
+      window.dispatchEvent(new Event('resize'));
+    });
+    await notificationPanel.screenshot({ path: info.outputPath('notifications.png') });
+    await page.setViewportSize({ width: mode.width, height: 1000 });
 
     const response = await page.goto('/expenses');
     expect(await response.text()).toContain('class="amounts-hidden amounts-pending"');

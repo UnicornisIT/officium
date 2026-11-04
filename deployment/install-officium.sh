@@ -40,6 +40,10 @@ SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # (for example /root/officium-vX.Y.Z) makes git fail with "Permission denied".
 case "$ENV_FILE_SOURCE" in ''|/*) ;; *) ENV_FILE_SOURCE="$PWD/$ENV_FILE_SOURCE" ;; esac
 case "$ROLLBACK_RELEASE" in ''|/*) ;; *) ROLLBACK_RELEASE="$PWD/$ROLLBACK_RELEASE" ;; esac
+# Повтор установки после сбоя использует уже заполненную конфигурацию.
+if [ "$MODE" = install ] && [ -f "$APP_DIR/shared/.env" ]; then
+    ENV_FILE_SOURCE="$APP_DIR/shared/.env"
+fi
 cd /
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -48,6 +52,16 @@ WARNINGS=()
 warn() { printf 'WARNING: %s\n' "$*" >&2; WARNINGS+=("$*"); }
 # The same health check as the runner: active, NRestarts stable for 10 s and
 # HTTP 200. A lone is-active probe passes a 203/EXEC crash loop.
+sync_telegram_services() {
+    helper="$APP_DIR/current/deployment/telegram_services.py"
+    if [ -f "$helper" ]; then
+        python3 "$helper" --app-root "$APP_DIR" --app-user "$APP_USER" --app-group "$APP_GROUP" \
+            --service-name "$SERVICE_NAME" --venv-name "$(basename "$VENV_DIR")"
+    else
+        systemctl disable --now "$SERVICE_NAME-telegram-polling.service" \
+            "$SERVICE_NAME-monthly-reminders.timer" "$SERVICE_NAME-monthly-reminders.service" >/dev/null 2>&1 || true
+    fi
+}
 service_is_healthy() {
     /usr/local/sbin/officium-update-runner --verify-health "$SERVICE_NAME" "http://$HOST:$PORT/login"
 }
@@ -341,10 +355,11 @@ if [ "$MODE" = recover ]; then
     previous=$(realpath -e "$APP_DIR/current")
     ln -s "$rollback_real" "$APP_DIR/.current.rollback"
     mv -Tf "$APP_DIR/.current.rollback" "$APP_DIR/current"
-    if ! systemctl restart "$SERVICE_NAME" || ! service_is_healthy; then
+    if ! systemctl restart "$SERVICE_NAME" || ! service_is_healthy || ! sync_telegram_services; then
         ln -s "$previous" "$APP_DIR/.current.restore"
         mv -Tf "$APP_DIR/.current.restore" "$APP_DIR/current"
         systemctl restart "$SERVICE_NAME"
+        sync_telegram_services || true
         fail "Rollback code failed health activation; previous code link restored. Database was not modified."
     fi
     info "Code rolled back. Database restore is intentionally separate; see docs/DEPLOYMENT.md."
@@ -368,10 +383,11 @@ if [ "$MODE" = units ]; then
     done < <(unit_files)
     [ "${DROPINS_REMOVED:-0}" -eq 0 ] || units_changed=true
     if [ "$units_changed" = false ]; then
+        sync_telegram_services || fail "Telegram services could not be configured."
         # The files were rewritten with identical content; reload so systemd
         # does not report them as changed on disk.
         systemctl daemon-reload
-        info "Units are already current; nothing restarted. Backup: $unit_backup"
+        info "Web units are already current; Telegram services synchronized. Backup: $unit_backup"
         exit 0
     fi
     if ! {
@@ -385,6 +401,7 @@ if [ "$MODE" = units ]; then
         exit 10
     fi
     mapfile -t timers < <(timer_units)
+    sync_telegram_services || fail "Telegram services could not be configured."
     systemctl enable --now "${timers[@]}" || warn "Could not enable ${timers[*]}."
     info "Units updated and the service is healthy. Previous units and drop-ins: $unit_backup"
     exit 0
@@ -530,9 +547,12 @@ PY
         retire_stale_dropins "$release_script_dir" "$unit_backup" &&
         verify_units &&
         systemctl daemon-reload && systemctl restart "$SERVICE_NAME.service" &&
+        sync_telegram_services &&
         service_is_healthy;
     }; then
         systemctl stop "$SERVICE_NAME.service" || true
+        systemctl disable --now "$SERVICE_NAME-telegram-polling.service" \
+            "$SERVICE_NAME-monthly-reminders.timer" "$SERVICE_NAME-monthly-reminders.service" >/dev/null 2>&1 || true
         mv -- "$APP_DIR" "$failed_root"
         mv -- "$legacy_root" "$APP_DIR"
         restore_units "$unit_backup"
@@ -579,7 +599,13 @@ install -d -o root -g "$APP_GROUP" -m 0750 "$STATE_DIR"
 
 if [ "$MODE" = install ]; then
     [ ! -e "$APP_DIR/current" ] || fail "current already exists; use upgrade or a new APP_DIR."
-    install -o root -g "$APP_GROUP" -m 0640 "$ENV_FILE_SOURCE" "$APP_DIR/shared/.env"
+    if [ -f "$APP_DIR/shared/.env" ]; then
+        config_backup="$BACKUP_DIR/app.env.before-installer.$(date -u +%Y%m%dT%H%M%SZ)"
+        install -o root -g root -m 0600 "$APP_DIR/shared/.env" "$config_backup"
+        info "Preserved existing shared/.env; backup: $config_backup"
+    else
+        install -o root -g "$APP_GROUP" -m 0640 "$ENV_FILE_SOURCE" "$APP_DIR/shared/.env"
+    fi
     configure_managed_env "$APP_DIR/shared/.env"
     ensure_runtime_dirs "$APP_DIR"
 elif [ -f "$APP_DIR/shared/.env" ]; then
@@ -588,6 +614,8 @@ elif [ -f "$APP_DIR/shared/.env" ]; then
     configure_managed_env "$APP_DIR/shared/.env"
     ensure_runtime_dirs "$APP_DIR"
 fi
+chown root:"$APP_GROUP" "$APP_DIR/shared/.env"
+chmod 0640 "$APP_DIR/shared/.env"
 
 info "Installing restricted updater"
 APP_ROOT="$APP_DIR" STATE_DIR="$STATE_DIR" BACKUP_DIR="$BACKUP_DIR" UPDATE_SOCKET="$UPDATE_SOCKET" SERVICE_NAME="$SERVICE_NAME" \
@@ -664,6 +692,7 @@ if ! (
     systemctl enable --now "$SERVICE_NAME.service" "${timers[@]}" officium-updater.socket
     service_is_healthy || fail "Application service is not healthy."
     verify_current_environment || fail "current/.env is not the shared environment file."
+    sync_telegram_services || fail "Telegram services could not be configured."
     for timer in "${timers[@]}"; do
         systemctl is-active --quiet "$timer" || fail "$timer is not active."
     done
@@ -672,6 +701,8 @@ if ! (
     fi
 ); then
     systemctl disable --now "$SERVICE_NAME.service" "$MONTHLY_SERVICE.timer" "$MAINTENANCE_SERVICE.timer" >/dev/null 2>&1 || true
+    systemctl disable --now "$SERVICE_NAME-telegram-polling.service" "$SERVICE_NAME-monthly-reminders.timer" \
+        "$SERVICE_NAME-monthly-reminders.service" >/dev/null 2>&1 || true
     current_target=$(realpath -e "$APP_DIR/current" 2>/dev/null || true)
     release_target=$(realpath -e "$release_path" 2>/dev/null || true)
     if [ -L "$APP_DIR/current" ] && [ -n "$release_target" ] && [ "$current_target" = "$release_target" ]; then

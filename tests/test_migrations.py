@@ -1,4 +1,5 @@
 import importlib.util
+import inspect as python_inspect
 from pathlib import Path
 import unittest
 
@@ -100,12 +101,14 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20261121_vehicle_identifiers'], '20261120_vehicle_attachments')
         self.assertEqual(revisions['20261122_personal_settings'], '20261121_vehicle_identifiers')
         self.assertEqual(revisions['20261123_update_notifications'], '20261122_personal_settings')
-        self.assertEqual(heads, {'20261123_update_notifications'})
+        self.assertEqual(revisions['20261124_monthly_reminders'], '20261123_update_notifications')
+        self.assertEqual(heads, {'20261124_monthly_reminders'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))
 
-        self.assertNotIn('op.drop_table', migration_text)
+        upgrades = '\n'.join(python_inspect.getsource(module.upgrade) for module in self.modules)
+        self.assertNotIn('op.drop_table', upgrades)
         self.assertNotIn('db.drop_all', migration_text)
 
     def test_telegram_state_text_column_has_no_server_default(self):

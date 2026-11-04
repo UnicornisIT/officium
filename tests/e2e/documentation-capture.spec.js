@@ -32,7 +32,7 @@ test('refresh all user documentation screenshots', async ({ page, browserName })
   const python = process.env.PYTHON || (fs.existsSync(localPython) ? localPython : 'python');
   const fixture = JSON.parse(execFileSync(python, ['scripts/seed_documentation_demo.py', database], { encoding: 'utf8' }).trim());
   const images = [];
-  async function capture(filename, route, { prepare, fullPage = false, mode = 'browser' } = {}) {
+  async function capture(filename, route, { prepare, fullPage = false, mode = 'browser', selector } = {}) {
     if (route) {
       const response = await page.goto(route, { waitUntil: 'networkidle' });
       expect(response.status()).toBe(200);
@@ -40,10 +40,14 @@ test('refresh all user documentation screenshots', async ({ page, browserName })
     await page.evaluate(() => document.fonts.ready);
     if (prepare) await prepare();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    const png = await page.screenshot({ path: path.join(output, filename), fullPage, animations: 'disabled' });
+    const options = { path: path.join(output, filename), animations: 'disabled' };
+    const png = selector
+      ? await page.locator(selector).screenshot(options)
+      : await page.screenshot({ ...options, fullPage });
     images.push({ file: filename, route: new URL(page.url()).pathname + new URL(page.url()).search,
       mode, theme: await page.locator('html').getAttribute('data-theme'),
-      viewport: page.viewportSize(), fullPage, width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
+      viewport: page.viewportSize(), fullPage, ...(selector ? { selector } : {}),
+      width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
   }
   for (const [filename, route] of [
     ['dashboard.png', '/'], ['expenses.png', '/expenses'], ['incomes.png', '/incomes'],
@@ -70,7 +74,15 @@ test('refresh all user documentation screenshots', async ({ page, browserName })
   await page.goto('/telegram-app');
   await capture('telegram-mini-app.png', '/profile', { mode: 'telegram-sdk-stub' });
   await expect(page.locator('body')).toHaveClass(/telegram-mini-app/);
-  await capture('profile-mobile.png', null, { mode: 'telegram-sdk-stub', prepare: () => privacy.scrollIntoViewIfNeeded() });
+  await page.setViewportSize({ width: 390, height: 2400 });
+  await page.evaluate(() => {
+    window.Telegram.WebApp.viewportHeight = innerHeight;
+    window.Telegram.WebApp.viewportStableHeight = innerHeight;
+    window.dispatchEvent(new Event('resize'));
+  });
+  await capture('profile-mobile.png', null, {
+    mode: 'telegram-sdk-stub', selector: '[aria-labelledby="profileNotificationsTitle"]',
+  });
   // A clean anonymous page previews the guide, independently of the demo account's privacy setting.
   await page.goto('/logout');
   await page.setViewportSize({ width: 1440, height: 1000 });

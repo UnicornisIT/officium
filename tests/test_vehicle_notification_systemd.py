@@ -20,10 +20,19 @@ class NotificationSystemdTests(unittest.TestCase):
             (root/'shared'/'.env').touch()
             replacements = {'@@APP_ROOT@@': root.as_posix(), '@@APP_USER@@': getpass.getuser(),
                 '@@APP_GROUP@@': getpass.getuser(), '@@APP_TIMEZONE@@': 'Europe/Moscow',
-                '@@VEHICLE_NOTIFICATIONS_HOUR@@': '10', '@@VENV_DIR@@/bin/python': sys.executable}
+                '@@VEHICLE_NOTIFICATIONS_HOUR@@': '10', '@@SERVICE_NAME@@': 'officium',
+                '@@VENV_DIR@@/bin/python': sys.executable}
             paths = []
             for suffix in ['service','timer']:
                 name = f'officium-vehicle-notifications.{suffix}'
+                content = (ROOT/'deployment'/name).read_text()
+                for key,value in replacements.items(): content = content.replace(key,value)
+                self.assertNotIn('@@',content)
+                path = root/name
+                path.write_text(content)
+                paths.append(str(path))
+            for name in ['officium-telegram-polling.service', 'officium-monthly-reminders.service',
+                         'officium-monthly-reminders.timer']:
                 content = (ROOT/'deployment'/name).read_text()
                 for key,value in replacements.items(): content = content.replace(key,value)
                 self.assertNotIn('@@',content)

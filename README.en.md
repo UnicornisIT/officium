@@ -171,7 +171,8 @@ created and updated with `flask db upgrade`.
 
 ## Telegram bot
 
-The bot works through a webhook: `POST /telegram/webhook`.
+The bot receives commands through `POST /telegram/webhook` or long polling
+with `flask telegram-poll`. Use polling when Telegram cannot reach the server.
 
 What matters:
 
@@ -209,19 +210,35 @@ Enable it:
 
 ```env
 TELEGRAM_BOT_ENABLED=true
+TELEGRAM_RECEIVE_MODE=webhook
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_BOT_USERNAME=...
 TELEGRAM_WEBHOOK_SECRET=long-random-secret
 TELEGRAM_PRIVATE_CHAT_ONLY=true
+OFFICIUM_PUBLIC_URL=https://your-domain.example
+# HTTPS_PROXY=http://USER:PASSWORD@HOST:PORT
+# NO_PROXY=localhost,127.0.0.1,::1
 ```
 
-Set up the webhook:
+Validate and apply settings for an installation without the managed installer:
 
 ```bash
-curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
-  -d "url=https://<your-domain>/telegram/webhook" \
-  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
+venv/bin/python -m flask --app run.py telegram-setup --dry-run
+venv/bin/python -m flask --app run.py telegram-setup
 ```
+
+The managed installer, updater and rollback configure the receive mode and
+services automatically. Webhook is the default and requires incoming HTTPS
+access from Telegram. Set `TELEGRAM_RECEIVE_MODE=polling` when that access is
+blocked. Only one polling worker may use a token at a time.
+
+The optional HTTP CONNECT proxy is commented out by default. Uncomment it
+when outgoing HTTPS access requires a proxy; URL-encode its credentials.
+An outgoing proxy does not make an incoming webhook reachable. Existing
+`shared/.env` settings, including enabled proxy entries, are preserved on
+installation retries, updates and rollback. Setup preserves pending updates
+and sends no test messages. See the [deployment guide](docs/DEPLOYMENT.md#telegram-через-прокси-polling-и-ежемесячные-напоминания)
+for systemd services and network diagnostics.
 
 Debt reminders:
 
@@ -375,6 +392,28 @@ For a particular user or month:
 ```
 
 Running it again does not create duplicates.
+
+In `/profile`, the single Notifications card contains monthly expense
+reminders first, then vehicle reminders, separated by a horizontal line.
+Each form saves independently. Monthly reminders default to enabled, 10:00,
+Europe/Moscow, one day before the expense; the server accepts 0–7 days.
+One message lists upcoming expenses and their total. Delivery runs within
+six hours after the chosen local time. Dates past the end of a short month
+use its last day. Expense generation and debt reminders have separate schedules.
+
+```bash
+venv/bin/python -m flask --app run.py send-monthly-expense-reminders --dry-run
+venv/bin/python -m flask --app run.py send-monthly-expense-reminders
+```
+
+The dry run sends nothing and writes no reminder log. Managed deployment
+enables `<SERVICE_NAME>-monthly-reminders.timer` every five minutes when a
+bot token is configured, independently of bot commands and vehicle reminders.
+Outgoing access to `api.telegram.org:443` must work directly or through the
+configured proxy. For unmanaged installations, choose the provided
+[systemd timer](deployment/officium-monthly-reminders.timer) or cron, not both.
+See the [monthly expense guide](docs/MONTHLY_EXPENSES_GUIDE.md) for scheduling,
+successful-delivery logs and handling ambiguous network failures.
 
 ## Tests
 
