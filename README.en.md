@@ -206,7 +206,10 @@ the record appears only after the «Сохранить» (save) button:
 /cancel
 ```
 
-Enable it:
+Superadmins can enable or disable commands under **Settings → Access → Telegram bot
+commands and transaction entry**. Changes apply immediately and leave expense and
+vehicle notifications enabled. The saved setting overrides `TELEGRAM_BOT_ENABLED`.
+Configure message reception on the server first:
 
 ```env
 TELEGRAM_BOT_ENABLED=true
@@ -226,6 +229,14 @@ Validate and apply settings for an installation without the managed installer:
 venv/bin/python -m flask --app run.py telegram-setup --dry-run
 venv/bin/python -m flask --app run.py telegram-setup
 ```
+
+Users can submit text feedback with the bot's idea and bug buttons, `/idea`, or
+`/bug`. The bot previews the message and saves it only after explicit confirmation.
+Messages can contain 1–4000 characters; `/cancel` discards the draft. Attachments
+are not supported. Admins and superadmins review submissions under **Admin →
+Feedback**, filter by type and status, and mark them new, in progress, or closed.
+Submitted text is visible to administrators and is not copied into the activity
+log. Run `flask db upgrade` when deploying to create the feedback table.
 
 The managed installer, updater and rollback configure the receive mode and
 services automatically. Webhook is the default and requires incoming HTTPS

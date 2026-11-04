@@ -4,7 +4,16 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from app import create_app
-from app.models import ActivityLog, Debt, Expense, Income, Payment, TelegramConversationState, User
+from app.models import (
+    ActivityLog,
+    AppSetting,
+    Debt,
+    Expense,
+    Income,
+    Payment,
+    TelegramConversationState,
+    User,
+)
 from app.services.telegram_bot_service import (
     build_debt_reminder_message,
     process_telegram_callback_result,
@@ -82,7 +91,7 @@ class TelegramBotTestCase(unittest.TestCase):
         self.app.config['TELEGRAM_BOT_ENABLED'] = False
         with patch('app.routes.telegram_bot.send_telegram_message') as sender:
             response = self.client.post('/telegram/webhook', json=self._private_update('/start'), headers=headers)
-            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.status_code, 200)
             sender.assert_not_called()
         self.app.config['TELEGRAM_BOT_ENABLED'] = True
         for index, command in enumerate(('/start', '/help'), start=50):
@@ -94,6 +103,121 @@ class TelegramBotTestCase(unittest.TestCase):
                 self.assertIn('keyboard', sender.call_args.kwargs['reply_markup'])
                 self.client.post('/telegram/webhook', json=update, headers=headers)
                 sender.assert_called_once()
+
+    def test_start_describes_bot_and_offers_mini_app(self):
+        self.app.config.update(
+            OFFICIUM_PUBLIC_URL='https://example.test',
+            TELEGRAM_LOGIN_ENABLED=True,
+            TELEGRAM_MINI_APP_ENABLED=True,
+            TELEGRAM_BOT_USERNAME='officium_test_bot',
+        )
+        with patch(
+            'app.routes.telegram_bot.send_telegram_message', return_value=True
+        ) as sender:
+            self.client.post(
+                '/telegram/webhook',
+                json=self._private_update('/start'),
+                headers={'X-Telegram-Bot-Api-Secret-Token': 'test-secret'},
+            )
+        text = sender.call_args.args[1]
+        self.assertIn('Добро пожаловать в officium', text)
+        self.assertIn('Mini App', text)
+        self.assertIn('расход 850', text)
+        self.assertIn('доход 120000', text)
+        buttons = sender.call_args.kwargs['reply_markup']['keyboard']
+        self.assertEqual(
+            buttons[-1][0]['web_app']['url'], 'https://example.test/telegram-app'
+        )
+
+    def test_start_for_new_user_explains_how_to_connect(self):
+        with patch(
+            'app.routes.telegram_bot.send_telegram_message', return_value=True
+        ) as sender:
+            self.client.post(
+                '/telegram/webhook',
+                json=self._private_update('/start', telegram_id=999999),
+                headers={'X-Telegram-Bot-Api-Secret-Token': 'test-secret'},
+            )
+        self.assertIn('Добро пожаловать в officium', sender.call_args.args[1])
+        self.assertIn('Сначала войдите', sender.call_args.args[1])
+
+    def test_saved_switch_overrides_environment_without_restart(self):
+        self.app.config['TELEGRAM_BOT_ENABLED'] = False
+        with self.app.app_context():
+            db.session.add(AppSetting(key='telegram_bot_enabled', value='true'))
+            db.session.commit()
+        headers = {'X-Telegram-Bot-Api-Secret-Token': 'test-secret'}
+        with patch(
+            'app.routes.telegram_bot.send_telegram_message', return_value=True
+        ) as sender:
+            self.client.post(
+                '/telegram/webhook',
+                json=self._private_update('Расход 850 рублей продукты пятерочка'),
+                headers=headers,
+            )
+            self.assertIn('Проверьте расход', sender.call_args.args[1])
+            with self.app.app_context():
+                setting = AppSetting.query.filter_by(key='telegram_bot_enabled').one()
+                setting.value = 'false'
+                db.session.commit()
+            sender.reset_mock()
+            self.client.post(
+                '/telegram/webhook',
+                json=self._callback_update('tg:confirm'),
+                headers=headers,
+            )
+            sender.assert_not_called()
+        with self.app.app_context():
+            self.assertEqual(Expense.query.count(), 0)
+
+    def test_currency_word_is_not_saved_as_expense_title(self):
+        with self.app.app_context():
+            user = db.session.get(User, self.user_id)
+            process_telegram_text(user, 'Расход 850 рублей продукты пятерочка')
+            process_telegram_callback_result(user, user.telegram_id, 'tg:confirm')
+            expense = Expense.query.one()
+            self.assertEqual(expense.title, 'пятерочка')
+            self.assertEqual(expense.amount, Decimal('850.00'))
+
+    def test_stepwise_income_flow_uses_buttons_and_confirmation(self):
+        headers = {'X-Telegram-Bot-Api-Secret-Token': 'test-secret'}
+        updates = []
+        for index, text in ((200, 'Доход'), (201, '120000'), (203, 'работа')):
+            update = self._private_update(text)
+            update['update_id'] = index
+            updates.append(update)
+        updates.insert(
+            2, self._callback_update('tg:income_category:salary', update_id=202)
+        )
+        updates.extend(
+            [
+                self._callback_update('tg:date:today', update_id=204),
+                self._callback_update('tg:confirm', update_id=205),
+            ]
+        )
+        with patch(
+            'app.routes.telegram_bot.send_telegram_message', return_value=True
+        ), patch(
+            'app.routes.telegram_bot.answer_telegram_callback_query', return_value=True
+        ):
+            for update in updates[:-1]:
+                self.assertEqual(
+                    self.client.post(
+                        '/telegram/webhook', json=update, headers=headers
+                    ).status_code,
+                    200,
+                )
+            with self.app.app_context():
+                self.assertEqual(Income.query.count(), 0)
+            self.client.post('/telegram/webhook', json=updates[-1], headers=headers)
+            self.client.post('/telegram/webhook', json=updates[-1], headers=headers)
+        with self.app.app_context():
+            income = Income.query.one()
+            self.assertEqual(income.user_id, self.user_id)
+            self.assertEqual(income.amount, Decimal('120000.00'))
+            self.assertEqual(income.category, 'salary')
+            self.assertEqual(income.source, 'работа')
+            self.assertEqual(TelegramConversationState.query.count(), 0)
 
     def test_webhook_failed_reply_is_acknowledged_without_duplicate(self):
         headers = {'X-Telegram-Bot-Api-Secret-Token': 'test-secret'}

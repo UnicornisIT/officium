@@ -1,6 +1,5 @@
 """Daily vehicle reminders. Reserve each delivery before contacting Telegram."""
 from hashlib import sha256
-from urllib.parse import urlsplit
 
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
@@ -12,28 +11,45 @@ from app.services import vehicle_document_service as documents, telegram_bot_ser
 from app.time_utils import utc_now, as_utc
 from app.utils import record_activity, setting_enabled
 from app.services.personal_settings_service import delivery_preferences
+from app.services.telegram_links_service import application_url, navigation_keyboard
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from extensions import db
 
 
 def due_notifications(user, *, day=None):
     day = day if day is not None else vehicles.today()
-    base = (current_app.config.get('VEHICLE_NOTIFICATIONS_BASE_URL') or
-            current_app.config.get('OFFICIUM_PUBLIC_URL') or '').rstrip('/')
-    if urlsplit(base).scheme not in ('http', 'https') or not urlsplit(base).netloc:
+    base = application_url(
+        '/', base_url=current_app.config.get('VEHICLE_NOTIFICATIONS_BASE_URL')
+    )
+    if not base:
         raise ValueError('Configure a public notification URL.')
+    base = base.rstrip('/')
     result = []
 
-    def add(kind, vehicle_id, text, document_id=None):
+    def add(kind, vehicle_id, text, path, document_id=None):
         context = str(vehicle_id)
         if document_id is not None:
             context += f'|{document_id}'
         digest = sha256(f'{kind}|{context}|{day.isoformat()}'.encode()).hexdigest()
-        result.append(dict(kind=kind, vehicle_id=vehicle_id, text=text, payload_hash=digest))
+        url = base + path
+        result.append(
+            dict(
+                kind=kind,
+                vehicle_id=vehicle_id,
+                text=f'{text}\n{url}',
+                url=url,
+                payload_hash=digest,
+            )
+        )
 
     due = vehicles.due_vehicles(user, day=day)
     if due:
-        add('mileage_due', None, f'У вас {len(due)} автомобилей требуют обновления пробега. Откройте гараж: {base}/vehicles')
+        add(
+            'mileage_due',
+            None,
+            f'У вас {len(due)} автомобилей требуют обновления пробега. Откройте гараж:',
+            '/vehicles',
+        )
     rows = Vehicle.query.filter_by(user_id=user.id, archived_at=None).options(
         selectinload(Vehicle.readings), selectinload(Vehicle.maintenance_items),
         selectinload(Vehicle.documents), selectinload(Vehicle.defects)).all()
@@ -43,18 +59,37 @@ def due_notifications(user, *, day=None):
             names = [item.name for item in vehicle.maintenance_items if item.is_active and
                      maintenance.item_state(item, mileage, day)['status'] in ('soon', 'overdue')]
             if names:
-                add('maintenance_due', vehicle.id, f'По автомобилю «{vehicle.name}» требуется обслуживание: {", ".join(names)}. Подробности: {base}/vehicles/{vehicle.id}?tab=maintenance')
+                add(
+                    'maintenance_due',
+                    vehicle.id,
+                    f'По автомобилю «{vehicle.name}» требуется обслуживание: {", ".join(names)}. Подробности:',
+                    f'/vehicles/{vehicle.id}?tab=maintenance',
+                )
     by_id = {v.id: v for v in rows}
     for doc in documents.expiring_soon(user, days=14, day=day):
         vehicle = by_id[doc.vehicle_id]
         remaining = (doc.expires_at - day).days
-        add('document_expiring', vehicle.id,
-            f'У автомобиля «{vehicle.name}» истекает {documents.KINDS[doc.kind]} через {remaining} дн. Проверьте продление. {base}/vehicles/{vehicle.id}?tab=documents', doc.id)
+        add(
+            'document_expiring',
+            vehicle.id,
+            f'У автомобиля «{vehicle.name}» истекает {documents.KINDS[doc.kind]} через {remaining} дн. Проверьте продление.',
+            f'/vehicles/{vehicle.id}?tab=documents',
+            doc.id,
+        )
     return result
 
 
-def send_to_user(user, kind, text):
-    return telegram.send_telegram_message(chat_id=user.telegram_id, text=text)
+def send_to_user(user, kind, text, *, url=None):
+    label = {
+        'mileage_due': 'Открыть гараж',
+        'maintenance_due': 'Открыть обслуживание',
+        'document_expiring': 'Открыть документы',
+    }[kind]
+    return telegram.send_telegram_message(
+        chat_id=user.telegram_id,
+        text=text,
+        reply_markup=navigation_keyboard(label, url),
+    )
 
 
 def notifications_enabled():
@@ -98,7 +133,11 @@ def send_due_notifications(now=None):
                 stats['skipped'] += 1
                 continue
             try:
-                delivered = bool(send_to_user(user, notice['kind'], notice['text']))
+                delivered = bool(
+                    send_to_user(
+                        user, notice['kind'], notice['text'], url=notice['url']
+                    )
+                )
             except Exception:
                 delivered = False
             row.delivered = delivered

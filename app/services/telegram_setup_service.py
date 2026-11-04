@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 from flask import current_app
 
 from app.services.telegram_transport import api_request, require_accepted
+from app.utils import telegram_bot_enabled
 
 
 def setup(*, dry_run=False):
@@ -11,19 +12,33 @@ def setup(*, dry_run=False):
     mode = config.get('TELEGRAM_RECEIVE_MODE', 'webhook')
     if mode not in ('webhook', 'polling'):
         raise ValueError('TELEGRAM_RECEIVE_MODE must be webhook or polling.')
-    state = {'bot_enabled': bool(config.get('TELEGRAM_BOT_ENABLED')),
-             'receive_mode': mode, 'monthly_reminders': bool(config.get('TELEGRAM_BOT_TOKEN'))}
+    url = str(config.get('OFFICIUM_PUBLIC_URL') or '').rstrip('/')
+    parsed = urlsplit(url)
+    webhook_ready = (
+        parsed.scheme == 'https'
+        and parsed.hostname
+        and not parsed.username
+        and not parsed.password
+        and not parsed.query
+        and not parsed.fragment
+        and bool(config.get('TELEGRAM_WEBHOOK_SECRET'))
+    )
+    state = {
+        'bot_enabled': telegram_bot_enabled(config),
+        'receiver_enabled': bool(
+            config.get('TELEGRAM_BOT_TOKEN') and (mode == 'polling' or webhook_ready)
+        ),
+        'receive_mode': mode,
+        'monthly_reminders': bool(config.get('TELEGRAM_BOT_TOKEN')),
+    }
     if dry_run:
         return state
     if not config.get('TELEGRAM_BOT_TOKEN'):
         if state['bot_enabled']:
             raise ValueError('TELEGRAM_BOT_TOKEN is required.')
         return state
-    url = str(config.get('OFFICIUM_PUBLIC_URL') or '').rstrip('/')
     if state['bot_enabled'] and mode == 'webhook':
-        parsed = urlsplit(url)
-        if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
-                or parsed.query or parsed.fragment or not config.get('TELEGRAM_WEBHOOK_SECRET')):
+        if not webhook_ready:
             raise ValueError('Webhook requires an HTTPS OFFICIUM_PUBLIC_URL and TELEGRAM_WEBHOOK_SECRET.')
     status, bot = api_request('getMe', {})
     require_accepted(status)
@@ -32,7 +47,7 @@ def setup(*, dry_run=False):
     expected = str(config.get('TELEGRAM_BOT_USERNAME') or '').strip().lstrip('@')
     if expected and str(bot.get('username') or '').casefold() != expected.casefold():
         raise ValueError('Telegram bot username does not match the configured token.')
-    if not state['bot_enabled']:
+    if not state['receiver_enabled']:
         return state
     if mode == 'polling':
         method, payload = 'deleteWebhook', {'drop_pending_updates': False}

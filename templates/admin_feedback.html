@@ -1,0 +1,58 @@
+{% extends 'admin_base.html' %}
+{% from 'admin/_macros.html' import icon, pagination_nav with context %}
+{% block title %}Обращения — Административная панель officium{% endblock %}
+{% block admin_topbar_title %}Обращения{% endblock %}
+
+{% block admin_content %}
+<header class="admin-page-header">
+    <div><p class="admin-page-kicker">Обратная связь</p><h1>Обращения</h1><p>Идеи и сообщения об ошибках, отправленные пользователями через Telegram-бота.</p></div>
+</header>
+
+<section class="admin-panel admin-filter-panel" aria-label="Фильтры обращений">
+    <form method="get" class="admin-form-grid">
+        <label class="admin-control" for="feedbackKind"><span>Тип обращения</span><select id="feedbackKind" name="kind">
+            <option value="">Все типы</option>
+            {% for key, label in kinds.items() %}<option value="{{ key }}" {% if kind_filter == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></label>
+        <label class="admin-control" for="feedbackStatus"><span>Статус</span><select id="feedbackStatus" name="status">
+            <option value="">Все статусы</option>
+            {% for key, label in statuses.items() %}<option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }} · {{ counts.get(key, 0) }}</option>{% endfor %}
+        </select></label>
+        <div class="admin-filter-actions">
+            <button type="submit" class="btn btn-primary">{{ icon('filter', 17) }} Применить</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('admin_feedback') }}">Сбросить</a>
+        </div>
+    </form>
+</section>
+
+<section class="admin-panel admin-table-panel" aria-labelledby="feedback-title">
+    <div class="admin-panel__header"><div><p class="admin-page-kicker">Входящие</p><h2 id="feedback-title">Обращения пользователей</h2></div><span class="admin-section-heading__meta">Найдено: {{ pagination.total }}</span></div>
+    <div class="admin-log-list">
+        {% for report in reports %}
+        <article class="admin-log-row" id="feedback-{{ report.id }}">
+            <span class="admin-event__icon">{{ icon('alert' if report.kind == 'bug' else 'book', 18) }}</span>
+            <div class="admin-log-row__main">
+                <div class="admin-log-row__headline"><strong>{{ kinds[report.kind] }} №{{ report.id }}</strong><time datetime="{{ report.created_at.isoformat() }}">{{ report.created_at.strftime('%d.%m.%Y %H:%M') }} UTC</time></div>
+                <div class="admin-log-row__meta">
+                    {% if report.user %}
+                    <a href="{{ url_for('admin_user_detail', user_id=report.user.id) }}">{{ icon('user', 15) }} {{ [report.user.first_name, report.user.last_name]|select|join(' ') or report.user.username or ('Пользователь #' ~ report.user.id) }}{% if report.user.username %} · @{{ report.user.username }}{% endif %}</a>
+                    {% else %}<span>Учётная запись удалена</span>{% endif %}
+                    <span class="admin-badge admin-badge--{{ 'success' if report.status == 'closed' else 'warning' if report.status == 'new' else 'secondary' }}">{{ statuses[report.status] }}</span>
+                </div>
+                <div class="admin-break-word">{% for line in report.body.split('\n') %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+                <form method="post" action="{{ url_for('admin_feedback_status', report_id=report.id) }}" class="admin-contact-card__actions align-items-end">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="filter_status" value="{{ status_filter }}">
+                    <input type="hidden" name="filter_kind" value="{{ kind_filter }}">
+                    <label class="admin-control" for="feedback-status-{{ report.id }}"><span>Статус обращения №{{ report.id }}</span><select name="status" id="feedback-status-{{ report.id }}">
+                        {% for key, label in statuses.items() %}<option value="{{ key }}" {% if report.status == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select></label>
+                    <button type="submit" class="btn btn-outline-primary btn-sm">Сохранить статус</button>
+                </form>
+            </div>
+        </article>
+        {% else %}<div class="admin-empty-state">{{ icon('book', 30) }}<p>Обращений с выбранными фильтрами пока нет.</p></div>{% endfor %}
+    </div>
+    {{ pagination_nav(pagination) }}
+</section>
+{% endblock %}

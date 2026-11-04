@@ -13,6 +13,7 @@ from app.services.monthly_expenses_service import (
     _date_in_month, _pick_origin_expense, _pick_settings_expense,
 )
 from app.services.telegram_transport import TelegramDeliveryError
+from app.services.telegram_links_service import application_url, navigation_keyboard
 from app.time_utils import as_utc, utc_now
 from app.utils import format_currency
 from extensions import db
@@ -63,6 +64,9 @@ def _message(due):
     lines = [f'Ежемесячные расходы на {due[0][3].strftime("%d.%m.%Y")}:']
     lines.extend(f'• {title}: {format_currency(amount)}' for _, title, amount, _ in due)
     lines.append(f'Итого: {format_currency(sum((row[2] for row in due), Decimal(0)))}')
+    url = application_url('/expenses')
+    if url:
+        lines.append(f'Открыть расходы: {url}')
     return '\n'.join(lines)
 
 
@@ -92,7 +96,13 @@ def run(now_utc=None, dry_run=False) -> int:
                     messages += 1
                     continue
                 try:
-                    delivered = telegram.send_telegram_message(user.telegram_id, _message(due))
+                    delivered = telegram.send_telegram_message(
+                        user.telegram_id,
+                        _message(due),
+                        reply_markup=navigation_keyboard(
+                            'Открыть расходы', application_url('/expenses')
+                        ),
+                    )
                 except TelegramDeliveryError as exc:
                     if exc.result.failure_kind in ('blocked', 'chat_unavailable'):
                         user.reminder_enabled = False

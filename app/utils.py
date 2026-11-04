@@ -3,7 +3,7 @@ from collections import OrderedDict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
-from flask import request, redirect, url_for, render_template, jsonify
+from flask import request, redirect, url_for, render_template
 from flask_login import current_user
 from extensions import db
 from app.models import AppSetting, DictionaryEntry, ActivityLog
@@ -97,6 +97,7 @@ DEFAULT_SETTINGS = {
     'app_name': 'officium',
     'registration_enabled': 'false',
     'telegram_login_enabled': 'true',
+    'telegram_bot_enabled': 'false',
     'debt_limit_per_user': '50',
     'archive_enabled': 'true',
     'export_enabled': 'true',
@@ -186,8 +187,11 @@ def telegram_feature_states(config):
     login_valid = token_ready and username_ready
     login_effective = login_setting and login_valid
     mini_setting = value_is_enabled(config.get('TELEGRAM_MINI_APP_ENABLED', False))
-    bot_setting = value_is_enabled(config.get('TELEGRAM_BOT_ENABLED', False))
+    bot_setting = telegram_bot_enabled(config)
     webhook_ready = bool(str(config.get('TELEGRAM_WEBHOOK_SECRET') or '').strip())
+    receive_ready = config.get('TELEGRAM_RECEIVE_MODE', 'webhook') == 'polling' or (
+        config.get('TELEGRAM_RECEIVE_MODE', 'webhook') == 'webhook' and webhook_ready
+    )
     return {
         'login': {
             'label': 'Вход через Telegram',
@@ -206,11 +210,17 @@ def telegram_feature_states(config):
         'bot': {
             'label': 'Telegram-бот',
             'enabled_in_settings': bot_setting,
-            'configuration_valid': token_ready and webhook_ready,
-            'effective': bot_setting and token_ready and webhook_ready,
+            'configuration_valid': token_ready and receive_ready,
+            'effective': bot_setting and token_ready and receive_ready,
             'verified': None,
         },
     }
+
+
+def telegram_bot_enabled(config):
+    return value_is_enabled(
+        get_setting('telegram_bot_enabled', config.get('TELEGRAM_BOT_ENABLED', False))
+    )
 
 
 def setting_enabled(key, default=True):

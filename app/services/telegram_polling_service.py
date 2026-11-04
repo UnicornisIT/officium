@@ -9,8 +9,6 @@ from extensions import db
 
 
 def run_polling(*, remove_webhook=False, stop=None):
-    if not current_app.config.get('TELEGRAM_BOT_ENABLED'):
-        raise ValueError('TELEGRAM_BOT_ENABLED must be enabled.')
     if not current_app.config.get('TELEGRAM_BOT_TOKEN'):
         raise ValueError('TELEGRAM_BOT_TOKEN is required.')
     stop = stop if stop is not None else Event()

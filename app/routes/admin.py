@@ -5,7 +5,9 @@ from flask import abort, current_app, jsonify, redirect, render_template, reques
 from flask_login import current_user
 from sqlalchemy import and_, cast, or_, text
 from sqlalchemy.exc import SQLAlchemyError
-from app.models import ActivityLog, DictionaryEntry, User
+from sqlalchemy.orm import selectinload
+from app.models import ActivityLog, DictionaryEntry, FeedbackReport, User
+from app.services import feedback_service as feedback
 from app.services import impersonation_service as impersonation
 from app.services import update_notifier
 from app.services.contact_service import (
@@ -152,6 +154,8 @@ SETTINGS_GROUPS = (
         'fields': (
             {'key': 'telegram_login_enabled', 'type': 'bool', 'label': 'Вход через Telegram',
              'help': 'Показывает кнопку входа через Telegram и открывает Mini App. Работает, только если в окружении заданы токен и имя бота.'},
+            {'key': 'telegram_bot_enabled', 'type': 'bool', 'label': 'Команды и ввод операций в Telegram-боте',
+             'help': 'Включает /start, ручной и пошаговый ввод доходов и расходов. Применяется сразу, независимо от уведомлений. На сервере должен быть настроен приём сообщений через webhook или polling.'},
             {'key': 'registration_enabled', 'type': 'bool', 'label': 'Регистрация новых пользователей',
              'help': 'Создаёт аккаунт при первом входе через Telegram или Google. Если выключено, войти могут только уже существующие пользователи.'},
         ),
@@ -201,6 +205,8 @@ SETTINGS_FIELDS = {field['key']: field for group in SETTINGS_GROUPS for field in
 
 
 def _setting_default(key):
+    if key == 'telegram_bot_enabled':
+        return 'true' if current_app.config.get('TELEGRAM_BOT_ENABLED') else 'false'
     if key == 'vehicle_notifications_enabled':
         return 'true' if current_app.config.get('VEHICLE_NOTIFICATIONS_ENABLED') else 'false'
     if key == 'telegram_login_enabled':
@@ -230,6 +236,15 @@ def _validated_settings(form):
 
     if int(values['urgent_payment_days']) > int(values['payment_warning_days']):
         raise ValueError('Срок срочного платежа не может превышать срок предупреждения.')
+    if (
+        values['telegram_bot_enabled'] == 'true'
+        and not telegram_feature_states(current_app.config)['bot'][
+            'configuration_valid'
+        ]
+    ):
+        raise ValueError(
+            'Для команд Telegram-бота настройте токен и приём сообщений: polling или webhook с секретом.'
+        )
     return values
 
 
@@ -332,6 +347,61 @@ def init_app(app):
             return url_for(request.endpoint, **arguments)
 
         return {'admin_page_url': admin_page_url}
+
+    @app.route('/admin/feedback')
+    @admin_required
+    def admin_feedback():
+        status = request.args.get('status', 'new')
+        kind = request.args.get('kind', '')
+        if (status and status not in feedback.STATUSES) or (
+            kind and kind not in feedback.KINDS
+        ):
+            abort(400)
+        query = FeedbackReport.query.options(selectinload(FeedbackReport.user))
+        if status:
+            query = query.filter_by(status=status)
+        if kind:
+            query = query.filter_by(kind=kind)
+        pagination = query.order_by(
+            FeedbackReport.created_at.desc(), FeedbackReport.id.desc()
+        ).paginate(page=_page_number(), per_page=20, error_out=False)
+        counts = dict(
+            db.session.query(FeedbackReport.status, db.func.count(FeedbackReport.id))
+            .group_by(FeedbackReport.status)
+            .all()
+        )
+        return render_template(
+            'admin_feedback.html',
+            reports=pagination.items,
+            pagination=pagination,
+            status_filter=status,
+            kind_filter=kind,
+            counts=counts,
+            kinds={'idea': 'Идея', 'bug': 'Ошибка'},
+            statuses={'new': 'Новое', 'in_progress': 'В работе', 'closed': 'Закрыто'},
+        )
+
+    @app.route('/admin/feedback/<int:report_id>/status', methods=['POST'])
+    @admin_required
+    def admin_feedback_status(report_id):
+        report = db.session.get(FeedbackReport, report_id)
+        if not report:
+            abort(404)
+        try:
+            feedback.change_status(report, request.form.get('status'), current_user)
+        except ValueError:
+            abort(400)
+        db.session.commit()
+        flash('Статус обращения обновлён.', 'success')
+        status = request.form.get('filter_status', 'new')
+        kind = request.form.get('filter_kind', '')
+        return redirect(
+            url_for(
+                'admin_feedback',
+                status=status if status in feedback.STATUSES | {''} else 'new',
+                kind=kind if kind in feedback.KINDS else '',
+            )
+        )
 
     @app.route('/admin')
     @admin_required
