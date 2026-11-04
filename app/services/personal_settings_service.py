@@ -49,6 +49,11 @@ def save(user, data):
     elif section == 'monthly_reminders':
         if not has_telegram(user):
             abort(403)
+        enabled = data.get('reminder_enabled') == 'on'
+        if not enabled:
+            user.reminder_enabled = False
+            db.session.commit()
+            return section
         zone = data.get('reminder_timezone', '').strip()
         clock = data.get('reminder_time', '').strip()
         days = data.get('reminder_days_before', '').strip()
@@ -60,7 +65,7 @@ def save(user, data):
             raise ValueError('Укажите время напоминания в формате ЧЧ:ММ.')
         if not re.fullmatch(r'[0-7]', days):
             raise ValueError('Срок напоминания должен быть от 0 до 7 дней.')
-        user.reminder_enabled = data.get('reminder_enabled') == 'on'
+        user.reminder_enabled = enabled
         user.reminder_time = clock
         user.reminder_days_before = int(days)
         user.timezone = zone

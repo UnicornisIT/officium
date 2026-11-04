@@ -29,7 +29,7 @@
         <section class="profile-settings-form" aria-labelledby="monthlyRemindersTitle">
             <h3 id="monthlyRemindersTitle" class="h6 mb-0"><i class="bi bi-calendar-event" aria-hidden="true"></i> Напоминания о ежемесячных расходах</h3>
             {% set monthly_invalid = profile_errors.get('monthly_reminders') %}
-            <form method="post" class="profile-settings-form" data-profile-form>
+            <form method="post" class="profile-settings-form" data-profile-form novalidate>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="section" value="monthly_reminders">
                 {% set enabled = request.form.get('reminder_enabled') == 'on' if monthly_invalid else current_user.reminder_enabled %}
