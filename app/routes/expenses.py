@@ -13,6 +13,7 @@ from app.services.expense_title_service import expense_group_key
 from app.services.history_month_service import month_key, resolve_active_month
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
+    generate_monthly_expenses_from_start_date,
 )
 from app.services import expense_service
 from app.services import vehicle_attachment_service as attachments
@@ -520,6 +521,7 @@ def _update_monthly_expense_from_import(expense, amount, expense_date, payment_m
     expense.is_monthly = True
     expense.monthly_anchor_day = expense_date.day
     expense.monthly_settings_updated_at = utc_now()
+    generate_monthly_expenses_from_start_date(expense.id, commit=False)
 
 
 def _log_import_failure(message):
