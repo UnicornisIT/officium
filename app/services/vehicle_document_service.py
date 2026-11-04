@@ -64,7 +64,7 @@ def _linked_amount(user, vehicle, row, amount, action):
 def save_document(user, vehicle_id, data, document_id=None, *, commit=True):
     try:
         vehicle = vehicles.get_vehicle_for_user(user, vehicle_id, for_update=True)
-        vehicles._writable(vehicle)
+        vehicles._writable(vehicle, context='document')
         row = VehicleDocument.query.filter_by(id=document_id, vehicle_id=vehicle.id).first_or_404() if document_id else VehicleDocument(vehicle_id=vehicle.id)
         create_expense = data.get('create_expense') in ('on', '1', True)
         if create_expense and document_id is not None and (row.expense_id or row.vehicle_cost_id):

@@ -51,8 +51,10 @@ def get_vehicle_for_user(user, vehicle_id, *, for_update=False):
     return query.first_or_404()
 
 
-def _writable(vehicle):
+def _writable(vehicle, *, context='vehicle'):
     if vehicle.archived_at:
+        if context == 'document':
+            raise ValueError('Нельзя изменить документ архивированного автомобиля. Сначала восстановите автомобиль.')
         raise ValueError('Автомобиль в архиве: сначала восстановите его.')
 
 
