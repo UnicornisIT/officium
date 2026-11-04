@@ -1,33 +1,21 @@
 """Настройка получения команд при явном запуске установщика."""
-from urllib.parse import urlsplit
-
 from flask import current_app
 
 from app.services.telegram_transport import api_request, require_accepted
+from app.services.telegram_configuration_service import receiver_configuration
 from app.utils import telegram_bot_enabled
 
 
 def setup(*, dry_run=False):
     config = current_app.config
-    mode = config.get('TELEGRAM_RECEIVE_MODE', 'webhook')
+    receiver = receiver_configuration(config)
+    mode = receiver['receive_mode']
     if mode not in ('webhook', 'polling'):
         raise ValueError('TELEGRAM_RECEIVE_MODE must be webhook or polling.')
-    url = str(config.get('OFFICIUM_PUBLIC_URL') or '').rstrip('/')
-    parsed = urlsplit(url)
-    webhook_ready = (
-        parsed.scheme == 'https'
-        and parsed.hostname
-        and not parsed.username
-        and not parsed.password
-        and not parsed.query
-        and not parsed.fragment
-        and bool(config.get('TELEGRAM_WEBHOOK_SECRET'))
-    )
+    url = str(config.get('OFFICIUM_PUBLIC_URL') or '').strip().rstrip('/')
     state = {
         'bot_enabled': telegram_bot_enabled(config),
-        'receiver_enabled': bool(
-            config.get('TELEGRAM_BOT_TOKEN') and (mode == 'polling' or webhook_ready)
-        ),
+        'receiver_enabled': receiver['configured'],
         'receive_mode': mode,
         'monthly_reminders': bool(config.get('TELEGRAM_BOT_TOKEN')),
     }
@@ -38,7 +26,7 @@ def setup(*, dry_run=False):
             raise ValueError('TELEGRAM_BOT_TOKEN is required.')
         return state
     if state['bot_enabled'] and mode == 'webhook':
-        if not webhook_ready:
+        if not receiver['configured']:
             raise ValueError('Webhook requires an HTTPS OFFICIUM_PUBLIC_URL and TELEGRAM_WEBHOOK_SECRET.')
     status, bot = api_request('getMe', {})
     require_accepted(status)
