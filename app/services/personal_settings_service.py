@@ -46,6 +46,24 @@ def save(user, data):
     section = data.get('section', 'notifications')
     if section == 'privacy':
         user.hide_amounts_on_open = data.get('hide_amounts_on_open') == 'on'
+    elif section == 'monthly_reminders':
+        if not has_telegram(user):
+            abort(403)
+        zone = data.get('reminder_timezone', '').strip()
+        clock = data.get('reminder_time', '').strip()
+        days = data.get('reminder_days_before', '').strip()
+        try:
+            ZoneInfo(zone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError('Выберите действительный часовой пояс IANA.') from None
+        if not re.fullmatch(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]', clock):
+            raise ValueError('Укажите время напоминания в формате ЧЧ:ММ.')
+        if not re.fullmatch(r'[0-7]', days):
+            raise ValueError('Срок напоминания должен быть от 0 до 7 дней.')
+        user.reminder_enabled = data.get('reminder_enabled') == 'on'
+        user.reminder_time = clock
+        user.reminder_days_before = int(days)
+        user.timezone = zone
     elif section == 'notifications':
         if not has_telegram(user):
             abort(403)

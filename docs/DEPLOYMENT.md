@@ -100,6 +100,107 @@ python -m flask --app run.py telegram-diagnostics --network
 при ошибках; `messages` — количество выбранных попыток (при dry-run кандидатов),
 а не число подтверждённо доставленных сообщений.
 
+### Telegram через прокси, polling и ежемесячные напоминания
+
+В подготовленном серверном `.env` выберите режим получения команд:
+
+```dotenv
+TELEGRAM_BOT_ENABLED=true
+TELEGRAM_RECEIVE_MODE=polling
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_BOT_USERNAME=...
+TELEGRAM_WEBHOOK_SECRET=...
+OFFICIUM_PUBLIC_URL=https://your-domain.example
+# Только если прямой исходящий доступ заблокирован:
+# HTTPS_PROXY=http://USER:PASSWORD@HOST:PORT
+# NO_PROXY=localhost,127.0.0.1,::1
+```
+
+По умолчанию режим — `webhook`, прокси выключен. При необходимости
+раскомментируйте прокси с поддержкой HTTPS CONNECT и URL-кодируйте логин и
+пароль. `HTTPS_PROXY` действует на HTTPS-запросы Requests, включая Telegram;
+исходящий прокси не обеспечивает входящие подключения Telegram к webhook.
+Для хостинга с заблокированным входящим доступом выберите `polling`.
+Настройки proxy и выбранный режим в существующем `shared/.env` установщик
+не заменяет, не комментирует и не переносит из `.env.example` при обновлении.
+Токен и реквизиты не должны попадать в репозиторий, аргументы команд и журналы.
+
+Managed-установщик, обновление и откат автоматически вызывают
+`deployment/telegram_services.py` из проверенного релиза. Он получает только
+безопасные признаки настроек через `flask telegram-setup --dry-run`,
+останавливает прежние службы и выполняет `flask telegram-setup` от пользователя
+приложения. Эта команда проверяет токен и имя бота, затем регистрирует HTTPS
+webhook или удаляет его для polling с `drop_pending_updates=false`.
+Ожидающие команды сохраняются. Команда не отправляет тестовых сообщений.
+
+Для `polling` устанавливается и запускается `<SERVICE_NAME>-telegram-polling.service`.
+В режиме webhook эта служба отключается. При наличии токена автоматически
+включается `<SERVICE_NAME>-monthly-reminders.timer`: раз в пять минут он запускает
+`send-monthly-expense-reminders`. Личные настройки доступны в `/profile`;
+доставка ежемесячных напоминаний не зависит от автомобильного переключателя
+или расписания долговых напоминаний. Автогенерация регулярных расходов остаётся
+отдельным ежедневным timer. Новые службы используют APP_ROOT, APP_USER,
+APP_GROUP, VENV_NAME и SERVICE_NAME установки, а не фиксированного пользователя.
+
+Обновление перезапускает службы с новым кодом; при неуспешной активации
+восстанавливаются службы предыдущего релиза. При откате на версию без этой
+функции новые службы отключаются, чтобы не вызывать отсутствующие CLI-команды.
+Как и раньше, откат кода не откатывает БД. Для восстановления настройки служб
+в установленном релизе можно повторить:
+
+```sh
+sudo python3 /opt/officium/current/deployment/telegram_services.py --app-root /opt/officium --app-user officium --app-group officium --service-name officium --venv-name venv
+systemctl status officium-telegram-polling.service officium-monthly-reminders.timer --no-pager
+```
+
+При первом обновлении со старого updater новая служба updater ставит отдельную
+одноразовую задачу настройки Telegram. Она дожидается освобождения блокировки
+обновления и использует уже активированный проверенный релиз. Успешная настройка
+запоминается в `shared/.telegram-services-release`; повторный запуск для того же
+релиза пропускается. Это служебный маркер, параметры по-прежнему берутся из `.env`.
+После ручного изменения режима или прокси перезапустите приложение и повторите
+команду настройки служб выше.
+
+Подставьте параметры своей установки. После первого деплоя проверьте реальный
+ответ на `/start` и явную проверку сообщения из профиля. `telegram-diagnostics
+--network` показывает состояние Bot API; `registered=false` для polling ожидаемо.
+На один токен допускается один poller. Не запускайте второй процесс вручную,
+пока работает служба. Исходящий доступ к `api.telegram.org:443` нужен напрямую
+или через прокси. Ошибка проверки настроенного бота останавливает активацию;
+ошибки служб выводятся без исходных ответов Telegram и реквизитов прокси.
+
+Если managed-установщик не используется, примените миграцию, отрендерьте
+шаблоны `officium-monthly-reminders.service` и `.timer` с нужными путями и
+пользователем и включите timer. Альтернатива systemd — cron пользователя приложения:
+
+```cron
+*/5 * * * * cd /opt/officium/current && venv/bin/python -m flask --app run.py send-monthly-expense-reminders
+```
+
+Выберите timer или cron. Для проверки без отправки и записи журнала:
+`flask send-monthly-expense-reminders --dry-run`.
+
+Без отправки реальных сообщений можно проверить конфигурацию и миграции:
+
+```sh
+cd /opt/officium/current
+venv/bin/python -m flask --app run.py db current
+venv/bin/python -m flask --app run.py db check
+venv/bin/python -m flask --app run.py telegram-setup --dry-run
+venv/bin/python -m flask --app run.py telegram-diagnostics --network
+venv/bin/python -m flask --app run.py send-monthly-expense-reminders --dry-run
+systemctl list-timers officium-monthly-reminders.timer
+```
+
+Сетевой diagnostics обращается к Bot API, но не пишет пользователям. Для
+`polling` отсутствие webhook нормально; для `webhook` ожидаются `registered=true`,
+`https=true`, `url_matches=true` и отсутствие свежей ошибки доставки.
+HTTP 403 при запросе webhook без секретного заголовка — ожидаемый отказ, он не
+доказывает доступность сервера из сети Telegram. Успешная тестовая отправка
+из профиля подтверждает исходящую доставку; получение `/start` проверяет
+выбранный канал входящих команд. Значение `pending_update_count` само по себе
+не подтверждает работоспособность обработки.
+
 ### План проверки и запуска автомобильного timer
 
 Сначала read-only проверки на хосте (не публиковать сырые журналы/конфигурацию):

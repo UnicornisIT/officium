@@ -4,6 +4,7 @@ from flask import abort, current_app, jsonify, request
 
 from app.services.telegram_bot_service import (
     answer_telegram_callback_query,
+    deliver_telegram_result,
     handle_telegram_update_once,
     send_telegram_message,
 )
@@ -29,18 +30,8 @@ def init_app(app, csrf=None):
             return jsonify({'ok': True})
 
         result = handle_telegram_update_once(update)
-        if result.callback_query_id:
-            try:
-                if not answer_telegram_callback_query(result.callback_query_id, result.callback_answer_text):
-                    current_app.logger.warning('Telegram callback answer rejected.')
-            except Exception:
-                current_app.logger.warning('Telegram callback answer failed.')
-        if result.chat_id is not None and result.reply_text:
-            try:
-                if not send_telegram_message(result.chat_id, result.reply_text, reply_markup=result.reply_markup):
-                    current_app.logger.warning('Telegram webhook reply rejected.')
-            except Exception:
-                current_app.logger.warning('Telegram webhook reply delivery failed.')
+        deliver_telegram_result(result, sender=send_telegram_message,
+                                callback_answerer=answer_telegram_callback_query)
         return jsonify({'ok': True})
 
     if csrf is not None:

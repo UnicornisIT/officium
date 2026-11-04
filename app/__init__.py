@@ -344,6 +344,37 @@ def register_cli_commands(app):
         from app.services.telegram_diagnostics_service import diagnose
         click.echo(json.dumps(diagnose(network=network), ensure_ascii=False, sort_keys=True))
 
+    @app.cli.command('telegram-setup')
+    @click.option('--dry-run', is_flag=True, help='Report service configuration without network requests or changes.')
+    def telegram_setup(dry_run):
+        """Configure Telegram reception and report the required services."""
+        import json
+        from app.services.telegram_setup_service import setup
+        from app.services.telegram_transport import TelegramDeliveryError
+        try:
+            state = setup(dry_run=dry_run)
+        except (ValueError, TelegramDeliveryError) as exc:
+            raise click.ClickException(str(exc)) from None
+        click.echo(json.dumps(state, sort_keys=True))
+
+    @app.cli.command('telegram-poll')
+    @click.option('--remove-webhook', is_flag=True, help='Remove the webhook without dropping queued commands.')
+    def telegram_poll(remove_webhook):
+        """Receive Telegram commands through an outbound connection."""
+        import signal
+        from threading import Event
+        from app.services.telegram_polling_service import run_polling
+        from app.services.telegram_transport import TelegramDeliveryError
+
+        stop = Event()
+        previous = signal.signal(signal.SIGTERM, lambda *_: stop.set())
+        try:
+            run_polling(remove_webhook=remove_webhook, stop=stop)
+        except (ValueError, TelegramDeliveryError) as exc:
+            raise click.ClickException(str(exc)) from None
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+
     @app.cli.command('send-vehicle-notifications')
     def send_vehicle_notifications():
         """Send daily vehicle reminders (also used by the systemd timer)."""
@@ -352,6 +383,14 @@ def register_cli_commands(app):
         click.echo(str(stats))
         if stats['failed']:
             raise click.ClickException('Some vehicle notifications failed')
+
+    @app.cli.command('send-monthly-expense-reminders')
+    @click.option('--dry-run', is_flag=True, help='Count planned reminders without sending or saving anything.')
+    def send_monthly_expense_reminders(dry_run):
+        """Send reminders about upcoming monthly expense charges."""
+        from app.services.monthly_reminders import run
+        count = run(dry_run=dry_run)
+        click.echo(f'{"Messages planned" if dry_run else "Messages sent"}: {count}')
 
     @app.cli.command('generate-monthly-expenses')
     @click.option('--user-id', type=int, default=None, help='Generate for specific user ID')

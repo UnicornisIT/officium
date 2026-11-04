@@ -148,7 +148,8 @@ class TelegramBotTestCase(unittest.TestCase):
         headers = {'X-Telegram-Bot-Api-Secret-Token': 'test-secret'}
         confirmation = self._callback_update('tg:confirm', update_id=2)
 
-        with patch('app.routes.telegram_bot.send_telegram_message') as send_message:
+        with patch('app.routes.telegram_bot.send_telegram_message') as send_message, \
+                patch('app.routes.telegram_bot.answer_telegram_callback_query', return_value=True):
             first_response = self.client.post('/telegram/webhook', json=update, headers=headers)
             second_response = self.client.post('/telegram/webhook', json=update, headers=headers)
             first_confirmation = self.client.post('/telegram/webhook', json=confirmation, headers=headers)

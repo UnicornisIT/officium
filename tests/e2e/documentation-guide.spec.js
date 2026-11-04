@@ -42,7 +42,7 @@ for (const scenario of [
     const links = page.locator('.docs-screenshot > a');
     await expect(links).toHaveCount(await images.count());
     for (const href of await links.evaluateAll(nodes => nodes.map(node => node.href))) {
-      expect(href).toContain('guide-20261103');
+      expect(href).toContain('guide-20261104-notifications-1');
       expect((await page.request.get(href)).status()).toBe(200);
     }
     if (scenario.width >= 1024) {

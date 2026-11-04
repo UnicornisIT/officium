@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-11-03T11:30:28.366Z",
+  "capturedAt": "2026-11-04T08:18:06.866Z",
   "data": "Fictional, isolated Playwright database",
   "telegram": "SDK stub; not a native client screenshot or delivery confirmation",
   "command": "UPDATE_DOCUMENTATION_SCREENSHOTS=1 npx playwright test tests/e2e/documentation-capture.spec.js --project=chromium",
@@ -80,8 +80,7 @@
       },
       "fullPage": false,
       "width": 1440,
-      "height": 1000,
-      "capturedAt": "2026-11-03T11:37:14.396Z"
+      "height": 1000
     },
     {
       "file": "import.png",
@@ -185,7 +184,7 @@
       },
       "fullPage": true,
       "width": 1440,
-      "height": 1351
+      "height": 1856
     },
     {
       "file": "privacy-hidden.png",
@@ -220,11 +219,12 @@
       "theme": "dark",
       "viewport": {
         "width": 390,
-        "height": 844
+        "height": 2400
       },
       "fullPage": false,
-      "width": 390,
-      "height": 844
+      "selector": "[aria-labelledby=\"profileNotificationsTitle\"]",
+      "width": 362,
+      "height": 1473
     },
     {
       "file": "documentation-preview.png",
@@ -239,6 +239,5 @@
       "width": 1440,
       "height": 1000
     }
-  ],
-  "updatedAt": "2026-11-03T11:37:14.396Z"
+  ]
 }

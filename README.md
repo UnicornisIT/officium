@@ -171,7 +171,9 @@ $env:FLASK_APP = 'run.py'
 
 ## Telegram-бот
 
-Бот работает через webhook: `POST /telegram/webhook`.
+Бот получает команды через webhook: `POST /telegram/webhook` или через
+`flask telegram-poll`. Если сервер недоступен для входящих запросов Telegram,
+используйте [long polling через прокси](docs/DEPLOYMENT.md#telegram-через-прокси-polling-и-ежемесячные-напоминания).
 
 Что важно:
 
@@ -207,19 +209,28 @@ $env:FLASK_APP = 'run.py'
 
 ```env
 TELEGRAM_BOT_ENABLED=true
+TELEGRAM_RECEIVE_MODE=webhook
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_BOT_USERNAME=...
 TELEGRAM_WEBHOOK_SECRET=long-random-secret
 TELEGRAM_PRIVATE_CHAT_ONLY=true
+OFFICIUM_PUBLIC_URL=https://your-domain.example
+# HTTPS_PROXY=http://USER:PASSWORD@HOST:PORT
+# NO_PROXY=localhost,127.0.0.1,::1
 ```
 
-Настройка webhook:
+Проверка и применение настроек для установки без managed-деплоя:
 
 ```bash
-curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
-  -d "url=https://<your-domain>/telegram/webhook" \
-  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
+venv/bin/python -m flask --app run.py telegram-setup --dry-run
+venv/bin/python -m flask --app run.py telegram-setup
 ```
+
+Managed-деплой выполняет настройку автоматически. В режиме `webhook` нужен
+входящий HTTPS-доступ от Telegram; при его блокировке выберите `polling`.
+Прокси по умолчанию закомментирован; существующий `shared/.env` сохраняется
+при установке поверх существующей конфигурации, обновлении и откате.
+Параметры служб и проверка сети описаны в [инструкции развёртывания](docs/DEPLOYMENT.md#telegram-через-прокси-polling-и-ежемесячные-напоминания).
 
 Напоминания по долгам:
 
@@ -364,6 +375,32 @@ $env:FLASK_APP = 'run.py'
 ```
 
 Повторный запуск не создает дубликаты.
+
+В профиле можно включить Telegram-напоминания о ежемесячных списаниях, выбрать
+время, часовой пояс и срок 0–7 дней. По умолчанию: включены, 10:00,
+Europe/Moscow, за один день. Отправляется один список расходов с итоговой суммой;
+после выбранного времени действует окно шесть часов. День 31 в коротком месяце
+переносится на его последний день. Это отдельная функция от генерации расходов
+и долговых напоминаний.
+
+```sh
+flask send-monthly-expense-reminders --dry-run
+flask send-monthly-expense-reminders
+```
+
+Managed-деплой автоматически включает `officium-monthly-reminders.timer`
+при настроенном токене; timer проверяет расписание каждые пять минут.
+Шаблоны: [служба](deployment/officium-monthly-reminders.service) и
+[systemd timer](deployment/officium-monthly-reminders.timer).
+Для установки без systemd можно использовать cron пользователя приложения:
+
+```cron
+*/5 * * * * cd /opt/officium/current && venv/bin/python -m flask --app run.py send-monthly-expense-reminders
+```
+
+Нужен исходящий доступ к `api.telegram.org:443` напрямую или через настроенный
+`HTTPS_PROXY`. Выберите один scheduler. Подробнее —
+[руководство по регулярным расходам](docs/MONTHLY_EXPENSES_GUIDE.md).
 
 ## Тесты
 

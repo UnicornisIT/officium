@@ -27,6 +27,10 @@ class User(UserMixin, db.Model):
     notification_timezone = db.Column(db.String(64), nullable=True)
     notification_delivery_time = db.Column(db.String(5), nullable=True)
     notification_test_requested_at = db.Column(db.DateTime, nullable=True)
+    reminder_enabled = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    reminder_time = db.Column(db.String(5), nullable=False, default='10:00', server_default='10:00')
+    reminder_days_before = db.Column(db.SmallInteger, nullable=False, default=1, server_default='1')
+    timezone = db.Column(db.String(64), nullable=False, default='Europe/Moscow', server_default='Europe/Moscow')
     hide_amounts_on_open = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     username = db.Column(db.String(80), nullable=True)
     first_name = db.Column(db.String(100), nullable=True)
@@ -486,6 +490,19 @@ class Expense(db.Model):
 
     def __repr__(self):
         return f'<Expense {self.amount} {self.title}>'
+
+
+class MonthlyExpenseReminderLog(db.Model):
+    __tablename__ = 'monthly_expense_reminder_logs'
+    __table_args__ = (
+        db.UniqueConstraint('monthly_expense_id', 'due_date', name='uq_monthly_reminder_occurrence'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    monthly_expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', ondelete='CASCADE'), nullable=False)
+    due_date = db.Column(db.Date, nullable=False)
+    sent_at = db.Column(db.DateTime, nullable=False, default=utc_now)
 
 
 class RegistrationCountry(db.Model):

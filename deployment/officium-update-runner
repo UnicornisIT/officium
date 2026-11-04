@@ -1183,6 +1183,79 @@ def install_privileged_bundle(config, release_path):
         shutil.rmtree(backup_directory, ignore_errors=True)
 
 
+def sync_telegram_services(config, release_path):
+    helper = Path(release_path) / 'deployment' / 'telegram_services.py'
+    systemctl = shutil.which('systemctl') or '/bin/false'
+    if not helper.is_file():
+        # Старый релиз не умеет запускать новые CLI: убираем оставшиеся службы.
+        for suffix in ('telegram-polling.service', 'monthly-reminders.timer', 'monthly-reminders.service'):
+            name = config['SERVICE_NAME'] + '-' + suffix
+            if (Path('/etc/systemd/system') / name).is_file():
+                subprocess.run([systemctl, 'disable', '--now', name], timeout=120, check=False,
+                               capture_output=True)
+        return
+    try:
+        result = subprocess.run([
+            sys.executable, str(helper), '--app-root', str(Path(config['APP_DIR']).parent),
+            '--app-user', config['APP_USER'], '--app-group', config['APP_GROUP'],
+            '--service-name', config['SERVICE_NAME'], '--venv-name', config.get('VENV_NAME', 'venv'),
+        ], timeout=240, check=False, capture_output=True)
+    except (OSError, subprocess.SubprocessError):
+        raise UpdateFailure('Telegram service activation failed.', 'restart_failed') from None
+    if result.returncode:
+        raise UpdateFailure('Telegram services did not activate.', 'restart_failed')
+
+
+def reconcile_telegram_services(config):
+    """Завершает первый переход с updater, который ещё не знал о службах."""
+    try:
+        LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with LOCK_PATH.open('a', encoding='utf-8') as lock_file:
+            # Старый updater сначала должен закончить проверку нового IPC.
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            release = Path(config['APP_DIR']).resolve(strict=True)
+            helper = release / 'deployment' / 'telegram_services.py'
+            if not helper.is_file():
+                return True
+            info = helper.lstat()
+            root_info = release.stat()
+            if (helper.is_symlink() or info.st_uid != 0 or info.st_mode & 0o222
+                    or root_info.st_uid != 0 or root_info.st_mode & 0o222):
+                raise UpdateFailure('Telegram service helper is not sealed.', 'deployment_failed')
+            marker = application_env_path(config).parent / '.telegram-services-release'
+            if (marker.is_file() and not marker.is_symlink() and marker.stat().st_uid == 0
+                    and marker.read_text(encoding='utf-8').strip() == str(release)):
+                return True
+            sync_telegram_services(config, release)
+            return True
+    except Exception:
+        log_unexpected_failure('Telegram service activation')
+        return False
+
+
+def schedule_telegram_reconciliation(config):
+    try:
+        release = Path(config['APP_DIR']).resolve(strict=True)
+    except FileNotFoundError:
+        return
+    if not (release / 'deployment' / 'telegram_services.py').is_file():
+        return
+    marker = application_env_path(config).parent / '.telegram-services-release'
+    if (marker.is_file() and not marker.is_symlink() and marker.stat().st_uid == 0
+            and marker.read_text(encoding='utf-8').strip() == str(release)):
+        return
+    systemd_run = shutil.which('systemd-run')
+    if not systemd_run:
+        raise UpdateFailure('systemd-run is required for Telegram setup.', 'configuration_invalid')
+    # Запись units выполняется в отдельной root-задаче, вне read-only sandbox IPC.
+    result = subprocess.run([
+        systemd_run, '--quiet', '--collect', f'--unit=officium-telegram-setup-{time.time_ns():x}',
+        '--property=Type=exec', str(Path(__file__).resolve()), '--sync-telegram',
+    ], timeout=15, check=False, capture_output=True, cwd=APP_USER_CWD)
+    if result.returncode:
+        raise UpdateFailure('Telegram service setup could not be scheduled.', 'scheduling_failed')
+
+
 def atomic_switch_release(config, release_path):
     current_link = Path(config['APP_DIR'])
     if not current_link.is_symlink():
@@ -1255,9 +1328,11 @@ def rollback_to_release(config, target):
                 raise UpdateFailure('Application service restart failed.', 'restart_failed')
             verify_service_health(config['SERVICE_NAME'], config['HEALTHCHECK_URL'])
             verify_current_environment(config)
+            sync_telegram_services(config, candidate)
         except UpdateFailure as exc:
             restore_release_link(config, previous)
             subprocess.run([systemctl, 'restart', config['SERVICE_NAME']], timeout=60, check=False)
+            sync_telegram_services(config, previous)
             raise UpdateFailure(
                 f'{candidate.name} did not start healthy ({exc}); {previous.name} was restored.',
                 'rollback_failed',
@@ -1752,6 +1827,7 @@ def perform_update(tag, *, require_latest=True):
                 write_status(config, 'verifying', tag, 'Проверка работоспособности новой версии.')
                 verify_service_health(config['SERVICE_NAME'], config['HEALTHCHECK_URL'])
                 verify_current_environment(config)
+                sync_telegram_services(config, release_path)
                 install_privileged_bundle(config, release_path)
             except Exception as exc:
                 if not isinstance(exc, UpdateFailure):
@@ -1768,6 +1844,8 @@ def perform_update(tag, *, require_latest=True):
                         check=False,
                     )
                     rollback_performed = rollback_result.returncode == 0
+                    if rollback_performed:
+                        sync_telegram_services(config, previous_release)
                     if rollback_performed:
                         try:
                             verify_service_health(config['SERVICE_NAME'], config['HEALTHCHECK_URL'])
@@ -1999,6 +2077,7 @@ def serve_socket():
     if listen_pid != os.getpid() or listen_fds != 1:
         raise UpdateFailure('Updater must be started by its systemd socket.')
     server = socket.fromfd(3, socket.AF_UNIX, socket.SOCK_STREAM)
+    schedule_telegram_reconciliation(config)
     while True:
         connection, _address = server.accept()
         with connection:
@@ -2033,6 +2112,8 @@ def main(argv):
             'This updater is a root-owned system service; use the Unix socket from the web app.',
             'authorization_failed',
         )
+    if len(argv) == 2 and argv[1] == '--sync-telegram':
+        return 0 if reconcile_telegram_services(load_runner_config()) else 1
     if len(argv) == 2 and argv[1] == '--serve':
         serve_socket()
         return 0

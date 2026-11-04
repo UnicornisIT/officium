@@ -26,24 +26,57 @@
     <section class="profile-card profile-settings-card" aria-labelledby="profileNotificationsTitle">
         <h2 id="profileNotificationsTitle" class="h5 mb-0"><i class="bi bi-bell" aria-hidden="true"></i> Уведомления</h2>
         {% if telegram_account %}
-        <form method="post" class="profile-settings-form" data-profile-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="section" value="notifications">
-            {% set notification_checked = request.form.get('vehicle_notifications_enabled') == 'on' if profile_errors.get('notifications') else current_user.vehicle_notifications_enabled %}
-            <label class="ui-switch-label"><input type="checkbox" name="vehicle_notifications_enabled" {% if notification_checked %}checked{% endif %}><span>Напоминания об автомобилях в Telegram</span></label>
-            <div class="profile-delivery-fields">
-                <label for="notificationTimezone">Часовой пояс
-                    <select id="notificationTimezone" aria-label="Часовой пояс" class="form-select" name="notification_timezone" required>{% for zone in timezone_choices %}<option value="{{ zone }}" {% if zone == (request.form.get('notification_timezone', notification_zone) if profile_errors.get('notifications') else notification_zone) %}selected{% endif %}>{{ zone }}</option>{% endfor %}</select>
-                </label>
-                <label for="notificationClock">Время доставки
-                    <input id="notificationClock" class="form-control" type="time" name="notification_delivery_time" step="60" value="{{ request.form.get('notification_delivery_time', notification_clock) if profile_errors.get('notifications') else notification_clock }}" required>
-                </label>
-            </div>
-            <p class="small text-muted mb-0">После указанного времени по выбранному часовому поясу; расписание проверяется каждые 5 минут. При пропуске времени из-за перевода часов — после перехода. Сроки ТО и документов задаются в автомобиле.</p>
-            {% if not automated_notifications_enabled %}<p class="small text-muted mb-0">Автоматические автомобильные напоминания отключены в настройках сервера. Ваши предпочтения сохраняются.</p>{% endif %}
-            {{ feedback('notifications') }}
-            <button type="submit" class="btn btn-primary">Сохранить</button>
-        </form>
+        <section class="profile-settings-form" aria-labelledby="monthlyRemindersTitle">
+            <h3 id="monthlyRemindersTitle" class="h6 mb-0"><i class="bi bi-calendar-event" aria-hidden="true"></i> Напоминания о ежемесячных расходах</h3>
+            {% set monthly_invalid = profile_errors.get('monthly_reminders') %}
+            <form method="post" class="profile-settings-form" data-profile-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="section" value="monthly_reminders">
+                {% set enabled = request.form.get('reminder_enabled') == 'on' if monthly_invalid else current_user.reminder_enabled %}
+                <label class="ui-switch-label"><input type="checkbox" name="reminder_enabled" {% if enabled %}checked{% endif %}><span>Получать напоминания в Telegram</span></label>
+                <div class="profile-delivery-fields">
+                    <label for="monthlyReminderDays">Напоминать
+                        {% set days = request.form.get('reminder_days_before') if monthly_invalid else current_user.reminder_days_before|string %}
+                        <select id="monthlyReminderDays" aria-label="Напоминать" class="form-select" name="reminder_days_before" required>
+                            {% for value in [0, 1, 2, 3, 7] %}<option value="{{ value }}" {% if days == value|string %}selected{% endif %}>{{ 'В день списания' if value == 0 else 'За ' ~ value ~ ' дн.' }}</option>{% endfor %}
+                            {% if days in ['4', '5', '6'] %}<option value="{{ days }}" selected>За {{ days }} дн.</option>{% endif %}
+                        </select>
+                    </label>
+                    <label for="monthlyReminderTime">Время напоминания
+                        <input id="monthlyReminderTime" class="form-control" type="time" name="reminder_time" step="60" value="{{ request.form.get('reminder_time', current_user.reminder_time) if monthly_invalid else current_user.reminder_time }}" required>
+                    </label>
+                    <label for="monthlyReminderTimezone">Часовой пояс
+                        {% set monthly_zone = request.form.get('reminder_timezone', current_user.timezone) if monthly_invalid else current_user.timezone %}
+                        <select id="monthlyReminderTimezone" aria-label="Часовой пояс" class="form-select" name="reminder_timezone" required>{% for zone in timezone_choices %}<option value="{{ zone }}" {% if zone == monthly_zone %}selected{% endif %}>{{ zone }}</option>{% endfor %}</select>
+                    </label>
+                </div>
+                <p class="small text-muted mb-0">Один список предстоящих списаний. Напоминание приходит в течение шести часов после выбранного времени; расписание проверяется каждые 5 минут.</p>
+                {{ feedback('monthly_reminders') }}
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </form>
+        </section>
+        <hr class="my-1">
+        <section class="profile-settings-form" aria-labelledby="vehicleRemindersTitle">
+            <h3 id="vehicleRemindersTitle" class="h6 mb-0"><i class="bi bi-car-front" aria-hidden="true"></i> Напоминания об автомобилях</h3>
+            <form method="post" class="profile-settings-form" data-profile-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="section" value="notifications">
+                {% set notification_checked = request.form.get('vehicle_notifications_enabled') == 'on' if profile_errors.get('notifications') else current_user.vehicle_notifications_enabled %}
+                <label class="ui-switch-label"><input type="checkbox" name="vehicle_notifications_enabled" {% if notification_checked %}checked{% endif %}><span>Напоминания об автомобилях в Telegram</span></label>
+                <div class="profile-delivery-fields">
+                    <label for="notificationTimezone">Часовой пояс
+                        <select id="notificationTimezone" aria-label="Часовой пояс" class="form-select" name="notification_timezone" required>{% for zone in timezone_choices %}<option value="{{ zone }}" {% if zone == (request.form.get('notification_timezone', notification_zone) if profile_errors.get('notifications') else notification_zone) %}selected{% endif %}>{{ zone }}</option>{% endfor %}</select>
+                    </label>
+                    <label for="notificationClock">Время доставки
+                        <input id="notificationClock" class="form-control" type="time" name="notification_delivery_time" step="60" value="{{ request.form.get('notification_delivery_time', notification_clock) if profile_errors.get('notifications') else notification_clock }}" required>
+                    </label>
+                </div>
+                <p class="small text-muted mb-0">После указанного времени по выбранному часовому поясу; расписание проверяется каждые 5 минут. При пропуске времени из-за перевода часов — после перехода. Сроки ТО и документов задаются в автомобиле.</p>
+                {% if not automated_notifications_enabled %}<p class="small text-muted mb-0">Автоматические автомобильные напоминания отключены в настройках сервера. Ваши предпочтения сохраняются.</p>{% endif %}
+                {{ feedback('notifications') }}
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </form>
+        </section>
         {% if not bot_commands_enabled %}<p class="small text-muted">Команды бота отключены на сервере (TELEGRAM_BOT_ENABLED=false). Вход через Telegram и тест исходящего сообщения проверяются отдельно.</p>{% endif %}
         <div class="profile-bot-actions">
             {% if bot_url %}<a class="btn btn-outline-secondary" href="{{ bot_url }}" target="_blank" rel="noopener noreferrer" data-profile-bot-link><i class="bi bi-telegram" aria-hidden="true"></i> Открыть бота</a>{% else %}<p class="small text-muted mb-0">Ссылка на бота не настроена на сервере.</p>{% endif %}

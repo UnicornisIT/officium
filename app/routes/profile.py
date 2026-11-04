@@ -40,7 +40,7 @@ def init_app(app):
                 saved = settings.save(user, request.form)
             except ValueError as exc:
                 db.session.rollback()
-                return page(errors={section if section in ('notifications', 'privacy') else 'general': str(exc)}, status=400)
+                return page(errors={section if section in ('notifications', 'privacy', 'monthly_reminders') else 'general': str(exc)}, status=400)
             except SQLAlchemyError:
                 db.session.rollback()
                 return page(errors={section: 'Не удалось сохранить настройки. Повторите попытку.'}, status=503)

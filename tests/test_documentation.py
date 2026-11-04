@@ -76,7 +76,7 @@ class DocumentationTestCase(unittest.TestCase):
         self.assertGreaterEqual(len(sources), 14)
         for source in sources:
             parsed = urlsplit(source.replace('&amp;', '&'))
-            self.assertIn('guide-20261103', parsed.query)
+            self.assertIn('guide-20261104-notifications-1', parsed.query)
             self.assertTrue((root/unquote(parsed.path).lstrip('/')).is_file())
 
 
