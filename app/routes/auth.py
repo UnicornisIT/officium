@@ -609,7 +609,7 @@ def init_app(app):
         if not app.config.get('GOOGLE_LOGIN_ENABLED', False):
             abort(404)
         try:
-            token = google.authorize_access_token()
+            google.authorize_access_token()
             userinfo = google.get('https://openidconnect.googleapis.com/v1/userinfo').json()
         except Exception:
             current_app.logger.exception('Google OAuth callback failed')

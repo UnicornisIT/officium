@@ -1,4 +1,3 @@
-from datetime import timedelta
 from unittest.mock import patch
 import test_vehicle_notifications
 from app.services import vehicle_notification_service as service

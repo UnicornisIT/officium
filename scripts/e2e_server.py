@@ -36,7 +36,6 @@ os.environ.update({
 from waitress import serve  # noqa: E402
 
 from app import create_app  # noqa: E402
-from extensions import db  # noqa: E402
 
 
 app = create_app()
