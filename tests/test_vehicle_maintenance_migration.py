@@ -34,7 +34,7 @@ class MaintenanceMigrationTests(unittest.TestCase):
                     check(directory=str(ROOT/'migrations'))
                     config = Config()
                     config.set_main_option('script_location', str(ROOT/'migrations'))
-                    self.assertEqual(ScriptDirectory.from_config(config).get_heads(), ['20261125_feedback'])
+                    self.assertEqual(ScriptDirectory.from_config(config).get_heads(), ['20261126_attachment_dedup'])
                 finally:
                     db.session.remove()
                     db.engine.dispose()

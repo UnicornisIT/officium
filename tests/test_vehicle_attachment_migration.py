@@ -7,7 +7,7 @@ from unittest.mock import patch
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from flask_migrate import upgrade, check
-from sqlalchemy import inspect
+from sqlalchemy import inspect, create_engine, text
 from app import create_app
 from extensions import db
 
@@ -40,3 +40,34 @@ class AttachmentMigrationTests(unittest.TestCase):
                 finally:
                     db.session.remove()
                     db.engine.dispose()
+
+    def test_dedup_migration_preserves_rows_and_allows_shared_hash(self):
+        spec = importlib.util.spec_from_file_location(
+            'attachment_dedup_migration', ROOT/'migrations/versions/20261126_attachment_dedup.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        buffer = io.StringIO()
+        context = MigrationContext.configure(url='mysql+pymysql://', opts=dict(as_sql=True, output_buffer=buffer))
+        with Operations.context(context):
+            module.upgrade()
+        self.assertIn('DROP INDEX uq_attachment_sha256_user', buffer.getvalue())
+        self.assertIn('CREATE INDEX ix_attachment_sha256_user', buffer.getvalue())
+        engine = create_engine('sqlite:///:memory:')
+        try:
+            with engine.begin() as connection:
+                connection.execute(text('CREATE TABLE vehicle_attachments (id INTEGER PRIMARY KEY, '
+                    'user_id INTEGER NOT NULL, sha256 VARCHAR(64) NOT NULL, '
+                    'CONSTRAINT uq_attachment_sha256_user UNIQUE (user_id, sha256))'))
+                connection.execute(text("INSERT INTO vehicle_attachments VALUES (1, 1, 'same')"))
+                with Operations.context(MigrationContext.configure(connection)):
+                    module.upgrade()
+                connection.execute(text("INSERT INTO vehicle_attachments VALUES (2, 1, 'same')"))
+                self.assertEqual(connection.execute(text('SELECT id FROM vehicle_attachments ORDER BY id')).scalars().all(), [1, 2])
+                connection.execute(text('DELETE FROM vehicle_attachments WHERE id = 2'))
+                with Operations.context(MigrationContext.configure(connection)):
+                    module.downgrade()
+                self.assertEqual(inspect(connection).get_unique_constraints('vehicle_attachments')[0]['name'],
+                                 'uq_attachment_sha256_user')
+                self.assertEqual(connection.execute(text('SELECT id FROM vehicle_attachments')).scalars().all(), [1])
+        finally:
+            engine.dispose()

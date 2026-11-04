@@ -70,14 +70,20 @@ class AttachmentTests(unittest.TestCase):
     def test_dedup_and_private_audit(self):
         vehicle = self.vehicle()
         row = self.save(vehicle, caption='Private caption')
-        self.assertEqual(self.save(vehicle).id, row.id)
+        duplicate = self.save(vehicle)
+        self.assertNotEqual(duplicate.id, row.id)
+        self.assertEqual(duplicate.file_path, row.file_path)
         second = vehicles.create_vehicle(self.owner, dict(name='Second'))
-        self.assertEqual(self.save(second).id, row.id)
-        self.assertEqual(VehicleAttachment.query.count(), 1)
-        log = ActivityLog.query.filter_by(action='vehicle_attachment_save').one()
-        self.assertFalse(log.description)
-        self.assertEqual((log.entity_type, log.entity_id), ('vehicle_attachment', row.id))
-        self.assertNotIn('Private caption', str(log.description))
+        other = self.save(second)
+        self.assertEqual(other.vehicle_id, second.id)
+        self.assertEqual(other.file_path, row.file_path)
+        self.assertEqual(VehicleAttachment.query.count(), 3)
+        logs = ActivityLog.query.filter_by(action='vehicle_attachment_save').order_by(ActivityLog.id).all()
+        self.assertEqual([log.entity_id for log in logs], [row.id, duplicate.id, other.id])
+        for log in logs:
+            self.assertFalse(log.description)
+            self.assertEqual(log.entity_type, 'vehicle_attachment')
+            self.assertNotIn('Private caption', str(log.description))
 
     def test_quotas_and_delete_releases_space(self):
         vehicle = self.vehicle()
@@ -210,7 +216,9 @@ class AttachmentTests(unittest.TestCase):
         self.login()
         self.client.post(f'/vehicles/{vehicle.id}/documents', data=dict(kind='pts', file=(photo().stream, 'same.jpg', 'image/jpeg')))
         self.assertEqual(VehicleDocument.query.count(), 1)
-        self.assertEqual(VehicleAttachment.query.count(), 1)
+        self.assertEqual(VehicleAttachment.query.count(), 2)
+        self.assertEqual(VehicleAttachment.query.filter_by(kind='document').one().entity_id,
+                         VehicleDocument.query.one().id)
 
     def test_refueling_receipt_is_attached_to_linked_spending(self):
         vehicle = self.vehicle(is_company=True)

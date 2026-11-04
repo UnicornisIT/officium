@@ -1000,7 +1000,7 @@ class VehicleAttachment(db.Model):
         db.CheckConstraint("mime_type IN ('image/jpeg','image/png','image/webp')", name='ck_attachment_mime'),
         db.Index('ix_attachment_user_vehicle', 'user_id', 'vehicle_id'),
         db.Index('ix_attachment_entity', 'kind', 'entity_id'),
-        db.UniqueConstraint('user_id', 'sha256', name='uq_attachment_sha256_user'),
+        db.Index('ix_attachment_sha256_user', 'user_id', 'sha256'),
     )
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE', name='fk_attachment_user'), nullable=False, index=True)

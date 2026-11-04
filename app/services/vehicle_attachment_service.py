@@ -149,34 +149,34 @@ def save_attachment(user, vehicle_id, file_storage, kind, entity_id=None, captio
         data, fmt, width, height, previews = prepare_image(file_storage)
         digest = hashlib.sha256(data).hexdigest()
         existing = VehicleAttachment.query.filter_by(user_id=user.id, sha256=digest).with_for_update().first()
-        if existing:
-            db.session.commit()  # Includes any newly created related entity; release the quota lock.
-            return existing
         for field, value, setting, label in (
             ('user_id', user.id, 'VEHICLE_UPLOAD_USER_QUOTA_MB', 'пользователя'),
             ('vehicle_id', vehicle.id, 'VEHICLE_UPLOAD_VEHICLE_QUOTA_MB', 'автомобиля')):
             # Locking reads see the current committed rows even under MySQL REPEATABLE READ.
-            used = sum(size for (size,) in db.session.query(VehicleAttachment.size_bytes).filter(
+            files = dict(db.session.query(VehicleAttachment.file_path, VehicleAttachment.size_bytes).filter(
                 getattr(VehicleAttachment, field) == value).with_for_update().all())
+            used = sum(files.values())
+            added = 0 if existing and existing.file_path in files else len(data)
             limit = current_app.config[setting] * 1024 * 1024
-            if used + len(data) > limit:
+            if used + added > limit:
                 raise ValueError(f'Превышен лимит хранения {label}. Удалите ненужные вложения.')
         # UUID avoids reusing a deleted attachment's URL or overwriting another transaction.
-        relative = f'{user.id}/{vehicle.id}/{kind}/{uuid4().hex}.{fmt[1]}'
+        relative = existing.file_path if existing else f'{user.id}/{vehicle.id}/{kind}/{uuid4().hex}.{fmt[1]}'
         row = VehicleAttachment(user_id=user.id, vehicle_id=vehicle.id, kind=kind, entity_id=entity_id,
             file_path=relative, original_name=Path(file_storage.filename or '').name[:255],
             mime_type=fmt[0], size_bytes=len(data), width=width, height=height, sha256=digest, caption=caption or None)
-        for filename, content in zip(variants(row).values(), (data, *previews)):
-            target = storage_path(filename)
-            folder = root()
-            folder.mkdir(mode=0o750, parents=True, exist_ok=True)
-            for part in PurePosixPath(filename).parts[:-1]:
-                folder = folder / part
-                folder.mkdir(mode=0o750, exist_ok=True)
-            with target.open('xb') as stream:
-                written.append(target)
-                stream.write(content)
-            target.chmod(0o640)
+        if not existing:
+            for filename, content in zip(variants(row).values(), (data, *previews)):
+                target = storage_path(filename)
+                folder = root()
+                folder.mkdir(mode=0o750, parents=True, exist_ok=True)
+                for part in PurePosixPath(filename).parts[:-1]:
+                    folder = folder / part
+                    folder.mkdir(mode=0o750, exist_ok=True)
+                with target.open('xb') as stream:
+                    written.append(target)
+                    stream.write(content)
+                target.chmod(0o640)
         db.session.add(row)
         db.session.flush()
         record_activity('vehicle_attachment_save', user, entity_type='vehicle_attachment', entity_id=row.id, commit=False)
@@ -206,6 +206,9 @@ def get_attachment(user, attachment_id):
 
 def delete_attachment(user, attachment_id):
     row = get_attachment(user, attachment_id)
+    _lock_owner(user)
+    shared = VehicleAttachment.query.filter_by(user_id=user.id, file_path=row.file_path).filter(
+        VehicleAttachment.id != row.id).with_for_update().first()
     paths = [storage_path(name) for name in variants(row).values()]
     # Commit first: an unlink failure leaves an orphan, never a live record with missing files.
     try:
@@ -215,8 +218,9 @@ def delete_attachment(user, attachment_id):
     except Exception:
         db.session.rollback()
         raise
-    for path in paths:
-        path.unlink(missing_ok=True)
+    if not shared:
+        for path in paths:
+            path.unlink(missing_ok=True)
 
 
 def resolve_upload(user, filename):
