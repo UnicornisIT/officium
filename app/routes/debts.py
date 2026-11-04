@@ -10,6 +10,7 @@ from app.services.debt_accrual_service import (
     accrual_start_date,
     default_penalty_rate,
     get_debt_state,
+    invalidate_debt_state_cache,
 )
 from app.services.debt_calendar_service import previous_payment_due_date
 from app.services.debt_schedule_service import build_debt_payment_schedule
@@ -224,7 +225,9 @@ def init_app(app):
             else:
                 db.session.add(purchase)
                 db.session.commit()
+                db.session.refresh(debt)
 
+            invalidate_debt_state_cache(debt)
             schedule = build_debt_payment_schedule(debt)
             return jsonify({
                 'success': True,
@@ -367,6 +370,8 @@ def init_app(app):
             if not is_local_test_user():
                 recalculate_debt(debt)
                 db.session.commit()
+                db.session.refresh(debt)
+            invalidate_debt_state_cache(debt)
             return jsonify({'success': True, 'debt': debt.to_dict()})
 
         except ValueError as e:
@@ -403,6 +408,8 @@ def init_app(app):
         debt.updated_at = utc_now()
         if not is_local_test_user():
             db.session.commit()
+            db.session.refresh(debt)
+        invalidate_debt_state_cache(debt)
         return jsonify({'success': True, 'message': 'Карточка восстановлена', 'debt': debt.to_dict()})
 
     @app.route('/api/debts/<int:debt_id>/delete', methods=['DELETE'])

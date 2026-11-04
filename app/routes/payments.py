@@ -74,6 +74,7 @@ def init_app(app):
                 bank_remaining_after_payment=bank_remaining_after_payment,
                 manual_breakdown=manual_breakdown,
             )
+            db.session.refresh(debt)
             debt_cleared = Decimal(str(debt.remaining_amount or 0)) <= Decimal('0.00')
 
             return jsonify({
@@ -147,6 +148,7 @@ def init_app(app):
                 manual_breakdown=manual_breakdown,
             )
 
+            db.session.refresh(debt)
             return jsonify({
                 'success': True,
                 'payment': payment.to_dict(),
@@ -173,6 +175,7 @@ def init_app(app):
 
         try:
             delete_payment(debt, payment)
+            db.session.refresh(debt)
             return jsonify({'success': True, 'debt': debt.to_dict()})
         except ValueError as e:
             db.session.rollback()
@@ -194,6 +197,7 @@ def init_app(app):
 
         try:
             payment = accept_bank_remaining(debt, payment)
+            db.session.refresh(debt)
             return jsonify({'success': True, 'payment': payment.to_dict(), 'debt': debt.to_dict()})
         except ValueError as e:
             db.session.rollback()

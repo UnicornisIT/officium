@@ -208,7 +208,7 @@ def _recalculate(debt, principal_before_payments):
         if current['next_due_date']:
             debt.next_payment_date = current['next_due_date']
 
-    invalidate_debt_state_cache()
+    invalidate_debt_state_cache(debt)
 
 
 def _needs_settled_split(payment):
@@ -225,6 +225,7 @@ def recalculate_debt(debt):
     principal_before_payments = _principal_before_payments(debt)
     _pin_accrual_start(debt)
     _recalculate(debt, principal_before_payments)
+    invalidate_debt_state_cache(debt)
 
 
 def accept_bank_remaining(debt, payment):

@@ -1349,6 +1349,19 @@ async function submitPayment() {
         const data = await resp.json();
 
         if (data.success) {
+            const card = document.querySelector(`.debt-card[data-id="${currentDebtId}"]`);
+            if (card && data.debt) {
+                card.querySelector('.debt-card__amount-main').textContent = formatMoney(data.debt.total_debt);
+                const progressLabel = card.querySelector('.debt-card__progress-label');
+                if (progressLabel) {
+                    progressLabel.firstElementChild.textContent = `Погашено ${data.debt.paid_percent}%`;
+                    progressLabel.lastElementChild.textContent = `${formatMoney(data.debt.remaining_amount)} основного долга`;
+                }
+                const progressBar = card.querySelector('.debt-card__progress-bar');
+                if (progressBar) progressBar.style.width = `${data.debt.paid_percent}%`;
+                const sortableCard = card.closest('[data-remaining]');
+                if (sortableCard) sortableCard.dataset.remaining = data.debt.total_debt;
+            }
             paymentModal.hide();
             const advancedText = data.next_payment_date_advanced && data.debt?.next_payment_date
                 ? ` Следующий платеж: ${formatDate(data.debt.next_payment_date)}.`
