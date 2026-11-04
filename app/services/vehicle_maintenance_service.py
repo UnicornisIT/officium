@@ -157,10 +157,15 @@ def technical_condition(vehicle, *, mileage=_MILEAGE_UNSET, day=None):
     return max(states, key=lambda state: {'unknown': 0, 'ok': 0, 'soon': 1, 'overdue': 2}[state])
 
 
+def _has_open_critical_defects(vehicle_id):
+    return VehicleDefect.query.filter_by(vehicle_id=vehicle_id, status='open', severity='critical').first() is not None
+
+
 def save_defect(user, vehicle_id, data, defect_id=None, *, commit=True):
     vehicle = vehicles.get_vehicle_for_user(user, vehicle_id, for_update=True)
     vehicles._writable(vehicle)
     row = VehicleDefect.query.filter_by(id=defect_id, vehicle_id=vehicle.id).first_or_404() if defect_id else VehicleDefect(vehicle_id=vehicle.id, status='open')
+    was_open_critical = row.status == 'open' and row.severity == 'critical'
     if data.get('severity') not in SEVERITIES:
         raise ValueError('Выберите серьёзность неисправности.')
     row.title, row.comment = _text(data, 'title', 150, True), _text(data, 'comment', 2000)
@@ -170,6 +175,10 @@ def save_defect(user, vehicle_id, data, defect_id=None, *, commit=True):
     if row.severity == 'critical' and data.get('set_in_repair') == 'on':
         vehicle.status = 'in_repair'
     db.session.add(row)
+    if was_open_critical and row.severity != 'critical' and vehicle.status == 'in_repair':
+        db.session.flush()
+        if not _has_open_critical_defects(vehicle.id):
+            vehicle.status = 'active'
     return _audit(user, 'vehicle_defect_save', row, commit=commit)
 
 
