@@ -11,11 +11,13 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.goto('/dev-login/user', {waitUntil: 'domcontentloaded'});
     seedPersonalAccount();
     await page.goto('/profile', {waitUntil: 'domcontentloaded'});
-    const checkbox = page.getByRole('checkbox', {name: 'Напоминания об автомобилях в Telegram'});
-    const save = page.getByRole('region', {name: 'Уведомления', exact: true}).getByRole('button', {name: 'Сохранить', exact: true});
+    const notifications = page.getByRole('region', {name: 'Уведомления', exact: true})
+      .getByRole('region', {name: 'Напоминания об автомобилях', exact: true});
+    const checkbox = notifications.getByRole('checkbox', {name: 'Напоминания об автомобилях в Telegram'});
+    const save = notifications.getByRole('button', {name: 'Сохранить', exact: true});
     const savePreference = async () => {
       await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}), save.click()]);
-      await expect(page.getByRole('region', {name:'Уведомления',exact:true}).getByRole('status').filter({hasText:/^Сохранено$/})).toBeVisible();
+      await expect(notifications.getByRole('status').filter({hasText:/^Сохранено$/})).toBeVisible();
     };
     await checkbox.check();
     await savePreference();
