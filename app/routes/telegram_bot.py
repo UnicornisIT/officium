@@ -13,7 +13,7 @@ from app.services.telegram_bot_service import (
 def init_app(app, csrf=None):
     @app.route('/telegram/webhook', methods=['POST'])
     def telegram_webhook():
-        if not current_app.config.get('TELEGRAM_BOT_ENABLED', False):
+        if not current_app.config.get('TELEGRAM_BOT_TOKEN'):
             abort(404)
 
         expected_secret = current_app.config.get('TELEGRAM_WEBHOOK_SECRET', '')

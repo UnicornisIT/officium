@@ -28,6 +28,9 @@
                 <a href="{{ url_for('admin_users') }}" class="{% if request.endpoint in ('admin_users', 'admin_user_detail') %}active{% endif %}"{% if request.endpoint in ('admin_users', 'admin_user_detail') %} aria-current="page"{% endif %}>
                     {{ icon('users') }}<span>Пользователи</span>
                 </a>
+                <a href="{{ url_for('admin_feedback') }}" class="{% if request.endpoint in ('admin_feedback', 'admin_feedback_status') %}active{% endif %}"{% if request.endpoint in ('admin_feedback', 'admin_feedback_status') %} aria-current="page"{% endif %}>
+                    {{ icon('book') }}<span>Обращения</span>
+                </a>
                 <a href="{{ url_for('admin_logs') }}" class="{% if request.endpoint == 'admin_logs' %}active{% endif %}"{% if request.endpoint == 'admin_logs' %} aria-current="page"{% endif %}>
                     {{ icon('activity') }}<span>Журнал действий</span>
                 </a>

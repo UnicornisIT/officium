@@ -57,6 +57,14 @@ class NotificationTests(test_vehicle_service.VehicleServiceTestCase):
         texts = str(notices)
         for private in [vehicle.vin,vehicle.plate,'12345']: self.assertNotIn(private,texts)
         self.assertIn(vehicle.name,texts)
+        for notice in notices:
+            self.assertIn(notice['url'], notice['text'])
+        self.assertTrue(
+            notices[1]['url'].endswith(f'/vehicles/{vehicle.id}?tab=maintenance')
+        )
+        self.assertTrue(
+            notices[2]['url'].endswith(f'/vehicles/{vehicle.id}?tab=documents')
+        )
         vehicles.archive_vehicle(self.owner,vehicle.id,'sold')
         self.assertEqual(service.due_notifications(self.owner),[])
         self.assertEqual(service.due_notifications(self.other),[])
@@ -68,6 +76,8 @@ class NotificationTests(test_vehicle_service.VehicleServiceTestCase):
             self.assertEqual(service.send_due_notifications(now),dict(sent=1,skipped=0,failed=0))
             self.assertEqual(service.send_due_notifications(now),dict(sent=0,skipped=1,failed=0))
             self.assertEqual(sender.call_count,1)
+            button = sender.call_args.kwargs['reply_markup']['inline_keyboard'][0][0]
+            self.assertEqual(button['url'], 'https://example.test/vehicles')
         with patch.object(service.telegram,'send_telegram_message',side_effect=RuntimeError('private token')):
             self.assertEqual(service.send_due_notifications(now+timedelta(days=1))['failed'],1)
             self.assertEqual(service.send_due_notifications(now+timedelta(days=1))['skipped'],1)

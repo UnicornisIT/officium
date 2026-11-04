@@ -870,6 +870,38 @@ class TelegramProcessedUpdate(db.Model):
         return f'<TelegramProcessedUpdate {self.update_id}>'
 
 
+class FeedbackReport(db.Model):
+    __tablename__ = 'feedback_reports'
+    __table_args__ = (
+        db.CheckConstraint("kind IN ('idea', 'bug')", name='ck_feedback_reports_kind'),
+        db.CheckConstraint(
+            "status IN ('new', 'in_progress', 'closed')",
+            name='ck_feedback_reports_status',
+        ),
+        db.Index('ix_feedback_reports_status_created_at', 'status', 'created_at'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    kind = db.Column(db.String(16), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    status = db.Column(
+        db.String(16), nullable=False, default='new', server_default='new'
+    )
+    submission_key = db.Column(db.String(32), nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    user = db.relationship('User', backref=db.backref('feedback_reports', lazy=True))
+
+
 class TelegramConversationState(db.Model):
     __tablename__ = 'telegram_conversation_states'
     __table_args__ = (

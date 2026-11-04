@@ -32,9 +32,13 @@ def sync(app_root, app_user, app_group, service_name='officium', venv_name='venv
         raise RuntimeError('systemctl and runuser are required.')
     cli = [runuser, '-u', app_user, '--', str(python), '-m', 'flask', '--app', 'run.py', 'telegram-setup']
     state = json.loads(_run([*cli, '--dry-run'], 'Telegram configuration', cwd=current).stdout)
-    if (not isinstance(state, dict) or type(state.get('bot_enabled')) is not bool
-            or type(state.get('monthly_reminders')) is not bool
-            or state.get('receive_mode') not in ('polling', 'webhook')):
+    if (
+        not isinstance(state, dict)
+        or type(state.get('bot_enabled')) is not bool
+        or type(state.get('receiver_enabled', state.get('bot_enabled'))) is not bool
+        or type(state.get('monthly_reminders')) is not bool
+        or state.get('receive_mode') not in ('polling', 'webhook')
+    ):
         raise ValueError('Invalid Telegram service configuration.')
     poll = service_name + '-telegram-polling.service'
     timer = service_name + '-monthly-reminders.timer'
@@ -66,8 +70,14 @@ def sync(app_root, app_user, app_group, service_name='officium', venv_name='venv
         raise RuntimeError('systemd-analyze is required.')
     _run([verify, 'verify', *(str(unit_dir / name) for name in (poll, monthly, timer))], 'Verify Telegram units')
     _run([systemctl, 'daemon-reload'], 'Reload Telegram units')
-    for name, enabled in ((poll, state['bot_enabled'] and state['receive_mode'] == 'polling'),
-                          (timer, state['monthly_reminders'])):
+    for name, enabled in (
+        (
+            poll,
+            state.get('receiver_enabled', state['bot_enabled'])
+            and state['receive_mode'] == 'polling',
+        ),
+        (timer, state['monthly_reminders']),
+    ):
         _run([systemctl, 'enable' if enabled else 'disable', '--now', name], 'Activate Telegram service')
         if enabled:
             _run([systemctl, 'is-active', '--quiet', name], 'Check Telegram service')

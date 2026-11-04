@@ -138,9 +138,11 @@ class TelegramPollingTests(unittest.TestCase):
         polls = [call for call in request.call_args_list if call.args[0] == 'getUpdates']
         self.assertEqual(polls[1].args[1]['offset'], 2)
 
-    def test_disabled_and_missing_token_never_call_api(self):
-        for config in ({'TELEGRAM_BOT_ENABLED': False},
-                       {'TELEGRAM_BOT_ENABLED': True, 'TELEGRAM_BOT_TOKEN': ''}):
+    def test_missing_token_never_calls_api(self):
+        for config in (
+            {'TELEGRAM_BOT_ENABLED': False, 'TELEGRAM_BOT_TOKEN': ''},
+            {'TELEGRAM_BOT_ENABLED': True, 'TELEGRAM_BOT_TOKEN': ''},
+        ):
             with self.subTest(config=config), patch.dict(self.app.config, config), \
                     patch.object(polling, 'api_request') as request:
                 with self.assertRaises(ValueError):
@@ -148,10 +150,10 @@ class TelegramPollingTests(unittest.TestCase):
                 request.assert_not_called()
 
     def test_cli_reports_errors_without_traceback(self):
-        self.app.config['TELEGRAM_BOT_ENABLED'] = False
+        self.app.config['TELEGRAM_BOT_TOKEN'] = ''
         result = self.app.test_cli_runner().invoke(args=['telegram-poll'])
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn('TELEGRAM_BOT_ENABLED', result.output)
+        self.assertIn('TELEGRAM_BOT_TOKEN', result.output)
         self.assertNotIn('Traceback', result.output)
 
     def test_cli_sigterm_sets_stop_and_restores_handler(self):

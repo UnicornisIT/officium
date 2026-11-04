@@ -52,6 +52,92 @@ class TelegramEffectiveStateTestCase(unittest.TestCase):
         self.assertFalse(states['login']['configuration_valid'])
         self.assertFalse(states['login']['effective'])
 
+    def settings_form(self):
+        from app.routes.admin import SETTINGS_FIELDS, _setting_default
+
+        with self.app.app_context():
+            from app.utils import get_setting
+
+            return {
+                key: get_setting(key, _setting_default(key)) for key in SETTINGS_FIELDS
+            }
+
+    def test_admin_switch_persists_and_overrides_environment(self):
+        with self.client.session_transaction() as session:
+            session['_user_id'] = str(self.admin_id)
+            session['_fresh'] = True
+        self.assertIn(
+            'Команды и ввод операций',
+            self.client.get('/admin/settings').get_data(as_text=True),
+        )
+        form = self.settings_form()
+        form['telegram_bot_enabled'] = 'false'
+        self.assertEqual(
+            self.client.post('/admin/settings', data=form).status_code, 302
+        )
+        with self.app.app_context():
+            self.assertFalse(
+                telegram_feature_states(self.app.config)['bot']['effective']
+            )
+            self.assertEqual(
+                AppSetting.query.filter_by(key='telegram_bot_enabled').one().value,
+                'false',
+            )
+        self.app.config['TELEGRAM_BOT_ENABLED'] = False
+        form['telegram_bot_enabled'] = 'true'
+        self.assertEqual(
+            self.client.post('/admin/settings', data=form).status_code, 302
+        )
+        with self.app.app_context():
+            self.assertTrue(
+                telegram_feature_states(self.app.config)['bot']['effective']
+            )
+            self.assertTrue(
+                telegram_feature_states(self.app.config)['login']['effective']
+            )
+
+    def test_regular_user_cannot_change_bot_switch(self):
+        with self.app.app_context():
+            user = User(telegram_id=123, role='user')
+            db.session.add(user)
+            db.session.commit()
+            user_id = user.id
+        with self.client.session_transaction() as session:
+            session['_user_id'] = str(user_id)
+            session['_fresh'] = True
+        self.assertIn(
+            self.client.post('/admin/settings', data=self.settings_form()).status_code,
+            (302, 403),
+        )
+        with self.app.app_context():
+            self.assertIsNone(
+                AppSetting.query.filter_by(key='telegram_bot_enabled').first()
+            )
+
+    def test_enabling_without_receive_credentials_shows_validation_error(self):
+        self.app.config.update(TELEGRAM_BOT_ENABLED=False, TELEGRAM_BOT_TOKEN='')
+        with self.client.session_transaction() as session:
+            session['_user_id'] = str(self.admin_id)
+            session['_fresh'] = True
+        form = self.settings_form()
+        form['telegram_bot_enabled'] = 'true'
+        response = self.client.post('/admin/settings', data=form)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('настройте токен', response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertIsNone(
+                AppSetting.query.filter_by(key='telegram_bot_enabled').first()
+            )
+
+    def test_polling_does_not_require_webhook_secret(self):
+        self.app.config.update(
+            TELEGRAM_RECEIVE_MODE='polling', TELEGRAM_WEBHOOK_SECRET=''
+        )
+        with self.app.app_context():
+            self.assertTrue(
+                telegram_feature_states(self.app.config)['bot']['effective']
+            )
+
     def test_system_page_separates_configured_valid_and_verified(self):
         with self.client.session_transaction() as session:
             session['_user_id'] = str(self.admin_id)

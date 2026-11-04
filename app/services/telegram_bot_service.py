@@ -6,18 +6,21 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional, Union
+from uuid import uuid4
 
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 
 from app.models import Debt, Income, TelegramConversationState, TelegramProcessedUpdate, User
 from app.services.telegram_transport import api_request, require_accepted
+from app.services.telegram_links_service import application_url
+from app.services import feedback_service as feedback
 from app.services.debt_accrual_service import accrual_start_date, default_penalty_rate
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import add_payment
 from app.services.expense_service import create_expense
 from app.time_utils import as_utc, utc_now
-from app.utils import get_setting
+from app.utils import get_setting, telegram_bot_enabled, telegram_feature_states
 from extensions import db
 
 
@@ -76,6 +79,10 @@ COMMAND_ALIASES = {
     '/payment': 'payment',
     '/summary': 'summary',
     '/privacy': 'privacy',
+    '/idea': 'idea',
+    '/bug': 'bug',
+    'идея': 'idea',
+    'ошибка': 'bug',
     'помощь': 'help',
     'help': 'help',
     'privacy': 'privacy',
@@ -221,6 +228,7 @@ MAIN_MENU_KEYBOARD = {
     'keyboard': [
         [{'text': 'Расход'}, {'text': 'Доход'}, {'text': 'Платеж'}],
         [{'text': 'Долг'}, {'text': 'Долги'}, {'text': 'Итог'}],
+        [{'text': 'Предложить идею'}, {'text': 'Сообщить об ошибке'}],
     ],
     'resize_keyboard': True,
     'one_time_keyboard': False,
@@ -228,6 +236,9 @@ MAIN_MENU_KEYBOARD = {
 }
 
 HELP_TEXT = (
+    'Добро пожаловать в officium! Бот помогает записывать доходы и расходы, '
+    'вести долги и получать напоминания.\n'
+    'В Mini App доступны история операций, финансовая сводка и раздел автомобилей.\n\n'
     'Выберите действие кнопкой ниже или напишите команду.\n\n'
     'Пошагово: Расход, Доход, Платеж, Долг.\n'
     'Быстрой строкой тоже можно:\n'
@@ -236,6 +247,7 @@ HELP_TEXT = (
     'платеж 5000 сбер\n\n'
     'Дату можно писать как 2026-07-29, 29.07, сегодня или вчера.\n'
     'Про приватность: /privacy'
+    '\n\nЕсть идея или нашли ошибку? Нажмите «Предложить идею» или «Сообщить об ошибке».'
 )
 
 PRIVACY_TEXT = (
@@ -245,6 +257,7 @@ PRIVACY_TEXT = (
     '- не сохраняю текст Telegram-сообщений в журнал действий;\n'
     '- для защиты от повторов храню только технический update_id и время обработки;\n'
     '- пошаговый ввод хранится временно и автоматически очищается по TTL;\n'
+    '- подтверждённые идеи и сообщения об ошибках сохраняются вместе с вашим аккаунтом и видны администраторам;\n'
     '- не отправляйте в бот паспортные данные, документы, адреса и другую лишнюю персональную информацию.'
 )
 
@@ -253,6 +266,12 @@ CANCEL_WORDS = {'отмена', 'cancel', 'стоп', 'stop'}
 CONFIRM_WORDS = {'да', 'сохранить', 'ok', 'okay', 'yes', 'confirm'}
 REJECT_WORDS = {'нет', 'no', 'не', 'отмена', 'cancel'}
 _RATE_LIMIT_BUCKETS = {}
+FEEDBACK_BUTTONS = {'предложить идею': 'idea', 'сообщить об ошибке': 'bug'}
+FEEDBACK_FLOWS = {'feedback_idea', 'feedback_bug'}
+FEEDBACK_PROMPTS = {
+    'idea': 'Что вы хотели бы добавить или улучшить в officium? Опишите идею одним сообщением.',
+    'bug': 'Опишите, что вы делали, что ожидали увидеть и что произошло. По возможности укажите раздел приложения. Не отправляйте пароли и платёжные данные.',
+}
 
 
 @dataclass
@@ -276,6 +295,13 @@ def handle_telegram_update(update):
 
     if not chat_id:
         return TelegramBotResult(chat_id=None, reply_text=None, callback_query_id=callback_query_id)
+    if not telegram_bot_enabled(current_app.config):
+        return TelegramBotResult(
+            chat_id=chat_id,
+            reply_text=None,
+            callback_query_id=callback_query_id,
+            callback_answer_text='Команды бота отключены администратором.',
+        )
     if current_app.config.get('TELEGRAM_PRIVATE_CHAT_ONLY', True) and chat_type != 'private':
         return TelegramBotResult(
             chat_id=chat_id,
@@ -308,9 +334,13 @@ def handle_telegram_update(update):
 
     user = User.query.filter_by(telegram_id=telegram_id).first()
     if not user:
+        command, _ = _parse_command(text or '')
+        introduction = _help_text() + '\n\n' if text and command == 'help' else ''
         return TelegramBotResult(
             chat_id=chat_id,
-            reply_text='Я не нашел ваш аккаунт в officium. Сначала войдите в приложение через Telegram.',
+            reply_text=introduction
+            + 'Я не нашел ваш аккаунт в officium. Сначала войдите в приложение через Telegram.',
+            reply_markup=_main_menu_keyboard(),
             callback_query_id=callback_query_id,
         )
     if user.is_blocked:
@@ -373,6 +403,9 @@ def process_telegram_text_result(user, text, chat_id=None):
         command, tokens = _parse_command(text)
         state = _get_active_state(user)
         explicit_command = _has_explicit_command(text)
+        if state and state.flow in FEEDBACK_FLOWS:
+            # Описание ошибки может начинаться с «Расход» или «Доход».
+            explicit_command = text.startswith('/') or bool(command and not tokens)
 
         if command == 'cancel' or _word_key(text) in CANCEL_WORDS:
             _clear_state(user)
@@ -380,6 +413,21 @@ def process_telegram_text_result(user, text, chat_id=None):
 
         if state and not explicit_command:
             return _process_state_message(user, chat_id, state, text)
+
+        if command in {'idea', 'bug'}:
+            _clear_state(user)
+            state = _save_state(
+                user,
+                chat_id,
+                flow=f'feedback_{command}',
+                step='body',
+                data={'kind': command, 'submission_key': uuid4().hex},
+            )
+            if tokens:
+                return _process_feedback_message(
+                    user, chat_id, state, text.split(maxsplit=1)[1]
+                )
+            return _result(chat_id, FEEDBACK_PROMPTS[command], _cancel_keyboard())
 
         if command in FLOW_COMMANDS and not tokens:
             _clear_state(user)
@@ -417,6 +465,20 @@ def process_telegram_callback_result(user, chat_id, callback_data):
                 MAIN_MENU_KEYBOARD,
                 callback_answer_text='Устарело',
             )
+
+        if callback_data.startswith('tg:feedback:send:'):
+            if (
+                state.flow not in FEEDBACK_FLOWS
+                or state.step != 'confirm'
+                or callback_data.rsplit(':', 1)[-1]
+                != _state_data(state).get('submission_key')
+            ):
+                return _result(
+                    chat_id,
+                    'Этот ввод уже устарел. Выберите действие заново.',
+                    callback_answer_text='Устарело',
+                )
+            return _send_feedback(user, chat_id, state)
 
         if callback_data == 'tg:confirm':
             if state.step != 'confirm':
@@ -566,7 +628,7 @@ def build_debt_reminder_message(user, today=None, days=7):
 
 def _process_stateless_command(user, chat_id, command, tokens):
     if command == 'help':
-        return _result(chat_id, HELP_TEXT, MAIN_MENU_KEYBOARD)
+        return _result(chat_id, _help_text(), _main_menu_keyboard())
     if command == 'privacy':
         return _result(chat_id, PRIVACY_TEXT, MAIN_MENU_KEYBOARD)
     if command == 'expense':
@@ -606,6 +668,8 @@ def _begin_flow(user, chat_id, flow):
 
 
 def _process_state_message(user, chat_id, state, text):
+    if state.flow in FEEDBACK_FLOWS:
+        return _process_feedback_message(user, chat_id, state, text)
     if state.step == 'confirm':
         key = _word_key(text)
         if key in CONFIRM_WORDS:
@@ -626,6 +690,59 @@ def _process_state_message(user, chat_id, state, text):
 
     _clear_state(user)
     return _result(chat_id, 'Сценарий устарел. Выберите действие заново.', MAIN_MENU_KEYBOARD)
+
+
+def _feedback_keyboard(data):
+    return {
+        'inline_keyboard': [
+            [
+                {
+                    'text': 'Отправить',
+                    'callback_data': f'tg:feedback:send:{data["submission_key"]}',
+                }
+            ],
+            [{'text': 'Отмена', 'callback_data': 'tg:cancel'}],
+        ]
+    }
+
+
+def _process_feedback_message(user, chat_id, state, text):
+    data = _state_data(state)
+    if state.step == 'confirm':
+        if _word_key(text) in CONFIRM_WORDS | {'отправить'}:
+            return _send_feedback(user, chat_id, state)
+        return _result(
+            chat_id, 'Нажмите «Отправить» или «Отмена».', _feedback_keyboard(data)
+        )
+    try:
+        data['body'] = feedback.validate_body(text)
+    except ValueError:
+        return _result(
+            chat_id,
+            'Напишите текст обращения от 1 до 4000 символов.',
+            _cancel_keyboard(),
+        )
+    _save_state(user, chat_id, flow=state.flow, step='confirm', data=data, state=state)
+    return _result(
+        chat_id,
+        'Отправить администратору это сообщение?\n\n' + data['body'],
+        _feedback_keyboard(data),
+    )
+
+
+def _send_feedback(user, chat_id, state):
+    data = _state_data(state)
+    report = feedback.submit_report(
+        user, data['kind'], data['body'], data['submission_key']
+    )
+    _clear_state(user)
+    db.session.commit()
+    return _result(
+        chat_id,
+        f'Спасибо! Обращение №{report.id} передано администратору.',
+        MAIN_MENU_KEYBOARD,
+        callback_answer_text='Отправлено',
+    )
 
 
 def _process_expense_message(user, chat_id, state, text):
@@ -1276,12 +1393,36 @@ def _cleanup_processed_updates():
 
 
 def _result(chat_id, text, reply_markup=None, callback_answer_text=None):
+    if reply_markup is MAIN_MENU_KEYBOARD:
+        reply_markup = _main_menu_keyboard()
     return TelegramBotResult(
         chat_id=chat_id,
         reply_text=text,
         reply_markup=reply_markup,
         callback_answer_text=callback_answer_text,
     )
+
+
+def _help_text():
+    url = application_url('/')
+    return HELP_TEXT + (f'\n\nОткрыть officium: {url}' if url else '')
+
+
+def _main_menu_keyboard():
+    url = application_url('/telegram-app')
+    if (
+        url
+        and url.startswith('https://')
+        and telegram_feature_states(current_app.config)['mini_app']['effective']
+    ):
+        return {
+            **MAIN_MENU_KEYBOARD,
+            'keyboard': [
+                *MAIN_MENU_KEYBOARD['keyboard'],
+                [{'text': 'Открыть Mini App', 'web_app': {'url': url}}],
+            ],
+        }
+    return MAIN_MENU_KEYBOARD
 
 
 def _cancel_keyboard():
@@ -1373,6 +1514,9 @@ def _update_context(update):
 
 
 def _parse_command(text):
+    button_command = FEEDBACK_BUTTONS.get(str(text or '').strip().casefold())
+    if button_command:
+        return button_command, []
     tokens = _split_tokens(text)
     if not tokens:
         return 'help', []
@@ -1392,6 +1536,8 @@ def _parse_command(text):
 
 
 def _has_explicit_command(text):
+    if str(text or '').strip().casefold() in FEEDBACK_BUTTONS:
+        return True
     tokens = _split_tokens(text)
     if not tokens:
         return False
@@ -1419,7 +1565,19 @@ def _pull_amount(tokens, empty_message):
     for index, token in enumerate(tokens):
         if _looks_like_amount(token):
             amount = _parse_money(token)
-            return abs(amount), tokens[:index] + tokens[index + 1:]
+            remaining = tokens[index + 1 :]
+            if remaining and _word_key(remaining[0]) in {
+                'руб',
+                'рубль',
+                'рубля',
+                'рублей',
+                'rub',
+                'rur',
+            }:
+                remaining = remaining[1:]
+            elif remaining and remaining[0] == '₽':
+                remaining = remaining[1:]
+            return abs(amount), tokens[:index] + remaining
     raise ValueError(empty_message)
 
 

@@ -48,6 +48,12 @@ Stable release запрещён, пока любой критический пу
 - [ ] Установлены миграции идентификаторов автомобиля и личных настроек, `tzdata`; напоминания проверяются каждые 5 минут.
 - [ ] Все иллюстрации `/documentation` пересняты на фиктивных данных, манифест и версии URL обновлены, 12 разделов доступны.
 - [ ] Telegram Login/Mini App/bot synthetic security PASS.
+- [ ] Команды бота включаются и выключаются из панели без перезапуска;
+  уведомления работают независимо; webhook и polling учитывают настройку из БД.
+- [ ] Обращения: подтверждение, отмена, защита от повторных и чужих подтверждений,
+  роли администратора, CSRF/XSS, фильтры, статусы и мобильная вёрстка PASS.
+- [ ] Миграция `20261125_feedback`: upgrade/check/downgrade без потери существующих
+  пользователей; один Alembic head и `flask db check` PASS.
 - [ ] Telegram iOS/Android real checks отмечены MANUAL с доказательством.
 - [ ] Chromium/Firefox/WebKit × все viewports/themes/routes PASS; screenshots reviewed.
 - [ ] Contacts CRUD/role/CSRF/XSS/unsafe URI/publication PASS.

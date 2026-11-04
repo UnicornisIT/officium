@@ -91,6 +91,26 @@ class MonthlyRemindersTests(unittest.TestCase):
         self.assertEqual(MonthlyExpenseReminderLog.query.count(), 2)
         self.assertIn(origin.id, [row.monthly_expense_id for row in MonthlyExpenseReminderLog.query.all()])
 
+    def test_message_and_button_link_to_expenses_when_commands_are_disabled(self):
+        self.expense()
+        self.app.config['TELEGRAM_BOT_ENABLED'] = False
+        with patch.object(
+            reminders.telegram, 'send_telegram_message', return_value=True
+        ) as sender:
+            self.assertEqual(reminders.run(self.instant(date(2026, 4, 29))), 1)
+        self.assertIn('https://example.test/expenses', sender.call_args.args[1])
+        button = sender.call_args.kwargs['reply_markup']['inline_keyboard'][0][0]
+        self.assertEqual(button['url'], 'https://example.test/expenses')
+
+    def test_missing_public_url_does_not_prevent_reminder(self):
+        self.expense()
+        self.app.config['OFFICIUM_PUBLIC_URL'] = ''
+        with patch.object(
+            reminders.telegram, 'send_telegram_message', return_value=True
+        ) as sender:
+            self.assertEqual(reminders.run(self.instant(date(2026, 4, 29))), 1)
+        self.assertIsNone(sender.call_args.kwargs['reply_markup'])
+
     def test_dry_run_has_no_side_effects(self):
         self.expense()
         with patch.object(reminders.telegram, 'send_telegram_message') as sender:

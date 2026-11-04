@@ -61,6 +61,7 @@ STATUS_LABELS = {
 }
 
 ENTITY_LABELS = {
+    'feedback': 'Обращение',
     'vehicle_notification': 'Напоминание об автомобиле',
     'vehicle_tco_export': 'Аналитика автомобилей',
     'vehicle_document': 'Документ автомобиля',
@@ -92,6 +93,8 @@ ENTITY_LABELS = {
 }
 
 EVENT_LABELS = {
+    'feedback_submit': 'Пользователь отправил обращение',
+    'feedback_status_change': 'Изменён статус обращения',
     'vehicle_notification_send': 'Отправка напоминания об автомобиле',
     'vehicle_create': 'Добавлен автомобиль',
     'vehicle_update': 'Изменён автомобиль',

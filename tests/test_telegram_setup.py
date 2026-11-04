@@ -61,11 +61,19 @@ class TelegramSetupTests(unittest.TestCase):
             self.assertFalse(setup.setup()['bot_enabled'])
             request.assert_not_called()
 
-    def test_notifications_only_validate_token_without_changing_webhook(self):
+    def test_receiver_is_prepared_for_admin_switch_even_when_commands_are_disabled(
+        self,
+    ):
         self.app.config['TELEGRAM_BOT_ENABLED'] = False
-        with patch.object(setup, 'api_request', return_value=self.responses()[0]) as request:
-            self.assertTrue(setup.setup()['monthly_reminders'])
-        request.assert_called_once_with('getMe', {})
+        self.app.config['TELEGRAM_RECEIVE_MODE'] = 'polling'
+        with patch.object(
+            setup, 'api_request', side_effect=self.responses()
+        ) as request:
+            state = setup.setup()
+        self.assertTrue(state['monthly_reminders'])
+        self.assertTrue(state['receiver_enabled'])
+        self.assertFalse(state['bot_enabled'])
+        self.assertEqual(request.call_args.args[0], 'deleteWebhook')
 
     def test_invalid_configuration_does_not_change_webhook(self):
         self.configure('webhook')
@@ -126,6 +134,19 @@ class TelegramServiceDeploymentTests(unittest.TestCase):
         setup_index = next(index for index, call in enumerate(
             calls) if 'telegram-setup' in call and '--dry-run' not in call)
         self.assertLess(stop, setup_index)
+
+    def test_disabled_commands_keep_receiver_running_for_admin_switch(self):
+        calls = self.deploy(
+            {
+                'bot_enabled': False,
+                'receiver_enabled': True,
+                'receive_mode': 'polling',
+                'monthly_reminders': True,
+            }
+        )
+        self.assertIn(
+            ['systemctl', 'enable', '--now', 'custom-telegram-polling.service'], calls
+        )
 
     def test_mode_change_webhook_and_disabled_services(self):
         calls = self.deploy({'bot_enabled': True, 'receive_mode': 'webhook', 'monthly_reminders': False})

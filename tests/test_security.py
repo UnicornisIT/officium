@@ -58,6 +58,17 @@ class RuntimeSecurityTestCase(unittest.TestCase):
                 TELEGRAM_WEBHOOK_SECRET='',
             ))
 
+    def test_production_polling_does_not_require_webhook_secret(self):
+        app = create_app(
+            self._production_config(
+                TELEGRAM_BOT_ENABLED=True,
+                TELEGRAM_RECEIVE_MODE='polling',
+                TELEGRAM_BOT_TOKEN='test-token',
+                TELEGRAM_WEBHOOK_SECRET='',
+            )
+        )
+        self.assertEqual(app.config['TELEGRAM_RECEIVE_MODE'], 'polling')
+
     def test_production_rejects_development_features(self):
         for key in ('DEBUG', 'DEV_LOGIN_ENABLED', 'TEST_USER_ENABLED'):
             with self.subTest(key=key), self.assertRaisesRegex(RuntimeError, key):
