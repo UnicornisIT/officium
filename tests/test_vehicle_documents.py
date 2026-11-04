@@ -32,7 +32,7 @@ class VehicleDocumentTests(test_vehicle_service.VehicleServiceTestCase):
         day = vehicles.today()
         row = self.save(vehicle, kind='pts', issued_date='', expires_at='', amount='')
         self.assertEqual(maintenance.document_condition(vehicle, day=day), 'ok')
-        for days, expected in [(30,'ok'),(15,'ok'),(14,'soon'),(10,'soon'),(0,'overdue'),(-1,'overdue')]:
+        for days, expected in [(30,'ok'),(15,'ok'),(14,'soon'),(10,'soon'),(0,'soon'),(-1,'overdue')]:
             documents.save_document(self.owner, vehicle.id, dict(kind='pts', expires_at=(day+timedelta(days=days)).isoformat()), row.id)
             with patch.object(vehicles, 'today', side_effect=AssertionError('unexpected clock call')):
                 self.assertEqual(maintenance.technical_condition(vehicle, day=day, mileage=None), expected)

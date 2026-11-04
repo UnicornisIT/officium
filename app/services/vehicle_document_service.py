@@ -14,7 +14,7 @@ COLORS = dict(ok='success', soon='warning', overdue='danger')
 
 def state(document, day):
     remaining = (document.expires_at - day).days if document.expires_at else None
-    status = 'ok' if remaining is None or remaining > 14 else 'overdue' if remaining <= 0 else 'soon'
+    status = 'ok' if remaining is None or remaining > 14 else 'overdue' if remaining < 0 else 'soon'
     return dict(status=status, remaining_days=remaining, label=LABELS[status], color=COLORS[status])
 
 
@@ -29,6 +29,7 @@ def expiring_soon(user, days=14, *, day=None):
     if not isinstance(days, int) or days < 0:
         raise ValueError('Укажите неотрицательное число дней.')
     day = day if day is not None else vehicles.today()
+    # Including today keeps the default window consistent with state(): valid through expiry.
     return VehicleDocument.query.join(Vehicle).filter(Vehicle.user_id == user.id, Vehicle.archived_at.is_(None), VehicleDocument.expires_at.between(day, day + timedelta(days=days))).order_by(VehicleDocument.expires_at, VehicleDocument.id).all()
 
 
