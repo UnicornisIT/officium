@@ -319,9 +319,30 @@ def _apply_user_action(user, form):
         expected = _deletion_confirmation(user)
         if str(form.get('confirm_username', '')).strip() != expected:
             return _deny(f'Для удаления введите «{expected}» в поле подтверждения.')
-        _log_user_action('Удалил пользователя', user)
-        db.session.delete(user)
-        db.session.commit()
+        deleted_user_id = user.id
+        deleted_user_label = user.username or user.telegram_id
+        try:
+            db.session.delete(user)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception('Failed to delete user')
+            flash('Не удалось удалить пользователя: ошибка базы данных.', 'danger')
+            return 'denied'
+        try:
+            record_activity(
+                'Удалил пользователя',
+                current_user,
+                entity_type='user',
+                entity_id=deleted_user_id,
+                description=f'Пользователь {deleted_user_label}',
+                ip_address=client_ip(),
+                user_agent=request.headers.get('User-Agent'),
+            )
+        except Exception:
+            # Deletion is already committed; only discard the failed audit write.
+            db.session.rollback()
+            current_app.logger.exception('Failed to record user deletion audit')
         return 'deleted'
 
     return _deny('Неизвестное действие.')
