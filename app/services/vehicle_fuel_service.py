@@ -104,20 +104,31 @@ def record_refueling(user, vehicle_id, data, *, refueling_id=None, commit=True):
         raise
 
 
-def _consumption(previous, current):
+def _consumption(previous, current, liters):
     if not previous or not previous.is_full_tank or not current.is_full_tank or previous.odometer_km is None or current.odometer_km is None or current.odometer_km <= previous.odometer_km:
         return None
-    return (current.liters * 100 / (current.odometer_km - previous.odometer_km)).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
+    return (liters * 100 / (current.odometer_km - previous.odometer_km)).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
+
+
+def _history_with_consumption(rows):
+    previous = None
+    liters = Decimal(0)
+    for row in rows:
+        liters += row.liters
+        yield dict(refueling=row, consumption=_consumption(previous, row, liters))
+        if row.is_full_tank:
+            previous = row
+            liters = Decimal(0)
 
 
 def consumption(vehicle, refueling):
-    previous = VehicleRefueling.query.filter(VehicleRefueling.vehicle_id == vehicle.id, VehicleRefueling.refuel_date < refueling.refuel_date).order_by(VehicleRefueling.refuel_date.desc()).first()
-    return _consumption(previous, refueling)
+    rows = VehicleRefueling.query.filter(VehicleRefueling.vehicle_id == vehicle.id, VehicleRefueling.refuel_date < refueling.refuel_date).order_by(VehicleRefueling.refuel_date).all()
+    return list(_history_with_consumption([*rows, refueling]))[-1]['consumption']
 
 
 def fuel_history(vehicle):
     rows = VehicleRefueling.query.filter_by(vehicle_id=vehicle.id).order_by(VehicleRefueling.refuel_date).all()
-    return [dict(refueling=row, consumption=_consumption(rows[i-1] if i else None, row)) for i, row in enumerate(rows)]
+    return list(_history_with_consumption(rows))
 
 
 def _stats(rows):

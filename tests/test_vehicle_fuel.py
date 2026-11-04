@@ -121,7 +121,7 @@ class VehicleFuelTests(test_vehicle_service.VehicleServiceTestCase):
         self.record(vehicle)
         self.record(vehicle,refuel_date='2026-03-02',liters='10',price_per_liter='50',total_amount='500',odometer_km='',is_full_tank=False)
         last=self.record(vehicle,refuel_date='2026-03-03',liters='40',price_per_liter='50',total_amount='2000',odometer_km='1500')
-        self.assertIsNone(fuel.consumption(vehicle,last))
+        self.assertEqual(fuel.consumption(vehicle,last),Decimal('10.00'))
         self.assertEqual(fuel.fuel_stats(vehicle,'2026-03-01','2026-03-03')['avg_consumption'],Decimal('10.00'))
         self.assertEqual(VehicleOdometerReading.query.count(),2)
 
