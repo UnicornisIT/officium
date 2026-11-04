@@ -811,11 +811,13 @@ def init_app(app):
         elif status_filter == 'impersonated':
             users_query = users_query.filter(User.id.in_(impersonation.active_target_ids_query()))
         if search_query:
+            term = search_query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            search = '%' + term + '%'
             users_query = users_query.filter(
-                (User.username.ilike(f'%{search_query}%')) |
-                (User.first_name.ilike(f'%{search_query}%')) |
-                (User.last_name.ilike(f'%{search_query}%')) |
-                (cast(User.telegram_id, db.String).ilike(f'%{search_query}%'))
+                (User.username.ilike(search, escape='\\')) |
+                (User.first_name.ilike(search, escape='\\')) |
+                (User.last_name.ilike(search, escape='\\')) |
+                (cast(User.telegram_id, db.String).ilike(search, escape='\\'))
             )
 
         sort_options = {
