@@ -727,7 +727,12 @@ def init_app(app):
                     raise ValueError('Такое значение уже есть в этом справочнике.')
                 db.session.add(DictionaryEntry(dictionary_type=dictionary_type, value=value))
                 db.session.commit()
-                record_activity('Добавил элемент справочника', current_user, entity_type=dictionary_type, description=value)
+                try:
+                    record_activity('Добавил элемент справочника', current_user, entity_type=dictionary_type, description=value)
+                except Exception:
+                    # The entry is committed; discard only the failed audit write.
+                    db.session.rollback()
+                    current_app.logger.exception('audit recording failed')
                 flash('Элемент справочника добавлен.', 'success')
                 return redirect(url_for('admin_dictionaries'))
             except ValueError as exc:
@@ -790,7 +795,12 @@ def init_app(app):
             current_app.logger.exception('Failed to update dictionary entry')
             flash('Не удалось сохранить элемент справочника: база данных недоступна.', 'danger')
             return redirect(url_for('admin_dictionaries'))
-        record_activity(log_action, current_user, entity_type=entry.dictionary_type, entity_id=entry.id, description=description)
+        try:
+            record_activity(log_action, current_user, entity_type=entry.dictionary_type, entity_id=entry.id, description=description)
+        except Exception:
+            # The entry is committed; discard only the failed audit write.
+            db.session.rollback()
+            current_app.logger.exception('audit recording failed')
         flash(message, 'success')
         return redirect(url_for('admin_dictionaries'))
 
