@@ -1,11 +1,32 @@
 import threading
 
 from flask_login import current_user
-from app.models import Debt
-from app.utils import is_local_test_user
+from sqlalchemy import update
+
+from app.models import Debt, User
+from app.utils import get_setting, is_local_test_user
+from extensions import db
 
 _demo_debts = None
 _demo_lock = threading.Lock()
+
+
+def check_debt_limit(user, error_suffix=''):
+    """Hold the owner's transaction lock until the caller commits or rolls back."""
+    if db.session.get_bind().dialect.name == 'sqlite':
+        # SQLite ignores FOR UPDATE; take its write lock before reading the quota.
+        db.session.execute(update(User).where(User.id == user.id).values(id=User.id))
+    else:
+        User.query.filter_by(id=user.id).with_for_update().one()
+
+    try:
+        debt_limit = max(int(get_setting('debt_limit_per_user', '50')), 1)
+    except (TypeError, ValueError):
+        debt_limit = 50
+    # A locking read sees committed inserts even under MySQL REPEATABLE READ.
+    debts = Debt.query.with_entities(Debt.id).filter_by(user_id=user.id).limit(debt_limit).with_for_update().all()
+    if len(debts) >= debt_limit:
+        raise ValueError(f'Достигнут лимит долгов: {debt_limit}{error_suffix}')
 
 
 def _load_demo_debts():

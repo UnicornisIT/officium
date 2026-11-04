@@ -17,6 +17,7 @@ from app.services.telegram_links_service import application_url
 from app.services.telegram_mini_app_check_service import check_mini_app_registered
 from app.services import feedback_service as feedback
 from app.services.debt_accrual_service import accrual_start_date, default_penalty_rate
+from app.services.debt_service import check_debt_limit
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import add_payment
 from app.services.expense_service import create_expense
@@ -1031,12 +1032,7 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
             raise ValueError('Минимальный платеж не может превышать сумму долга.')
         if interest_rate is not None and interest_rate > MAX_INTEREST_RATE:
             raise ValueError('Ставка не может превышать 999,99%.')
-        try:
-            debt_limit = max(int(get_setting('debt_limit_per_user', '50')), 1)
-        except (TypeError, ValueError):
-            debt_limit = 50
-        if Debt.query.filter_by(user_id=user.id).count() >= debt_limit:
-            raise ValueError(f'Достигнут лимит долгов: {debt_limit}.')
+        check_debt_limit(user, error_suffix='.')
         debt = Debt(
             user_id=user.id,
             bank_name=data['bank_name'][:100],

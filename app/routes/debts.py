@@ -3,7 +3,7 @@ from decimal import Decimal
 from flask import current_app, jsonify, request
 from flask_login import current_user
 from app.models import Debt, Payment, SplitPurchase
-from app.services.debt_service import get_demo_debts, get_user_debt
+from app.services.debt_service import check_debt_limit, get_demo_debts, get_user_debt
 from app.services.debt_accrual_service import (
     MAX_PENALTY_RATE,
     DebtView,
@@ -115,12 +115,7 @@ def init_app(app):
 
             _validate_debt_amounts(total_amount, remaining_amount)
             if not is_local_test_user():
-                try:
-                    debt_limit = max(int(get_setting('debt_limit_per_user', '50')), 1)
-                except (TypeError, ValueError):
-                    debt_limit = 50
-                if Debt.query.filter_by(user_id=current_user.id).count() >= debt_limit:
-                    raise ValueError(f'Достигнут лимит долгов: {debt_limit}')
+                check_debt_limit(current_user)
 
             debt = Debt(
                 user_id=current_user.id,
@@ -161,6 +156,7 @@ def init_app(app):
             return jsonify({'success': True, 'debt': debt.to_dict()}), 201
 
         except ValueError as e:
+            db.session.rollback()
             return jsonify({'success': False, 'error': str(e)}), 422
         except Exception:
             db.session.rollback()
