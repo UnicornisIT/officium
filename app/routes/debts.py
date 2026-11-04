@@ -44,7 +44,8 @@ def init_app(app):
 
         query = Debt.query.filter_by(status=status, user_id=current_user.id)
         if bank_filter:
-            query = query.filter(Debt.bank_name.ilike(f'%{bank_filter}%'))
+            term = bank_filter.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            query = query.filter(Debt.bank_name.ilike(f'%{term}%', escape='\\'))
         if type_filter:
             query = query.filter_by(debt_type=type_filter)
 
