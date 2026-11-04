@@ -1,10 +1,9 @@
 """Validated expense writes shared by the web UI and Telegram bot.
 
 The default transaction boundary and monthly generation match the web UI.
-With commit=False the caller owns commit/rollback (for example, the bot also
-clears its conversation). Monthly writes require the default boundary because
-the existing generator commits independently. Extra keyword fields are reserved
-for future integrations and rejected until explicitly supported.
+With commit=False the caller owns commit/rollback for non-monthly writes.
+With defer_commit=True monthly copies also join the caller's transaction.
+Extra keyword fields are rejected until explicitly supported.
 """
 
 import uuid
@@ -92,11 +91,14 @@ def _monthly_settings(expense):
     expense.monthly_settings_updated_at = utc_now()
 
 
-def _save(expense, action, commit):
+def _save(expense, action, commit, defer_commit=False):
     db.session.flush()
     record_activity(action, db.session.get(User, expense.user_id), entity_type='expense',
                     entity_id=expense.id, description=expense.category, commit=False)
-    if commit:
+    if defer_commit:
+        if expense.is_monthly:
+            generate_monthly_expenses_from_start_date(expense.id, commit=False)
+    elif commit:
         db.session.commit()
         if expense.is_monthly:
             generate_monthly_expenses_from_start_date(expense.id)
@@ -104,7 +106,7 @@ def _save(expense, action, commit):
 
 
 def create_expense(*, user_id, amount, title, expense_date, category=None,
-                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=None, vehicle_cost_kind=None, **extra_fields):
+                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=None, vehicle_cost_kind=None, defer_commit=False, **extra_fields):
     _check_options(extra_fields)
     if vehicle_cost_kind is not None:
         from app.services.vehicle_cost_service import KINDS
@@ -117,24 +119,26 @@ def create_expense(*, user_id, amount, title, expense_date, category=None,
         category = category or 'transport'
     values = _validate(amount=amount, category=category, title=title, expense_date=expense_date,
                        payment_method=payment_method, comment=comment)
-    if is_monthly and not commit:
+    # Deferred writes keep monthly copies atomic with the caller's receipt upload.
+    if is_monthly and not commit and not defer_commit:
         raise ValueError('Monthly expenses require commit=True')
     expense = Expense(user_id=user_id, is_monthly=is_monthly, vehicle_id=vehicle_id or None, vehicle_cost_kind=vehicle_cost_kind, **values)
     if is_monthly:
         _monthly_settings(expense)
     db.session.add(expense)
-    return _save(expense, 'expense_create', commit)
+    return _save(expense, 'expense_create', commit, defer_commit)
 
 
 def update_expense(*, user_id, expense_id, amount, category, title, expense_date,
-                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=_UNCHANGED, **extra_fields):
+                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=_UNCHANGED, defer_commit=False, **extra_fields):
     _check_options(extra_fields)
     expense = _owned_expense(user_id, expense_id)
     values = _validate(amount=amount, category=category, title=title, expense_date=expense_date,
                        payment_method=payment_method, comment=comment)
     vehicle_id = expense.vehicle_id if vehicle_id is _UNCHANGED else (vehicle_id or None)
     _check_vehicle_update(expense, vehicle_id, values['amount'])
-    if is_monthly and not commit:
+    # Deferred writes keep monthly copies atomic with the caller's receipt upload.
+    if is_monthly and not commit and not defer_commit:
         raise ValueError('Monthly expenses require commit=True')
     was_monthly = expense.is_monthly
     monthly_group_id = expense.monthly_group_id
@@ -156,7 +160,7 @@ def update_expense(*, user_id, expense_id, amount, category, title, expense_date
             group_expense.is_monthly = False
     else:
         expense.is_monthly = False
-    return _save(expense, 'expense_update', commit)
+    return _save(expense, 'expense_update', commit, defer_commit)
 
 
 def delete_expense(*, user_id, expense_id, commit=True, **extra_fields):

@@ -166,7 +166,7 @@ def _group_expenses(user_id, monthly_group_id):
     ).order_by(Expense.expense_date.asc(), Expense.id.asc()).all()
 
 
-def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, end_month, source_expense=None):
+def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, end_month, source_expense=None, *, commit=True):
     """Create missing monthly copies for one group in an inclusive month range."""
     stats = _stats(user_id=user_id, target_month=_month_key(end_month))
 
@@ -229,8 +229,11 @@ def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, en
                 except RuntimeError:
                     pass
 
-        db.session.commit()
+        if commit:
+            db.session.commit()
     except Exception:
+        if not commit:
+            raise
         db.session.rollback()
         stats['created'] = 0
         stats['errors'] += 1
@@ -242,7 +245,7 @@ def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, en
     return stats
 
 
-def generate_monthly_expenses_from_start_date(expense_id, end_month=None):
+def generate_monthly_expenses_from_start_date(expense_id, end_month=None, *, commit=True):
     """
     Generate all missing copies from the expense month to the current month.
 
@@ -266,6 +269,7 @@ def generate_monthly_expenses_from_start_date(expense_id, end_month=None):
         start_month,
         end_month,
         source_expense=source_expense,
+        commit=commit,
     )
 
 

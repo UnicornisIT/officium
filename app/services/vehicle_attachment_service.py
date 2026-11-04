@@ -39,7 +39,8 @@ def save_with_upload(user, operation, file_storage, kind):
     vehicles._user(user)
     _lock_owner(user)
     try:
-        row = operation(commit=False)
+        options = {'defer_commit': True} if kind in ('expense', 'spend') else {'commit': False}
+        row = operation(**options)
         actual_kind = ('expense' if isinstance(row, Expense) else 'vehicle_cost') if kind == 'spend' else kind
         entity_id = row.id
         if kind == 'refueling':
