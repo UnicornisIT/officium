@@ -113,7 +113,10 @@ class TelegramBotTestCase(unittest.TestCase):
         )
         with patch(
             'app.routes.telegram_bot.send_telegram_message', return_value=True
-        ) as sender:
+        ) as sender, patch(
+            'app.services.telegram_bot_service.check_mini_app_registered',
+            return_value=True,
+        ):
             self.client.post(
                 '/telegram/webhook',
                 json=self._private_update('/start'),

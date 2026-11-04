@@ -35,6 +35,8 @@ from app.services.server_update_service import (
 )
 from app.time_utils import utc_now
 from app.utils import client_ip, admin_required, superadmin_required, DICTIONARY_HELP, DICTIONARY_TYPES, DEFAULT_SETTINGS, normalize_dictionary_value, get_setting, record_activity, set_setting, telegram_feature_states
+from app.services.telegram_links_service import mini_app_url
+from app.services.telegram_mini_app_check_service import check_mini_app_registered
 from extensions import db
 
 
@@ -153,7 +155,7 @@ SETTINGS_GROUPS = (
         'kicker': 'Вход и регистрация',
         'fields': (
             {'key': 'telegram_login_enabled', 'type': 'bool', 'label': 'Вход через Telegram',
-             'help': 'Показывает кнопку входа через Telegram и открывает Mini App. Работает, только если в окружении заданы токен и имя бота.'},
+             'help': 'Для входа нужны токен и имя бота. Для Mini App также нужны публичный HTTPS-адрес и подтверждённый URL меню Telegram.'},
             {'key': 'telegram_bot_enabled', 'type': 'bool', 'label': 'Команды и ввод операций в Telegram-боте',
              'help': 'Включает /start, ручной и пошаговый ввод доходов и расходов. Применяется сразу, независимо от уведомлений. На сервере должен быть настроен приём сообщений через webhook или polling.'},
             {'key': 'registration_enabled', 'type': 'bool', 'label': 'Регистрация новых пользователей',
@@ -586,6 +588,14 @@ def init_app(app):
             update_settings=update_notifier.load_settings(),
             update_status_labels=update_notifier.STATUS_LABELS,
             update_bot_configured=bool(current_app.config.get('TELEGRAM_BOT_TOKEN')),
+            mini_app_enabled=current_app.config.get('TELEGRAM_MINI_APP_ENABLED'),
+            mini_app_url=mini_app_url(current_app.config.get('OFFICIUM_PUBLIC_URL')),
+            mini_app_registered=(
+                check_mini_app_registered(
+                    current_app.config.get('TELEGRAM_BOT_TOKEN'),
+                    current_app.config.get('OFFICIUM_PUBLIC_URL'),
+                ) if current_app.config.get('TELEGRAM_MINI_APP_ENABLED') else False
+            ),
         )
 
     @app.route('/admin/settings', methods=['GET', 'POST'])

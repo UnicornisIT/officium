@@ -22,7 +22,7 @@ from app.admin_presenters import (
     admin_status_label,
 )
 from app.services.telegram_frame_service import TelegramFrameSessionInterface, apply_frame_headers
-from app.utils import display_value
+from app.utils import display_value, value_is_enabled
 
 login_manager = LoginManager()
 login_manager.login_view = 'login'
@@ -203,6 +203,14 @@ def _configure_secret_key(app):
 
 
 def _validate_runtime_config(app):
+    if value_is_enabled(app.config.get('TELEGRAM_MINI_APP_ENABLED')) and not str(
+        app.config.get('OFFICIUM_PUBLIC_URL') or ''
+    ).strip():
+        app.logger.error(
+            'Telegram Mini App requires OFFICIUM_PUBLIC_URL (HTTPS). '
+            'Configure <OFFICIUM_PUBLIC_URL>/telegram-app in @BotFather: '
+            'Bot Settings → Menu Button → Configure Mini App.'
+        )
     if app.testing or app.config.get('ENVIRONMENT') != 'production':
         return
 

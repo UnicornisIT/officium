@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models import Debt, Income, TelegramConversationState, TelegramProcessedUpdate, User
 from app.services.telegram_transport import api_request, require_accepted
 from app.services.telegram_links_service import application_url
+from app.services.telegram_mini_app_check_service import check_mini_app_registered
 from app.services import feedback_service as feedback
 from app.services.debt_accrual_service import accrual_start_date, default_penalty_rate
 from app.services.finance_summary_service import get_finance_summary
@@ -1414,6 +1415,10 @@ def _main_menu_keyboard():
         url
         and url.startswith('https://')
         and telegram_feature_states(current_app.config)['mini_app']['effective']
+        and check_mini_app_registered(
+            current_app.config.get('TELEGRAM_BOT_TOKEN'),
+            current_app.config.get('OFFICIUM_PUBLIC_URL'),
+        )
     ):
         return {
             **MAIN_MENU_KEYBOARD,

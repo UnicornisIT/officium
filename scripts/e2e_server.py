@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 
 project_root = Path(__file__).resolve().parents[1]
@@ -28,6 +29,7 @@ os.environ.update({
     'TELEGRAM_BOT_USERNAME': 'officium_playwright_bot',
     'TELEGRAM_LOGIN_ENABLED': 'true',
     'TELEGRAM_MINI_APP_ENABLED': 'true',
+    'OFFICIUM_PUBLIC_URL': 'https://example.test',
     # Stand-in for https://web.telegram.org in telegram-web-frame.spec.js:
     # browsers block a public HTTPS page from framing 127.0.0.1.
     'TELEGRAM_WEB_FRAME_ANCESTORS': 'https://web.telegram.org http://telegram-web.localhost:5011',
@@ -36,6 +38,7 @@ os.environ.update({
 from waitress import serve  # noqa: E402
 
 from app import create_app  # noqa: E402
+from app.services.telegram_transport import TelegramDeliveryResult  # noqa: E402
 
 
 app = create_app()
@@ -43,4 +46,11 @@ with app.app_context():
     from flask_migrate import upgrade
     upgrade(directory=str(project_root / 'migrations'))
 
-serve(app, listen=os.getenv('E2E_LISTEN', '127.0.0.1:5010'), threads=4)
+with patch(
+    'app.services.telegram_mini_app_check_service.api_request',
+    return_value=(
+        TelegramDeliveryResult(accepted=True),
+        {'type': 'web_app', 'web_app': {'url': 'https://example.test/telegram-app'}},
+    ),
+):
+    serve(app, listen=os.getenv('E2E_LISTEN', '127.0.0.1:5010'), threads=4)
