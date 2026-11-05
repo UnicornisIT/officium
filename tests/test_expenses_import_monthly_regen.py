@@ -7,7 +7,10 @@ from decimal import Decimal
 
 from app import create_app
 from app.models import Expense, User
-from app.services.expense_service import create_expense
+from app.services.expense_service import create_expense, update_expense
+from app.services.monthly_expenses_service import (
+    generate_monthly_expenses_from_start_date,
+)
 from extensions import db
 
 
@@ -54,10 +57,11 @@ class ExpensesImportMonthlyRegenTestCase(unittest.TestCase):
             db.session.remove()
             db.drop_all()
 
-    def import_statement(self, invalid_second_row=False):
+    def import_statement(self, invalid_second_row=False, expense_date="2025-02-15"):
+        statement_date = date.fromisoformat(expense_date).strftime("%d.%m.%Y")
         statement = (
             "Дата операции;Описание операции;Сумма операции;Категория;Карта\n"
-            "15.02.2025;Beeline;-900,00;Связь;*1234\n"
+            f"{statement_date};Beeline;-900,00;Связь;*1234\n"
         )
         if invalid_second_row:
             statement += "16.02.2025;Groceries;-100,00;Супермаркеты;*1234\n"
@@ -78,7 +82,7 @@ class ExpensesImportMonthlyRegenTestCase(unittest.TestCase):
             "import_token": token,
             "row_count": "2" if invalid_second_row else "1",
             "action_0": "update_monthly",
-            "expense_date_0": "2025-02-15",
+            "expense_date_0": expense_date,
             "title_0": "Beeline",
             "category_0": "communication",
             "amount_0": "900.00",
@@ -133,3 +137,97 @@ class ExpensesImportMonthlyRegenTestCase(unittest.TestCase):
                 ],
             )
             self.assertTrue(all(row.amount == Decimal("750.00") for row in expenses))
+
+    def generate_existing_copies(self):
+        with self.app.app_context():
+            root = Expense.query.filter_by(
+                monthly_group_id=self.group_id, generated_from_id=None
+            ).one()
+            generate_monthly_expenses_from_start_date(root.id, end_month="2025-05")
+            return {
+                row.generated_for_month: row.id
+                for row in Expense.query.filter_by(monthly_group_id=self.group_id)
+            }
+
+    def test_import_refreshes_existing_future_copies_without_rewriting_history(self):
+        original_ids = self.generate_existing_copies()
+        self.assertEqual(self.import_statement().status_code, 302)
+        with self.app.app_context():
+            rows = {
+                row.generated_for_month: row
+                for row in Expense.query.filter_by(monthly_group_id=self.group_id)
+            }
+            self.assertEqual(
+                {month: row.id for month, row in rows.items()}, original_ids
+            )
+            self.assertEqual(rows["2025-02"].expense_date, date(2025, 2, 15))
+            self.assertEqual(rows["2025-03"].expense_date, date(2025, 3, 1))
+            self.assertEqual(rows["2025-03"].amount, Decimal("750.00"))
+            for month in (4, 5):
+                row = rows[f"2025-{month:02}"]
+                self.assertEqual(row.expense_date, date(2025, month, 15))
+                self.assertEqual(row.amount, Decimal("900.00"))
+                self.assertEqual(row.comment, "Statement import")
+                self.assertEqual(row.monthly_anchor_day, 15)
+                self.assertEqual(
+                    row.monthly_settings_updated_at,
+                    rows["2025-02"].monthly_settings_updated_at,
+                )
+
+    def test_import_preserves_explicitly_edited_future_occurrence(self):
+        ids = self.generate_existing_copies()
+        with self.app.app_context():
+            update_expense(
+                user_id=self.user_id,
+                expense_id=ids["2025-05"],
+                amount="1100",
+                category="communication",
+                title="Beeline",
+                expense_date="2025-05-07",
+                payment_method="cash",
+                comment="Separate correction",
+                is_monthly=True,
+            )
+        self.assertEqual(self.import_statement().status_code, 302)
+        with self.app.app_context():
+            april = db.session.get(Expense, ids["2025-04"])
+            may = db.session.get(Expense, ids["2025-05"])
+            self.assertEqual(april.expense_date, date(2025, 4, 15))
+            self.assertEqual(may.expense_date, date(2025, 5, 7))
+            self.assertEqual(may.amount, Decimal("1100.00"))
+            self.assertEqual(may.comment, "Separate correction")
+
+    def test_invalid_later_row_rolls_back_existing_future_copies(self):
+        ids = self.generate_existing_copies()
+        self.assertEqual(
+            self.import_statement(invalid_second_row=True).status_code, 400
+        )
+        with self.app.app_context():
+            for month, expense_id in ids.items():
+                row = db.session.get(Expense, expense_id)
+                self.assertEqual(row.expense_date, date.fromisoformat(month + "-01"))
+                self.assertEqual(row.amount, Decimal("750.00"))
+
+    def test_future_dates_keep_anchor_after_short_month(self):
+        ids = self.generate_existing_copies()
+        self.assertEqual(
+            self.import_statement(expense_date="2025-03-31").status_code, 302
+        )
+        with self.app.app_context():
+            self.assertEqual(
+                db.session.get(Expense, ids["2025-04"]).expense_date, date(2025, 4, 30)
+            )
+            self.assertEqual(
+                db.session.get(Expense, ids["2025-05"]).expense_date, date(2025, 5, 31)
+            )
+
+    def test_import_preserves_occurrence_dated_today(self):
+        ids = self.generate_existing_copies()
+        with self.app.app_context():
+            db.session.get(Expense, ids["2025-03"]).expense_date = date(2025, 3, 20)
+            db.session.commit()
+        self.assertEqual(self.import_statement().status_code, 302)
+        with self.app.app_context():
+            today = db.session.get(Expense, ids["2025-03"])
+            self.assertEqual(today.expense_date, date(2025, 3, 20))
+            self.assertEqual(today.amount, Decimal("750.00"))

@@ -245,6 +245,29 @@ def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, en
     return stats
 
 
+def refresh_future_monthly_expenses(source_expense, previous_settings_updated_at):
+    """Update future generated copies that still use the replaced settings."""
+    cutoff = max(_today(), source_expense.expense_date)
+    copies = Expense.query.filter(
+        Expense.user_id == source_expense.user_id,
+        Expense.monthly_group_id == source_expense.monthly_group_id,
+        Expense.is_monthly == True,  # noqa: E712
+        Expense.generated_from_id.isnot(None),
+        Expense.id != source_expense.id,
+        Expense.expense_date > cutoff,
+        Expense.monthly_settings_updated_at == previous_settings_updated_at,
+    ).all()
+    for copy in copies:
+        # Keep IDs and references; a distinct settings revision is a manual correction.
+        month = copy.generated_for_month or _month_key(copy.expense_date)
+        copy.expense_date = _date_in_month(source_expense.monthly_anchor_day, month)
+        copy.amount = source_expense.amount
+        copy.payment_method = source_expense.payment_method
+        copy.comment = source_expense.comment
+        copy.monthly_anchor_day = source_expense.monthly_anchor_day
+        copy.monthly_settings_updated_at = source_expense.monthly_settings_updated_at
+
+
 def generate_monthly_expenses_from_start_date(expense_id, end_month=None, *, commit=True):
     """
     Generate all missing copies from the expense month to the current month.
