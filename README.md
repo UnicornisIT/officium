@@ -430,7 +430,8 @@ Managed-деплой автоматически включает `officium-month
 Все тесты:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -v
+.\.venv\Scripts\python.exe -m pip install pytest==9.2.0
+.\.venv\Scripts\python.exe -m pytest tests
 ```
 
 Только Telegram-бот:
@@ -474,7 +475,7 @@ sanitized logs сохраняются как artifacts. Полный Ubuntu/syst
 
 ```bash
 git status
-python -m unittest discover -v
+python -m pytest tests
 flask db upgrade
 flask db current
 flask db heads
