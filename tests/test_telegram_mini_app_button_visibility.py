@@ -1,9 +1,15 @@
 import unittest
+from urllib.parse import urlsplit
 from unittest.mock import patch
 
+from test_telegram_mini_app import BOT_TOKEN, build_init_data
+
 from app import create_app
-from app.models import User
-from app.services.telegram_bot_service import _main_menu_keyboard
+from app.models import TelegramConversationState, User
+from app.services.telegram_bot_service import (
+    _main_menu_keyboard,
+    process_telegram_text_result,
+)
 from app.services import telegram_mini_app_check_service as mini_check
 from app.services.telegram_transport import TelegramDeliveryResult
 from app.utils import telegram_feature_states
@@ -86,6 +92,85 @@ class TelegramMiniAppButtonVisibilityTestCase(unittest.TestCase):
                 self.assertTrue(self.has_button())
             self.assertTrue(request.call_args.args[0].endswith('/getChatMenuButton'))
             self.assertEqual(request.call_args.kwargs['json'], {})
+
+    def test_menu_entry_does_not_launch_without_authentication_data(self):
+        with self.app.app_context(), patch(
+            'app.services.telegram_bot_service.check_mini_app_registered',
+            return_value=True,
+        ):
+            keyboard = _main_menu_keyboard()
+        buttons = [button for row in keyboard['keyboard'] for button in row]
+        self.assertIn({'text': 'Открыть Mini App'}, buttons)
+        self.assertFalse(any('web_app' in button for button in buttons))
+
+    def test_menu_entry_returns_inline_launcher_without_clearing_input(self):
+        with self.app.app_context(), patch(
+            'app.services.telegram_bot_service.check_mini_app_registered',
+            return_value=True,
+        ):
+            user = User(telegram_id=916001, username='mini_app_user')
+            db.session.add(user)
+            db.session.commit()
+            process_telegram_text_result(user, 'Расход')
+            state = TelegramConversationState.query.one()
+            state_id, step, data = state.id, state.step, state.data
+
+            result = process_telegram_text_result(user, 'Открыть Mini App')
+
+            self.assertEqual(result.reply_markup, {
+                'inline_keyboard': [[{
+                    'text': 'Открыть Mini App',
+                    'web_app': {'url': 'https://example.com/telegram-app'},
+                }]],
+            })
+            self.assertNotIn('keyboard', result.reply_markup)
+            db.session.expire_all()
+            state = TelegramConversationState.query.one()
+            self.assertEqual((state.id, state.step, state.data), (state_id, step, data))
+
+    def test_stale_menu_entry_rechecks_registration_and_feature_setting(self):
+        with self.app.app_context(), patch(
+            'app.services.telegram_bot_service.check_mini_app_registered',
+            return_value=False,
+        ) as check:
+            user = User(telegram_id=916001, username='mini_app_user')
+            db.session.add(user)
+            db.session.commit()
+            for enabled, registered in ((True, False), (False, True)):
+                with self.subTest(enabled=enabled, registered=registered):
+                    self.app.config['TELEGRAM_MINI_APP_ENABLED'] = enabled
+                    check.return_value = registered
+                    result = process_telegram_text_result(user, 'Открыть Mini App')
+                    self.assertIn('недоступен', result.reply_text)
+                    self.assertNotIn('inline_keyboard', result.reply_markup)
+                    self.assertFalse(any(
+                        'web_app' in button
+                        for row in result.reply_markup['keyboard'] for button in row
+                    ))
+
+    def test_inline_launch_supports_signed_login(self):
+        self.app.config['TELEGRAM_BOT_TOKEN'] = BOT_TOKEN
+        with self.app.app_context(), patch(
+            'app.services.telegram_bot_service.check_mini_app_registered',
+            return_value=True,
+        ):
+            user = User(telegram_id=916001, username='mini_app_user')
+            db.session.add(user)
+            db.session.commit()
+            user_id = user.id
+            result = process_telegram_text_result(user, 'Открыть Mini App')
+            url = result.reply_markup['inline_keyboard'][0][0]['web_app']['url']
+
+        client = self.app.test_client()
+        self.assertEqual(client.get(urlsplit(url).path).status_code, 200)
+        response = client.post('/auth/telegram-mini-app', json={
+            'init_data': build_init_data(user={'id': 916001, 'first_name': 'Mini App'}),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()['success'])
+        with client.session_transaction() as session:
+            self.assertEqual(session['_user_id'], str(user_id))
+            self.assertTrue(session['telegram_mini_app'])
 
     def test_mismatched_or_unavailable_menu_hides_button(self):
         for menu in (

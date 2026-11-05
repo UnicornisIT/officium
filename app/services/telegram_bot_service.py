@@ -268,7 +268,11 @@ CANCEL_WORDS = {'отмена', 'cancel', 'стоп', 'stop'}
 CONFIRM_WORDS = {'да', 'сохранить', 'ok', 'okay', 'yes', 'confirm'}
 REJECT_WORDS = {'нет', 'no', 'не', 'отмена', 'cancel'}
 _RATE_LIMIT_BUCKETS = {}
-FEEDBACK_BUTTONS = {'предложить идею': 'idea', 'сообщить об ошибке': 'bug'}
+BUTTON_COMMANDS = {
+    'предложить идею': 'idea',
+    'сообщить об ошибке': 'bug',
+    'открыть mini app': 'mini_app',
+}
 FEEDBACK_FLOWS = {'feedback_idea', 'feedback_bug'}
 FEEDBACK_PROMPTS = {
     'idea': 'Что вы хотели бы добавить или улучшить в officium? Опишите идею одним сообщением.',
@@ -337,6 +341,8 @@ def handle_telegram_update(update):
     user = User.query.filter_by(telegram_id=telegram_id).first()
     if not user:
         command, _ = _parse_command(text or '')
+        if command == 'mini_app':
+            return _open_mini_app(chat_id)
         introduction = _help_text() + '\n\n' if text and command == 'help' else ''
         return TelegramBotResult(
             chat_id=chat_id,
@@ -403,6 +409,8 @@ def process_telegram_text_result(user, text, chat_id=None):
         chat_id = chat_id or user.telegram_id
         text = str(text or '').strip()
         command, tokens = _parse_command(text)
+        if command == 'mini_app':
+            return _open_mini_app(chat_id)
         state = _get_active_state(user)
         explicit_command = _has_explicit_command(text)
         if state and state.flow in FEEDBACK_FLOWS:
@@ -1415,7 +1423,7 @@ def _help_text():
     return HELP_TEXT + (f'\n\nОткрыть officium: {url}' if url else '')
 
 
-def _main_menu_keyboard():
+def _mini_app_keyboard():
     url = application_url('/telegram-app')
     if (
         url
@@ -1426,11 +1434,27 @@ def _main_menu_keyboard():
             current_app.config.get('OFFICIUM_PUBLIC_URL'),
         )
     ):
+        # Inline launches provide signed initData; reply-keyboard launches do not.
+        return {'inline_keyboard': [[{'text': 'Открыть Mini App', 'web_app': {'url': url}}]]}
+    return None
+
+
+def _open_mini_app(chat_id):
+    keyboard = _mini_app_keyboard()
+    return _result(
+        chat_id,
+        'Откройте Mini App кнопкой ниже.' if keyboard else 'Mini App сейчас недоступен.',
+        keyboard or MAIN_MENU_KEYBOARD,
+    )
+
+
+def _main_menu_keyboard():
+    if _mini_app_keyboard():
         return {
             **MAIN_MENU_KEYBOARD,
             'keyboard': [
                 *MAIN_MENU_KEYBOARD['keyboard'],
-                [{'text': 'Открыть Mini App', 'web_app': {'url': url}}],
+                [{'text': 'Открыть Mini App'}],
             ],
         }
     return MAIN_MENU_KEYBOARD
@@ -1525,7 +1549,7 @@ def _update_context(update):
 
 
 def _parse_command(text):
-    button_command = FEEDBACK_BUTTONS.get(str(text or '').strip().casefold())
+    button_command = BUTTON_COMMANDS.get(str(text or '').strip().casefold())
     if button_command:
         return button_command, []
     tokens = _split_tokens(text)
@@ -1547,7 +1571,7 @@ def _parse_command(text):
 
 
 def _has_explicit_command(text):
-    if str(text or '').strip().casefold() in FEEDBACK_BUTTONS:
+    if str(text or '').strip().casefold() in BUTTON_COMMANDS:
         return True
     tokens = _split_tokens(text)
     if not tokens:
