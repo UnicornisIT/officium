@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from app import create_app
 from app.models import Expense, User
@@ -207,6 +208,30 @@ class ExpensesImportMonthlyRegenTestCase(unittest.TestCase):
                 row = db.session.get(Expense, expense_id)
                 self.assertEqual(row.expense_date, date.fromisoformat(month + "-01"))
                 self.assertEqual(row.amount, Decimal("750.00"))
+
+    def test_import_preserves_manual_correction_with_matching_timestamp(self):
+        ids = self.generate_existing_copies()
+        with self.app.app_context():
+            timestamp = db.session.get(
+                Expense, ids["2025-02"]
+            ).monthly_settings_updated_at
+            with patch("app.services.expense_service.utc_now", return_value=timestamp):
+                update_expense(
+                    user_id=self.user_id,
+                    expense_id=ids["2025-05"],
+                    amount="1100",
+                    category="communication",
+                    title="Beeline",
+                    expense_date="2025-05-07",
+                    payment_method="cash",
+                    comment="Separate correction",
+                    is_monthly=True,
+                )
+        self.assertEqual(self.import_statement().status_code, 302)
+        with self.app.app_context():
+            may = db.session.get(Expense, ids["2025-05"])
+            self.assertEqual(may.amount, Decimal("1100.00"))
+            self.assertEqual(may.expense_date, date(2025, 5, 7))
 
     def test_future_dates_keep_anchor_after_short_month(self):
         ids = self.generate_existing_copies()
