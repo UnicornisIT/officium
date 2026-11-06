@@ -64,8 +64,10 @@ def api_request(method, payload, bot_token=None, *, timeout=10):
     def failed(kind, code=None, retry=None):
         result = TelegramDeliveryResult(error_code=code, failure_kind=kind,
             retry_after=retry, correlation_id=correlation_id)
-        current_app.logger.warning('Telegram API failure: kind=%s code=%s correlation_id=%s',
-                                   kind, code, correlation_id)
+        logger = current_app.logger
+        log_failure = logger.debug if method == 'sendChatAction' else logger.warning
+        log_failure('Telegram API failure: kind=%s code=%s correlation_id=%s',
+                    kind, code, correlation_id)
         return result, None
 
     if not token:

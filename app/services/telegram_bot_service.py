@@ -378,6 +378,7 @@ def handle_telegram_update(update):
 def handle_telegram_update_once(update):
     update_id = _parse_update_id(update)
     if update_id is None:
+        _send_typing_indicator(update)
         return handle_telegram_update(update)
 
     if db.session.get(TelegramProcessedUpdate, update_id):
@@ -391,6 +392,7 @@ def handle_telegram_update_once(update):
         db.session.rollback()
         return TelegramBotResult(chat_id=_update_chat_id(update), reply_text=None)
 
+    _send_typing_indicator(update)
     result = handle_telegram_update(update)
     if not db.session.get(TelegramProcessedUpdate, update_id):
         db.session.add(TelegramProcessedUpdate(update_id=update_id))
@@ -398,6 +400,16 @@ def handle_telegram_update_once(update):
     _cleanup_expired_conversation_states()
     db.session.commit()
     return result
+
+
+def _send_typing_indicator(update):
+    chat_id = _update_chat_id(update)
+    if chat_id is None or not telegram_bot_enabled(current_app.config):
+        return
+    try:
+        api_request('sendChatAction', {'chat_id': chat_id, 'action': 'typing'}, timeout=(2, 3))
+    except Exception:
+        current_app.logger.debug('Telegram typing indicator failed.')
 
 
 def process_telegram_text(user, text):

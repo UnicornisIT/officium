@@ -19,6 +19,7 @@ from app.services.telegram_bot_service import (
     process_telegram_callback_result,
     process_telegram_text,
 )
+from app.services.telegram_transport import TelegramDeliveryResult
 from extensions import db
 
 
@@ -36,6 +37,11 @@ class TelegramBotTestCase(unittest.TestCase):
             'TELEGRAM_BOT_RATE_LIMIT_PER_MINUTE': 0,
         })
         self.client = self.app.test_client()
+        api = patch('app.services.telegram_bot_service.api_request', return_value=(
+            TelegramDeliveryResult(accepted=True), None,
+        ))
+        self.telegram_api = api.start()
+        self.addCleanup(api.stop)
 
         with self.app.app_context():
             db.create_all()

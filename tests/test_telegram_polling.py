@@ -39,6 +39,7 @@ class TelegramPollingTests(unittest.TestCase):
             return TelegramDeliveryResult(accepted=True), batch
 
         with patch.object(polling, 'api_request', side_effect=api) as request, \
+                patch.object(bot, 'api_request', return_value=(TelegramDeliveryResult(accepted=True), None)), \
                 patch.object(bot, 'send_telegram_message', return_value=True, side_effect=delivery_error) as sender, \
                 patch.object(bot, 'answer_telegram_callback_query', return_value=True) as answer:
             polling.run_polling(remove_webhook=remove_webhook, stop=stop)
