@@ -1465,8 +1465,9 @@ html[data-theme="dark"] .admin-login-page {
 .admin-switch-list input:checked + i { background: var(--admin-primary); }
 .admin-switch-list input:checked + i::after { transform: translateX(18px); }
 .admin-switch-list input:focus-visible + i { outline: 3px solid color-mix(in srgb, var(--admin-primary) 55%, transparent); outline-offset: 2px; }
-.admin-sticky-actions { position: sticky; z-index: 10; bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 16px; background: color-mix(in srgb, var(--admin-surface-raised) 90%, transparent); border: 1px solid var(--admin-border); border-radius: 14px; box-shadow: var(--admin-shadow); backdrop-filter: blur(14px); }
-.admin-sticky-actions > span { display: inline-flex; align-items: center; gap: 7px; color: var(--admin-text-soft); font-size: 0.72rem; }
+.admin-settings-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--admin-panel-gap); margin-top: var(--admin-panel-gap); padding: 13px 16px; background: var(--admin-surface-raised); border: 1px solid var(--admin-border); border-radius: 14px; box-shadow: var(--admin-shadow); }
+.admin-settings-actions > span { display: inline-flex; align-items: center; gap: 7px; color: var(--admin-text-soft); font-size: 0.72rem; }
+.admin-update-notifications { margin-top: 2rem; }
 
 .admin-export-card { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 0 14px; }
 .admin-export-card__icon { grid-row: 1 / 3; margin: 0; }
@@ -1778,8 +1779,8 @@ html[data-theme="dark"] .admin-login-page {
     .admin-release-grid,
     .admin-readiness-grid,
     .admin-update-plan ol { grid-template-columns: 1fr; }
-    .admin-sticky-actions { align-items: stretch; flex-direction: column; }
-    .admin-sticky-actions .btn { width: 100%; }
+    .admin-settings-actions { align-items: stretch; flex-direction: column; }
+    .admin-settings-actions .btn { width: 100%; }
     .admin-log-row__headline { align-items: flex-start; flex-direction: column; gap: 4px; }
     .admin-pagination { justify-content: space-between; gap: 8px; }
     .admin-pagination__summary { text-align: center; }

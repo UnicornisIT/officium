@@ -51,10 +51,10 @@
         </div>
     </section>
     {% endfor %}
-    <div class="admin-sticky-actions"><span>{{ icon('info', 17) }} Изменения применяются сразу после сохранения.</span><button type="submit" class="btn btn-primary">{{ icon('check-circle', 17) }} Сохранить настройки</button></div>
+    <div class="admin-settings-actions"><span>{{ icon('info', 17) }} Изменения применяются сразу после сохранения.</span><button type="submit" class="btn btn-primary">{{ icon('check-circle', 17) }} Сохранить настройки</button></div>
 </form>
 
-<section class="admin-panel" aria-labelledby="update-notifications-title">
+<section class="admin-panel admin-update-notifications" aria-labelledby="update-notifications-title">
     <div class="admin-panel__header"><div><p class="admin-page-kicker">Telegram</p><h2 id="update-notifications-title">Уведомления об обновлениях</h2><p>Проверка новых релизов и результаты установки сервера.</p></div></div>
     <div class="admin-panel__body">
         {% if not update_bot_configured %}<p class="alert alert-warning">Токен Telegram-бота не настроен на сервере. Включение уведомлений и тестовая отправка недоступны.</p>{% endif %}
