@@ -1709,6 +1709,23 @@ html[data-theme="dark"] .admin-login-page {
     .admin-export-grid,
     .admin-system-grid { grid-template-columns: 1fr; }
     .admin-filter-grid > * { grid-column: auto !important; }
+    .admin-filter-grid--logs {
+        gap: 16px;
+        align-items: start;
+    }
+    .admin-filter-grid--logs > .admin-control {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .admin-filter-grid--logs .admin-control input[type="date"] {
+        height: 44px;
+        line-height: 1.2;
+    }
+    .admin-filter-grid--logs > .admin-filter-check {
+        align-self: start;
+        margin-top: 4px;
+    }
     .admin-panel__header { padding: 17px; }
     .admin-page { --admin-panel-padding: 17px; }
 
