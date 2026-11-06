@@ -1926,8 +1926,15 @@ body, .navbar, .modal-content, .dropdown-menu, .toast, .alert, .table, .table th
 /* The page declares `color-scheme: light dark`, so without an explicit scheme
    and background the light theme would inherit a dark canvas from the OS. */
 html {
+    --sticky-navbar-offset: 5rem;
     color-scheme: light;
     background: var(--bg);
+    scroll-padding-top: var(--sticky-navbar-offset);
+}
+
+.vehicle-detail-grid > section,
+.vehicle-navigation {
+    scroll-margin-top: var(--sticky-navbar-offset);
 }
 
 html body {

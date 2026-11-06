@@ -14,8 +14,8 @@
 {% if vehicle.tractor %}<h3 class="h6">Текущий тягач</h3><a class="text-decoration-none btn btn-outline-primary vehicle-button vehicle-related-link" href="{{ url_for('vehicle_detail',vehicle_id=vehicle.tractor.id) }}">{{ vehicle.tractor.name }}</a>{% endif %}
 {% if vehicle.trailers %}<h3 class="h6 mt-3">Прицепы</h3>{% for trailer in vehicle.trailers %}<div class="vehicle-trailer">{{ visual(trailer) }}<a class="text-decoration-none btn btn-outline-primary vehicle-button vehicle-related-link" href="{{ url_for('vehicle_detail',vehicle_id=trailer.id) }}">{{ trailer.name }}</a></div>{% endfor %}{% endif %}
 </section>
-<section class="card p-4">
 {% set tab=vehicle_tab|default(request.args.get('tab','overview')) %}
+<section class="card p-4"{% if tab == 'documents' %} id="documents"{% endif %}>
 {% include 'vehicles/_navigation.html' %}
 {% if tab=='fuel' and vehicle.kind!='trailer' %}{% include 'vehicles/_fuel.html' %}
 {% elif tab=='maintenance' %}{% include 'vehicles/_maintenance.html' %}
