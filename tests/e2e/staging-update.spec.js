@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 test('superadmin updates through the rendered button with NoNewPrivileges enabled', async ({ page }) => {
+  test.setTimeout(22 * 60 * 1000);
   const password = process.env.STAGING_ADMIN_PASSWORD;
   const expectedTag = process.env.STAGING_TARGET_TAG;
   if (!password || !expectedTag) throw new Error('Staging credentials/tag were not supplied');

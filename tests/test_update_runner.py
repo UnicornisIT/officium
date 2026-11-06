@@ -419,6 +419,28 @@ class RequestedReleaseTestCase(unittest.TestCase):
         ipc = source[source.index('def handle_ipc_request'):source.index('def send_ipc_response')]
         self.assertNotIn('require_latest=False', ipc)
 
+    def test_ipc_start_accepts_password_admin_and_numeric_user_id(self):
+        payload = {
+            'protocol': 1,
+            'action': 'start_latest_update',
+            'tag': 'v1.2.3',
+            'operation_id': 'upd-aabbccddeeff',
+        }
+        with mock.patch.object(runner, 'load_runner_config', return_value={}):
+            for requested_by in ('admin', '42'):
+                with self.subTest(requested_by=requested_by), mock.patch.object(
+                    runner, 'request_background_update'
+                ) as schedule:
+                    runner.handle_ipc_request({**payload, 'requested_by': requested_by})
+                    schedule.assert_called_once_with(
+                        'v1.2.3',
+                        operation_id='upd-aabbccddeeff',
+                        requested_by=requested_by,
+                        emit=False,
+                    )
+            with self.assertRaisesRegex(runner.UpdateFailure, 'identity is invalid'):
+                runner.handle_ipc_request({**payload, 'requested_by': 'manual'})
+
 
 @unittest.skipUnless(_symlinks_supported(), 'symlinks are not available')
 class RollbackEnvironmentRepairTestCase(unittest.TestCase):
