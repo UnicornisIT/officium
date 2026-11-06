@@ -85,6 +85,12 @@
 .vehicle-document-card { border: 1px solid var(--bs-border-color); border-radius: 1rem; min-width: 0; overflow-wrap: anywhere; }
 .vehicle-document-form { display: grid; gap: 1rem; }
 .vehicle-document-form label { display: block; min-width: 0; }
+.vehicle-document-form label > small {
+    display: block;
+    margin-top: .35rem;
+    margin-bottom: .25rem;
+    line-height: 1.25;
+}
 .vehicle-document-form .vehicle-document-expense-switch { display: flex; align-items: center; gap: .75rem; cursor: pointer; }
 .vehicle-document-form .form-control, .vehicle-document-form .form-select { max-width: 100%; min-width: 0; }
 .vehicle-document-actions {
