@@ -175,7 +175,11 @@ jobs:
       - name: Install pinned Playwright package
         run: npm install --ignore-scripts
       - name: Run browser geometry, accessibility, console and network checks
-        run: npm run test:e2e -- --project=${{ matrix.browser }}
+        run: |
+          # Firefox requires HOME to be owned by the container user.
+          HOME=$(mktemp -d)
+          export HOME
+          npm run test:e2e -- --project=${{ matrix.browser }}
       - name: Upload Playwright evidence
         if: always()
         uses: actions/upload-artifact@v7
