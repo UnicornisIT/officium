@@ -542,18 +542,46 @@ def process_telegram_callback_result(user, chat_id, callback_data):
 def deliver_telegram_result(result, *, sender=None, callback_answerer=None):
     sender = sender or send_telegram_message
     callback_answerer = callback_answerer or answer_telegram_callback_query
+    accepted = True
     if result.callback_query_id:
         try:
             if not callback_answerer(result.callback_query_id, result.callback_answer_text):
+                accepted = False
                 current_app.logger.warning('Telegram callback answer rejected.')
         except Exception:
+            accepted = False
             current_app.logger.warning('Telegram callback answer failed.')
     if result.chat_id is not None and result.reply_text:
         try:
             if not sender(result.chat_id, result.reply_text, reply_markup=result.reply_markup):
+                accepted = False
                 current_app.logger.warning('Telegram reply rejected.')
         except Exception:
+            accepted = False
             current_app.logger.warning('Telegram reply delivery failed.')
+    return accepted
+
+
+def deliver_telegram_result_async(result, *, executor=None, sender=None, callback_answerer=None):
+    if not result.callback_query_id and (result.chat_id is None or not result.reply_text):
+        return
+
+    app = current_app._get_current_object()
+    if executor is None:
+        executor = app.extensions['telegram_delivery_executor']
+
+    def deliver():
+        # The worker gets its own Flask context and SQLAlchemy session scope.
+        with app.app_context():
+            if deliver_telegram_result(result, sender=sender, callback_answerer=callback_answerer):
+                app.logger.info('Telegram delivery completed.')
+
+    try:
+        executor.submit(deliver)
+    except RuntimeError:
+        app.logger.warning('Telegram delivery could not be queued.')
+    else:
+        app.logger.debug('telegram delivery queued: chat_id=%s', result.chat_id)
 
 
 def send_telegram_message(chat_id, text, bot_token=None, reply_markup=None, parse_mode=None):

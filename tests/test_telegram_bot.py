@@ -42,6 +42,10 @@ class TelegramBotTestCase(unittest.TestCase):
         ))
         self.telegram_api = api.start()
         self.addCleanup(api.stop)
+        executor = self.app.extensions['telegram_delivery_executor']
+        submit = patch.object(executor, 'submit', side_effect=lambda deliver: deliver())
+        submit.start()
+        self.addCleanup(submit.stop)
 
         with self.app.app_context():
             db.create_all()
