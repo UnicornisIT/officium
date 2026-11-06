@@ -245,7 +245,7 @@ class VehicleDocumentTests(test_vehicle_service.VehicleServiceTestCase):
             'value="2 500,75"',
             "Не потерять",
             '<option value="kasko" selected>',
-            '<option value="organization" selected>',
+            '<input type="hidden" name="payer" value="organization">',
             'name="create_expense" checked',
             '<details class="mb-3" open>',
         ]:
