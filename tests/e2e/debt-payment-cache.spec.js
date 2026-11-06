@@ -1,43 +1,26 @@
+const { execFileSync } = require('node:child_process');
 const { test: base, expect } = require('@playwright/test');
 
+function paymentDebtFixture(...args) {
+  return execFileSync(process.env.PYTHON || 'python', ['scripts/seed_playwright_payment_debt.py', ...args], {
+    encoding: 'utf8', timeout: 20_000,
+  }).trim();
+}
+
 const test = base.extend({
-  paymentDebtId: [async ({ page, playwright, baseURL }, use, testInfo) => {
+  paymentDebtId: [async ({ page }, use, testInfo) => {
     await page.route('https://telegram.org/js/telegram-web-app.js', route => route.fulfill({
       contentType: 'application/javascript', body: '',
     }));
     await page.goto('/dev-login/user', { waitUntil: 'domcontentloaded' });
-    const csrf = await page.locator('meta[name="csrf-token"]').getAttribute('content');
-    const api = await playwright.request.newContext({
-      baseURL, storageState: await page.context().storageState(), timeout: 10_000,
-    });
-    const headers = { 'X-CSRFToken': csrf };
-    let debtId;
+    const debtId = paymentDebtFixture();
     try {
-      const response = await api.post('/api/debts', {
-        headers,
-        data: {
-          bank_name: 'Проверка остатка', product_name: 'Тестовый кредит',
-          debt_type: 'consumer_credit', total_amount: '25000', remaining_amount: '25000',
-          minimum_payment: '2500', interest_rate: '0',
-        },
-      });
-      expect(response.status(), 'Create the test debt').toBe(201);
-      const created = await response.json();
-      expect(created.success).toBe(true);
-      debtId = created.debt.id;
       await page.goto('/');
       await use(debtId);
     } finally {
-      try {
-        if (debtId) {
-          // A timed-out browser action may still submit the payment during teardown.
-          if (testInfo.status === 'timedOut') await page.close();
-          const response = await api.delete(`/api/debts/${debtId}/delete`, { headers });
-          expect(response.ok(), 'Delete the test debt').toBeTruthy();
-        }
-      } finally {
-        await api.dispose();
-      }
+      // A timed-out browser action may still submit the payment during teardown.
+      if (testInfo.status === 'timedOut') await page.close();
+      paymentDebtFixture('--delete', debtId);
     }
   }, { timeout: 60_000 }],
 });
