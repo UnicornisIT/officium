@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from threading import Lock
 from typing import Optional, Union
 from uuid import uuid4
 
@@ -268,6 +269,9 @@ CANCEL_WORDS = {'отмена', 'cancel', 'стоп', 'stop'}
 CONFIRM_WORDS = {'да', 'сохранить', 'ok', 'okay', 'yes', 'confirm'}
 REJECT_WORDS = {'нет', 'no', 'не', 'отмена', 'cancel'}
 _RATE_LIMIT_BUCKETS = {}
+_CLEANUP_INTERVAL_SECONDS = 3600
+_LAST_CLEANUP_AT = None
+_CLEANUP_LOCK = Lock()
 BUTTON_COMMANDS = {
     'предложить идею': 'idea',
     'сообщить об ошибке': 'bug',
@@ -396,9 +400,7 @@ def handle_telegram_update_once(update):
     result = handle_telegram_update(update)
     if not db.session.get(TelegramProcessedUpdate, update_id):
         db.session.add(TelegramProcessedUpdate(update_id=update_id))
-    _cleanup_processed_updates()
-    _cleanup_expired_conversation_states()
-    db.session.commit()
+    _commit_update_with_periodic_cleanup()
     return result
 
 
@@ -1407,7 +1409,6 @@ def _save_state(user, chat_id, flow, step, data, state=None):
 
 
 def _get_active_state(user):
-    _cleanup_expired_conversation_states()
     state = TelegramConversationState.query.filter_by(telegram_id=user.telegram_id).first()
     if not state:
         return None
@@ -1431,6 +1432,24 @@ def _conversation_ttl_minutes():
     except (TypeError, ValueError):
         ttl = 30
     return max(ttl, 1)
+
+
+def _commit_update_with_periodic_cleanup():
+    global _LAST_CLEANUP_AT
+    # Bulk cleanup reclaims storage. State lookups already enforce expiry per user.
+    # Skip cleanup on concurrent updates and start the interval after a successful commit.
+    if _CLEANUP_LOCK.acquire(blocking=False):
+        try:
+            now = time.monotonic()
+            if _LAST_CLEANUP_AT is None or now - _LAST_CLEANUP_AT >= _CLEANUP_INTERVAL_SECONDS:
+                _cleanup_processed_updates()
+                _cleanup_expired_conversation_states()
+                db.session.commit()
+                _LAST_CLEANUP_AT = time.monotonic()
+                return
+        finally:
+            _CLEANUP_LOCK.release()
+    db.session.commit()
 
 
 def _cleanup_expired_conversation_states():
