@@ -154,6 +154,10 @@ jobs:
   browser-e2e:
     name: Playwright ${{ matrix.browser }}
     runs-on: ubuntu-24.04
+    container:
+      # Match package.json so the bundled browsers and system libraries are ready to use.
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --ipc=host
     timeout-minutes: 35
     strategy:
       fail-fast: false
@@ -170,10 +174,8 @@ jobs:
         with:
           node-version: '24'
       - run: python -m pip install --disable-pip-version-check -r requirements.txt
-      - name: Install pinned Playwright and browsers
-        run: |
-          npm install --ignore-scripts
-          npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Install pinned Playwright package
+        run: npm install --ignore-scripts
       - name: Run browser geometry, accessibility, console and network checks
         run: npm run test:e2e -- --project=${{ matrix.browser }}
       - name: Upload Playwright evidence
