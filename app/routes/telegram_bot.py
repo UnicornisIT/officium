@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import abort, current_app, jsonify, request
 
 from app.services.telegram_bot_service import (
+    TelegramDeliveryQueue,
     answer_telegram_callback_query,
     deliver_telegram_result_async,
     handle_telegram_update_once,
@@ -12,6 +13,7 @@ from app.services.telegram_bot_service import (
 
 
 def init_app(app, csrf=None):
+    app.extensions['telegram_delivery_queue'] = TelegramDeliveryQueue()
     # ThreadPoolExecutor drains pending deliveries on normal interpreter shutdown.
     app.extensions['telegram_delivery_executor'] = ThreadPoolExecutor(
         max_workers=app.config['TELEGRAM_DELIVERY_WORKERS'],

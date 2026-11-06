@@ -2,10 +2,11 @@ import json
 import re
 import shlex
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from threading import Lock
+from threading import Lock, RLock
 from typing import Optional, Union
 from uuid import uuid4
 
@@ -391,6 +392,8 @@ def handle_telegram_update_once(update):
     if db.session.get(TelegramProcessedUpdate, update_id):
         return TelegramBotResult(chat_id=_update_chat_id(update), reply_text=None)
 
+    # A slow typing request must not hold the write lock taken by the marker insert.
+    _send_typing_indicator(update)
     marker = TelegramProcessedUpdate(update_id=update_id)
     db.session.add(marker)
     try:
@@ -399,7 +402,6 @@ def handle_telegram_update_once(update):
         db.session.rollback()
         return TelegramBotResult(chat_id=_update_chat_id(update), reply_text=None)
 
-    _send_typing_indicator(update)
     result = handle_telegram_update(update)
     if not db.session.get(TelegramProcessedUpdate, update_id):
         db.session.add(TelegramProcessedUpdate(update_id=update_id))
@@ -567,6 +569,37 @@ def deliver_telegram_result(result, *, sender=None, callback_answerer=None):
     return accepted
 
 
+class TelegramDeliveryQueue:
+    def __init__(self):
+        self._lock = RLock()
+        self._pending = {}
+
+    def submit(self, executor, key, deliver, logger):
+        with self._lock:
+            if key in self._pending:
+                self._pending[key].append(deliver)
+                return
+            self._pending[key] = deque([deliver])
+            try:
+                executor.submit(self._drain, key, logger)
+            except RuntimeError:
+                del self._pending[key]
+                raise
+
+    def _drain(self, key, logger):
+        while True:
+            with self._lock:
+                pending = self._pending[key]
+                if not pending:
+                    del self._pending[key]
+                    return
+                deliver = pending.popleft()
+            try:
+                deliver()
+            except Exception:
+                logger.warning('Telegram delivery worker failed.')
+
+
 def deliver_telegram_result_async(result, *, executor=None, sender=None, callback_answerer=None):
     if not result.callback_query_id and (result.chat_id is None or not result.reply_text):
         return
@@ -581,8 +614,9 @@ def deliver_telegram_result_async(result, *, executor=None, sender=None, callbac
             if deliver_telegram_result(result, sender=sender, callback_answerer=callback_answerer):
                 app.logger.info('Telegram delivery completed.')
 
+    key = ('chat', str(result.chat_id)) if result.chat_id is not None else ('callback', result.callback_query_id)
     try:
-        executor.submit(deliver)
+        app.extensions['telegram_delivery_queue'].submit(executor, key, deliver, app.logger)
     except RuntimeError:
         app.logger.warning('Telegram delivery could not be queued.')
     else:

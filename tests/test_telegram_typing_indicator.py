@@ -1,9 +1,54 @@
+import sqlite3
 import unittest
+from contextlib import closing
 from unittest.mock import call, patch
 
 import test_telegram_bot
+from app import create_app
 from app.services import telegram_bot_service as bot
 from app.services.telegram_transport import TelegramDeliveryResult
+from extensions import db
+
+
+def test_typing_does_not_hold_sqlite_write_lock(tmp_path):
+    database = tmp_path / 'typing.sqlite'
+    app = create_app(
+        {
+            'TESTING': True,
+            'SECRET_KEY': 'typing-test-secret',
+            'SQLALCHEMY_DATABASE_URI': f'sqlite:///{database.as_posix()}',
+            'SQLALCHEMY_ENGINE_OPTIONS': {},
+            'TELEGRAM_BOT_ENABLED': True,
+            'TELEGRAM_BOT_TOKEN': 'test-token',
+            'TELEGRAM_WEBHOOK_SECRET': 'test-secret',
+        }
+    )
+    write_available = False
+
+    def send_typing(*args, **kwargs):
+        nonlocal write_available
+        with closing(sqlite3.connect(database, timeout=0)) as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            write_available = True
+        return TelegramDeliveryResult(accepted=True), None
+
+    with app.app_context():
+        db.create_all()
+        try:
+            with patch.object(bot, 'api_request', side_effect=send_typing):
+                bot.handle_telegram_update_once(
+                    {
+                        'update_id': 1,
+                        'message': {
+                            'chat': {'id': 101, 'type': 'private'},
+                            'text': '/help',
+                        },
+                    }
+                )
+            assert write_available
+        finally:
+            db.session.remove()
+            db.engine.dispose()
 
 
 class TelegramTypingIndicatorTests(unittest.TestCase):

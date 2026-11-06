@@ -13,10 +13,12 @@ class TelegramAsyncDeliveryTests(unittest.TestCase):
     tearDown = test_telegram_bot.TelegramBotTestCase.tearDown
     _private_update = test_telegram_bot.TelegramBotTestCase._private_update
 
-    def post_update(self):
+    def post_update(self, update_id=1, chat_id=123456):
         return self.client.post(
             '/telegram/webhook',
-            json=self._private_update('Расход'),
+            json=dict(
+                self._private_update('Расход', chat_id=chat_id), update_id=update_id
+            ),
             headers={'X-Telegram-Bot-Api-Secret-Token': 'test-secret'},
         )
 
@@ -34,7 +36,8 @@ class TelegramAsyncDeliveryTests(unittest.TestCase):
             [c.args[0] for c in self.telegram_api.call_args_list], ['sendChatAction']
         )
         submit.assert_called_once()
-        submit.call_args.args[0]()
+        worker, *args = submit.call_args.args
+        worker(*args)
         self.assertEqual(self.telegram_api.call_args.args[0], 'sendMessage')
 
         self.assertEqual(self.post_update().status_code, 200)
@@ -68,3 +71,38 @@ class TelegramAsyncDeliveryTests(unittest.TestCase):
 
         self.assertIn('Telegram reply delivery failed.', '\n'.join(logs.output))
         self.assertNotIn('private network detail', '\n'.join(logs.output))
+
+    def test_webhook_serializes_one_chat_without_blocking_another(self):
+        started, release, other_chat_sent = Event(), Event(), Event()
+        sent = []
+
+        def send_reply(chat_id, text, **kwargs):
+            if chat_id == 123456 and not started.is_set():
+                started.set()
+                if not release.wait(5):
+                    raise TimeoutError
+            sent.append(chat_id)
+            if chat_id == 123457:
+                other_chat_sent.set()
+            return True
+
+        with (
+            ThreadPoolExecutor(max_workers=2) as executor,
+            patch.dict(self.app.extensions, telegram_delivery_executor=executor),
+            patch(
+                'app.routes.telegram_bot.send_telegram_message', side_effect=send_reply
+            ),
+        ):
+            try:
+                self.assertEqual(self.post_update().status_code, 200)
+                self.assertTrue(started.wait(5))
+                self.assertEqual(self.post_update(update_id=2).status_code, 200)
+                self.assertEqual(
+                    self.post_update(update_id=3, chat_id=123457).status_code, 200
+                )
+                self.assertTrue(other_chat_sent.wait(5))
+                self.assertNotIn(123456, sent)
+            finally:
+                release.set()
+
+        self.assertEqual(sent, [123457, 123456, 123456])
