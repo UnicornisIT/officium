@@ -14,7 +14,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     if (width === 390) await page.goto('/telegram-app');
     await page.goto('/vehicles/new');
     // All specs share one database: do not match vehicle-costs fixtures in q.
-    const suffix = `maintenance-${width}-${theme}-${info.project.name}-${info.retry}`;
+    const suffix = `maintenance-${width}-${theme}-${info.project.name}-${info.repeatEachIndex}-${info.retry}`;
     await page.locator('#v_name').fill(`Учебный автомобиль ${suffix}`);
     await page.locator('#v_company').check();
     await page.getByRole('button', {name:'Сохранить автомобиль', exact:true}).click();
@@ -47,8 +47,17 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await templateForm.getByRole('button', {name:'Добавить позицию'}).click();
     const oil = page.locator('article').filter({has:page.getByRole('heading', {name:'Масло ДВС и масляный фильтр', exact:true})});
     await oil.getByText('Настроить позицию', {exact:true}).click();
+    const oilEditor = oil.locator('details').filter({has:page.getByRole('button', {name:'Сохранить позицию'})});
+    // The expanding panel clips its contents until the height animation settles.
+    await expect(oilEditor).not.toHaveClass(/vehicle-disclosure-moving/);
     await oil.getByLabel('Интервал, км', {exact:true}).fill('7000');
-    await oil.getByRole('button', {name:'Сохранить позицию'}).click();
+    const editPath = await oilEditor.locator('form').getAttribute('action');
+    const [oilSaved] = await Promise.all([
+      page.waitForResponse(response =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname === editPath),
+      oil.getByRole('button', {name:'Сохранить позицию'}).click(),
+    ]);
+    expect(oilSaved.status()).toBe(302);
     await expect(oil).toContainText('19 455 км');
     const today = await page.locator('input[name="last_done_date"]').first().getAttribute('max');
     await post(`/vehicles/${id}/odometer`, {reading_date:today, odometer_km:'12455'});
