@@ -44,7 +44,7 @@ class UpdateNotifierTests(unittest.TestCase):
         self.get = self.github.start()
         response = Mock(status_code=200)
         response.json.return_value = {'ok': True, 'result': {'message_id': 1}}
-        self.telegram = patch('app.services.telegram_transport.requests.post', return_value=response)
+        self.telegram = patch('app.services.telegram_transport.requests.Session.post', return_value=response)
         self.post = self.telegram.start()
         self.addCleanup(self.github.stop)
         self.addCleanup(self.telegram.stop)
