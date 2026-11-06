@@ -1,10 +1,10 @@
 from datetime import date
 from decimal import Decimal
 from flask import current_app, jsonify, request
-from app.models import Payment
+from app.models import DebtPaymentPlan, Payment
 from app.services.debt_service import get_user_debt
 from app.services.payment_service import accept_bank_remaining, add_payment, delete_payment, update_payment
-from app.utils import parse_date, parse_decimal
+from app.utils import is_local_test_user, parse_date, parse_decimal
 from extensions import db
 
 
@@ -19,8 +19,46 @@ def init_app(app):
         return jsonify({
             'success': True,
             'debt': debt.to_dict(),
-            'payments': [p.to_dict() for p in payments]
+            'payments': [p.to_dict() for p in payments],
+            'planned_payments': [plan.to_dict() for plan in debt.payment_plans],
         })
+
+    @app.route('/api/debts/<int:debt_id>/payment-plans', methods=['POST'])
+    def api_add_payment_plan(debt_id):
+        debt = None if is_local_test_user() else get_user_debt(debt_id)
+        if not debt:
+            return jsonify({'success': False, 'error': 'Долг не найден'}), 404
+        if debt.status != 'active':
+            return jsonify({'success': False, 'error': 'Нельзя планировать платеж по архивному долгу'}), 422
+
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({'success': False, 'error': 'Нет данных'}), 400
+        try:
+            amount = parse_decimal(data.get('amount'), 'Сумма платежа')
+            due_date = parse_date(data.get('payment_date'), 'Дата по плану', required=True)
+            if amount <= 0:
+                raise ValueError('Сумма платежа должна быть больше нуля')
+            if due_date < date.today():
+                raise ValueError('Дата по плану не может быть в прошлом')
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 422
+        plan = DebtPaymentPlan(
+            debt_id=debt.id, amount=amount, due_date=due_date,
+            comment=str(data.get('comment') or '').strip() or None,
+        )
+        db.session.add(plan)
+        db.session.commit()
+        return jsonify({'success': True, 'plan': plan.to_dict()})
+
+    @app.route('/api/debts/<int:debt_id>/payment-plans/<int:plan_id>', methods=['DELETE'])
+    def api_delete_payment_plan(debt_id, plan_id):
+        if is_local_test_user() or not get_user_debt(debt_id):
+            return jsonify({'success': False, 'error': 'Долг не найден'}), 404
+        if not DebtPaymentPlan.query.filter_by(id=plan_id, debt_id=debt_id).delete():
+            return jsonify({'success': False, 'error': 'План платежа не найден'}), 404
+        db.session.commit()
+        return jsonify({'success': True})
 
     @app.route('/api/debts/<int:debt_id>/payments', methods=['POST'])
     def api_add_payment(debt_id):
@@ -31,7 +69,7 @@ def init_app(app):
             return jsonify({'success': False, 'error': 'Нельзя вносить платеж в архивный долг'}), 422
 
         data = request.get_json(silent=True)
-        if not data:
+        if not isinstance(data, dict) or not data:
             return jsonify({'success': False, 'error': 'Нет данных'}), 400
 
         try:
@@ -60,6 +98,18 @@ def init_app(app):
             else:
                 payment_date = date.today()
 
+            if payment_date > date.today():
+                raise ValueError('Укажите фактическую дату оплаты или запланируйте платеж')
+            plan_id = data.get('plan_id')
+            if plan_id is not None:
+                if is_local_test_user():
+                    return jsonify({'success': False, 'error': 'План платежа не найден'}), 404
+                if type(plan_id) is not int or not 0 < plan_id <= 2147483647:
+                    raise ValueError('Некорректный идентификатор плана платежа')
+                # Consume the plan in the same transaction that records the payment.
+                if not DebtPaymentPlan.query.filter_by(id=plan_id, debt_id=debt_id).delete():
+                    return jsonify({'success': False, 'error': 'План платежа уже выполнен или удален'}), 404
+
             payment = add_payment(
                 debt,
                 amount,
@@ -75,7 +125,7 @@ def init_app(app):
                 manual_breakdown=manual_breakdown,
             )
             db.session.refresh(debt)
-            debt_cleared = Decimal(str(debt.remaining_amount or 0)) <= Decimal('0.00')
+            debt_cleared = debt.accrual_state()['principal'] <= Decimal('0.00')
 
             return jsonify({
                 'success': True,
@@ -132,6 +182,8 @@ def init_app(app):
                 scheduled_payment_amount = None
 
             payment_date = parse_date(data.get('payment_date'), 'Дата платежа', required=True)
+            if payment_date > date.today():
+                raise ValueError('Укажите фактическую дату оплаты')
             payment = update_payment(
                 debt,
                 payment,

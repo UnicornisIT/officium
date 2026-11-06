@@ -25,8 +25,22 @@ const test = base.extend({
   }, { timeout: 60_000 }],
 });
 
-test('payment updates the debt balance before any page reload', async ({ page, paymentDebtId: debtId }) => {
+test('confirming a planned payment updates the debt balance before any page reload', async ({ page, paymentDebtId: debtId }) => {
   const card = page.locator(`.debt-card[data-id="${debtId}"]`);
+  const paymentModal = page.locator('#paymentModal');
+  await expect(card.locator('.debt-card__amount-main')).toContainText(/25\s*000/);
+  await card.locator('.btn-action--pay').click();
+  await expect(paymentModal).toBeVisible();
+  const today = await page.locator('#pm_date').inputValue();
+  const dueDate = new Date(`${today}T00:00:00Z`);
+  dueDate.setUTCDate(dueDate.getUTCDate() + 5);
+  await page.locator('#pm_amount').fill('2500');
+  await page.locator('#pm_date').fill(dueDate.toISOString().slice(0, 10));
+  await Promise.all([
+    page.waitForEvent('load'),
+    paymentModal.getByRole('button', { name: 'Запланировать платёж' }).click(),
+  ]);
+  await expect(card.getByText(/Запланировано 2\s*500/)).toBeVisible();
   await expect(card.locator('.debt-card__amount-main')).toContainText(/25\s*000/);
   const observationKey = `payment-before-reload-${debtId}`;
   await page.evaluate(({ debtId, observationKey }) => {
@@ -50,13 +64,15 @@ test('payment updates the debt balance before any page reload', async ({ page, p
       document.getElementById('paymentModal').addEventListener('shown.bs.modal', resolve, { once: true });
     });
   });
-  await card.getByRole('button', { name: /Платеж/ }).click();
+  await card.locator('.btn-action--history').click();
+  await page.locator('#historyModal').getByRole('button', { name: 'Записать оплату' }).click();
   await page.evaluate(() => window.paymentFormReady.then(() => { delete window.paymentFormReady; }));
-  await page.locator('#pm_amount').fill('2500');
   await expect(page.locator('#pm_amount')).toHaveValue(/2\s*500/);
+  await expect(page.locator('#pm_date')).toHaveValue(today);
   const paymentResponse = page.waitForResponse(r =>
     r.url().endsWith(`/api/debts/${debtId}/payments`) && r.request().method() === 'POST');
-  await page.locator('#paymentModal').getByRole('button', { name: 'Внести платеж' }).click();
+  const refreshed = page.waitForEvent('domcontentloaded', { timeout: 30_000 });
+  await page.locator('#paymentModal').getByRole('button', { name: 'Записать оплату' }).click();
   const response = await paymentResponse;
   expect(response.ok(), 'Submit the debt payment').toBeTruthy();
   const paid = await response.json();
@@ -69,4 +85,6 @@ test('payment updates the debt balance before any page reload', async ({ page, p
     expect(observed.amount).toMatch(/22\s*500/);
     expect(observed.progress).toMatch(/22\s*500/);
   }).toPass({ timeout: 8_000 });
+  await refreshed;
+  await expect(card.getByText(/Запланировано/)).toHaveCount(0);
 });

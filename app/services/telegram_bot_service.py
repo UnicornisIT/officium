@@ -879,7 +879,10 @@ def _process_payment_message(user, chat_id, state, text):
         return _result(chat_id, 'Когда был платеж? Можно написать дату или выбрать кнопку.', _date_keyboard(include_skip=False))
 
     if state.step == 'date':
-        data['payment_date'] = _parse_date_value(text).isoformat()
+        payment_date = _parse_date_value(text)
+        if payment_date > date.today():
+            raise ValueError('Укажите фактическую дату оплаты. Будущий платеж можно запланировать в Mini App.')
+        data['payment_date'] = payment_date.isoformat()
         _save_state(user, chat_id, flow='payment', step='confirm', data=data, state=state)
         return _payment_confirm_result(user, chat_id, data)
 
@@ -1066,19 +1069,22 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
         debt = Debt.query.filter_by(id=int(data['debt_id']), user_id=user.id, status='active').first()
         if not debt:
             raise ValueError('Долг не найден.')
+        payment_date = _parse_date_value(data['payment_date'])
+        if payment_date > date.today():
+            raise ValueError('Укажите фактическую дату оплаты. Будущий платеж можно запланировать в Mini App.')
         # add_payment commits both the payment and the completed conversation.
         _clear_state(user)
         payment = add_payment(
             debt,
             _parse_money(data['amount']),
-            payment_date=_parse_date_value(data['payment_date']),
+            payment_date=payment_date,
             comment='Telegram',
             is_early_repayment=bool(data.get('is_early_repayment')),
         )
         db.session.refresh(debt)
-        remaining = debt.remaining_amount
-        # States exclude payments on as_of itself, including future payments.
-        total = debt.total_debt(today=max(date.today(), payment.payment_date + timedelta(days=1)))
+        accrual = debt.accrual_state()
+        remaining = accrual['principal']
+        total = accrual['total']
         balance_text = f'Задолженность: {_format_money(remaining)}.'
         if total != remaining:
             balance_text = (

@@ -140,6 +140,10 @@ class Debt(db.Model):
 
     user = db.relationship('User', back_populates='debts')
     payments = db.relationship('Payment', backref='debt', lazy=True, cascade='all, delete-orphan')
+    payment_plans = db.relationship(
+        'DebtPaymentPlan', cascade='all, delete-orphan',
+        order_by='DebtPaymentPlan.due_date, DebtPaymentPlan.id',
+    )
     split_purchases = db.relationship('SplitPurchase', back_populates='debt', lazy=True, cascade='all, delete-orphan')
 
     def interest_rate_for(self, value_date=None):
@@ -247,6 +251,8 @@ class Debt(db.Model):
             'product_name': self.product_name,
             'total_amount': float(self.total_amount),
             'remaining_amount': float(self.remaining_amount),
+            'current_principal': float(accrual['principal']),
+            'today': today.isoformat(),
             'minimum_payment': float(self.minimum_payment) if self.minimum_payment else None,
             'first_payment_amount': float(self.first_payment_amount) if self.first_payment_amount is not None else None,
             'is_first_payment_pending': self.is_first_payment_pending(),
@@ -292,7 +298,7 @@ class Debt(db.Model):
             'opening_interest_amount': float(self.opening_interest_amount or 0),
             'opening_penalty_amount': float(self.opening_penalty_amount or 0),
             'suggested_interest_start': accrual['suggested_interest_start'].strftime('%Y-%m-%d') if accrual['suggested_interest_start'] else None,
-            'paid_percent': round((1 - float(self.remaining_amount) / float(self.total_amount)) * 100, 1) if float(self.total_amount) > 0 else 100,
+            'paid_percent': round((1 - float(accrual['principal']) / float(self.total_amount)) * 100, 1) if float(self.total_amount) > 0 else 100,
             'created_at': self.created_at.strftime('%d.%m.%Y') if self.created_at else None,
         }
 
@@ -354,6 +360,25 @@ class Payment(db.Model):
 
     def __repr__(self):
         return f'<Payment {self.amount} for debt {self.debt_id}>'
+
+
+class DebtPaymentPlan(db.Model):
+    __tablename__ = 'debt_payment_plans'
+    __table_args__ = {'sqlite_autoincrement': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    debt_id = db.Column(db.Integer, db.ForeignKey('debts.id', ondelete='CASCADE'), nullable=False, index=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    due_date = db.Column(db.Date, nullable=False)
+    comment = db.Column(db.Text)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'amount': float(self.amount),
+            'due_date': self.due_date.isoformat(),
+            'comment': self.comment,
+        }
 
 
 class SplitPurchase(db.Model):

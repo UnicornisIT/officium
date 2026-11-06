@@ -547,7 +547,7 @@
                         <div class="payment-preset-shortcuts">
                             <button type="button" class="payment-preset-shortcut" id="pm_apply_minimum"
                                     onclick="applyMinimumPayment()" disabled
-                                    title="Подставить сумму и дату ближайшего платежа">
+                                    title="Подставить сумму ближайшего платежа">
                                 <i class="bi bi-calendar-check"></i>
                                 <span id="pm_required_payment_label">Ближайший платёж</span>
                                 <strong id="pm_min_payment">—</strong>
@@ -562,8 +562,9 @@
                         </div>
                     </div>
                     <div class="col-12">
-                        <label class="form-label">Дата платежа</label>
+                        <label class="form-label" for="pm_date">Дата платежа</label>
                         <input type="date" class="form-control" id="pm_date">
+                        <div class="form-text">Для оплаты укажи день, когда внёс деньги. Для плана укажи день, когда собираешься оплатить.</div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Основной долг</label>
@@ -600,8 +601,11 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Отмена</button>
-                <button type="button" class="btn btn-success" onclick="submitPayment()">
-                    <i class="bi bi-check-circle me-1"></i>Внести платеж
+                <button type="button" class="btn btn-outline-primary" id="pm_plan" onclick="submitPayment(true)">
+                    Запланировать платёж
+                </button>
+                <button type="button" class="btn btn-success" id="pm_record" onclick="submitPayment()">
+                    <i class="bi bi-check-circle me-1"></i>Записать оплату
                 </button>
             </div>
         </div>
@@ -777,7 +781,7 @@
 
 {% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=8"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=9"></script>
 <script src="{{ url_for('static', filename='js/modules-menu.js', v='4') }}"></script>
 {% if telegram_login_launch %}
 <script src="{{ url_for('static', filename='js/telegram-login.js') }}?v={{ config.APP_VERSION|urlencode }}" data-available="{{ 'true' if telegram_login_launch.available else 'false' }}" data-bot-id="{{ telegram_login_launch.bot_id or '' }}" data-auth-url="{{ telegram_login_launch.auth_url }}"></script>

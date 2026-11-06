@@ -8,10 +8,11 @@ let currentDebtId = null;       // ID долга для операций
 let pendingArchiveId = null;    // ID долга, ожидающего архивации
 let currentEditPayment = null;
 let paymentHistoryCache = new Map();
+let plannedPaymentHistory = new Map();
 let currentScheduleDebt = null;
 let currentSplitPurchaseDebtId = null;
 let currentMinimumPaymentAmount = null;
-let currentMinimumPaymentDate = null;
+let currentPaymentPlanId = null;
 let currentPlannedEarlyRepaymentAmount = null;
 
 // ── Bootstrap объекты ──
@@ -1142,19 +1143,20 @@ async function saveDebt() {
 // МОДАЛКА: Внесение платежа
 // ══════════════════════════════════════════════════════════
 
-async function openPaymentModal(debtId) {
+async function openPaymentModal(debtId, plan = null) {
     currentDebtId = debtId;
+    currentPaymentPlanId = plan?.id ?? null;
     currentMinimumPaymentAmount = null;
-    currentMinimumPaymentDate = null;
     currentPlannedEarlyRepaymentAmount = null;
     document.getElementById('paymentFormError').classList.add('d-none');
-    document.getElementById('pm_amount').value  = '';
+    document.getElementById('pm_plan').classList.toggle('d-none', Boolean(plan));
+    document.getElementById('pm_amount').value = plan ? formatNumberInputValue(String(plan.amount)) : '';
     document.getElementById('pm_principal_amount').value = '';
     document.getElementById('pm_interest_amount').value = '';
     document.getElementById('pm_penalty_amount').value = '';
     document.getElementById('pm_fee_amount').value = '';
     document.getElementById('pm_bank_remaining_after_payment').value = '';
-    document.getElementById('pm_comment').value = '';
+    document.getElementById('pm_comment').value = plan?.comment || '';
     document.getElementById('pm_is_early_repayment').checked = false;
     document.getElementById('pm_scheduled_payment_amount').value = '';
     const minimumPaymentButton = document.getElementById('pm_apply_minimum');
@@ -1168,15 +1170,13 @@ async function openPaymentModal(debtId) {
     document.getElementById('pm_early_payment').textContent = '—';
 
     // Устанавливаем сегодняшнюю дату
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('pm_date').value = today;
-
     try {
         const resp = await fetch(`/api/debts/${debtId}`);
         const data = await resp.json();
         if (!data.success) throw new Error(data.error);
 
         const d = data.debt;
+        document.getElementById('pm_date').value = d.today;
         document.getElementById('pm_name').textContent = `${d.bank_name} — ${d.product_name}`;
         document.getElementById('pm_remaining').textContent = formatMoney(d.total_debt ?? d.remaining_amount);
         const minimumPayment = parseNumberInputValue(d.effective_next_payment_amount ?? d.minimum_payment);
@@ -1197,9 +1197,6 @@ async function openPaymentModal(debtId) {
             // plus an unpaid penalty that is repaid before the installment.
             currentMinimumPaymentAmount = nextDueAmount;
         }
-        currentMinimumPaymentDate = d.is_overdue
-            ? today
-            : d.effective_next_payment_date || d.next_payment_date || null;
         document.getElementById('pm_required_payment_label').textContent = d.is_overdue
             ? 'Закрыть просрочку'
             : restOfCycle
@@ -1245,7 +1242,6 @@ function applyMinimumPayment() {
 
     applyPaymentPreset({
         amount: currentMinimumPaymentAmount,
-        paymentDate: currentMinimumPaymentDate,
         isEarlyRepayment: false,
         scheduledPaymentAmount: null,
         selectedButtonId: 'pm_apply_minimum',
@@ -1257,17 +1253,15 @@ function applyPlannedEarlyRepayment() {
 
     applyPaymentPreset({
         amount: currentPlannedEarlyRepaymentAmount,
-        paymentDate: currentMinimumPaymentDate,
         isEarlyRepayment: true,
         scheduledPaymentAmount: currentMinimumPaymentAmount,
         selectedButtonId: 'pm_apply_early',
     });
 }
 
-function applyPaymentPreset({ amount, paymentDate, isEarlyRepayment, scheduledPaymentAmount, selectedButtonId }) {
+function applyPaymentPreset({ amount, isEarlyRepayment, scheduledPaymentAmount, selectedButtonId }) {
 
     const amountInput = document.getElementById('pm_amount');
-    const dateInput = document.getElementById('pm_date');
     const earlyRepaymentInput = document.getElementById('pm_is_early_repayment');
     const scheduledPaymentInput = document.getElementById('pm_scheduled_payment_amount');
     const automaticBreakdownInputs = [
@@ -1281,11 +1275,6 @@ function applyPaymentPreset({ amount, paymentDate, isEarlyRepayment, scheduledPa
     amountInput.value = formatNumberInputValue(String(amount));
     amountInput.dispatchEvent(new Event('input', { bubbles: true }));
     amountInput.dispatchEvent(new Event('change', { bubbles: true }));
-
-    if (paymentDate) {
-        dateInput.value = paymentDate;
-        dateInput.dispatchEvent(new Event('change', { bubbles: true }));
-    }
 
     earlyRepaymentInput.checked = isEarlyRepayment;
     scheduledPaymentInput.value = scheduledPaymentAmount > 0 ? String(scheduledPaymentAmount) : '';
@@ -1306,7 +1295,7 @@ function applyPaymentPreset({ amount, paymentDate, isEarlyRepayment, scheduledPa
     amountInput.setSelectionRange(amountInput.value.length, amountInput.value.length);
 }
 
-async function submitPayment() {
+async function submitPayment(planned = false) {
     const errEl = document.getElementById('paymentFormError');
     errEl.classList.add('d-none');
 
@@ -1329,11 +1318,14 @@ async function submitPayment() {
         return;
     }
 
+    const submitButton = planned ? document.getElementById('pm_plan') : document.getElementById('pm_record');
+    submitButton.disabled = true;
     try {
-        const resp = await jsonFetch(`/api/debts/${currentDebtId}/payments`, {
+        const endpoint = planned ? 'payment-plans' : 'payments';
+        const resp = await jsonFetch(`/api/debts/${currentDebtId}/${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: JSON.stringify(planned ? { amount, payment_date: pmDate, comment } : {
                 amount,
                 principal_amount: principalAmount || null,
                 interest_amount: interestAmount || null,
@@ -1344,18 +1336,24 @@ async function submitPayment() {
                 comment,
                 is_early_repayment: isEarlyRepayment,
                 scheduled_payment_amount: scheduledPaymentAmount || null,
+                plan_id: currentPaymentPlanId,
             }),
         });
         const data = await resp.json();
 
         if (data.success) {
+            if (planned) {
+                paymentModal.hide();
+                location.reload();
+                return;
+            }
             const card = document.querySelector(`.debt-card[data-id="${currentDebtId}"]`);
             if (card && data.debt) {
                 card.querySelector('.debt-card__amount-main').textContent = formatMoney(data.debt.total_debt);
                 const progressLabel = card.querySelector('.debt-card__progress-label');
                 if (progressLabel) {
                     progressLabel.firstElementChild.textContent = `Погашено ${data.debt.paid_percent}%`;
-                    progressLabel.lastElementChild.textContent = `${formatMoney(data.debt.remaining_amount)} основного долга`;
+                    progressLabel.lastElementChild.textContent = `${formatMoney(data.debt.current_principal)} основного долга`;
                 }
                 const progressBar = card.querySelector('.debt-card__progress-bar');
                 if (progressBar) progressBar.style.width = `${data.debt.paid_percent}%`;
@@ -1382,6 +1380,8 @@ async function submitPayment() {
     } catch (err) {
         errEl.textContent = 'Ошибка сети: ' + err.message;
         errEl.classList.remove('d-none');
+    } finally {
+        submitButton.disabled = false;
     }
 }
 
@@ -1440,13 +1440,34 @@ async function openHistoryModal(debtId, title) {
 
         const payments = data.payments;
         paymentHistoryCache = new Map(payments.map(payment => [String(payment.id), payment]));
+        plannedPaymentHistory = new Map(data.planned_payments.map(plan => [plan.id, plan]));
+        const planned = data.planned_payments.length ? `
+            <section class="mb-3">
+                <h6>Запланированные платежи</h6>
+                ${data.planned_payments.map(plan => `
+                    <div class="border rounded p-2 mb-2">
+                        <div class="fw-semibold">${formatMoney(plan.amount)} на ${formatDate(plan.due_date)}</div>
+                        ${plan.comment ? `<div class="text-muted">${escapeHtml(plan.comment)}</div>` : ''}
+                        <div class="d-flex flex-wrap gap-2 mt-2">
+                            ${data.debt.status === 'active' ? `<button type="button" class="btn btn-success btn-sm"
+                                onclick="recordPlannedPayment(${debtId}, ${plan.id})">Записать оплату</button>` : ''}
+                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                onclick="cancelPlannedPayment(${debtId}, ${plan.id}, this)">Удалить план</button>
+                        </div>
+                    </div>
+                `).join('')}
+            </section>
+        ` : '';
         if (payments.length === 0) {
-            document.getElementById('historyContent').innerHTML =
+            document.getElementById('historyContent').innerHTML = planned +
                 '<div class="history-empty"><i class="bi bi-inbox fs-3 d-block mb-2"></i>Платежей ещё не было</div>';
             return;
         }
 
         let rows = payments.map(p => {
+            const futureBadge = p.payment_date_iso > data.debt.today
+                ? '<span class="payment-badge">будущая дата</span>'
+                : '';
             const earlyBadge = p.is_early_repayment
                 ? `<span class="payment-badge payment-badge--early">${Number(p.scheduled_payment_amount || 0) > 0 ? 'единый' : 'досрочно'}</span>`
                 : '';
@@ -1479,7 +1500,7 @@ async function openHistoryModal(debtId, title) {
                 <tr>
                     <td class="payment-history-date">${p.payment_date}</td>
                     <td class="payment-history-amount">
-                        <div class="fw-semibold text-success">+${formatMoney(p.amount)}${earlyBadge}</div>
+                        <div class="fw-semibold text-success">+${formatMoney(p.amount)}${earlyBadge}${futureBadge}</div>
                         ${splitInfo}
                     </td>
                     <td class="payment-history-remaining">${formatMoney(p.remaining_after_payment)}</td>
@@ -1496,7 +1517,7 @@ async function openHistoryModal(debtId, title) {
             `;
         }).join('');
 
-        document.getElementById('historyContent').innerHTML = `
+        document.getElementById('historyContent').innerHTML = planned + `
             <div class="table-responsive history-table-wrapper">
                 <table class="history-table">
                     <thead>
@@ -1515,6 +1536,26 @@ async function openHistoryModal(debtId, title) {
     } catch (err) {
         document.getElementById('historyContent').innerHTML =
             `<div class="history-empty text-danger">Ошибка загрузки: ${err.message}</div>`;
+    }
+}
+
+function recordPlannedPayment(debtId, planId) {
+    const plan = plannedPaymentHistory.get(planId);
+    if (!plan) return;
+    historyModalEl.addEventListener('hidden.bs.modal', () => openPaymentModal(debtId, plan), { once: true });
+    historyModal.hide();
+}
+
+async function cancelPlannedPayment(debtId, planId, button) {
+    button.disabled = true;
+    try {
+        const response = await jsonFetch(`/api/debts/${debtId}/payment-plans/${planId}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        location.reload();
+    } catch (err) {
+        showToast('Не удалось удалить план: ' + err.message, 'danger');
+        button.disabled = false;
     }
 }
 

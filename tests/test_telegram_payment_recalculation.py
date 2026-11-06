@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -11,8 +11,9 @@ from app.services.telegram_bot_service import _finish_conversation
 from extensions import db
 
 
-@pytest.mark.parametrize('payment_date', [date.today(), date(2026, 11, 28)])
-def test_payment_reply_uses_recalculated_balance(payment_date):
+@pytest.mark.parametrize('days_ahead', [0, 1])
+def test_payment_reply_uses_recalculated_balance(days_ahead):
+    payment_date = date.today() + timedelta(days=days_ahead)
     app = create_app(
         {
             'TESTING': True,
@@ -59,6 +60,13 @@ def test_payment_reply_uses_recalculated_balance(payment_date):
             db.session.commit()
             assert debt.total_debt() == Decimal('25000')
             old_keys = set(g._debt_state_cache)
+
+            if days_ahead:
+                with pytest.raises(ValueError, match='фактическую дату оплаты'):
+                    _finish_conversation(user, user.telegram_id, state)
+                assert debt.remaining_amount == Decimal('25000')
+                assert debt.payments == []
+                return
 
             result = _finish_conversation(user, user.telegram_id, state)
 

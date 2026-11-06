@@ -191,7 +191,8 @@
     {% set first_payment_pending = debt.is_first_payment_pending() %}
     {% set next_payment_amount = debt.effective_next_payment_amount() %}
     {% set days = (payment_date - today).days if payment_date else None %}
-    {% set paid_pct = ((1 - debt.remaining_amount / debt.total_amount) * 100) | round(1) if debt.total_amount > 0 else 100 %}
+    {% set accrual = debt.accrual_state(today) %}
+    {% set paid_pct = ((1 - accrual.principal / debt.total_amount) * 100) | round(1) if debt.total_amount > 0 else 100 %}
     <div class="col-12 col-md-6 col-xl-4 debt-col"
          data-bank="{{ debt.bank_name|lower }}"
          data-type="{{ debt.debt_type }}"
@@ -232,7 +233,7 @@
             </div>
             <div class="debt-card__progress-label">
                 <span>Погашено {{ paid_pct }}%</span>
-                <span>{{ debt.remaining_amount|money }} основного долга</span>
+                <span>{{ accrual.principal|money }} основного долга</span>
             </div>
 
             <!-- Суммы -->
