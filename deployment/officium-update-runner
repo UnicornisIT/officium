@@ -2053,7 +2053,9 @@ def handle_ipc_request(request_payload):
     requested_tag = validate_tag(str(request_payload.get('tag') or ''))
     operation_id = str(request_payload.get('operation_id') or '')
     requested_by = str(request_payload.get('requested_by') or '')
-    if not OPERATION_ID_RE.fullmatch(operation_id) or not requested_by.isdigit():
+    if not OPERATION_ID_RE.fullmatch(operation_id) or not (
+        requested_by == 'admin' or requested_by.isdigit()
+    ):
         raise UpdateFailure('Update request identity is invalid.', 'protocol_error')
     # The browser-supplied tag is only a confirmation: request_background_update
     # independently resolves the current stable GitHub release before scheduling.

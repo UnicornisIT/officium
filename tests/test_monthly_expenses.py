@@ -394,7 +394,7 @@ class MonthlyExpensesTestCase(unittest.TestCase):
             
             # Generate only for user1
             current_month = date.today().strftime('%Y-%m')
-            stats = generate_monthly_expenses(user_id=self.user_id, target_month=current_month)
+            generate_monthly_expenses(user_id=self.user_id, target_month=current_month)
             
             # Only user1's expense should be generated
             user1_copies = Expense.query.filter(

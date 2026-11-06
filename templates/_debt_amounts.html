@@ -9,6 +9,10 @@
         из {{ debt.total_amount|money }}
     </div>
 </div>
+{% if debt.payment_plans %}
+{% set plan = debt.payment_plans[0] %}
+<div class="small text-muted">Запланировано {{ plan.amount|money }} на {{ plan.due_date.strftime('%d.%m.%Y') }}</div>
+{% endif %}
 {% if accrual.accrued_interest > 0 or accrual.penalty > 0 %}
 <div class="debt-card__breakdown">
     долг {{ accrual.principal|money }} · проценты {{ accrual.accrued_interest|money }}{% if accrual.penalty > 0 %} · неустойка {{ accrual.penalty|money }}{% endif %}

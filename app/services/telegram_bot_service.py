@@ -14,8 +14,10 @@ from sqlalchemy.exc import IntegrityError
 from app.models import Debt, Income, TelegramConversationState, TelegramProcessedUpdate, User
 from app.services.telegram_transport import api_request, require_accepted
 from app.services.telegram_links_service import application_url
+from app.services.telegram_mini_app_check_service import check_mini_app_registered
 from app.services import feedback_service as feedback
 from app.services.debt_accrual_service import accrual_start_date, default_penalty_rate
+from app.services.debt_service import check_debt_limit
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import add_payment
 from app.services.expense_service import create_expense
@@ -266,7 +268,11 @@ CANCEL_WORDS = {'отмена', 'cancel', 'стоп', 'stop'}
 CONFIRM_WORDS = {'да', 'сохранить', 'ok', 'okay', 'yes', 'confirm'}
 REJECT_WORDS = {'нет', 'no', 'не', 'отмена', 'cancel'}
 _RATE_LIMIT_BUCKETS = {}
-FEEDBACK_BUTTONS = {'предложить идею': 'idea', 'сообщить об ошибке': 'bug'}
+BUTTON_COMMANDS = {
+    'предложить идею': 'idea',
+    'сообщить об ошибке': 'bug',
+    'открыть mini app': 'mini_app',
+}
 FEEDBACK_FLOWS = {'feedback_idea', 'feedback_bug'}
 FEEDBACK_PROMPTS = {
     'idea': 'Что вы хотели бы добавить или улучшить в officium? Опишите идею одним сообщением.',
@@ -335,6 +341,8 @@ def handle_telegram_update(update):
     user = User.query.filter_by(telegram_id=telegram_id).first()
     if not user:
         command, _ = _parse_command(text or '')
+        if command == 'mini_app':
+            return _open_mini_app(chat_id)
         introduction = _help_text() + '\n\n' if text and command == 'help' else ''
         return TelegramBotResult(
             chat_id=chat_id,
@@ -401,6 +409,8 @@ def process_telegram_text_result(user, text, chat_id=None):
         chat_id = chat_id or user.telegram_id
         text = str(text or '').strip()
         command, tokens = _parse_command(text)
+        if command == 'mini_app':
+            return _open_mini_app(chat_id)
         state = _get_active_state(user)
         explicit_command = _has_explicit_command(text)
         if state and state.flow in FEEDBACK_FLOWS:
@@ -869,7 +879,10 @@ def _process_payment_message(user, chat_id, state, text):
         return _result(chat_id, 'Когда был платеж? Можно написать дату или выбрать кнопку.', _date_keyboard(include_skip=False))
 
     if state.step == 'date':
-        data['payment_date'] = _parse_date_value(text).isoformat()
+        payment_date = _parse_date_value(text)
+        if payment_date > date.today():
+            raise ValueError('Укажите фактическую дату оплаты. Будущий платеж можно запланировать в Mini App.')
+        data['payment_date'] = payment_date.isoformat()
         _save_state(user, chat_id, flow='payment', step='confirm', data=data, state=state)
         return _payment_confirm_result(user, chat_id, data)
 
@@ -1030,12 +1043,7 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
             raise ValueError('Минимальный платеж не может превышать сумму долга.')
         if interest_rate is not None and interest_rate > MAX_INTEREST_RATE:
             raise ValueError('Ставка не может превышать 999,99%.')
-        try:
-            debt_limit = max(int(get_setting('debt_limit_per_user', '50')), 1)
-        except (TypeError, ValueError):
-            debt_limit = 50
-        if Debt.query.filter_by(user_id=user.id).count() >= debt_limit:
-            raise ValueError(f'Достигнут лимит долгов: {debt_limit}.')
+        check_debt_limit(user, error_suffix='.')
         debt = Debt(
             user_id=user.id,
             bank_name=data['bank_name'][:100],
@@ -1061,18 +1069,31 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
         debt = Debt.query.filter_by(id=int(data['debt_id']), user_id=user.id, status='active').first()
         if not debt:
             raise ValueError('Долг не найден.')
+        payment_date = _parse_date_value(data['payment_date'])
+        if payment_date > date.today():
+            raise ValueError('Укажите фактическую дату оплаты. Будущий платеж можно запланировать в Mini App.')
+        # add_payment commits both the payment and the completed conversation.
+        _clear_state(user)
         payment = add_payment(
             debt,
             _parse_money(data['amount']),
-            payment_date=_parse_date_value(data['payment_date']),
+            payment_date=payment_date,
             comment='Telegram',
             is_early_repayment=bool(data.get('is_early_repayment')),
         )
-        _clear_state(user)
-        db.session.commit()
+        db.session.refresh(debt)
+        accrual = debt.accrual_state()
+        remaining = accrual['principal']
+        total = accrual['total']
+        balance_text = f'Задолженность: {_format_money(remaining)}.'
+        if total != remaining:
+            balance_text = (
+                f'Остаток основного долга: {_format_money(remaining)}.\n'
+                f'Задолженность с процентами: {_format_money(total)}.'
+            )
         return _result(
             chat_id,
-            f'Записал платеж: {_format_money(payment.amount)} по долгу #{debt.id} {debt.bank_name} {debt.product_name}.\nЗадолженность: {_format_money(debt.total_debt())}.',
+            f'Записал платеж: {_format_money(payment.amount)} по долгу #{debt.id} {debt.bank_name} {debt.product_name}.\n{balance_text}',
             MAIN_MENU_KEYBOARD,
             callback_answer_text,
         )
@@ -1408,18 +1429,38 @@ def _help_text():
     return HELP_TEXT + (f'\n\nОткрыть officium: {url}' if url else '')
 
 
-def _main_menu_keyboard():
+def _mini_app_keyboard():
     url = application_url('/telegram-app')
     if (
         url
         and url.startswith('https://')
         and telegram_feature_states(current_app.config)['mini_app']['effective']
+        and check_mini_app_registered(
+            current_app.config.get('TELEGRAM_BOT_TOKEN'),
+            current_app.config.get('OFFICIUM_PUBLIC_URL'),
+        )
     ):
+        # Inline launches provide signed initData; reply-keyboard launches do not.
+        return {'inline_keyboard': [[{'text': 'Открыть Mini App', 'web_app': {'url': url}}]]}
+    return None
+
+
+def _open_mini_app(chat_id):
+    keyboard = _mini_app_keyboard()
+    return _result(
+        chat_id,
+        'Откройте Mini App кнопкой ниже.' if keyboard else 'Mini App сейчас недоступен.',
+        keyboard or MAIN_MENU_KEYBOARD,
+    )
+
+
+def _main_menu_keyboard():
+    if _mini_app_keyboard():
         return {
             **MAIN_MENU_KEYBOARD,
             'keyboard': [
                 *MAIN_MENU_KEYBOARD['keyboard'],
-                [{'text': 'Открыть Mini App', 'web_app': {'url': url}}],
+                [{'text': 'Открыть Mini App'}],
             ],
         }
     return MAIN_MENU_KEYBOARD
@@ -1514,7 +1555,7 @@ def _update_context(update):
 
 
 def _parse_command(text):
-    button_command = FEEDBACK_BUTTONS.get(str(text or '').strip().casefold())
+    button_command = BUTTON_COMMANDS.get(str(text or '').strip().casefold())
     if button_command:
         return button_command, []
     tokens = _split_tokens(text)
@@ -1536,7 +1577,7 @@ def _parse_command(text):
 
 
 def _has_explicit_command(text):
-    if str(text or '').strip().casefold() in FEEDBACK_BUTTONS:
+    if str(text or '').strip().casefold() in BUTTON_COMMANDS:
         return True
     tokens = _split_tokens(text)
     if not tokens:

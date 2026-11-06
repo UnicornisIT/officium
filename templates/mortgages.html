@@ -51,7 +51,8 @@
     {% set next_payment_amount = debt.effective_next_payment_amount() %}
     {% set payment_date = debt.effective_next_payment_date(today) %}
     {% set days = (payment_date - today).days if payment_date else None %}
-    {% set paid_pct = ((1 - debt.remaining_amount / debt.total_amount) * 100) | round(1) if debt.total_amount > 0 else 100 %}
+    {% set accrual = debt.accrual_state(today) %}
+    {% set paid_pct = ((1 - accrual.principal / debt.total_amount) * 100) | round(1) if debt.total_amount > 0 else 100 %}
     <div class="col-12 col-md-6 col-xl-4">
         <div class="debt-card
             {% if days is not none %}
@@ -77,7 +78,7 @@
             </div>
             <div class="debt-card__progress-label">
                 <span>Погашено {{ paid_pct }}%</span>
-                <span>{{ debt.remaining_amount|money }} основного долга</span>
+                <span>{{ accrual.principal|money }} основного долга</span>
             </div>
 
             {{ debt_amounts(debt, today) }}

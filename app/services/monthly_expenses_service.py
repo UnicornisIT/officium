@@ -166,7 +166,7 @@ def _group_expenses(user_id, monthly_group_id):
     ).order_by(Expense.expense_date.asc(), Expense.id.asc()).all()
 
 
-def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, end_month, source_expense=None):
+def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, end_month, source_expense=None, *, commit=True):
     """Create missing monthly copies for one group in an inclusive month range."""
     stats = _stats(user_id=user_id, target_month=_month_key(end_month))
 
@@ -229,8 +229,11 @@ def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, en
                 except RuntimeError:
                     pass
 
-        db.session.commit()
+        if commit:
+            db.session.commit()
     except Exception:
+        if not commit:
+            raise
         db.session.rollback()
         stats['created'] = 0
         stats['errors'] += 1
@@ -242,7 +245,63 @@ def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, en
     return stats
 
 
-def generate_monthly_expenses_from_start_date(expense_id, end_month=None):
+_MONTHLY_COPY_FIELDS = (
+    "amount",
+    "category",
+    "title",
+    "payment_method",
+    "comment",
+    "vehicle_id",
+    "vehicle_cost_kind",
+)
+
+
+def snapshot_monthly_expense_settings(expense):
+    return {
+        **{field: getattr(expense, field) for field in _MONTHLY_COPY_FIELDS},
+        "monthly_anchor_day": expense.monthly_anchor_day or expense.expense_date.day,
+        "monthly_settings_updated_at": expense.monthly_settings_updated_at,
+    }
+
+
+def refresh_future_monthly_expenses(source_expense, previous_settings):
+    """Update future generated copies that still use the replaced settings."""
+    cutoff = max(_today(), source_expense.expense_date)
+    copies = Expense.query.filter(
+        Expense.user_id == source_expense.user_id,
+        Expense.monthly_group_id == source_expense.monthly_group_id,
+        Expense.is_monthly == True,  # noqa: E712
+        Expense.generated_from_id.isnot(None),
+        Expense.id != source_expense.id,
+        Expense.expense_date > cutoff,
+        Expense.monthly_settings_updated_at
+        == previous_settings["monthly_settings_updated_at"],
+    ).all()
+    for copy in copies:
+        month = copy.generated_for_month or _month_key(copy.expense_date)
+        # Timestamp precision alone cannot distinguish two edits in the same instant.
+        if (
+            any(
+                getattr(copy, field) != previous_settings[field]
+                for field in _MONTHLY_COPY_FIELDS
+            )
+            or copy.expense_date
+            != _date_in_month(previous_settings["monthly_anchor_day"], month)
+            or (
+                copy.monthly_anchor_day is not None
+                and copy.monthly_anchor_day != previous_settings["monthly_anchor_day"]
+            )
+        ):
+            continue
+        copy.expense_date = _date_in_month(source_expense.monthly_anchor_day, month)
+        copy.amount = source_expense.amount
+        copy.payment_method = source_expense.payment_method
+        copy.comment = source_expense.comment
+        copy.monthly_anchor_day = source_expense.monthly_anchor_day
+        copy.monthly_settings_updated_at = source_expense.monthly_settings_updated_at
+
+
+def generate_monthly_expenses_from_start_date(expense_id, end_month=None, *, commit=True):
     """
     Generate all missing copies from the expense month to the current month.
 
@@ -266,6 +325,7 @@ def generate_monthly_expenses_from_start_date(expense_id, end_month=None):
         start_month,
         end_month,
         source_expense=source_expense,
+        commit=commit,
     )
 
 

@@ -13,6 +13,8 @@ def application_url(path, *, base_url=None):
     )
     try:
         parsed = urlsplit(base)
+        # Accessing port rejects malformed and out-of-range port values.
+        parsed.port
         if (
             parsed.scheme not in ('http', 'https')
             or not parsed.hostname
@@ -25,6 +27,13 @@ def application_url(path, *, base_url=None):
     except ValueError:
         return None
     return base + '/' + path.lstrip('/')
+
+
+def mini_app_url(public_url):
+    if not str(public_url or '').strip():
+        return None
+    url = application_url('/telegram-app', base_url=public_url)
+    return url if url and url.startswith('https://') else None
 
 
 def navigation_keyboard(label, url):

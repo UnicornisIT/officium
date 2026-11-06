@@ -113,7 +113,10 @@ class TelegramBotTestCase(unittest.TestCase):
         )
         with patch(
             'app.routes.telegram_bot.send_telegram_message', return_value=True
-        ) as sender:
+        ) as sender, patch(
+            'app.services.telegram_bot_service.check_mini_app_registered',
+            return_value=True,
+        ):
             self.client.post(
                 '/telegram/webhook',
                 json=self._private_update('/start'),
@@ -125,9 +128,35 @@ class TelegramBotTestCase(unittest.TestCase):
         self.assertIn('расход 850', text)
         self.assertIn('доход 120000', text)
         buttons = sender.call_args.kwargs['reply_markup']['keyboard']
-        self.assertEqual(
-            buttons[-1][0]['web_app']['url'], 'https://example.test/telegram-app'
+        self.assertEqual(buttons[-1][0], {'text': 'Открыть Mini App'})
+
+    def test_mini_app_entry_for_new_user_returns_inline_launcher(self):
+        self.app.config.update(
+            OFFICIUM_PUBLIC_URL='https://example.test',
+            TELEGRAM_LOGIN_ENABLED=True,
+            TELEGRAM_MINI_APP_ENABLED=True,
+            TELEGRAM_BOT_USERNAME='officium_test_bot',
         )
+        with patch(
+            'app.routes.telegram_bot.send_telegram_message', return_value=True,
+        ) as sender, patch(
+            'app.services.telegram_bot_service.check_mini_app_registered',
+            return_value=True,
+        ):
+            response = self.client.post(
+                '/telegram/webhook',
+                json=self._private_update('Открыть Mini App', telegram_id=999999),
+                headers={'X-Telegram-Bot-Api-Secret-Token': 'test-secret'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(sender.call_args.kwargs['reply_markup'], {
+            'inline_keyboard': [[{
+                'text': 'Открыть Mini App',
+                'web_app': {'url': 'https://example.test/telegram-app'},
+            }]],
+        })
+        with self.app.app_context():
+            self.assertIsNone(User.query.filter_by(telegram_id=999999).first())
 
     def test_start_for_new_user_explains_how_to_connect(self):
         with patch(

@@ -87,6 +87,7 @@ class TelegramMiniAppRouteTestCase(unittest.TestCase):
             'TELEGRAM_BOT_USERNAME': 'officium_test_bot',
             'TELEGRAM_LOGIN_ENABLED': True,
             'TELEGRAM_MINI_APP_ENABLED': True,
+            'OFFICIUM_PUBLIC_URL': 'https://example.test',
         })
         self.client = self.app.test_client()
         with self.app.app_context():

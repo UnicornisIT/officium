@@ -134,6 +134,22 @@ def cached_debt_state(debt, as_of=None):
     return cache[key]
 
 
+def invalidate_debt_state_cache(debt=None):
+    """Mutations can change allocations without changing cache keys."""
+    if not has_app_context():
+        return
+    cache = g.get('_debt_state_cache')
+    if cache is None:
+        return
+    if debt is None:
+        cache.clear()
+        return
+    debt_id = getattr(debt, 'id', None)
+    for key in list(cache):
+        if len(key) >= 2 and key[1] == debt_id:
+            cache.pop(key, None)
+
+
 def opening_principal(debt, payments):
     """Principal on the accrual start date implied by the stored balances."""
     start = accrual_start_date(debt)

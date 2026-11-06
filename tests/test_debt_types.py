@@ -83,7 +83,7 @@ class DebtTypesTestCase(unittest.TestCase):
             self.assertTrue(debt.early_repayment_enabled)
             self.assertEqual(debt.planned_early_repayment_amount, Decimal('20000.00'))
 
-    def test_payment_modal_has_minimum_payment_and_due_date_shortcut(self):
+    def test_payment_modal_has_payment_shortcuts_and_separate_plan_action(self):
         self.login()
 
         response = self.client.get('/')
@@ -113,7 +113,9 @@ class DebtTypesTestCase(unittest.TestCase):
         self.assertIn('id="f_planned_early_repayment_amount"', early_block)
         self.assertIn('id="f_effective_early_repayment_amount"', early_block)
         self.assertIn('Желаемый платёж минус минимальный.', early_block)
-        self.assertIn('Подставить сумму и дату ближайшего платежа', html)
+        self.assertIn('Подставить сумму ближайшего платежа', html)
+        self.assertIn('Запланировать платёж', html)
+        self.assertIn('Записать оплату', html)
 
     def test_planned_early_repayment_requires_amount_and_only_supports_consumer_credit(self):
         self.login()

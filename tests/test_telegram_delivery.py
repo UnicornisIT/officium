@@ -147,6 +147,58 @@ class TelegramDeliveryTests(unittest.TestCase):
         with patch.object(transport.requests, 'post', side_effect=responses):
             self.assertFalse(diagnostics.diagnose(network=True)['getMe']['username_matches'])
 
+    def test_diagnostics_reads_saved_bot_switch_and_receiver_configuration(self):
+        self.app.config.update(
+            TELEGRAM_BOT_ENABLED=False,
+            TELEGRAM_RECEIVE_MODE='webhook',
+            TELEGRAM_WEBHOOK_SECRET='test-secret',
+        )
+        db.session.add(AppSetting(key='telegram_bot_enabled', value='true'))
+        db.session.commit()
+        report = diagnostics.diagnose()
+        self.assertFalse(report['TELEGRAM_BOT_ENABLED'])
+        self.assertTrue(report['bot_commands_enabled'])
+        self.assertTrue(report['receiver_configured'])
+        self.app.config['OFFICIUM_PUBLIC_URL'] = ''
+        report = diagnostics.diagnose()
+        self.assertFalse(report['receiver_configured'])
+        self.assertEqual(report['receiver_configuration_error'], 'invalid_public_url')
+
+    def test_webhook_failure_identifies_http_status_without_exposing_description(self):
+        self.app.config.update(
+            TELEGRAM_RECEIVE_MODE='webhook', TELEGRAM_WEBHOOK_SECRET='test-secret'
+        )
+        responses = [
+            self.response(
+                200,
+                {
+                    'ok': True,
+                    'result': {'is_bot': True, 'username': 'officium_test_bot'},
+                },
+            ),
+            self.response(
+                200,
+                {
+                    'ok': True,
+                    'result': {
+                        'url': 'https://example.test/telegram/webhook',
+                        'pending_update_count': 8,
+                        'last_error_message': 'Wrong response from the webhook: 403 Forbidden '
+                        + self.secret,
+                    },
+                },
+            ),
+        ]
+        with patch.object(transport.requests, 'post', side_effect=responses):
+            report = diagnostics.diagnose(network=True)
+        self.assertTrue(report['getWebhookInfo']['receive_mode_matches'])
+        self.assertTrue(report['getWebhookInfo']['has_last_error'])
+        self.assertEqual(report['getWebhookInfo']['last_error_kind'], 'http_error')
+        self.assertEqual(report['getWebhookInfo']['last_error_http_status'], 403)
+        self.assertEqual(report['getWebhookInfo']['pending_update_count'], 8)
+        self.assertNotIn(self.secret, json.dumps(report))
+        self.assertNotIn('https://', json.dumps(report))
+
     def test_reminders_false_and_exception_counted_without_secret(self):
         for sender in (Mock(return_value=False), Mock(side_effect=requests.HTTPError(
                 f'https://api.telegram.org/bot{self.secret}/sendMessage'))):

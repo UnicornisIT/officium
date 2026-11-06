@@ -7,6 +7,8 @@ from flask import request, redirect, url_for, render_template
 from flask_login import current_user
 from extensions import db
 from app.models import AppSetting, DictionaryEntry, ActivityLog
+from app.services.telegram_configuration_service import receiver_configuration
+from app.services.telegram_links_service import mini_app_url
 
 DICTIONARY_TYPES = [
     ('bank', 'Банки'),
@@ -187,11 +189,9 @@ def telegram_feature_states(config):
     login_valid = token_ready and username_ready
     login_effective = login_setting and login_valid
     mini_setting = value_is_enabled(config.get('TELEGRAM_MINI_APP_ENABLED', False))
+    public_url_ready = bool(mini_app_url(config.get('OFFICIUM_PUBLIC_URL')))
     bot_setting = telegram_bot_enabled(config)
-    webhook_ready = bool(str(config.get('TELEGRAM_WEBHOOK_SECRET') or '').strip())
-    receive_ready = config.get('TELEGRAM_RECEIVE_MODE', 'webhook') == 'polling' or (
-        config.get('TELEGRAM_RECEIVE_MODE', 'webhook') == 'webhook' and webhook_ready
-    )
+    receive_ready = receiver_configuration(config)['configured']
     return {
         'login': {
             'label': 'Вход через Telegram',
@@ -203,8 +203,9 @@ def telegram_feature_states(config):
         'mini_app': {
             'label': 'Telegram Mini App',
             'enabled_in_settings': mini_setting,
-            'configuration_valid': token_ready and username_ready,
-            'effective': mini_setting and login_effective,
+            'configuration_valid': token_ready and username_ready and public_url_ready,
+            'public_url_ready': public_url_ready,
+            'effective': mini_setting and login_effective and public_url_ready,
             'verified': None,
         },
         'bot': {

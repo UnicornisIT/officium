@@ -10,7 +10,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) {
     await page.goto('/dev-login/user');
     if(width===390) await page.goto('/telegram-app');
     await page.goto('/vehicles/new');
-    await page.locator('#v_name').fill(`Учебное авто ${width} ${theme} ${info.project.name} ${info.retry}`);
+    await page.locator('#v_name').fill(`Учебное авто ${width} ${theme} ${info.project.name} ${info.repeatEachIndex} ${info.retry}`);
     await page.locator('#v_company').check();
     await page.getByRole('button',{name:'Сохранить автомобиль',exact:true}).click();
     await page.waitForURL(/\/vehicles\/\d+$/);
@@ -76,7 +76,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) {
     expect(csv).not.toContain('Учебная личная заправка');
     expect(csv.trimEnd().split('\r\n').at(-1)).toBe('Итого;;;;;;120,50;;');
     await page.getByRole('button',{name:'Возмещено',exact:true}).click();
-    await page.waitForURL(/reports/);
+    await expect(page.locator('article')).toHaveCount(0);
     await page.goto(`/vehicles/${id}?tab=expenses`);
     await expect(page.getByRole('button',{name:'Снять отметку возмещения',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Снять отметку возмещения',exact:true}).click();

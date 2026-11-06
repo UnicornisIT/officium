@@ -32,7 +32,19 @@
         {% if switches %}
         <div class="admin-switch-list">
             {% for field in switches %}
-            <label><span><strong>{{ field.label }}</strong><small>{{ field.help }}</small></span><input type="checkbox" id="{{ field.key }}" name="{{ field.key }}" {% if settings[field.key] == 'true' %}checked{% endif %}><i aria-hidden="true"></i></label>
+            <label><span><strong>{{ field.label }}</strong><small>{{ field.help }}</small>
+            {% if field.key == 'telegram_login_enabled' and mini_app_enabled %}
+            <small role="status" class="alert {{ 'alert-success' if mini_app_registered else 'alert-warning' }}">
+                {% if mini_app_registered %}
+                {{ icon('check-circle', 17) }} URL Mini App подтверждён в меню Telegram
+                {% else %}
+                {{ icon('info', 17) }} Зарегистрируйте домен в @BotFather: Bot Settings → Menu Button → Configure Mini App.
+                {% if mini_app_url %}Укажите URL: {{ mini_app_url }}{% else %}Задайте OFFICIUM_PUBLIC_URL — публичный HTTPS-адрес приложения. Укажите URL: &lt;OFFICIUM_PUBLIC_URL&gt;/telegram-app{% endif %}
+                Проверка URL меню не подтверждена; кнопка «Открыть Mini App» скрыта. Результат проверки кешируется на один час.
+                {% endif %}
+            </small>
+            {% endif %}
+            </span><input type="checkbox" id="{{ field.key }}" name="{{ field.key }}" {% if settings[field.key] == 'true' %}checked{% endif %}><i aria-hidden="true"></i></label>
             {% endfor %}
         </div>
         {% endif %}

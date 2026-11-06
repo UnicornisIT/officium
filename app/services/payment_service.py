@@ -3,7 +3,11 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from extensions import db
 from app.models import Payment
-from app.services.debt_accrual_service import accrual_start_date, get_debt_state
+from app.services.debt_accrual_service import (
+    accrual_start_date,
+    get_debt_state,
+    invalidate_debt_state_cache,
+)
 from app.services.debt_calendar_service import (
     previous_payment_due_date as _previous_payment_due_date,
     scheduled_payment_component as _scheduled_payment_component,
@@ -204,6 +208,8 @@ def _recalculate(debt, principal_before_payments):
         if current['next_due_date']:
             debt.next_payment_date = current['next_due_date']
 
+    invalidate_debt_state_cache(debt)
+
 
 def _needs_settled_split(payment):
     # A new or edited automatic payment carries an empty split; one that was
@@ -219,6 +225,7 @@ def recalculate_debt(debt):
     principal_before_payments = _principal_before_payments(debt)
     _pin_accrual_start(debt)
     _recalculate(debt, principal_before_payments)
+    invalidate_debt_state_cache(debt)
 
 
 def accept_bank_remaining(debt, payment):

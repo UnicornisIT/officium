@@ -191,7 +191,7 @@ class MaintenanceTests(test_vehicle_service.VehicleServiceTestCase):
         vehicle = self.vehicle()
         item = self.item(vehicle)
         self.login(self.admin)
-        template = self.template()
+        self.template()
         response = self.client.get('/admin/consumable-templates')
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(vehicle.name.encode(), response.data)

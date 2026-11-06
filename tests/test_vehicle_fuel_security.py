@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 import test_vehicle_service
-from app.models import ActivityLog, Expense, User, Vehicle, VehicleCost, VehicleRefueling
+from app.models import ActivityLog, Expense, User, VehicleCost, VehicleRefueling
 from app.services import vehicle_fuel_service as fuel, vehicle_service as vehicles
 from extensions import db
 

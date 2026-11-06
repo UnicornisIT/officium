@@ -3,13 +3,14 @@ hand in comments: interest = balance * 18% * days / 365, penalty = overdue
 amount * 20% * days / 365, both rounded half up to kopecks."""
 
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 from app import create_app
 from app.models import Debt, Payment, User
 from app.services.debt_schedule_service import build_debt_payment_schedule
+from app.services.payment_service import add_payment
 from extensions import db
 
 
@@ -230,6 +231,62 @@ class PaymentAccrualApiTestCase(unittest.TestCase):
         self.assertEqual(self.debt(), (Decimal('100000.00'), date(2026, 8, 15)))
         with self.app.app_context():
             self.assertEqual(Payment.query.count(), 0)
+
+    def test_payment_plan_only_changes_balance_after_explicit_confirmation(self):
+        self.login()
+        debt_url = f'/api/debts/{self.debt_id}'
+        today = date.today()
+        due_date = (today + timedelta(days=5)).isoformat()
+        planned = {'amount': '5000', 'payment_date': due_date}
+        rejected = self.client.post(f'{debt_url}/payments', json=planned)
+        self.assertEqual(rejected.status_code, 422)
+
+        response = self.client.post(f'{debt_url}/payment-plans', json=planned)
+        self.assertEqual(response.status_code, 200, response.get_json())
+        plan = response.get_json()['plan']
+        self.assertEqual(plan['due_date'], due_date)
+        history = self.client.get(f'{debt_url}/payments').get_json()
+        self.assertEqual(history['payments'], [])
+        self.assertEqual(history['planned_payments'], [plan])
+        self.assertEqual(self.debt()[0], Decimal('100000.00'))
+
+        self.login(self.stranger_id)
+        response = self.client.delete(f"{debt_url}/payment-plans/{plan['id']}")
+        self.assertEqual(response.status_code, 404)
+        self.login()
+        confirmation = {
+            'amount': '5000', 'payment_date': '2026-08-15', 'plan_id': plan['id'],
+        }
+        rejected = self.client.post(
+            f'{debt_url}/payments', json={**confirmation, 'amount': '900000'},
+        )
+        self.assertEqual(rejected.status_code, 422)
+        self.assertEqual(self.client.get(f'{debt_url}/payments').get_json()['planned_payments'], [plan])
+        paid = self.post_payment(**confirmation)
+        self.assertEqual(paid['payment']['payment_date_iso'], '2026-08-15')
+        self.assertLess(self.debt()[0], Decimal('100000.00'))
+
+        repeated = self.client.post(f'{debt_url}/payments', json=confirmation)
+        self.assertEqual(repeated.status_code, 404)
+        history = self.client.get(f'{debt_url}/payments').get_json()
+        self.assertEqual(history['planned_payments'], [])
+        self.assertEqual(len(history['payments']), 1)
+
+    def test_legacy_future_payment_does_not_change_progress_today(self):
+        self.login()
+        today = date.today()
+        with self.app.app_context():
+            debt = db.session.get(Debt, self.debt_id)
+            debt.accrual_start_date = today - timedelta(days=1)
+            debt.interest_rate = 0
+            debt.next_payment_date = None
+            add_payment(debt, Decimal('5000'), payment_date=today + timedelta(days=1))
+            self.assertEqual(debt.remaining_amount, Decimal('95000.00'))
+
+        debt = self.client.get(f'/api/debts/{self.debt_id}').get_json()['debt']
+        self.assertEqual(debt['total_debt'], 100000)
+        self.assertEqual(debt['current_principal'], 100000)
+        self.assertEqual(debt['paid_percent'], 0)
 
 
 if __name__ == '__main__':

@@ -35,6 +35,8 @@ from app.services.server_update_service import (
 )
 from app.time_utils import utc_now
 from app.utils import client_ip, admin_required, superadmin_required, DICTIONARY_HELP, DICTIONARY_TYPES, DEFAULT_SETTINGS, normalize_dictionary_value, get_setting, record_activity, set_setting, telegram_feature_states
+from app.services.telegram_links_service import mini_app_url
+from app.services.telegram_mini_app_check_service import check_mini_app_registered
 from extensions import db
 
 
@@ -153,7 +155,7 @@ SETTINGS_GROUPS = (
         'kicker': 'Вход и регистрация',
         'fields': (
             {'key': 'telegram_login_enabled', 'type': 'bool', 'label': 'Вход через Telegram',
-             'help': 'Показывает кнопку входа через Telegram и открывает Mini App. Работает, только если в окружении заданы токен и имя бота.'},
+             'help': 'Для входа нужны токен и имя бота. Для Mini App также нужны публичный HTTPS-адрес и подтверждённый URL меню Telegram.'},
             {'key': 'telegram_bot_enabled', 'type': 'bool', 'label': 'Команды и ввод операций в Telegram-боте',
              'help': 'Включает /start, ручной и пошаговый ввод доходов и расходов. Применяется сразу, независимо от уведомлений. На сервере должен быть настроен приём сообщений через webhook или polling.'},
             {'key': 'registration_enabled', 'type': 'bool', 'label': 'Регистрация новых пользователей',
@@ -319,9 +321,30 @@ def _apply_user_action(user, form):
         expected = _deletion_confirmation(user)
         if str(form.get('confirm_username', '')).strip() != expected:
             return _deny(f'Для удаления введите «{expected}» в поле подтверждения.')
-        _log_user_action('Удалил пользователя', user)
-        db.session.delete(user)
-        db.session.commit()
+        deleted_user_id = user.id
+        deleted_user_label = user.username or user.telegram_id
+        try:
+            db.session.delete(user)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception('Failed to delete user')
+            flash('Не удалось удалить пользователя: ошибка базы данных.', 'danger')
+            return 'denied'
+        try:
+            record_activity(
+                'Удалил пользователя',
+                current_user,
+                entity_type='user',
+                entity_id=deleted_user_id,
+                description=f'Пользователь {deleted_user_label}',
+                ip_address=client_ip(),
+                user_agent=request.headers.get('User-Agent'),
+            )
+        except Exception:
+            # Deletion is already committed; only discard the failed audit write.
+            db.session.rollback()
+            current_app.logger.exception('Failed to record user deletion audit')
         return 'deleted'
 
     return _deny('Неизвестное действие.')
@@ -565,6 +588,14 @@ def init_app(app):
             update_settings=update_notifier.load_settings(),
             update_status_labels=update_notifier.STATUS_LABELS,
             update_bot_configured=bool(current_app.config.get('TELEGRAM_BOT_TOKEN')),
+            mini_app_enabled=current_app.config.get('TELEGRAM_MINI_APP_ENABLED'),
+            mini_app_url=mini_app_url(current_app.config.get('OFFICIUM_PUBLIC_URL')),
+            mini_app_registered=(
+                check_mini_app_registered(
+                    current_app.config.get('TELEGRAM_BOT_TOKEN'),
+                    current_app.config.get('OFFICIUM_PUBLIC_URL'),
+                ) if current_app.config.get('TELEGRAM_MINI_APP_ENABLED') else False
+            ),
         )
 
     @app.route('/admin/settings', methods=['GET', 'POST'])
@@ -706,7 +737,12 @@ def init_app(app):
                     raise ValueError('Такое значение уже есть в этом справочнике.')
                 db.session.add(DictionaryEntry(dictionary_type=dictionary_type, value=value))
                 db.session.commit()
-                record_activity('Добавил элемент справочника', current_user, entity_type=dictionary_type, description=value)
+                try:
+                    record_activity('Добавил элемент справочника', current_user, entity_type=dictionary_type, description=value)
+                except Exception:
+                    # The entry is committed; discard only the failed audit write.
+                    db.session.rollback()
+                    current_app.logger.exception('audit recording failed')
                 flash('Элемент справочника добавлен.', 'success')
                 return redirect(url_for('admin_dictionaries'))
             except ValueError as exc:
@@ -769,7 +805,12 @@ def init_app(app):
             current_app.logger.exception('Failed to update dictionary entry')
             flash('Не удалось сохранить элемент справочника: база данных недоступна.', 'danger')
             return redirect(url_for('admin_dictionaries'))
-        record_activity(log_action, current_user, entity_type=entry.dictionary_type, entity_id=entry.id, description=description)
+        try:
+            record_activity(log_action, current_user, entity_type=entry.dictionary_type, entity_id=entry.id, description=description)
+        except Exception:
+            # The entry is committed; discard only the failed audit write.
+            db.session.rollback()
+            current_app.logger.exception('audit recording failed')
         flash(message, 'success')
         return redirect(url_for('admin_dictionaries'))
 
@@ -811,11 +852,13 @@ def init_app(app):
         elif status_filter == 'impersonated':
             users_query = users_query.filter(User.id.in_(impersonation.active_target_ids_query()))
         if search_query:
+            term = search_query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            search = '%' + term + '%'
             users_query = users_query.filter(
-                (User.username.ilike(f'%{search_query}%')) |
-                (User.first_name.ilike(f'%{search_query}%')) |
-                (User.last_name.ilike(f'%{search_query}%')) |
-                (cast(User.telegram_id, db.String).ilike(f'%{search_query}%'))
+                (User.username.ilike(search, escape='\\')) |
+                (User.first_name.ilike(search, escape='\\')) |
+                (User.last_name.ilike(search, escape='\\')) |
+                (cast(User.telegram_id, db.String).ilike(search, escape='\\'))
             )
 
         sort_options = {

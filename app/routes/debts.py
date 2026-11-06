@@ -3,13 +3,14 @@ from decimal import Decimal
 from flask import current_app, jsonify, request
 from flask_login import current_user
 from app.models import Debt, Payment, SplitPurchase
-from app.services.debt_service import get_demo_debts, get_user_debt
+from app.services.debt_service import check_debt_limit, get_demo_debts, get_user_debt
 from app.services.debt_accrual_service import (
     MAX_PENALTY_RATE,
     DebtView,
     accrual_start_date,
     default_penalty_rate,
     get_debt_state,
+    invalidate_debt_state_cache,
 )
 from app.services.debt_calendar_service import previous_payment_due_date
 from app.services.debt_schedule_service import build_debt_payment_schedule
@@ -43,7 +44,8 @@ def init_app(app):
 
         query = Debt.query.filter_by(status=status, user_id=current_user.id)
         if bank_filter:
-            query = query.filter(Debt.bank_name.ilike(f'%{bank_filter}%'))
+            term = bank_filter.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            query = query.filter(Debt.bank_name.ilike(f'%{term}%', escape='\\'))
         if type_filter:
             query = query.filter_by(debt_type=type_filter)
 
@@ -113,12 +115,7 @@ def init_app(app):
 
             _validate_debt_amounts(total_amount, remaining_amount)
             if not is_local_test_user():
-                try:
-                    debt_limit = max(int(get_setting('debt_limit_per_user', '50')), 1)
-                except (TypeError, ValueError):
-                    debt_limit = 50
-                if Debt.query.filter_by(user_id=current_user.id).count() >= debt_limit:
-                    raise ValueError(f'Достигнут лимит долгов: {debt_limit}')
+                check_debt_limit(current_user)
 
             debt = Debt(
                 user_id=current_user.id,
@@ -159,6 +156,7 @@ def init_app(app):
             return jsonify({'success': True, 'debt': debt.to_dict()}), 201
 
         except ValueError as e:
+            db.session.rollback()
             return jsonify({'success': False, 'error': str(e)}), 422
         except Exception:
             db.session.rollback()
@@ -224,7 +222,9 @@ def init_app(app):
             else:
                 db.session.add(purchase)
                 db.session.commit()
+                db.session.refresh(debt)
 
+            invalidate_debt_state_cache(debt)
             schedule = build_debt_payment_schedule(debt)
             return jsonify({
                 'success': True,
@@ -367,6 +367,8 @@ def init_app(app):
             if not is_local_test_user():
                 recalculate_debt(debt)
                 db.session.commit()
+                db.session.refresh(debt)
+            invalidate_debt_state_cache(debt)
             return jsonify({'success': True, 'debt': debt.to_dict()})
 
         except ValueError as e:
@@ -403,6 +405,8 @@ def init_app(app):
         debt.updated_at = utc_now()
         if not is_local_test_user():
             db.session.commit()
+            db.session.refresh(debt)
+        invalidate_debt_state_cache(debt)
         return jsonify({'success': True, 'message': 'Карточка восстановлена', 'debt': debt.to_dict()})
 
     @app.route('/api/debts/<int:debt_id>/delete', methods=['DELETE'])

@@ -19,11 +19,24 @@ from app.utils import format_currency
 from extensions import db
 
 
+def _scheduled_utc(day, clock, zone):
+    scheduled = datetime.combine(day, clock).replace(tzinfo=zone, fold=0)
+    # UTC round-trip rejects imaginary wall times; fold=0 chooses the first occurrence.
+    while True:
+        instant = as_utc(scheduled)
+        if instant.astimezone(zone).replace(tzinfo=None) == scheduled.replace(
+            tzinfo=None
+        ):
+            return instant
+        scheduled += timedelta(minutes=1)
+
+
 def _due_expenses(session, user, now):
+    now = as_utc(now)
     local = now.astimezone(ZoneInfo(user.timezone))
     clock = time.fromisoformat(user.reminder_time)
-    scheduled = datetime.combine(local.date(), clock, tzinfo=local.tzinfo)
-    elapsed = now - scheduled.astimezone(now.tzinfo)
+    scheduled = _scheduled_utc(local.date(), clock, local.tzinfo)
+    elapsed = now - scheduled
     if not timedelta(0) <= elapsed <= timedelta(hours=6):
         return []
     target = local.date() + timedelta(days=user.reminder_days_before)

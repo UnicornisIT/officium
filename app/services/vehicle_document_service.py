@@ -1,5 +1,6 @@
 """Owner-scoped vehicle documents and expiry dates."""
 from datetime import date, timedelta
+from flask import current_app
 from app.models import Expense, Vehicle, VehicleDocument, VehicleCost
 from app.services import vehicle_service as vehicles, vehicle_cost_service as costs, expense_service
 from app.utils import parse_date, parse_decimal, record_activity
@@ -14,7 +15,7 @@ COLORS = dict(ok='success', soon='warning', overdue='danger')
 
 def state(document, day):
     remaining = (document.expires_at - day).days if document.expires_at else None
-    status = 'ok' if remaining is None or remaining > 14 else 'overdue' if remaining <= 0 else 'soon'
+    status = 'ok' if remaining is None or remaining > 14 else 'overdue' if remaining < 0 else 'soon'
     return dict(status=status, remaining_days=remaining, label=LABELS[status], color=COLORS[status])
 
 
@@ -29,6 +30,7 @@ def expiring_soon(user, days=14, *, day=None):
     if not isinstance(days, int) or days < 0:
         raise ValueError('Укажите неотрицательное число дней.')
     day = day if day is not None else vehicles.today()
+    # Including today keeps the default window consistent with state(): valid through expiry.
     return VehicleDocument.query.join(Vehicle).filter(Vehicle.user_id == user.id, Vehicle.archived_at.is_(None), VehicleDocument.expires_at.between(day, day + timedelta(days=days))).order_by(VehicleDocument.expires_at, VehicleDocument.id).all()
 
 
@@ -62,8 +64,13 @@ def _linked_amount(user, vehicle, row, amount, action):
 def save_document(user, vehicle_id, data, document_id=None, *, commit=True):
     try:
         vehicle = vehicles.get_vehicle_for_user(user, vehicle_id, for_update=True)
-        vehicles._writable(vehicle)
+        vehicles._writable(vehicle, context='document')
         row = VehicleDocument.query.filter_by(id=document_id, vehicle_id=vehicle.id).first_or_404() if document_id else VehicleDocument(vehicle_id=vehicle.id)
+        create_expense = data.get('create_expense') in ('on', '1', True)
+        if create_expense and document_id is not None and (row.expense_id or row.vehicle_cost_id):
+            # Cached forms may retain this flag after a spend has already been linked.
+            current_app.logger.warning('Ignoring stale create_expense flag for linked vehicle document %s', row.id)
+            create_expense = False
         kind = data.get('kind')
         if kind not in KINDS:
             raise ValueError('Выберите тип документа.')
@@ -85,7 +92,7 @@ def save_document(user, vehicle_id, data, document_id=None, *, commit=True):
         row.issued_date, row.expires_at, row.amount = issued, expires, amount
         db.session.add(row)
         db.session.flush()
-        if data.get('create_expense') in ('on', '1', True):
+        if create_expense:
             if amount is None:
                 raise ValueError('Укажите сумму для создания траты.')
             if row.expense_id or row.vehicle_cost_id:

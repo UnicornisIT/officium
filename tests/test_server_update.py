@@ -1,5 +1,4 @@
 import json
-import socket
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,7 +18,6 @@ from app.services.server_update_service import (
     fetch_latest_release,
     get_current_release,
     get_update_status,
-    read_update_status,
     reconcile_update_status,
     release_stage,
     request_server_update,

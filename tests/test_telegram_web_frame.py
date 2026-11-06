@@ -43,6 +43,7 @@ class TelegramWebFrameTestCase(unittest.TestCase):
             'TELEGRAM_BOT_USERNAME': 'officium_test_bot',
             'TELEGRAM_LOGIN_ENABLED': True,
             'TELEGRAM_MINI_APP_ENABLED': True,
+            'OFFICIUM_PUBLIC_URL': BASE_URL,
         })
         self.client = self.app.test_client()
         with self.app.app_context():
