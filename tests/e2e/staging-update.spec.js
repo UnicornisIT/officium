@@ -20,6 +20,10 @@ test('superadmin updates through the rendered button with NoNewPrivileges enable
 
   await expect.poll(async () => {
     const response = await page.request.get('/admin/server-update/status');
+    // Nginx can return a gateway error while the application restarts.
+    if ([502, 503, 504].includes(response.status())) return 'restarting';
+    expect(response.ok()).toBe(true);
+    expect(response.headers()['content-type']).toContain('application/json');
     const payload = await response.json();
     if (payload.state === 'failed') throw new Error(`Update failed: ${payload.error_code} operation=${payload.operation_id}`);
     return payload.state;
