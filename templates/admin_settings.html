@@ -69,14 +69,14 @@
                 <label class="admin-control"><span>Получатели</span><select name="update_notify_recipients"><option value="superadmin" {% if update_settings.update_notify_recipients == 'superadmin' %}selected{% endif %}>Только superadmin</option><option value="admins" {% if update_settings.update_notify_recipients == 'admins' %}selected{% endif %}>Все админы</option></select><small>Только незаблокированные аккаунты с Telegram.</small></label>
                 <label class="admin-control"><span>Интервал проверки, минут</span><input type="number" name="update_check_interval_minutes" min="15" max="1440" required value="{{ update_settings.update_check_interval_minutes }}"><small>От 15 до 1440 минут.</small></label>
             </div>
-            <button type="submit" class="btn btn-primary">Сохранить уведомления</button>
+            <div class="admin-form-grid mt-3">
+                <label class="admin-control"><span>Последний уведомлённый релиз</span><input readonly value="{{ update_settings.update_last_notified_release or '—' }}"></label>
+                <label class="admin-control"><span>Последняя проверка (UTC)</span><input readonly value="{{ update_settings.update_last_check_at or '—' }}"></label>
+                <label class="admin-control"><span>Статус проверки</span><input readonly value="{{ update_status_labels.get(update_settings.update_last_check_status, 'Неизвестный статус') }}"></label>
+            </div>
+            <button type="submit" class="btn btn-primary mt-3">Сохранить уведомления</button>
         </form>
-        <div class="admin-form-grid">
-            <label class="admin-control"><span>Последний уведомлённый релиз</span><input readonly value="{{ update_settings.update_last_notified_release or '—' }}"></label>
-            <label class="admin-control"><span>Последняя проверка (UTC)</span><input readonly value="{{ update_settings.update_last_check_at or '—' }}"></label>
-            <label class="admin-control"><span>Статус проверки</span><input readonly value="{{ update_status_labels.get(update_settings.update_last_check_status, 'Неизвестный статус') }}"></label>
-        </div>
-        <div class="admin-contact-card__actions">
+        <div class="admin-contact-card__actions border-top mt-3 pt-3">
             <form method="post" action="{{ url_for('admin_update_notification_test') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-outline-primary" {% if not update_bot_configured %}disabled{% endif %}>Отправить тестовое сообщение</button></form>
             <form method="post" action="{{ url_for('admin_update_notification_check') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-outline-secondary">Проверить сейчас</button></form>
         </div>
