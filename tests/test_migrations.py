@@ -104,7 +104,8 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20261124_monthly_reminders'], '20261123_update_notifications')
         self.assertEqual(revisions['20261125_feedback'], '20261124_monthly_reminders')
         self.assertEqual(revisions['20261126_attachment_dedup'], '20261125_feedback')
-        self.assertEqual(heads, {'20261126_attachment_dedup'})
+        self.assertEqual(revisions['20261127_debt_payment_plans'], '20261126_attachment_dedup')
+        self.assertEqual(heads, {'20261127_debt_payment_plans'})
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))
