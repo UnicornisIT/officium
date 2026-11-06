@@ -179,7 +179,7 @@ jobs:
           # Firefox requires HOME to be owned by the container user.
           HOME=$(mktemp -d)
           export HOME
-          npm run test:e2e -- --project=${{ matrix.browser }}
+          npm run test:e2e -- --project=${{ matrix.browser }} ${{ matrix.browser == 'firefox' && '--retries=0' || '' }}
       - name: Upload Playwright evidence
         if: always()
         uses: actions/upload-artifact@v7
