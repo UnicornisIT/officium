@@ -17,7 +17,8 @@
 <option value="keep" {% if values.get('linked_amount_action')=='keep' %}selected{% endif %}>Оставить сумму траты прежней</option>
 </select><small class="text-muted">Если суммы отличаются, укажите, нужно ли изменить трату. Дата и другие поля траты сохранятся.</small></label>
 {% endif %}
-<label>Прикрепить скан (JPEG, PNG, WebP, до 5 МБ)<input class="form-control" type="file" name="file" accept="image/jpeg,image/png,image/webp"></label><button class="btn btn-primary">Сохранить документ</button>
+<label>Прикрепить скан (JPEG, PNG, WebP, до 5 МБ)<input class="form-control" type="file" name="file" accept="image/jpeg,image/png,image/webp"></label>
+<div class="vehicle-document-actions"><button class="btn btn-primary">Сохранить документ</button></div>
 </form>
 {% endmacro %}
 <h2 class="h5">Документы автомобиля</h2>
