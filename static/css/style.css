@@ -1933,7 +1933,8 @@ html {
 }
 
 .vehicle-detail-grid > section,
-.vehicle-navigation {
+.vehicle-navigation,
+:where(section[id], article[id], details[id], form[id], h1[id], h2[id], h3[id]) {
     scroll-margin-top: var(--sticky-navbar-offset);
 }
 
@@ -2568,7 +2569,7 @@ html[data-theme="dark"] .user-menu__panel .dropdown-item.active {
 }
 
 .app-main {
-    padding-top: 2.5rem;
+    padding-top: var(--sticky-navbar-offset);
 }
 
 .dashboard-header .btn {
@@ -7091,7 +7092,7 @@ html[data-theme="dark"] .toast {
 
 @media (max-width: 576px) {
     .app-main {
-        padding: 1.2rem 0.85rem 2.5rem;
+        padding-inline: 0.85rem;
     }
     .finance-header {
         align-items: stretch;

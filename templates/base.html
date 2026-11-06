@@ -28,7 +28,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=34" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=35" rel="stylesheet">
     {% block extra_css %}{% endblock %}
     <link href="{{ url_for('static', filename='css/ui-controls.css', v='3') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/amount-privacy.css', v='3') }}" rel="stylesheet">
@@ -248,7 +248,7 @@
 {% endif %}
 
 <!-- Основной контент -->
-<main class="app-main container-fluid px-4 py-4">
+<main class="app-main container-fluid px-4 pb-4">
     {% if amount_privacy_available %}<div id="amountPrivacySource" class="amount-privacy-corner"><button type="button" id="amountPrivacyToggle" class="btn btn-outline-secondary amount-privacy-toggle" title="{{ 'Показать суммы' if amounts_initially_hidden else 'Скрыть суммы' }}" aria-pressed="{{ 'true' if amounts_initially_hidden else 'false' }}"><i class="bi bi-{{ 'eye' if amounts_initially_hidden else 'eye-slash' }}" aria-hidden="true"></i><span class="visually-hidden">{{ 'Показать суммы' if amounts_initially_hidden else 'Скрыть суммы' }}</span></button></div>{% endif %}
     {% block content %}{% endblock %}
 </main>
