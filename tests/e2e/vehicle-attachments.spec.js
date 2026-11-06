@@ -14,7 +14,11 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.goto('/vehicles/new', { waitUntil: 'domcontentloaded' });
     const unique = `${info.project.name}-${width}-${theme}-${Date.now()}`;
     await page.locator('#v_name').fill(`Фото ${unique}`);
-    await page.locator('#v_company').check();
+    const companySwitch = page.getByRole('switch', { name: 'Служебный автомобиль' });
+    // Font swaps can reflow the fields above the switch on narrow screens.
+    await page.evaluate(() => document.fonts.ready);
+    await companySwitch.scrollIntoViewIfNeeded();
+    await companySwitch.check();
     await page.getByRole('button', { name: 'Сохранить автомобиль', exact: true }).click();
     await page.waitForURL(/\/vehicles\/\d+$/);
     const vehicleId = page.url().split('/').pop();
