@@ -203,6 +203,10 @@ def _configure_secret_key(app):
 
 
 def _validate_runtime_config(app):
+    polling_workers = app.config['TELEGRAM_POLLING_WORKERS']
+    if type(polling_workers) is not int or not 1 <= polling_workers <= 16:
+        raise RuntimeError('TELEGRAM_POLLING_WORKERS must be an integer between 1 and 16.')
+
     if value_is_enabled(app.config.get('TELEGRAM_MINI_APP_ENABLED')) and not str(
         app.config.get('OFFICIUM_PUBLIC_URL') or ''
     ).strip():

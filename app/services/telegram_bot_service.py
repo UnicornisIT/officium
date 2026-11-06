@@ -269,6 +269,7 @@ CANCEL_WORDS = {'отмена', 'cancel', 'стоп', 'stop'}
 CONFIRM_WORDS = {'да', 'сохранить', 'ok', 'okay', 'yes', 'confirm'}
 REJECT_WORDS = {'нет', 'no', 'не', 'отмена', 'cancel'}
 _RATE_LIMIT_BUCKETS = {}
+_RATE_LIMIT_LOCK = Lock()
 _CLEANUP_INTERVAL_SECONDS = 3600
 _LAST_CLEANUP_AT = None
 _CLEANUP_LOCK = Lock()
@@ -335,7 +336,9 @@ def handle_telegram_update(update):
             callback_query_id=callback_query_id,
         )
 
-    if _is_rate_limited(telegram_id, chat_id):
+    with _RATE_LIMIT_LOCK:
+        rate_limited = _is_rate_limited(telegram_id, chat_id)
+    if rate_limited:
         return TelegramBotResult(
             chat_id=chat_id,
             reply_text='Слишком много сообщений подряд. Попробуйте через минуту.',

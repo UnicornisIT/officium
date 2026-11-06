@@ -20,9 +20,9 @@ class TelegramPollingTests(unittest.TestCase):
             'from': {'id': 101}, 'text': '/start',
         }}
 
-    def run_batches(self, batches, *, webhook='', remove_webhook=False, delivery_error=None):
+    def run_batches(self, batches, *, webhook='', remove_webhook=False, delivery_error=None, stop=None):
         self.app.config['TELEGRAM_BOT_ENABLED'] = True
-        stop = Event()
+        stop = stop if stop is not None else Event()
         batches = iter(batches)
 
         def api(method, payload, **kwargs):
@@ -90,10 +90,11 @@ class TelegramPollingTests(unittest.TestCase):
                 raise RuntimeError('private database detail')
             return original(update)
 
+        stop = Event()
         with patch.object(polling, 'handle_telegram_update_once', side_effect=process), \
-                patch.object(Event, 'wait', return_value=False) as wait, \
+                patch.object(stop, 'wait', return_value=False) as wait, \
                 self.assertLogs(self.app.logger, level='WARNING') as logs:
-            request, sender, _ = self.run_batches([[self.update()], [self.update()]])
+            request, sender, _ = self.run_batches([[self.update()], [self.update()]], stop=stop)
         self.assertNotIn('private database detail', str(logs.output))
         wait.assert_called_once_with(5)
         polls = [call for call in request.call_args_list if call.args[0] == 'getUpdates']
@@ -101,12 +102,13 @@ class TelegramPollingTests(unittest.TestCase):
         sender.assert_called_once()
 
     def test_network_and_rate_limit_retry(self):
-        with patch.object(Event, 'wait', return_value=False) as wait:
+        stop = Event()
+        with patch.object(stop, 'wait', return_value=False) as wait:
             self.run_batches([
                 TelegramDeliveryResult(failure_kind='connection'),
                 TelegramDeliveryResult(failure_kind='rate_limited', retry_after=75),
                 [self.update()],
-            ])
+            ], stop=stop)
         self.assertEqual([call.args[0] for call in wait.call_args_list], [5, 75])
 
     def test_conflict_and_invalid_token_stop(self):
