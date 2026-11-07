@@ -184,11 +184,12 @@ def _schedule_start(debt, today):
     )
     anchor = max(anchor, payment_date)
     contract_day = getattr(debt, 'payment_day', None) or payment_date.day
+    fallback_day = getattr(debt, 'payment_day', None) or anchor.day
     months = 0
     future_due = anchor
     while future_due < today:
         months += 1
-        future_due = anchor + relativedelta(months=months, day=contract_day)
+        future_due = anchor + relativedelta(months=months, day=fallback_day)
     fallback = {
         'principal': Decimal(str(debt.remaining_amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP),
         'rows': [],
