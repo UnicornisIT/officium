@@ -463,22 +463,11 @@ def get_finance_summary(user_id, year=None, month=None):
         total_principal = sum((_money_value(d.remaining_amount) for d in active_debts), ZERO)
         total_original = sum((_money_value(d.total_amount) for d in active_debts), ZERO)
 
+        # Пустой месяц не заменяем прошлым: test_deleting_archived_debt_does_not_change_displayed_month.
         incomes_this_month = Income.query.filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).all()
         expenses_this_month = Expense.query.filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).all()
         # Архив исключён из сводки: test_archived_debt_payments_are_excluded_from_summary.
         payments_this_month = Payment.query.join(Debt).filter(Debt.user_id == user_id, Debt.status == 'active', Payment.payment_date >= month_start, Payment.payment_date < month_end).all()
-
-        if not use_selected_month and not (incomes_this_month or expenses_this_month or payments_this_month):
-            latest_income = Income.query.with_entities(func.max(Income.income_date)).filter_by(user_id=user_id).scalar()
-            latest_expense = Expense.query.with_entities(func.max(Expense.expense_date)).filter_by(user_id=user_id).scalar()
-            latest_payment = Payment.query.join(Debt).with_entities(func.max(Payment.payment_date)).filter(Debt.user_id == user_id, Debt.status == 'active').scalar()
-            latest_date = max(d for d in (latest_income, latest_expense, latest_payment) if d is not None) if any((latest_income, latest_expense, latest_payment)) else None
-            if latest_date:
-                month_start = date(latest_date.year, latest_date.month, 1)
-                month_end = date(month_start.year + (month_start.month // 12), ((month_start.month % 12) + 1), 1) if month_start.month != 12 else date(month_start.year + 1, 1, 1)
-                incomes_this_month = Income.query.filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).all()
-                expenses_this_month = Expense.query.filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).all()
-                payments_this_month = Payment.query.join(Debt).filter(Debt.user_id == user_id, Debt.status == 'active', Payment.payment_date >= month_start, Payment.payment_date < month_end).all()
 
         total_incomes = _money_value(Income.query.with_entities(func.coalesce(func.sum(Income.amount), 0)).filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).scalar())
         total_expenses = _money_value(Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0)).filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).scalar())
@@ -516,25 +505,6 @@ def get_finance_summary(user_id, year=None, month=None):
             'selected_month': month_start.month,
         })
 
-    incomes_this_month = Income.query.filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).all()
-    expenses_this_month = Expense.query.filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).all()
-    payments_this_month = Payment.query.join(Debt).filter(Debt.user_id == user_id, Debt.status == 'active', Payment.payment_date >= month_start, Payment.payment_date < month_end).all()
-
-    if not use_selected_month and not (incomes_this_month or expenses_this_month or payments_this_month):
-        latest_income = Income.query.with_entities(func.max(Income.income_date)).filter_by(user_id=user_id).scalar()
-        latest_expense = Expense.query.with_entities(func.max(Expense.expense_date)).filter_by(user_id=user_id).scalar()
-        latest_payment = Payment.query.join(Debt).with_entities(func.max(Payment.payment_date)).filter(Debt.user_id == user_id, Debt.status == 'active').scalar()
-        latest_date = max(d for d in (latest_income, latest_expense, latest_payment) if d is not None) if any((latest_income, latest_expense, latest_payment)) else None
-        if latest_date:
-            month_start = date(latest_date.year, latest_date.month, 1)
-            month_end = date(month_start.year + (month_start.month // 12), ((month_start.month % 12) + 1), 1) if month_start.month != 12 else date(month_start.year + 1, 1, 1)
-            incomes_this_month = Income.query.filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).all()
-            expenses_this_month = Expense.query.filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).all()
-            payments_this_month = Payment.query.join(Debt).filter(Debt.user_id == user_id, Debt.status == 'active', Payment.payment_date >= month_start, Payment.payment_date < month_end).all()
-
-    total_incomes = _money_value(Income.query.with_entities(func.coalesce(func.sum(Income.amount), 0)).filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).scalar())
-    total_expenses = _money_value(Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0)).filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).scalar())
-    total_payments = _money_value(Payment.query.with_entities(func.coalesce(func.sum(Payment.amount), 0)).join(Debt).filter(Debt.user_id == user_id, Debt.status == 'active', Payment.payment_date >= month_start, Payment.payment_date < month_end).scalar())
     # Transfers to goals and the fund are not expenses, but the money set aside
     # is no longer free: subtract the month's net transfer separately.
     goal_transfers = month_transfers(user_id, month_start, month_end)
