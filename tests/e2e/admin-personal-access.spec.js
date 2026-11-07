@@ -68,6 +68,7 @@ test('avatar menu opens inside the mobile navigation', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/dev-login/user');
   await page.locator('.navbar-toggler').click();
+  await expect(page.locator('#navbarNav')).toHaveClass(/\bshow\b/);
   const toggle = page.locator('#userMenuToggle');
   await expect(toggle).toBeVisible();
   await toggle.click();

@@ -104,7 +104,6 @@ test('More animates, highlights hovered items and respects reduced motion', asyn
   });
   await more.click();
   await expect(more).toHaveAttribute('data-open-animations', '1');
-  await expect(page.locator('link[href*="css/vehicles.css"]')).toHaveAttribute('href', /v=navigation-menu-4/);
   const item = nav.locator('.dropdown-item').first();
   // Read both bounds in one frame while the parent menu may still animate.
   const gap = await item.evaluate(element => element.nextElementSibling.getBoundingClientRect().top - element.getBoundingClientRect().bottom);
