@@ -9,7 +9,7 @@ from flask import current_app
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Expense
+from app.models import Expense, MonthlyExpenseStop
 from app.time_utils import as_utc
 from extensions import db
 
@@ -22,6 +22,13 @@ def _stats(user_id=None, target_month=None):
         'user_id': user_id,
         'target_month': target_month,
     }
+
+
+def monthly_series_stopped(user_id, monthly_group_id, month, *, session=None):
+    if not monthly_group_id:
+        return False
+    stop = (session if session is not None else db.session).get(MonthlyExpenseStop, (user_id, monthly_group_id))
+    return stop is not None and _month_start(month) >= stop.stopped_from
 
 
 def _today():
@@ -127,6 +134,7 @@ def _create_monthly_copy(settings_expense, origin_expense, target_month, anchor_
         payment_method=settings_expense.payment_method,
         comment=settings_expense.comment,
         is_monthly=True,
+        monthly_is_automatic=True,
         monthly_group_id=settings_expense.monthly_group_id,
         generated_from_id=origin_expense.id,
         generated_for_month=_month_key(target_month),
@@ -193,8 +201,12 @@ def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, en
     if _month_start(end_month) < _month_start(start_month):
         return stats
 
+    stop = db.session.get(MonthlyExpenseStop, (user_id, monthly_group_id))
     try:
         for month in _iter_months(start_month, end_month):
+            if stop is not None and _month_start(month) >= stop.stopped_from:
+                stats['skipped'] += 1
+                continue
             if find_monthly_expense_for_month(user_id, monthly_group_id, month):
                 stats['skipped'] += 1
                 continue

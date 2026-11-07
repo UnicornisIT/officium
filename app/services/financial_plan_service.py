@@ -15,6 +15,7 @@ from app.models import (
     Income,
 )
 from app.services.debt_schedule_service import build_debt_payment_schedule
+from app.services.monthly_expenses_service import monthly_series_stopped
 from app.services.finance_summary_service import get_finance_summary
 from app.services.pay_period_service import (
     PAY_HISTORY_LOOKAHEAD_DAYS,
@@ -582,6 +583,8 @@ def _load_sources(user_id, period_start, period_end):
         .order_by(Expense.expense_date.asc(), Expense.id.asc())
         .all()
     )
+    recurring_expenses = [expense for expense in recurring_expenses
+                          if not monthly_series_stopped(user_id, expense.monthly_group_id, period_start)]
     return debts, incomes, recurring_expenses
 
 
@@ -665,6 +668,17 @@ def _build_debt_items(debts, today, planning_horizon_end):
             pass
 
         planned_rows = _planned_schedule_rows(schedule, planning_horizon_end, today)
+        if debt.debt_type != 'split' and planned_rows:
+            # Arrears can contain the entire balance; the monthly budget reserves
+            # one installment, while overdue totals remain visible separately.
+            row = dict(planned_rows[0])
+            row['payment'] = _float(min(
+                _decimal(row.get('payment')) - _decimal(row.get('penalty')),
+                minimum_payment + monthly_fee,
+            ))
+            if _decimal(row['payment']) < _decimal(planned_rows[0].get('payment')):
+                row['remaining'] = _float(debt.remaining_amount)
+            planned_rows = [row]
         scheduled_amount = _decimal(sum(
             (_decimal(row.get('payment')) for row in planned_rows),
             Decimal('0.00'),
@@ -706,7 +720,7 @@ def _build_debt_items(debts, today, planning_horizon_end):
 
         accrual = _debt_accrual(debt, today)
         unpaid_penalty = _decimal(accrual['penalty']) if accrual else Decimal('0.00')
-        if unpaid_penalty > 0:
+        if unpaid_penalty > 0 and debt.debt_type == 'split':
             # The penalty is repaid before current installments, so it is due now.
             monthly_amount = _decimal(monthly_amount + unpaid_penalty)
 
@@ -738,10 +752,10 @@ def _build_debt_items(debts, today, planning_horizon_end):
         ]
         if schedule is None and monthly_amount > 0:
             planned_payments = [{
-                'amount': _float(monthly_amount - unpaid_penalty),
+                'amount': _float(monthly_amount - (unpaid_penalty if debt.debt_type == 'split' else 0)),
                 'due_date': next_payment_date if next_payment_date and next_payment_date >= today else None,
             }]
-        if unpaid_penalty > 0:
+        if unpaid_penalty > 0 and debt.debt_type == 'split':
             planned_payments = [{'amount': _float(unpaid_penalty), 'due_date': today}] + planned_payments
 
         end_date, payments_left = _debt_completion(debt, today, schedule=schedule)

@@ -37,6 +37,20 @@ class MonthlyRemindersTests(unittest.TestCase):
                 self.assertEqual(reminders.run(self.instant(due - timedelta(days=1))), 0)
         self.assertEqual(MonthlyExpenseReminderLog.query.count(), 3)
 
+    def test_deleted_subscription_stops_reminders_from_deleted_month(self):
+        from app.services.expense_service import delete_expense
+        from app.services.monthly_expenses_service import generate_monthly_expenses
+
+        self.expense(day=15)
+        generate_monthly_expenses(user_id=self.user.id, target_month='2024-06')
+        june = Expense.query.filter_by(user_id=self.user.id, generated_for_month='2024-06').one()
+        delete_expense(user_id=self.user.id, expense_id=june.id)
+        with patch.object(reminders.telegram, 'send_telegram_message', return_value=True) as sender:
+            self.assertEqual(reminders.run(self.instant(date(2024, 6, 14))), 0)
+            self.assertEqual(reminders.run(self.instant(date(2024, 7, 14))), 0)
+            sender.assert_not_called()
+            self.assertEqual(reminders.run(self.instant(date(2024, 5, 14))), 1)
+
     def test_month_and_year_boundaries(self):
         self.expense(day=1)
         for today, due in ((date(2026, 1, 31), '01.02.2026'), (date(2026, 12, 31), '01.01.2027')):

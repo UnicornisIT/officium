@@ -220,8 +220,8 @@ body {
     border-left: 1px solid var(--border);
 }
 
-.plan-answer__focus span,
-.plan-answer__focus small {
+.plan-answer__focus > span,
+.plan-answer__focus > small {
     display: block;
     color: var(--text-muted);
 }

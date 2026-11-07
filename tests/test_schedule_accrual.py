@@ -105,7 +105,7 @@ class ScheduleAccrualTestCase(unittest.TestCase):
                 debt.status = 'closed'
                 db.session.commit()
 
-    def test_plan_still_counts_overdue_row_when_payments_missing(self):
+    def test_monthly_plan_does_not_include_accumulated_arrears_or_penalties(self):
         today = date(2026, 11, 5)
         debt = self.stale_debt(paid=False)
         state = debt.accrual_state(today)
@@ -117,11 +117,13 @@ class ScheduleAccrualTestCase(unittest.TestCase):
         self.assertTrue(item['is_overdue'])
         self.assertEqual(rows[0]['status'], 'overdue')
         self.assertEqual(rows[0]['payment'], float(state['amount_to_clear_overdue']))
-        self.assertEqual(item['scheduled_payments_count'], 2)
-        self.assertAlmostEqual(
-            item['monthly_amount'], rows[0]['payment'] + rows[1]['payment'] + float(state['penalty']),
-        )
-        self.assertEqual(item['planned_payments'][0]['due_date'], today)
+        self.assertEqual(item['scheduled_payments_count'], 1)
+        self.assertEqual(item['monthly_amount'], 25000.0)
+        self.assertEqual(plan['totals']['obligations'], 25000.0)
+        self.assertEqual(sum(payment['amount'] for payment in item['planned_payments']), 25000.0)
+        self.assertEqual(item['overdue_amount'], float(state['overdue_amount']))
+        self.assertEqual(item['penalty'], float(state['penalty']))
+        self.assertGreater(item['projected_remaining_after_plan'], 0)
 
     def test_schedule_first_row_is_future_when_anchor_in_past(self):
         debt = self.stale_debt()
@@ -161,8 +163,20 @@ class ScheduleAccrualTestCase(unittest.TestCase):
             plan = build_financial_plan(self.user_id, today=date(2026, 8, 1))
 
         item = plan['debt_items'][0]
-        self.assertEqual(item['monthly_amount'], 9000.0)
-        self.assertEqual(item['scheduled_payments_count'], 3)
+        self.assertEqual(item['monthly_amount'], 2000.0)
+        self.assertEqual(item['scheduled_payments_count'], 1)
+
+    def test_monthly_plan_counts_one_installment_on_period_boundary(self):
+        self.debt()
+        rows = [
+            {'payment_date': due, 'payment': 5000, 'remaining': 90000.0}
+            for due in ('2026-08-01', '2026-09-01')
+        ]
+        with patch('app.services.financial_plan_service.build_debt_payment_schedule', return_value={'rows': rows}):
+            plan = build_financial_plan(self.user_id, today=date(2026, 8, 1))
+
+        self.assertEqual(plan['totals']['obligations'], 5000.0)
+        self.assertEqual(plan['debt_items'][0]['scheduled_payments_count'], 1)
 
     def test_plan_warns_about_stale_date_when_schedule_unavailable(self):
         debt = self.stale_debt()

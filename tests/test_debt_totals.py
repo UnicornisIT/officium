@@ -145,7 +145,7 @@ class DebtTotalsTestCase(unittest.TestCase):
         self.assertIn('задолженность 102 049,32 руб.', message)
         self.assertIn('Calm Bank Home: через 11 дн., платеж 3 000 руб., задолженность 50 328,77 руб.', message)
 
-    def test_financial_plan_uses_total_and_reserves_the_penalty(self):
+    def test_financial_plan_shows_total_but_budgets_one_monthly_payment(self):
         with self.app.app_context():
             plan = build_financial_plan(self.user_id, today=TODAY)
 
@@ -156,7 +156,8 @@ class DebtTotalsTestCase(unittest.TestCase):
         self.assertTrue(late['is_overdue'])
         self.assertEqual(late['overdue_amount'], 5000.0)
         self.assertEqual(late['penalty'], 27.4)
-        self.assertEqual(late['planned_payments'][0], {'amount': 27.4, 'due_date': TODAY})
+        self.assertEqual(late['monthly_amount'], 5000.0)
+        self.assertEqual(sum(payment['amount'] for payment in late['planned_payments']), 5000.0)
         self.assertFalse(items[self.current_id]['is_overdue'])
         self.assertEqual(items[self.current_id]['remaining'], 50328.77)
 

@@ -6,7 +6,7 @@ from decimal import Decimal
 from flask import abort, current_app, redirect, render_template, request, url_for
 from sqlalchemy import or_
 from werkzeug.exceptions import HTTPException
-from app.models import Expense
+from app.models import Expense, MonthlyExpenseStop
 from app.services import import_storage_service as import_storage
 from app.services.bank_statement_import_service import (
     parse_bank_statement,
@@ -160,6 +160,7 @@ def init_app(app):
         return render_template(
             "expenses.html",
             expenses=expenses_list,
+            stopped_monthly_groups=_stopped_monthly_groups(),
             groups=groups,
             active_month=active_month,
             categories=EXPENSE_CATEGORIES,
@@ -435,6 +436,7 @@ def init_app(app):
         return render_template(
             "expenses.html",
             expenses=expenses_list,
+            stopped_monthly_groups=_stopped_monthly_groups(),
             groups=groups,
             active_month=active_month,
             categories=EXPENSE_CATEGORIES,
@@ -444,6 +446,16 @@ def init_app(app):
             edit_expense=expense,
             form_data=form_data,
         )
+
+    @app.route("/expenses/stop-repeat/<int:expense_id>", methods=["POST"])
+    def stop_expense_recurrence(expense_id):
+        if is_local_test_user():
+            abort(404)
+        try:
+            expense_service.stop_expense_recurrence(user_id=current_user.id, expense_id=expense_id)
+        except ValueError as exc:
+            return redirect(url_for("expenses", error=str(exc)))
+        return redirect(url_for("expenses", success="Повторение расхода прекращено"))
 
     @app.route("/expenses/delete/<int:expense_id>", methods=["POST"])
     def delete_expense(expense_id):
@@ -461,6 +473,10 @@ def init_app(app):
         except ValueError as exc:
             return redirect(url_for("expenses", error=str(exc)))
         return redirect(url_for("expenses", success="Расход удалён"))
+
+
+def _stopped_monthly_groups():
+    return {stop.monthly_group_id for stop in MonthlyExpenseStop.query.filter_by(user_id=current_user.id).all()}
 
 
 def _prepare_import_rows(rows):
@@ -658,6 +674,7 @@ def _update_monthly_expense_from_import(
 
     previous_settings = snapshot_monthly_expense_settings(expense)
     expense.amount = amount
+    expense.monthly_is_automatic = False
     expense.expense_date = expense_date
     expense.payment_method = payment_method
     expense.comment = comment
