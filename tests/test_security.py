@@ -124,7 +124,8 @@ class RuntimeSecurityTestCase(unittest.TestCase):
         client = app.test_client()
         with app.app_context():
             db.create_all()
-            user = User(telegram_id=-123456789, username='error-test', role='user')
+            user = User(telegram_id=-123456789, username='error-test', role='user',
+                        hide_amounts_on_open=True)
             db.session.add(user)
             db.session.commit()
             user_id = user.id
@@ -138,6 +139,9 @@ class RuntimeSecurityTestCase(unittest.TestCase):
         self.assertEqual(page_response.status_code, 404)
         self.assertIn('Страница не найдена'.encode(), page_response.data)
         self.assertNotIn(b'Traceback', page_response.data)
+        self.assertNotIn(b'amountPrivacyToggle', page_response.data)
+        self.assertNotIn(b'amount-privacy.js', page_response.data)
+        self.assertNotIn(b'amounts-pending', page_response.data)
         self.assertEqual(api_response.status_code, 404)
         self.assertEqual(api_response.get_json()['success'], False)
         self.assertNotIn('Traceback', api_response.get_json()['error'])
