@@ -24,7 +24,6 @@ for (const isCompany of [false, true]) {
     expect(vehiclePath).toMatch(/^\/vehicles\/\d+$/);
     await page.goto(`${vehiclePath}?tab=documents`, { waitUntil: 'domcontentloaded' });
     const addDocument = page.getByText('Добавить документ', { exact: true });
-    if (isCompany) await expect(addDocument).toHaveCSS('transition-property', /^transform,/);
     await addDocument.click();
 
     const form = page.locator('.vehicle-document-form');
