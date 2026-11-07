@@ -11,6 +11,7 @@ from app.models import Expense, MonthlyExpenseReminderLog, User, Vehicle
 from app.services import telegram_bot_service as telegram
 from app.services.monthly_expenses_service import (
     _date_in_month, _pick_origin_expense, _pick_settings_expense,
+    monthly_series_stopped,
 )
 from app.services.telegram_transport import TelegramDeliveryError
 from app.services.telegram_links_service import application_url, navigation_keyboard
@@ -59,6 +60,8 @@ def _due_expenses(session, user, now):
             continue
         origin = _pick_origin_expense(group)
         settings = _pick_settings_expense(active)
+        if monthly_series_stopped(user.id, settings.monthly_group_id, target, session=session):
+            continue
         if (origin.id in sent_ids or settings.amount is None or settings.expense_date is None
                 or settings.vehicle_id in archived or origin.expense_date is None
                 or origin.expense_date > target):

@@ -110,7 +110,9 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20261126_attachment_dedup'], '20261125_feedback')
         self.assertEqual(revisions['20261127_debt_payment_plans'], '20261126_attachment_dedup')
         self.assertEqual(revisions['20261128_payment_cascade'], '20261127_debt_payment_plans')
-        self.assertEqual(heads, {'20261128_payment_cascade'})
+        self.assertEqual(revisions['20261129_monthly_expense_stops'], '20261128_payment_cascade')
+        self.assertEqual(revisions['20261130_expense_auto'], '20261129_monthly_expense_stops')
+        self.assertEqual(heads, {'20261130_expense_auto'})
 
     def test_payment_cascade_migration_preserves_data_and_deletes_payments(self):
         migration = next(module for module in self.modules if module.revision == '20261128_payment_cascade')
@@ -156,6 +158,47 @@ class MigrationContractTestCase(unittest.TestCase):
                 sql = output.getvalue()
                 self.assertIn('ALTER TABLE payments DROP FOREIGN KEY payments_ibfk_1', sql)
                 self.assertIn('FOREIGN KEY(debt_id) REFERENCES debts (id) ON DELETE CASCADE', sql)
+
+    def test_monthly_expense_stop_migration_emits_mysql_and_mariadb_ddl(self):
+        migration = next(module for module in self.modules if module.revision == '20261129_monthly_expense_stops')
+        for dialect in ('mysql', 'mariadb'):
+            with self.subTest(dialect=dialect):
+                output = io.StringIO()
+                context = MigrationContext.configure(
+                    url=f'{dialect}+pymysql://', opts={'as_sql': True, 'output_buffer': output},
+                )
+                with patch.object(migration, 'op', Operations(context)):
+                    migration.upgrade()
+                    migration.downgrade()
+                sql = output.getvalue()
+                self.assertIn('CREATE TABLE monthly_expense_stops', sql)
+                self.assertIn('PRIMARY KEY (user_id, monthly_group_id)', sql)
+                self.assertIn('ON DELETE CASCADE', sql)
+                self.assertIn('DROP TABLE monthly_expense_stops', sql)
+
+    def test_expense_generation_source_preserves_confirmed_legacy_records(self):
+        migration = next(module for module in self.modules if module.revision == '20261130_expense_auto')
+        engine = create_engine('sqlite:///:memory:')
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                'CREATE TABLE expenses (id INTEGER PRIMARY KEY, generated_from_id INTEGER, '
+                'is_monthly BOOLEAN, monthly_settings_updated_at DATETIME, created_at DATETIME)'
+            )
+            connection.execute(text(
+                "INSERT INTO expenses VALUES "
+                "(1, NULL, 1, '2026-04-01', '2026-04-01'), "
+                "(2, 1, 1, '2026-04-01', '2026-05-01'), "
+                "(3, 1, 1, '2026-06-02', '2026-06-01'), "
+                "(4, 1, 1, NULL, '2026-07-01')"
+            ))
+            with patch.object(migration, 'op', Operations(MigrationContext.configure(connection))):
+                migration.upgrade()
+                self.assertEqual(connection.execute(text(
+                    'SELECT monthly_is_automatic FROM expenses ORDER BY id'
+                )).scalars().all(), [0, 1, 0, 0])
+                migration.downgrade()
+                self.assertEqual(connection.execute(text('SELECT COUNT(*) FROM expenses')).scalar(), 4)
+        engine.dispose()
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))

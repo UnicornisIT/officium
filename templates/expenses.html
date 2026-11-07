@@ -171,7 +171,16 @@
                                                     <a href="{{ url_for('edit_expense', expense_id=expense.id) }}" class="history-icon-btn history-icon-btn-edit" title="Редактировать" aria-label="Редактировать">
                                                         <i class="bi bi-pencil" aria-hidden="true"></i>
                                                     </a>
-                                                    <form method="post" action="{{ url_for('delete_expense', expense_id=expense.id) }}" class="history-delete-form" data-ui-confirm="Удалить этот расход?">
+                                                    {% if expense.is_monthly and expense.monthly_group_id and expense.monthly_group_id not in stopped_monthly_groups %}
+                                                    {% set next_month = '%02d.%d'|format(expense.expense_date.month % 12 + 1, expense.expense_date.year + (1 if expense.expense_date.month == 12 else 0)) %}
+                                                    <form method="post" action="{{ url_for('stop_expense_recurrence', expense_id=expense.id) }}" class="history-delete-form" data-ui-confirm="Прекратить повторение с {{ next_month }}? Этот расход и предыдущие месяцы сохранятся. Будущие автоматические записи будут удалены.">
+                                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                        <button type="submit" class="history-icon-btn history-icon-btn-edit" title="Прекратить повторение" aria-label="Прекратить повторение">
+                                                            <i class="bi bi-stop-circle" aria-hidden="true"></i>
+                                                        </button>
+                                                    </form>
+                                                    {% endif %}
+                                                    <form method="post" action="{{ url_for('delete_expense', expense_id=expense.id) }}" class="history-delete-form" data-ui-confirm="{{ 'Удалить расход за ' ~ expense.expense_date.strftime('%m.%Y') ~ ' и прекратить повторение с ' ~ expense.expense_date.strftime('%m.%Y') ~ '? Предыдущие месяцы сохранятся. Будущие автоматические записи будут удалены.' if expense.is_monthly else 'Удалить этот расход?' }}">
                                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                         <button type="submit" class="history-icon-btn history-icon-btn-delete" title="Удалить" aria-label="Удалить">
                                                             <i class="bi bi-trash" aria-hidden="true"></i>

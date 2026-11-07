@@ -8,10 +8,11 @@ Extra keyword fields are rejected until explicitly supported.
 
 import uuid
 
-from app.models import Expense, User, Vehicle, VehicleRefueling, VehicleServiceRecord, VehicleDocument
+from app.models import Expense, MonthlyExpenseStop, User, Vehicle, VehicleRefueling, VehicleServiceRecord, VehicleDocument
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
     generate_monthly_expenses_from_start_date,
+    _today,
 )
 from app.time_utils import utc_now
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS, parse_date, parse_decimal, record_activity
@@ -149,6 +150,7 @@ def update_expense(*, user_id, expense_id, amount, category, title, expense_date
     ):
         raise ValueError('Для этого ежемесячного расхода уже есть запись в выбранном месяце.')
     expense.vehicle_id = vehicle_id
+    expense.monthly_is_automatic = False
     for key, value in values.items():
         setattr(expense, key, value)
     if is_monthly:
@@ -168,6 +170,52 @@ def delete_expense(*, user_id, expense_id, commit=True, **extra_fields):
     expense = _owned_expense(user_id, expense_id)
     if expense.vehicle_id and _existing_vehicle(user_id, expense.vehicle_id).archived_at:
         raise ValueError('Автомобиль в архиве: сначала восстановите его, чтобы удалить расход.')
+    if expense.is_monthly and expense.monthly_group_id:
+        _stop_monthly_series(expense, expense.expense_date.replace(day=1))
+    _delete_expense_record(expense, user_id)
+    if commit:
+        db.session.commit()
+
+
+def stop_expense_recurrence(*, user_id, expense_id, commit=True):
+    from dateutil.relativedelta import relativedelta
+
+    expense = _owned_expense(user_id, expense_id)
+    if not expense.is_monthly or not expense.monthly_group_id:
+        raise ValueError('Этот расход не является ежемесячным.')
+    if expense.vehicle_id and _existing_vehicle(user_id, expense.vehicle_id).archived_at:
+        raise ValueError('Автомобиль в архиве: сначала восстановите его, чтобы изменить расход.')
+    stopped_from = expense.expense_date.replace(day=1) + relativedelta(months=1)
+    expense.monthly_is_automatic = False
+    _stop_monthly_series(expense, stopped_from)
+    record_activity('expense_repeat_stop', db.session.get(User, user_id), entity_type='expense',
+                    entity_id=expense.id, description=expense.category, commit=False)
+    if commit:
+        db.session.commit()
+
+
+def _stop_monthly_series(expense, stopped_from):
+    stop = db.session.get(MonthlyExpenseStop, (expense.user_id, expense.monthly_group_id))
+    if stop is None:
+        stop = MonthlyExpenseStop(user_id=expense.user_id, monthly_group_id=expense.monthly_group_id,
+                                  stopped_from=stopped_from)
+        db.session.add(stop)
+    else:
+        stop.stopped_from = min(stop.stopped_from, stopped_from)
+    # Historical and manually confirmed expenses remain financial facts.
+    future_copies = Expense.query.filter(
+        Expense.user_id == expense.user_id,
+        Expense.monthly_group_id == expense.monthly_group_id,
+        Expense.monthly_is_automatic.is_(True),
+        Expense.expense_date >= stop.stopped_from,
+        Expense.expense_date > _today(),
+        Expense.id != expense.id,
+    ).all()
+    for copy in future_copies:
+        _delete_expense_record(copy, expense.user_id)
+
+
+def _delete_expense_record(expense, user_id):
     Expense.query.filter_by(user_id=user_id, generated_from_id=expense.id).update(
         {Expense.generated_from_id: None}, synchronize_session=False,
     )
@@ -180,5 +228,3 @@ def delete_expense(*, user_id, expense_id, commit=True, **extra_fields):
     record_activity('expense_delete', db.session.get(User, user_id), entity_type='expense',
                     entity_id=expense.id, description=expense.category, commit=False)
     db.session.delete(expense)
-    if commit:
-        db.session.commit()

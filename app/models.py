@@ -475,6 +475,7 @@ class Expense(db.Model):
     
     # Поля для ежемесячных расходов
     is_monthly = db.Column(db.Boolean, default=False, nullable=False)
+    monthly_is_automatic = db.Column(db.Boolean, default=False, server_default=db.false(), nullable=False)
     monthly_group_id = db.Column(db.String(36), nullable=True)
     generated_from_id = db.Column(
         db.Integer,
@@ -515,6 +516,14 @@ class Expense(db.Model):
 
     def __repr__(self):
         return f'<Expense {self.amount} {self.title}>'
+
+
+class MonthlyExpenseStop(db.Model):
+    __tablename__ = 'monthly_expense_stops'
+
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    monthly_group_id = db.Column(db.String(36), primary_key=True)
+    stopped_from = db.Column(db.Date, nullable=False)
 
 
 class MonthlyExpenseReminderLog(db.Model):

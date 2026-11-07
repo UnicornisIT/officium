@@ -162,6 +162,7 @@ class ExpensesImportMonthlyRegenTestCase(unittest.TestCase):
                 {month: row.id for month, row in rows.items()}, original_ids
             )
             self.assertEqual(rows["2025-02"].expense_date, date(2025, 2, 15))
+            self.assertFalse(rows["2025-02"].monthly_is_automatic)
             self.assertEqual(rows["2025-03"].expense_date, date(2025, 3, 1))
             self.assertEqual(rows["2025-03"].amount, Decimal("750.00"))
             for month in (4, 5):
