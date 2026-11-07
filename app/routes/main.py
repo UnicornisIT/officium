@@ -3,6 +3,7 @@ from decimal import Decimal
 from flask import abort, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user
 from extensions import db
+from app.time_utils import financial_today
 from app.models import (
     Debt,
     Expense,
@@ -199,7 +200,7 @@ def init_app(app):
         else:
             summary = get_finance_summary(current_user.id, selected_year, selected_month)
 
-        today = date.today()
+        today = financial_today()
         year_options = [today.year - i for i in range(0, 5)]
         if summary['selected_year'] not in year_options:
             year_options.append(summary['selected_year'])
@@ -298,7 +299,7 @@ def init_app(app):
             (9, 'Сентябрь'), (10, 'Октябрь'), (11, 'Ноябрь'), (12, 'Декабрь'),
         )
         year_options = sorted(
-            set(range(date.today().year - 4, date.today().year + 3)) | {plan['period']['year']},
+            set(range(financial_today().year - 4, financial_today().year + 3)) | {plan['period']['year']},
             reverse=True,
         )
         if local_test_user:
@@ -543,10 +544,10 @@ def init_app(app):
             active_debts = Debt.query.filter_by(status='active', user_id=current_user.id, debt_type='mortgage')
             active_debts = active_debts.order_by(db.case((Debt.next_payment_date.is_(None), 1), else_=0), Debt.next_payment_date.asc()).all()
 
-        today = date.today()
+        today = financial_today()
         active_debts = sorted(active_debts, key=lambda d: d.effective_next_payment_date(today) or date.max)
         total_remaining = sum((Decimal(str(d.total_debt(today))) for d in active_debts), Decimal('0.00'))
-        total_principal = sum((Decimal(str(d.remaining_amount or 0)) for d in active_debts), Decimal('0.00'))
+        total_principal = sum((d.accrual_state(today)['principal'] for d in active_debts), Decimal('0.00'))
         total_original = sum((Decimal(str(d.total_amount or 0)) for d in active_debts), Decimal('0.00'))
         overdue_count = len([d for d in active_debts if d.is_overdue(today)])
         nearest_debt = next((d for d in active_debts if (d.effective_next_payment_date(today) or date.min) >= today), None)
@@ -564,7 +565,7 @@ def init_app(app):
 
     @app.route('/debts/<int:debt_id>/overdue')
     def debt_overdue(debt_id):
-        today = date.today()
+        today = financial_today()
         if is_local_test_user():
             summary = get_finance_summary(None)
             debt = next((d for d in summary['active_debts'] if d.id == debt_id), None)
@@ -619,7 +620,7 @@ def init_app(app):
 
 
 def seed_data():
-    today = date.today()
+    today = financial_today()
 
     def shift_month(base_date, offset):
         month = base_date.month + offset

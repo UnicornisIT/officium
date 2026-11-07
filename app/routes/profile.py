@@ -5,6 +5,7 @@ from app.services import personal_settings_service as settings
 from app.services.vehicle_notification_service import notifications_enabled
 from app.utils import telegram_feature_states
 from extensions import db
+from app.time_utils import financial_today
 
 
 def init_app(app):
@@ -12,8 +13,14 @@ def init_app(app):
     def amount_privacy_context():
         user = current_user._get_current_object()
         enabled = settings.persistent_user(user) and not request.path.startswith('/admin')
-        return dict(amount_privacy_available=enabled,
+        return dict(financial_date=financial_today(user).isoformat() if user.is_authenticated else '',
+                    amount_privacy_available=enabled,
                     amounts_initially_hidden=enabled and bool(user.hide_amounts_on_open))
+
+    @app.route('/api/calendar-date')
+    @login_required
+    def calendar_date():
+        return {'today': financial_today(current_user).isoformat()}, 200, {'Cache-Control': 'no-store'}
 
     def page(*, errors=None, test_result=None, status=200):
         user = current_user._get_current_object()

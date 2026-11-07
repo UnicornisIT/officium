@@ -31,7 +31,7 @@ class DebtAccrualSettingsTestCase(unittest.TestCase):
         })
         self.client = self.app.test_client()
         self.patches = [
-            patch(f'{module}.date', FrozenDate)
+            patch(f'{module}.financial_today', return_value=FrozenDate.today())
             for module in ('app.models', 'app.services.payment_service')
         ]
         for date_patch in self.patches:

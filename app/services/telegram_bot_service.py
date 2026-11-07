@@ -23,7 +23,7 @@ from app.services.debt_service import check_debt_limit
 from app.services.finance_summary_service import get_finance_summary
 from app.services.payment_service import add_payment
 from app.services.expense_service import create_expense
-from app.time_utils import as_utc, utc_now
+from app.time_utils import account_calendar, as_utc, financial_today, utc_now
 from app.utils import get_setting, telegram_bot_enabled, telegram_feature_states
 from extensions import db
 
@@ -423,6 +423,7 @@ def process_telegram_text(user, text):
     return process_telegram_text_result(user, text, chat_id=None).reply_text
 
 
+@account_calendar
 def process_telegram_text_result(user, text, chat_id=None):
     try:
         chat_id = chat_id or user.telegram_id
@@ -480,6 +481,7 @@ def process_telegram_text_result(user, text, chat_id=None):
         return _result(chat_id or user.telegram_id, 'Не получилось сохранить запись. Попробуйте позже.', MAIN_MENU_KEYBOARD)
 
 
+@account_calendar
 def process_telegram_callback_result(user, chat_id, callback_data):
     try:
         if callback_data == 'tg:cancel':
@@ -661,13 +663,12 @@ def send_debt_reminders(days=None, dry_run=False, sender=send_telegram_message):
         # The admin setting wins; TELEGRAM_REMINDER_DAYS is the fallback until it is saved.
         days = get_setting('payment_warning_days', current_app.config.get('TELEGRAM_REMINDER_DAYS', 7))
     days = int(days)
-    today = date.today()
     stats = {'users_checked': 0, 'messages': 0, 'errors': 0}
 
     users = User.query.filter(User.telegram_id > 0, User.is_blocked.is_(False)).all()
     for user in users:
         stats['users_checked'] += 1
-        message = build_debt_reminder_message(user, today=today, days=days)
+        message = build_debt_reminder_message(user, today=financial_today(user), days=days)
         if not message:
             continue
         stats['messages'] += 1
@@ -683,8 +684,9 @@ def send_debt_reminders(days=None, dry_run=False, sender=send_telegram_message):
     return stats
 
 
+@account_calendar
 def build_debt_reminder_message(user, today=None, days=7):
-    today = today or date.today()
+    today = today or financial_today()
     deadline = today + timedelta(days=days)
     debts = Debt.query.filter_by(user_id=user.id, status='active').all()
     due_debts = []
@@ -959,7 +961,7 @@ def _process_payment_message(user, chat_id, state, text):
 
     if state.step == 'date':
         payment_date = _parse_date_value(text)
-        if payment_date > date.today():
+        if payment_date > financial_today():
             raise ValueError('Укажите фактическую дату оплаты. Будущий платеж можно запланировать в Mini App.')
         data['payment_date'] = payment_date.isoformat()
         _save_state(user, chat_id, flow='payment', step='confirm', data=data, state=state)
@@ -1011,9 +1013,9 @@ def _process_date_callback(user, chat_id, state, value):
         return _result(chat_id, 'Дата сейчас не ожидается.', _cancel_keyboard())
 
     if value == 'today':
-        value_date = date.today()
+        value_date = financial_today()
     elif value == 'yesterday':
-        value_date = date.today() - timedelta(days=1)
+        value_date = financial_today() - timedelta(days=1)
     else:
         raise ValueError('Не понял дату.')
 
@@ -1130,9 +1132,11 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
             product_name=(data.get('product_name') or DEBT_TYPE_LABELS.get(data['debt_type'], 'Долг'))[:150],
             total_amount=amount,
             remaining_amount=amount,
+            opening_principal_amount=amount if data['debt_type'] in ('consumer_credit', 'mortgage') else None,
             minimum_payment=minimum_payment,
             interest_rate=interest_rate,
             next_payment_date=next_payment_date,
+            payment_day=next_payment_date.day if next_payment_date and data['debt_type'] != 'split' else None,
             is_payment_recurring=bool(next_payment_date),
             penalty_rate=default_penalty_rate(data['debt_type']),
             status='active',
@@ -1149,7 +1153,7 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
         if not debt:
             raise ValueError('Долг не найден.')
         payment_date = _parse_date_value(data['payment_date'])
-        if payment_date > date.today():
+        if payment_date > financial_today():
             raise ValueError('Укажите фактическую дату оплаты. Будущий платеж можно запланировать в Mini App.')
         # add_payment commits both the payment and the completed conversation.
         _clear_state(user)
@@ -1337,7 +1341,7 @@ def _prepare_quick_payment(user, chat_id, raw_tokens):
 
 
 def _list_debts(user):
-    today = date.today()
+    today = financial_today()
     debts = Debt.query.filter_by(user_id=user.id, status='active').all()
     debts = sorted(debts, key=lambda debt: _effective_due_date(debt, today) or date.max)
     if not debts:
@@ -1359,7 +1363,7 @@ def _list_debts(user):
 
 def _build_summary(user):
     summary = get_finance_summary(user.id)
-    month_start = summary.get('month_start') or date.today().replace(day=1)
+    month_start = summary.get('month_start') or financial_today().replace(day=1)
     lines = [
         f'Итог за {month_start.strftime("%m.%Y")}:',
         f'Доходы: {_format_money(summary.get("total_incomes", 0))}',
@@ -1372,7 +1376,7 @@ def _build_summary(user):
 
     nearest = summary.get('nearest_debt')
     if nearest:
-        due_date = _effective_due_date(nearest, date.today())
+        due_date = _effective_due_date(nearest, financial_today())
         lines.append(f'Ближайший платеж: {nearest.bank_name} {nearest.product_name}, {_format_date(due_date)}.')
     return '\n'.join(lines)
 
@@ -1732,7 +1736,7 @@ def _pull_date(tokens, options, required=False, default_today=True):
 
     if required:
         raise ValueError('Укажите дату.')
-    return (date.today() if default_today else None), tokens
+    return (financial_today() if default_today else None), tokens
 
 
 def _pull_choice(tokens, option_value, aliases, return_matched=False):
@@ -1854,9 +1858,9 @@ def _try_parse_date_value(value):
 def _parse_date_value(value):
     text = str(value or '').strip().casefold().replace('ё', 'е')
     if text in {'сегодня', 'today'}:
-        return date.today()
+        return financial_today()
     if text in {'вчера', 'yesterday'}:
-        return date.today() - timedelta(days=1)
+        return financial_today() - timedelta(days=1)
 
     for fmt in ('%Y-%m-%d', '%d.%m.%Y'):
         try:
@@ -1867,7 +1871,7 @@ def _parse_date_value(value):
     if re.match(r'^\d{1,2}\.\d{1,2}$', text):
         day_text, month_text = text.split('.', 1)
         try:
-            return date(date.today().year, int(month_text), int(day_text))
+            return date(financial_today().year, int(month_text), int(day_text))
         except ValueError:
             pass
 

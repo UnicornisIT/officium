@@ -5,7 +5,7 @@ from dateutil.relativedelta import relativedelta
 from flask import current_app, has_app_context
 from flask_login import UserMixin
 from extensions import db
-from app.time_utils import utc_now
+from app.time_utils import financial_today, utc_now
 
 
 def _running_release():
@@ -130,6 +130,8 @@ class Debt(db.Model):
     capitalize_interest = db.Column(db.Boolean, default=False, nullable=False)
     grace_period_end_date = db.Column(db.Date, nullable=True)
     accrual_start_date = db.Column(db.Date, nullable=True)
+    opening_principal_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    payment_day = db.Column(db.SmallInteger, nullable=True)
     opening_interest_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     opening_penalty_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     comment = db.Column(db.Text, nullable=True)
@@ -147,7 +149,7 @@ class Debt(db.Model):
     split_purchases = db.relationship('SplitPurchase', back_populates='debt', lazy=True, cascade='all, delete-orphan')
 
     def interest_rate_for(self, value_date=None):
-        check_date = value_date or date.today()
+        check_date = value_date or financial_today(self)
         if (
             self.interest_rate_after_change is not None
             and self.interest_rate_change_date is not None
@@ -159,7 +161,7 @@ class Debt(db.Model):
     def accrual_state(self, today=None):
         """Principal, interest, penalty, overdue and next due date as of today."""
         from app.services.debt_accrual_service import cached_debt_state
-        return cached_debt_state(self, as_of=today or date.today())
+        return cached_debt_state(self, as_of=today or financial_today(self))
 
     def is_overdue(self, today=None):
         return self.accrual_state(today)['is_overdue']
@@ -173,13 +175,13 @@ class Debt(db.Model):
 
         A date before today therefore always means the debt is overdue.
         """
-        today = today or date.today()
+        today = today or financial_today(self)
         if self.next_payment_date and float(self.remaining_amount or 0) > 0:
             return self.accrual_state(today)['next_due_date']
         return self._calendar_next_payment_date(today)
 
     def _calendar_next_payment_date(self, today=None):
-        today = today or date.today()
+        today = today or financial_today(self)
         if self.debt_type != 'split' or not self.next_payment_date or float(self.remaining_amount or 0) <= 0:
             return self.next_payment_date
 
@@ -233,8 +235,8 @@ class Debt(db.Model):
         required_payment = self.minimum_payment or 0
         return max(desired_total - required_payment, 0)
 
-    def to_dict(self):
-        today = date.today()
+    def to_dict(self, today=None):
+        today = today or financial_today(self)
         accrual = self.accrual_state(today)
         effective_next_payment_date = self.effective_next_payment_date(today)
         effective_next_payment_amount = self.effective_next_payment_amount()
@@ -279,7 +281,7 @@ class Debt(db.Model):
             'loan_term_months': self.loan_term_months,
             'monthly_fee_amount': float(self.monthly_fee_amount or 0),
             'bank_remaining_amount': float(self.bank_remaining_amount) if self.bank_remaining_amount is not None else None,
-            'bank_remaining_delta': float(self.bank_remaining_amount - self.remaining_amount) if self.bank_remaining_amount is not None else None,
+            'bank_remaining_delta': float(self.bank_remaining_amount - accrual['principal']) if self.bank_remaining_amount is not None else None,
             'comment': self.comment,
             'status': self.status,
             'days_until_payment': days_until_payment,
@@ -294,6 +296,10 @@ class Debt(db.Model):
             'penalty_rate': float(self.penalty_rate) if self.penalty_rate is not None else None,
             'capitalize_interest': bool(self.capitalize_interest),
             'grace_period_end_date': self.grace_period_end_date.strftime('%Y-%m-%d') if self.grace_period_end_date else None,
+            'opening_principal_amount': float(self.opening_principal_amount) if self.opening_principal_amount is not None else None,
+            'payment_day': self.payment_day,
+            'calculation_diagnostics': accrual['diagnostics'],
+            'calculation_valid': accrual['data_consistent'],
             'accrual_start_date': self.accrual_start_date.strftime('%Y-%m-%d') if self.accrual_start_date else None,
             'opening_interest_amount': float(self.opening_interest_amount or 0),
             'opening_penalty_amount': float(self.opening_penalty_amount or 0),
@@ -328,7 +334,7 @@ class Payment(db.Model):
     bank_remaining_after_payment = db.Column(db.Numeric(12, 2), nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
 
-    def to_dict(self):
+    def to_dict(self, state=None):
         principal_amount = self.principal_amount if self.principal_amount is not None else self.amount
         interest_amount = self.interest_amount if self.interest_amount is not None else 0
         fee_amount = self.fee_amount if self.fee_amount is not None else 0
@@ -338,7 +344,7 @@ class Payment(db.Model):
             if self.is_early_repayment
             else 0
         )
-        return {
+        result = {
             'id': self.id,
             'debt_id': self.debt_id,
             'amount': float(self.amount),
@@ -357,6 +363,12 @@ class Payment(db.Model):
             'bank_remaining_after_payment': float(self.bank_remaining_after_payment) if self.bank_remaining_after_payment is not None else None,
             'created_at': self.created_at.strftime('%d.%m.%Y %H:%M') if self.created_at else None,
         }
+        allocation = state['allocations'].get(self.id) if state else None
+        if allocation:
+            for field, key in (('principal_amount', 'principal'), ('interest_amount', 'interest'),
+                               ('penalty_amount', 'penalty'), ('remaining_after_payment', 'remaining_after')):
+                result[field] = float(allocation[key])
+        return result
 
     def __repr__(self):
         return f'<Payment {self.amount} for debt {self.debt_id}>'

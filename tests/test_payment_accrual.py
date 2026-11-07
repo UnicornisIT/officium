@@ -30,7 +30,7 @@ class PaymentAccrualApiTestCase(unittest.TestCase):
             'WTF_CSRF_ENABLED': False,
         })
         self.client = self.app.test_client()
-        self.date_patch = patch('app.services.payment_service.date', FrozenDate)
+        self.date_patch = patch('app.services.payment_service.financial_today', return_value=FrozenDate.today())
         self.date_patch.start()
 
         with self.app.app_context():

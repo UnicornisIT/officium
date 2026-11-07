@@ -20,13 +20,13 @@ def scheduled_payment_component(payment):
 def next_payment_due_date(debt, due_date):
     if getattr(debt, 'debt_type', None) == 'split':
         return _next_split_cycle_date(due_date)
-    return due_date + relativedelta(months=1)
+    return due_date + relativedelta(months=1, day=getattr(debt, 'payment_day', None) or due_date.day)
 
 
 def previous_payment_due_date(debt, due_date):
     if getattr(debt, 'debt_type', None) == 'split':
         return _previous_split_cycle_date(due_date)
-    return due_date - relativedelta(months=1)
+    return due_date + relativedelta(months=-1, day=getattr(debt, 'payment_day', None) or due_date.day)
 
 
 def _split_payment_days(anchor_date):
