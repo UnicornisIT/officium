@@ -171,11 +171,22 @@ def _schedule_start(debt, today):
     """Where the schedule starts: today's principal, an overdue row if any,
     and the first regular due date with the interest it will carry."""
     payment_date = debt.next_payment_date
+    anchor = max(
+        (payment.payment_date for payment in (getattr(debt, 'payments', []) or [])
+         if payment.payment_date and payment.payment_date <= today),
+        default=payment_date,
+    )
+    anchor = max(anchor, payment_date)
+    months = 0
+    future_due = anchor
+    while future_due < today:
+        months += 1
+        future_due = anchor + relativedelta(months=months)
     fallback = {
         'principal': Decimal(str(debt.remaining_amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP),
         'rows': [],
-        'first_due': payment_date,
-        'period_start': debt.interest_period_start_date or (payment_date - relativedelta(months=1)),
+        'first_due': future_due,
+        'period_start': debt.interest_period_start_date or (future_due - relativedelta(months=1)),
         'first_interest': None,
         'carried_interest': Decimal('0.00'),
         'accrues_interest': True,
@@ -188,7 +199,7 @@ def _schedule_start(debt, today):
 
     principal = state['principal']
     if not state['is_overdue']:
-        due = state['next_due_date'] or payment_date
+        due = state['next_due_date'] or future_due
         at_due = _accrual_state(debt, due) if due > today else state
         if at_due is None:
             return fallback

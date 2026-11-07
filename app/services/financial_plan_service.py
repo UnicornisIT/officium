@@ -664,7 +664,7 @@ def _build_debt_items(debts, today, planning_horizon_end):
         except (ValueError, ArithmeticError, SQLAlchemyError):
             pass
 
-        planned_rows = _planned_schedule_rows(schedule, planning_horizon_end)
+        planned_rows = _planned_schedule_rows(schedule, planning_horizon_end, today)
         scheduled_amount = _decimal(sum(
             (_decimal(row.get('payment')) for row in planned_rows),
             Decimal('0.00'),
@@ -739,7 +739,7 @@ def _build_debt_items(debts, today, planning_horizon_end):
         if schedule is None and monthly_amount > 0:
             planned_payments = [{
                 'amount': _float(monthly_amount - unpaid_penalty),
-                'due_date': next_payment_date,
+                'due_date': next_payment_date if next_payment_date and next_payment_date >= today else None,
             }]
         if unpaid_penalty > 0:
             planned_payments = [{'amount': _float(unpaid_penalty), 'due_date': today}] + planned_payments
@@ -784,6 +784,18 @@ def _build_debt_items(debts, today, planning_horizon_end):
         }
         items.append(item)
 
+        if (
+            schedule is None and debt.debt_type != 'split'
+            and debt.next_payment_date and debt.next_payment_date < today
+            and not item['is_overdue']
+        ):
+            gaps.append({
+                'kind': 'stale_date',
+                'debt_id': debt.id,
+                'title': f'Для «{item["label"]}» дата следующего платежа указана в прошлом.',
+                'detail': 'Дата следующего платежа указана в прошлом, проверьте график по долгу.',
+            })
+
         if minimum_payment <= 0 and debt.debt_type != 'split':
             gaps.append({
                 'kind': 'payment',
@@ -824,13 +836,17 @@ def _debt_accrual(debt, today):
         return None
 
 
-def _planned_schedule_rows(schedule, planning_horizon_end):
+def _planned_schedule_rows(schedule, planning_horizon_end, calculation_date):
     if not schedule:
         return []
     return [
         row for row in schedule.get('rows', [])
         if (
             row.get('status') != 'paid'
+            and (
+                date.fromisoformat(row['payment_date']) >= calculation_date
+                or row.get('status') in ('overdue', 'partly_paid')
+            )
             and date.fromisoformat(row['payment_date']) <= planning_horizon_end
         )
     ]
