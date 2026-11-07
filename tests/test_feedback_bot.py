@@ -77,6 +77,15 @@ class FeedbackBotTests(unittest.TestCase):
         self.assertIn('Добавьте семейный бюджет', html)
         self.assertIn('Расход 850 рублей не появился', html)
 
+    def test_wishlist_link_starts_idea_without_submitting_payload(self):
+        reply = self.send('/start wishlist_idea')
+        self.assertIn('Опишите идею', reply.args[1])
+        with self.app.app_context():
+            state = TelegramConversationState.query.one()
+            self.assertEqual(state.flow, 'feedback_idea')
+            self.assertEqual(state.step, 'body')
+            self.assertEqual(FeedbackReport.query.count(), 0)
+
     def test_quick_command_preserves_message_text_and_replay_is_ignored(self):
         preview = self.send('/idea Хотелось бы фильтр "за год"')
         self.assertIn('Хотелось бы фильтр "за год"', preview.args[1])

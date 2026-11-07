@@ -6,6 +6,7 @@ from unittest.mock import patch
 from werkzeug.datastructures import MultiDict
 from werkzeug.exceptions import NotFound
 from flask import g
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import create_app
 from app.models import ActivityLog, Expense, RegistrationCountry, User, Vehicle, VehicleOdometerReading
@@ -380,6 +381,68 @@ class VehicleServiceTestCase(unittest.TestCase):
         service.archive_vehicle(self.owner, vehicle.id, 'sold')
         generate_monthly_expenses_from_start_date(expense.id, end_month=date(2026, 5, 1))
         self.assertEqual(Expense.query.count(), 3)
+
+    def test_mileage_batch_json_save_snooze_and_validation(self):
+        vehicle = self.vehicle()
+        other = service.create_vehicle(self.owner, dict(name="Второй автомобиль"))
+        self.login()
+        headers = {"Accept": "application/json"}
+        data = MultiDict(
+            [
+                ("vehicle_ids", str(vehicle.id)),
+                ("vehicle_ids", str(other.id)),
+                ("action", "save"),
+                (f"km_{vehicle.id}", "100"),
+                (f"km_{other.id}", "bad"),
+            ]
+        )
+        response = self.client.post("/vehicles/mileage", data=data, headers=headers)
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("error", response.json)
+        self.assertEqual(VehicleOdometerReading.query.count(), 0)
+        data[f"km_{other.id}"] = ""
+        response = self.client.post("/vehicles/mileage", data=data, headers=headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"vehicle_ids": [other.id]})
+        self.assertEqual(service.current_mileage(vehicle), 100)
+        with patch(
+            "app.routes.vehicles.service.update_mileage_batch",
+            side_effect=SQLAlchemyError(),
+        ):
+            response = self.client.post("/vehicles/mileage", data=data, headers=headers)
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("error", response.json)
+        data["action"] = "snooze"
+        data["snooze_days"] = "5"
+        response = self.client.post("/vehicles/mileage", data=data, headers=headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"vehicle_ids": []})
+        self.assertEqual(
+            other.mileage_snooze_until, service.today() + timedelta(days=5)
+        )
+
+    def test_mileage_batch_native_submission_returns_to_origin(self):
+        vehicle = self.vehicle()
+        self.login()
+        cases = [
+            ('index', None, '/'),
+            ('vehicles', None, '/vehicles'),
+            (None, 'http://localhost/', '/'),
+            (None, 'http://localhost/vehicles', '/vehicles'),
+            ('https://example.org/', None, '/vehicles'),
+        ]
+        for endpoint, referrer, expected in cases:
+            for action in ('save', 'snooze'):
+                with self.subTest(endpoint=endpoint, referrer=referrer, action=action):
+                    data = {'vehicle_ids': str(vehicle.id), 'action': action}
+                    if endpoint:
+                        data['return_endpoint'] = endpoint
+                    headers = {'Referer': referrer} if referrer else {}
+                    response = self.client.post(
+                        '/vehicles/mileage', data=data, headers=headers
+                    )
+                    self.assertEqual(response.status_code, 302)
+                    self.assertEqual(response.location, expected)
 
     def test_mileage_batch_atomic_and_snooze(self):
         vehicle = self.vehicle()

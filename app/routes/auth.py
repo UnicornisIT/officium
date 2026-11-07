@@ -10,7 +10,7 @@ from extensions import db
 from app import login_manager
 from app.models import ActivityLog, User
 from app.services import impersonation_service as impersonation
-from app.services.contact_service import load_contacts
+from app.services.contact_service import idea_contact, load_contacts
 from app.services.personal_access_service import can_use_personal_cabinet
 from app.services.telegram_auth_service import (
     telegram_bot_id,
@@ -323,6 +323,7 @@ def init_app(app):
             public_contacts_login=load_contacts(published_only=True, location='login'),
             public_contacts_help=load_contacts(published_only=True, location='help'),
             public_contacts_mini_app=load_contacts(published_only=True, location='mini_app'),
+            wishlist_idea_contact=idea_contact(app.config, bot_available=telegram_states['bot']['effective']),
         )
 
     def _telegram_profile_value(profile, key, max_length):

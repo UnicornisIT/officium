@@ -36,7 +36,9 @@
 </select><small class="text-muted">Если суммы отличаются, укажите, нужно ли изменить трату. Дата и другие поля траты сохранятся.</small></label>
 {% endif %}
 <label>Прикрепить скан (JPEG, PNG, WebP, до 5 МБ)<input class="form-control" type="file" name="file" accept="image/jpeg,image/png,image/webp"></label>
-<div class="vehicle-document-actions"><button class="btn btn-primary">Сохранить документ</button></div>
+<div class="vehicle-document-actions">
+    <button type="submit" class="btn btn-primary vehicle-button"><i class="bi bi-check2" aria-hidden="true"></i><span>Сохранить документ</span></button>
+</div>
 </form>
 {% endmacro %}
 <h2 class="h5">Документы автомобиля</h2>

@@ -1666,6 +1666,8 @@ def _parse_command(text):
         return 'income', tokens
 
     command_key = _command_key(first)
+    if command_key == '/start' and tokens[1:] == ['wishlist_idea']:
+        return 'idea', []
     command = COMMAND_ALIASES.get(command_key)
     if command:
         return command, tokens[1:]

@@ -267,6 +267,9 @@ class AttachmentTests(unittest.TestCase):
     def test_json_upload_list_delete_and_html(self):
         vehicle = self.vehicle()
         self.login()
+        overview = f"/vehicles/{vehicle.id}?tab=overview"
+        all_photos = "Все фото".encode()
+        self.assertNotIn(all_photos, self.client.get(overview).data)
         response = self.client.post(
             f"/vehicles/{vehicle.id}/attachments",
             data=dict(
@@ -294,9 +297,14 @@ class AttachmentTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertNotIn(b"<script>x</script>", response.data)
             self.assertIn("Аналитика".encode(), response.data)
+            if tab == "overview":
+                self.assertIn(all_photos, response.data)
+            else:
+                self.assertNotIn(all_photos, response.data)
         self.assertEqual(
             self.client.delete(f"/vehicles/attachments/{row['id']}").status_code, 204
         )
+        self.assertNotIn(all_photos, self.client.get(overview).data)
 
     def test_database_failure_cleans_files_and_logs(self):
         vehicle = self.vehicle()
