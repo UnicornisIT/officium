@@ -7,6 +7,7 @@ from dateutil.relativedelta import relativedelta
 from app.time_utils import financial_today
 from app.models import Payment
 from app.services.debt_math_service import calculate_period_interest, interest_days
+from app.services.debt_calendar_service import previous_payment_due_date
 
 
 MAX_SCHEDULE_ROWS = 600
@@ -166,7 +167,7 @@ def _period_interest_fits(debt, remaining, payment_date, payment_without_fee):
     month_interest = calculate_period_interest(
         debt,
         principal_balance=remaining,
-        period_start=payment_date - relativedelta(months=1),
+        period_start=previous_payment_due_date(debt, payment_date),
         period_end=payment_date,
     )
     return month_interest < payment_without_fee
@@ -182,16 +183,17 @@ def _schedule_start(debt, today):
         default=payment_date,
     )
     anchor = max(anchor, payment_date)
+    contract_day = getattr(debt, 'payment_day', None) or payment_date.day
     months = 0
     future_due = anchor
     while future_due < today:
         months += 1
-        future_due = anchor + relativedelta(months=months)
+        future_due = anchor + relativedelta(months=months, day=contract_day)
     fallback = {
         'principal': Decimal(str(debt.remaining_amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP),
         'rows': [],
         'first_due': future_due,
-        'period_start': debt.interest_period_start_date or (future_due - relativedelta(months=1)),
+        'period_start': debt.interest_period_start_date or previous_payment_due_date(debt, future_due),
         'first_interest': None,
         'carried_interest': Decimal('0.00'),
         'accrues_interest': True,
@@ -208,7 +210,7 @@ def _schedule_start(debt, today):
         at_due = _accrual_state(debt, due) if due > today else state
         if at_due is None:
             return fallback
-        cycle_start = due - relativedelta(months=1)
+        cycle_start = previous_payment_due_date(debt, due)
         accrual_start = state['accrual_start_date']
         return {
             'principal': principal,
@@ -240,10 +242,10 @@ def _schedule_start(debt, today):
         'status_label': 'просрочен',
     }
     months = 1
-    due = overdue_since + relativedelta(months=months)
+    due = overdue_since + relativedelta(months=months, day=contract_day)
     while due < today and months < MAX_SCHEDULE_ROWS:
         months += 1
-        due = overdue_since + relativedelta(months=months)
+        due = overdue_since + relativedelta(months=months, day=contract_day)
     return {
         'principal': principal - state['overdue_principal'],
         'rows': [overdue_row],

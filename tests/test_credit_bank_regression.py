@@ -194,6 +194,30 @@ class BankReplayTests(unittest.TestCase):
         self.assertEqual(rows[1]['principal'], 0)
         self.assertEqual(rows[1]['interest'], 16454.19)
 
+    def test_february_projection_counts_days_from_contractual_january_date(self):
+        debt = bank_debt(
+            payment_day=31,
+            first_payment_amount=None,
+            next_payment_date=date(2027, 2, 28),
+            accrual_start_date=date(2027, 1, 31),
+            interest_period_start_date=date(2027, 1, 31),
+        )
+        rows = build_debt_payment_schedule(debt, today=date(2027, 2, 1))['rows']
+        self.assertEqual(rows[0]['interest_days'], 28)
+        self.assertEqual(rows[0]['interest'], 11852.05)
+
+    def test_overdue_february_projection_returns_to_contractual_march_date(self):
+        debt = bank_debt(
+            payment_day=31,
+            first_payment_amount=None,
+            next_payment_date=date(2027, 2, 28),
+            accrual_start_date=date(2027, 1, 31),
+            interest_period_start_date=date(2027, 1, 31),
+        )
+        rows = build_debt_payment_schedule(debt, today=date(2027, 3, 5))['rows']
+        self.assertEqual(rows[0]['payment_date'], '2027-02-28')
+        self.assertEqual(rows[1]['payment_date'], '2027-03-31')
+
     def test_full_early_payoff_settles_interest_and_stops_accrual(self):
         payments = statement()
         payments.append(pay(CHECK_DATE, '478737.51', is_early_repayment=True))
