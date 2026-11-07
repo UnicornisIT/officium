@@ -20,3 +20,16 @@ document.querySelectorAll('[data-document-amount]').forEach(input => {
   input.addEventListener('blur', () => format(true));
   format(true);
 });
+
+document.querySelectorAll('details > .vehicle-document-form').forEach(form => {
+  const details = form.parentElement;
+  details.addEventListener('toggle', () => {
+    if (!details.open || form.getBoundingClientRect().top >= 0) return;
+
+    // Nearest alignment can leave a form that spans the viewport in place.
+    form.scrollIntoView({
+      block: 'start',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+    });
+  });
+});

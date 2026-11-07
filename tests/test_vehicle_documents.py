@@ -245,9 +245,9 @@ class VehicleDocumentTests(test_vehicle_service.VehicleServiceTestCase):
             'value="2 500,75"',
             "Не потерять",
             '<option value="kasko" selected>',
-            '<option value="organization" selected>',
+            '<input type="hidden" name="payer" value="organization">',
             'name="create_expense" checked',
-            '<details class="mb-3" open>',
+            '<details class="mb-3" data-vehicle-disclosure open>',
         ]:
             self.assertIn(value, html)
         self.assertEqual(VehicleDocument.query.count(), 0)
@@ -270,7 +270,7 @@ class VehicleDocumentTests(test_vehicle_service.VehicleServiceTestCase):
         self.assertEqual(response.status_code, 422)
         html = response.get_data(as_text=True)
         self.assertIn('value="Новое название"', html)
-        self.assertIn('<details class="mt-3" open>', html)
+        self.assertIn('<details class="mt-3" data-vehicle-disclosure open>', html)
         self.assertEqual(row.title, "Исходное название")
         self.assertEqual(str(row.amount), "15000.00")
 

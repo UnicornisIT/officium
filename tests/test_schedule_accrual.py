@@ -6,12 +6,16 @@ accruals since 15.07, penalty 20% a year."""
 import unittest
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
+
+from dateutil.relativedelta import relativedelta
 
 from app import create_app
 from app.models import Debt, Payment, SplitPurchase, User
 from app.services.debt_accrual_service import get_debt_state
 from app.services.debt_schedule_service import build_debt_payment_schedule
 from app.services.financial_plan_service import build_financial_plan
+from app.services.payment_service import add_payment
 from extensions import db
 
 
@@ -61,6 +65,115 @@ class ScheduleAccrualTestCase(unittest.TestCase):
         ))
         debt.remaining_amount = Decimal(str(debt.remaining_amount)) - Decimal(principal)
         db.session.commit()
+
+    def stale_debt(self, paid=True, **overrides):
+        values = {
+            'total_amount': Decimal('500000.00'),
+            'remaining_amount': Decimal('500000.00'),
+            'minimum_payment': Decimal('25000.00'),
+            'interest_rate': Decimal('25.00'),
+            'next_payment_date': date(2025, 3, 25),
+            'accrual_start_date': date(2025, 2, 25),
+            'is_payment_recurring': False,
+        }
+        values.update(overrides)
+        debt = self.debt(**values)
+        if paid:
+            for month in range(20):
+                add_payment(
+                    debt, Decimal('25000.00') + (debt.monthly_fee_amount or 0),
+                    payment_date=date(2025, 3, 25) + relativedelta(months=month),
+                )
+        return debt
+
+    def test_plan_counts_single_installment_when_stale_date_but_paid(self):
+        today = date(2026, 11, 5)
+        for fee in (Decimal('0'), Decimal('300')):
+            with self.subTest(fee=fee):
+                debt = self.stale_debt(monthly_fee_amount=fee)
+                self.assertFalse(debt.accrual_state(today)['is_overdue'])
+
+                plan = build_financial_plan(self.user_id, today=today)
+                item = next(item for item in plan['debt_items'] if item['id'] == debt.id)
+
+                self.assertEqual(plan['totals']['obligations'], float(Decimal('25000') + fee))
+                self.assertEqual(item['monthly_amount'], float(Decimal('25000') + fee))
+                self.assertEqual(item['scheduled_payments_count'], 1)
+                self.assertEqual(item['interval_label'], 'обязательный платёж по графику')
+                self.assertEqual(item['planned_payments'][0]['due_date'], date(2026, 11, 25))
+                self.assertEqual(debt.next_payment_date, date(2025, 3, 25))
+                debt.status = 'closed'
+                db.session.commit()
+
+    def test_plan_still_counts_overdue_row_when_payments_missing(self):
+        today = date(2026, 11, 5)
+        debt = self.stale_debt(paid=False)
+        state = debt.accrual_state(today)
+        rows = build_debt_payment_schedule(debt, today=today)['rows']
+
+        plan = build_financial_plan(self.user_id, today=today)
+        item = plan['debt_items'][0]
+
+        self.assertTrue(item['is_overdue'])
+        self.assertEqual(rows[0]['status'], 'overdue')
+        self.assertEqual(rows[0]['payment'], float(state['amount_to_clear_overdue']))
+        self.assertEqual(item['scheduled_payments_count'], 2)
+        self.assertAlmostEqual(
+            item['monthly_amount'], rows[0]['payment'] + rows[1]['payment'] + float(state['penalty']),
+        )
+        self.assertEqual(item['planned_payments'][0]['due_date'], today)
+
+    def test_schedule_first_row_is_future_when_anchor_in_past(self):
+        debt = self.stale_debt()
+        today = date(2026, 11, 5)
+
+        rows = build_debt_payment_schedule(debt, today=today)['rows']
+
+        self.assertEqual(rows[0]['payment_date'], '2026-11-25')
+        self.assertEqual(rows[0]['payment'], 25000.0)
+        self.assertTrue(all(date.fromisoformat(row['payment_date']) >= today for row in rows))
+
+    def test_schedule_fallback_uses_latest_payment_anchor_without_month_end_drift(self):
+        debt = self.stale_debt()
+        add_payment(debt, Decimal('25000'), payment_date=date(2026, 10, 31))
+        today = date(2027, 3, 1)
+
+        with patch('app.services.debt_schedule_service._accrual_state', return_value=None):
+            rows = build_debt_payment_schedule(debt, today=today)['rows']
+
+        self.assertEqual(rows[0]['payment_date'], '2027-03-31')
+        self.assertEqual(debt.next_payment_date, date(2025, 3, 25))
+
+    def test_plan_ignores_past_rows_without_overdue_status(self):
+        self.debt()
+        rows = [
+            {'payment_date': due, 'payment': amount, 'remaining': 90000.0, **status}
+            for due, amount, status in (
+                ('2026-07-15', 10000, {}),
+                ('2026-07-20', 2000, {'status': 'overdue'}),
+                ('2026-07-25', 3000, {'status': 'partly_paid'}),
+                ('2026-08-01', 4000, {}),
+                ('2026-08-15', 5000, {'status': 'paid'}),
+                ('2026-09-15', 6000, {}),
+            )
+        ]
+        with patch('app.services.financial_plan_service.build_debt_payment_schedule', return_value={'rows': rows}):
+            plan = build_financial_plan(self.user_id, today=date(2026, 8, 1))
+
+        item = plan['debt_items'][0]
+        self.assertEqual(item['monthly_amount'], 9000.0)
+        self.assertEqual(item['scheduled_payments_count'], 3)
+
+    def test_plan_warns_about_stale_date_when_schedule_unavailable(self):
+        debt = self.stale_debt()
+        today = date(2026, 11, 5)
+        with patch('app.services.financial_plan_service.build_debt_payment_schedule', side_effect=ValueError):
+            plan = build_financial_plan(self.user_id, today=today)
+
+        item = plan['debt_items'][0]
+        self.assertIsNone(item['planned_payments'][0]['due_date'])
+        self.assertTrue(any(gap['kind'] == 'stale_date' for gap in plan['missing_data']))
+        self.assertEqual(debt.next_payment_date, date(2025, 3, 25))
 
     def test_partial_payment_in_the_cycle_is_reflected_in_the_first_row(self):
         debt = self.debt()

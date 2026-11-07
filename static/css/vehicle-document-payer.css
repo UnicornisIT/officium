@@ -1,0 +1,31 @@
+[data-vehicle-disclosure].vehicle-disclosure-moving {
+    overflow: clip;
+}
+[data-document-payer] > .dropdown-menu {
+    display: grid;
+    grid-template-rows: 0fr;
+    margin: 0;
+    padding-block: 0;
+    border-width: 0;
+    opacity: 0;
+    visibility: hidden;
+}
+[data-document-payer] > .dropdown-menu > div {
+    min-height: 0;
+    overflow: clip;
+}
+[data-document-payer] > .dropdown-menu.show {
+    grid-template-rows: 1fr;
+    margin-top: .25rem;
+    padding-block: var(--bs-dropdown-padding-y);
+    border-width: var(--bs-dropdown-border-width);
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+}
+@media (prefers-reduced-motion: no-preference) {
+    [data-document-payer] > .dropdown-menu {
+        transition: grid-template-rows .2s ease, margin-top .2s ease, padding-block .2s ease,
+            border-width .2s ease, opacity .2s ease, visibility 0s linear .2s;
+    }
+}

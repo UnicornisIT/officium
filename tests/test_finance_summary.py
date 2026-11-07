@@ -1,9 +1,10 @@
 import unittest
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from app import create_app
-from app.models import Expense, User
+from app.models import Debt, Expense, Income, Payment, User
 from app.services.finance_summary_service import get_finance_summary
 from extensions import db
 
@@ -34,6 +35,71 @@ class FinanceSummaryTestCase(unittest.TestCase):
         with self.app.app_context():
             db.session.remove()
             db.drop_all()
+
+    def _debt_with_payment(self):
+        debt = Debt(
+            user_id=self.user_id, bank_name='Банк', product_name='Кредит',
+            debt_type='consumer_credit', total_amount=Decimal('7200'),
+            remaining_amount=Decimal('0'), minimum_payment=Decimal('7200'),
+            interest_rate=Decimal('0'), status='active',
+        )
+        debt.payments.append(Payment(
+            amount=Decimal('7302'), payment_date=date(2026, 11, 5),
+            remaining_after_payment=Decimal('0'),
+        ))
+        db.session.add(debt)
+        db.session.commit()
+        return debt
+
+    def test_archived_debt_payments_are_excluded_from_summary(self):
+        with self.app.app_context(), patch('app.services.finance_summary_service.date') as clock:
+            clock.today.return_value = date(2026, 11, 7)
+            clock.side_effect = date
+            debt = self._debt_with_payment()
+            before = get_finance_summary(self.user_id)
+            self.assertEqual(before['total_payments'], Decimal('7302'))
+
+            debt.status = 'archived'
+            db.session.commit()
+            after = get_finance_summary(self.user_id)
+
+            self.assertEqual(after['active_debts'], [])
+            self.assertEqual(after['total_payments'], Decimal('0'))
+            self.assertEqual(after['payments_this_month'], [])
+            self.assertEqual(after['free_balance'], Decimal('0'))
+
+    def test_deleting_archived_debt_does_not_change_displayed_month(self):
+        with self.app.app_context(), patch('app.services.finance_summary_service.date') as clock:
+            clock.today.return_value = date(2026, 11, 7)
+            clock.side_effect = date
+            db.session.add_all([
+                Income(user_id=self.user_id, amount=Decimal('90000'),
+                       category='salary', income_date=date(2026, 10, 5)),
+                Expense(user_id=self.user_id, amount=Decimal('54150'),
+                        category='other', title='Расходы', expense_date=date(2026, 10, 20)),
+            ])
+            debt = self._debt_with_payment()
+            debt.status = 'archived'
+            db.session.commit()
+            income_count = Income.query.count()
+            before = get_finance_summary(self.user_id)
+            self.assertEqual(before['month_start'], date(2026, 11, 1))
+            self.assertEqual(before['total_incomes'], Decimal('0'))
+
+            db.session.delete(debt)
+            db.session.commit()
+            after = get_finance_summary(self.user_id)
+
+            self.assertEqual(Income.query.count(), income_count)
+            self.assertEqual(Payment.query.count(), 0)
+            self.assertEqual(after['month_start'], date(2026, 11, 1))
+            self.assertEqual(after['total_incomes'], Decimal('0'))
+            self.assertEqual(after['total_expenses'], Decimal('0'))
+            self.assertEqual(after['total_payments'], Decimal('0'))
+            self.assertEqual(after['days_left'], 24)
+            october = get_finance_summary(self.user_id, year=2026, month=10)
+            self.assertEqual(october['total_incomes'], Decimal('90000'))
+            self.assertEqual(october['total_expenses'], Decimal('54150'))
 
     def test_groups_expenses_by_clean_unique_title(self):
         with self.app.app_context():

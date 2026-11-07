@@ -69,7 +69,7 @@ class TelegramMiniAppButtonVisibilityTestCase(unittest.TestCase):
                 self.assertFalse(state['effective'])
 
     def test_unregistered_menu_hides_button(self):
-        with patch('app.services.telegram_transport.requests.post') as request:
+        with patch('app.services.telegram_transport.requests.Session.post') as request:
             request.return_value.status_code = 200
             request.return_value.json.return_value = {
                 'ok': True,
@@ -79,7 +79,7 @@ class TelegramMiniAppButtonVisibilityTestCase(unittest.TestCase):
                 self.assertFalse(self.has_button())
 
     def test_matching_registered_menu_shows_button(self):
-        with patch('app.services.telegram_transport.requests.post') as request:
+        with patch('app.services.telegram_transport.requests.Session.post') as request:
             request.return_value.status_code = 200
             request.return_value.json.return_value = {
                 'ok': True,

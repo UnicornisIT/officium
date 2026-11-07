@@ -39,7 +39,7 @@ class TelegramDeliveryTests(unittest.TestCase):
             if code == 200:
                 data.pop('error_code')
             data.update(extra)
-            with self.subTest(code=code, kind=kind), patch.object(transport.requests, 'post',
+            with self.subTest(code=code, kind=kind), patch.object(transport.requests.Session, 'post',
                     return_value=self.response(code, data)) as post:
                 with self.assertLogs(self.app.logger, level='WARNING') as logs:
                     with self.assertRaises(TelegramDeliveryError) as caught:
@@ -55,22 +55,22 @@ class TelegramDeliveryTests(unittest.TestCase):
                 self.assertEqual(post.call_count, 1)
 
     def test_success_requires_api_true_and_http_success(self):
-        with patch.object(transport.requests, 'post', return_value=self.response(200,
+        with patch.object(transport.requests.Session, 'post', return_value=self.response(200,
                 {'ok': True, 'result': {'message_id': 42}})):
             self.assertIs(bot.send_telegram_message(1, 'test'), True)
             self.assertIs(bot.answer_telegram_callback_query('callback'), True)
         for data in (None, [], 'private', {'ok': False}, {'ok': 1}, {'ok': 'true'}):
-            with self.subTest(data=data), patch.object(transport.requests, 'post', return_value=self.response(200, data)):
+            with self.subTest(data=data), patch.object(transport.requests.Session, 'post', return_value=self.response(200, data)):
                 with self.assertRaises(TelegramDeliveryError):
                     bot.send_telegram_message(1, 'test')
-        with patch.object(transport.requests, 'post', return_value=self.response(302, {'ok': True})):
+        with patch.object(transport.requests.Session, 'post', return_value=self.response(302, {'ok': True})):
             with self.assertRaises(TelegramDeliveryError):
                 bot.send_telegram_message(1, 'test')
 
     def test_network_and_invalid_json_do_not_leak_or_retry(self):
         for error, kind in [(requests.Timeout, 'timeout'), (requests.ConnectionError, 'connection'),
                             (requests.exceptions.SSLError, 'tls'), (requests.RequestException, 'network')]:
-            with self.subTest(kind=kind), patch.object(transport.requests, 'post',
+            with self.subTest(kind=kind), patch.object(transport.requests.Session, 'post',
                     side_effect=error(f'https://api.telegram.org/bot{self.secret}/sendMessage')) as post:
                 with self.assertLogs(self.app.logger, level='WARNING') as logs:
                     with self.assertRaises(TelegramDeliveryError) as caught:
@@ -80,7 +80,7 @@ class TelegramDeliveryTests(unittest.TestCase):
                 post.assert_called_once()
         response = self.response()
         response.json.side_effect = ValueError(self.secret)
-        with patch.object(transport.requests, 'post', return_value=response):
+        with patch.object(transport.requests.Session, 'post', return_value=response):
             with self.assertRaises(TelegramDeliveryError) as caught:
                 bot.send_telegram_message(1, 'private')
             self.assertEqual(caught.exception.result.failure_kind, 'invalid_response')
@@ -97,7 +97,7 @@ class TelegramDeliveryTests(unittest.TestCase):
             db.session.commit()
             data = dict(ok=False, error_code=code, description=self.secret)
             data.update(extra)
-            with self.subTest(code=code), patch.object(transport.requests, 'post',
+            with self.subTest(code=code), patch.object(transport.requests.Session, 'post',
                     return_value=self.response(code, data)) as post:
                 response = self.client.post('/profile/test-notification', data={'user_id': self.other.id})
                 self.assertEqual(response.status_code, status)
@@ -108,14 +108,14 @@ class TelegramDeliveryTests(unittest.TestCase):
                 post.assert_called_once()
         self.user.notification_test_requested_at -= timedelta(seconds=60)
         db.session.commit()
-        with patch.object(transport.requests, 'post', return_value=self.response(200, {'ok': True})):
+        with patch.object(transport.requests.Session, 'post', return_value=self.response(200, {'ok': True})):
             self.assertEqual(self.client.post('/profile/test-notification').status_code, 303)
 
     def test_diagnostics_explicit_sanitized_and_shared_cooldown(self):
         self.app.config.update(TELEGRAM_BOT_TOKEN=self.secret, TELEGRAM_WEBHOOK_SECRET=self.secret,
                                TELEGRAM_BOT_ENABLED=False)
         runner = self.app.test_cli_runner()
-        with patch.object(transport.requests, 'post') as post:
+        with patch.object(transport.requests.Session, 'post') as post:
             result = runner.invoke(args=['telegram-diagnostics'])
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertEqual(json.loads(result.output)['network'], 'not_requested')
@@ -125,7 +125,7 @@ class TelegramDeliveryTests(unittest.TestCase):
             self.response(200, {'ok': True, 'result': {
                 'url': 'https://example.test/telegram/webhook', 'pending_update_count': 2,
                 'last_error_message': self.secret, 'ip_address': self.secret}})]
-        with patch.object(transport.requests, 'post', side_effect=responses) as post:
+        with patch.object(transport.requests.Session, 'post', side_effect=responses) as post:
             result = runner.invoke(args=['telegram-diagnostics', '--network'])
             self.assertEqual(result.exit_code, 0, result.output)
             report = json.loads(result.output)
@@ -144,7 +144,7 @@ class TelegramDeliveryTests(unittest.TestCase):
         row.value = '0'
         db.session.commit()
         responses[0].json.return_value['result']['username'] = 'different_bot'
-        with patch.object(transport.requests, 'post', side_effect=responses):
+        with patch.object(transport.requests.Session, 'post', side_effect=responses):
             self.assertFalse(diagnostics.diagnose(network=True)['getMe']['username_matches'])
 
     def test_diagnostics_reads_saved_bot_switch_and_receiver_configuration(self):
@@ -189,7 +189,7 @@ class TelegramDeliveryTests(unittest.TestCase):
                 },
             ),
         ]
-        with patch.object(transport.requests, 'post', side_effect=responses):
+        with patch.object(transport.requests.Session, 'post', side_effect=responses):
             report = diagnostics.diagnose(network=True)
         self.assertTrue(report['getWebhookInfo']['receive_mode_matches'])
         self.assertTrue(report['getWebhookInfo']['has_last_error'])
@@ -210,12 +210,12 @@ class TelegramDeliveryTests(unittest.TestCase):
 
     def test_diagnostics_missing_token_and_api_failure_are_safe(self):
         self.app.config['TELEGRAM_BOT_TOKEN'] = ''
-        with patch.object(transport.requests, 'post') as post:
+        with patch.object(transport.requests.Session, 'post') as post:
             self.assertEqual(diagnostics.diagnose(network=True)['network'], 'not_configured')
             post.assert_not_called()
         self.assertIsNone(AppSetting.query.filter_by(key='telegram_diagnostics_requested_at').first())
         self.app.config['TELEGRAM_BOT_TOKEN'] = self.secret
-        with patch.object(transport.requests, 'post', side_effect=requests.Timeout(self.secret)) as post:
+        with patch.object(transport.requests.Session, 'post', side_effect=requests.Timeout(self.secret)) as post:
             with self.assertLogs(self.app.logger, level='WARNING') as logs:
                 report = diagnostics.diagnose(network=True)
             self.assertEqual(report['getMe']['failure_kind'], 'timeout')

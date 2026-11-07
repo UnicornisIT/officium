@@ -2,7 +2,7 @@ import ipaddress
 import json
 import re
 import uuid
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
 from app.utils import get_setting, set_setting
 
@@ -34,6 +34,17 @@ _TELEGRAM_RE = re.compile(r'^@?[A-Za-z0-9_]{5,32}$')
 
 class ContactValidationError(ValueError):
     pass
+
+
+def idea_contact(config, *, bot_available=False):
+    for contact in load_contacts(published_only=True):
+        if contact['type'] == 'email':
+            query = urlencode({'subject': 'Идея для раздела «Список желаний»'}, quote_via=quote)
+            return {'href': f'{contact["href"]}?{query}', 'channel': 'email'}
+    username = str(config.get('TELEGRAM_BOT_USERNAME') or '').strip().lstrip('@')
+    if bot_available and _TELEGRAM_RE.fullmatch(username):
+        return {'href': f'https://t.me/{username}?start=wishlist_idea', 'channel': 'Telegram'}
+    return None
 
 
 def _public_https_url(raw_value, *, required_host=None):

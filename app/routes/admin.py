@@ -578,14 +578,22 @@ def init_app(app):
         )
         return redirect(url_for('admin_server_update'))
 
-    def render_settings_page(settings=None, error_message=None):
+    def render_settings_page(settings=None, error_message=None, notification_form=None):
         if settings is None:
             settings = {key: str(get_setting(key, _setting_default(key))) for key in SETTINGS_FIELDS}
+        update_settings = update_notifier.load_settings()
+        if notification_form is not None:
+            for key in update_notifier.EDITABLE:
+                raw = notification_form.get(key, '')
+                update_settings[key] = (
+                    str(raw.strip().lower() in ('on', '1', 'true')).lower()
+                    if key in update_notifier.BOOLEAN_KEYS else raw
+                )
         return render_template(
             'admin_settings.html', settings=settings, settings_groups=SETTINGS_GROUPS,
             contacts=load_contacts(), contact_types=CONTACT_TYPES, contact_icons=CONTACT_ICONS,
             contact_locations=CONTACT_LOCATIONS, error_message=error_message,
-            update_settings=update_notifier.load_settings(),
+            update_settings=update_settings,
             update_status_labels=update_notifier.STATUS_LABELS,
             update_bot_configured=bool(current_app.config.get('TELEGRAM_BOT_TOKEN')),
             mini_app_enabled=current_app.config.get('TELEGRAM_MINI_APP_ENABLED'),
@@ -598,22 +606,39 @@ def init_app(app):
             ),
         )
 
+    def save_update_notification_settings(values):
+        previous = update_notifier.load_settings()
+        for key, value in values.items():
+            if previous[key] != value:
+                set_setting(key, value, commit=False)
+                record_activity('Изменил настройки уведомлений об обновлениях', current_user,
+                    entity_type='setting', description=f'{key}: {previous[key]} → {value}',
+                    ip_address=client_ip(), commit=False)
+
     @app.route('/admin/settings', methods=['GET', 'POST'])
     @superadmin_required
     def admin_settings():
         error_message = None
+        notification_form = None
 
         if request.method == 'POST':
+            if any(key in request.form for key in update_notifier.EDITABLE):
+                require_notification_superadmin()
+                notification_form = request.form
             try:
                 values = _validated_settings(request.form)
+                if notification_form is not None:
+                    notification_values = update_notifier.validate_settings(notification_form)
+                    save_update_notification_settings(notification_values)
                 changed = [key for key, value in values.items() if str(get_setting(key, _setting_default(key))) != value]
                 for key, value in values.items():
                     set_setting(key, value, commit=False)
-                db.session.commit()
                 record_activity(
                     'Изменил настройки приложения', current_user, entity_type='setting',
                     description='Изменены: ' + (', '.join(changed) if changed else 'без изменений'),
+                    commit=False,
                 )
+                db.session.commit()
                 flash('Настройки сохранены.', 'success')
                 return redirect(url_for('admin_settings'))
             except ValueError as exc:
@@ -631,7 +656,7 @@ def init_app(app):
             }
         else:
             settings = {key: str(get_setting(key, _setting_default(key))) for key in SETTINGS_FIELDS}
-        return render_settings_page(settings, error_message)
+        return render_settings_page(settings, error_message, notification_form)
 
     def require_notification_superadmin():
         if (not current_user.is_authenticated or not current_user.is_superadmin
@@ -643,13 +668,7 @@ def init_app(app):
         require_notification_superadmin()
         try:
             values = update_notifier.validate_settings(request.form)
-            previous = update_notifier.load_settings()
-            for key, value in values.items():
-                if previous[key] != value:
-                    set_setting(key, value, commit=False)
-                    record_activity('Изменил настройки уведомлений об обновлениях', current_user,
-                        entity_type='setting', description=f'{key}: {previous[key]} → {value}',
-                        ip_address=client_ip(), commit=False)
+            save_update_notification_settings(values)
             db.session.commit()
         except ValueError as exc:
             db.session.rollback()
