@@ -6124,14 +6124,14 @@ body.keyboard-open [contenteditable="true"] {
 .history-card--expenses .history-col-date { width: 12%; }
 .history-card--expenses .history-col-payment { width: 10%; }
 .history-card--expenses .history-col-comment { width: 19%; }
-.history-card--expenses .history-col-actions { width: 10%; }
+.history-card--expenses .history-col-actions { width: 116px; }
 
 .history-card--incomes .history-col-category { width: 22%; }
 .history-card--incomes .history-col-amount { width: 14%; }
 .history-card--incomes .history-col-date { width: 13%; }
 .history-card--incomes .history-col-source { width: 18%; }
 .history-card--incomes .history-col-comment { width: 23%; }
-.history-card--incomes .history-col-actions { width: 10%; }
+.history-card--incomes .history-col-actions { width: 84px; }
 
 /* В месячных таблицах ширину комментария задаёт колонка, а не фиксированный
    max-width, иначе текст обрезается раньше, чем заканчивается место. */
@@ -6238,7 +6238,7 @@ body.keyboard-open [contenteditable="true"] {
     white-space: nowrap;
 }
 
-.history-actions-cell {
+.history-card .history-table td.history-actions-cell {
     overflow: visible;
 }
 
@@ -6253,6 +6253,7 @@ body.keyboard-open [contenteditable="true"] {
 
 .history-delete-form {
     display: inline-flex;
+    flex-shrink: 0;
     margin: 0;
 }
 

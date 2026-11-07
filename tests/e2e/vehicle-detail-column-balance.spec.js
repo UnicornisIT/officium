@@ -20,8 +20,11 @@ test('vehicle specs fit their content and stay visible beside a long document fo
   const unusedSpace = await specs.evaluate(card =>
     card.getBoundingClientRect().bottom - card.lastElementChild.getBoundingClientRect().bottom);
   expect(unusedSpace).toBeLessThanOrEqual(200);
-  await page.evaluate(() => window.scrollTo(0, 400));
-  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThanOrEqual(399);
+  const scrollTarget = await page.evaluate(() =>
+    Math.min(400, document.documentElement.scrollHeight - innerHeight));
+  expect(scrollTarget).toBeGreaterThan(0);
+  await page.evaluate(target => window.scrollTo(0, target), scrollTarget);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThanOrEqual(scrollTarget - 1);
   const clearance = await specs.evaluate(card =>
     card.getBoundingClientRect().top - document.querySelector('.navbar').getBoundingClientRect().bottom);
   expect(clearance).toBeGreaterThanOrEqual(0);

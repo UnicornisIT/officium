@@ -4,8 +4,10 @@ from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 
 from dateutil.relativedelta import relativedelta
 
+from app.time_utils import financial_today
 from app.models import Payment
 from app.services.debt_math_service import calculate_period_interest, interest_days
+from app.services.debt_calendar_service import previous_payment_due_date
 
 
 MAX_SCHEDULE_ROWS = 600
@@ -14,7 +16,7 @@ SPLIT_INSTALLMENTS = 4
 
 
 def build_debt_payment_schedule(debt, today=None):
-    today = today or date.today()
+    today = today or financial_today(debt)
     if not debt.next_payment_date:
         raise ValueError('Укажите дату следующего платежа, чтобы построить график.')
 
@@ -88,6 +90,7 @@ def build_debt_payment_schedule(debt, today=None):
             )).quantize(MONEY, rounding=ROUND_HALF_UP)
         carried_interest = Decimal('0.00')
         if uses_custom_first_payment and not partly_paid:
+            carried_interest = max(interest - scheduled_payment_without_fee, Decimal('0.00'))
             interest = min(interest, scheduled_payment_without_fee).quantize(MONEY, rounding=ROUND_HALF_UP)
             principal = (scheduled_payment_without_fee - interest).quantize(MONEY, rounding=ROUND_HALF_UP)
         elif partly_paid:
@@ -145,7 +148,10 @@ def build_debt_payment_schedule(debt, today=None):
         if remaining <= 0:
             break
         period_start = payment_date
-        payment_date = payment_date + relativedelta(months=1)
+        offset = (payment_date.year - start['first_due'].year) * 12 + payment_date.month - start['first_due'].month + 1
+        payment_date = start['first_due'] + relativedelta(
+            months=offset, day=getattr(debt, 'payment_day', None) or start['first_due'].day,
+        )
         if months_left is not None:
             months_left = max(months_left - 1, 1)
     else:
@@ -161,7 +167,7 @@ def _period_interest_fits(debt, remaining, payment_date, payment_without_fee):
     month_interest = calculate_period_interest(
         debt,
         principal_balance=remaining,
-        period_start=payment_date - relativedelta(months=1),
+        period_start=previous_payment_due_date(debt, payment_date),
         period_end=payment_date,
     )
     return month_interest < payment_without_fee
@@ -177,16 +183,18 @@ def _schedule_start(debt, today):
         default=payment_date,
     )
     anchor = max(anchor, payment_date)
+    contract_day = getattr(debt, 'payment_day', None) or payment_date.day
+    fallback_day = getattr(debt, 'payment_day', None) or anchor.day
     months = 0
     future_due = anchor
     while future_due < today:
         months += 1
-        future_due = anchor + relativedelta(months=months)
+        future_due = anchor + relativedelta(months=months, day=fallback_day)
     fallback = {
         'principal': Decimal(str(debt.remaining_amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP),
         'rows': [],
         'first_due': future_due,
-        'period_start': debt.interest_period_start_date or (future_due - relativedelta(months=1)),
+        'period_start': debt.interest_period_start_date or previous_payment_due_date(debt, future_due),
         'first_interest': None,
         'carried_interest': Decimal('0.00'),
         'accrues_interest': True,
@@ -203,7 +211,7 @@ def _schedule_start(debt, today):
         at_due = _accrual_state(debt, due) if due > today else state
         if at_due is None:
             return fallback
-        cycle_start = due - relativedelta(months=1)
+        cycle_start = previous_payment_due_date(debt, due)
         accrual_start = state['accrual_start_date']
         return {
             'principal': principal,
@@ -235,10 +243,10 @@ def _schedule_start(debt, today):
         'status_label': 'просрочен',
     }
     months = 1
-    due = overdue_since + relativedelta(months=months)
+    due = overdue_since + relativedelta(months=months, day=contract_day)
     while due < today and months < MAX_SCHEDULE_ROWS:
         months += 1
-        due = overdue_since + relativedelta(months=months)
+        due = overdue_since + relativedelta(months=months, day=contract_day)
     return {
         'principal': principal - state['overdue_principal'],
         'rows': [overdue_row],
@@ -285,7 +293,7 @@ def _build_split_payment_schedule(debt, today=None):
 def split_schedule_rows(debt, today=None):
     """Paid and planned split installments; None when there is nothing."""
     remaining = Decimal(str(debt.remaining_amount or 0)).quantize(MONEY, rounding=ROUND_HALF_UP)
-    today = today or date.today()
+    today = today or financial_today(debt)
     paid_payments = _split_paid_payments(debt, today=today)
     future_payments = _split_future_payments(debt, today=today)
     paid_total = sum((_payment_principal(payment) for payment in paid_payments), Decimal('0.00')).quantize(MONEY)
@@ -393,7 +401,7 @@ def split_schedule_rows(debt, today=None):
 def _split_paid_payments(debt, today=None):
     if not getattr(debt, 'id', None):
         return []
-    today = today or date.today()
+    today = today or financial_today(debt)
     return (
         Payment.query
         .filter(Payment.debt_id == debt.id, Payment.payment_date <= today)
@@ -405,7 +413,7 @@ def _split_paid_payments(debt, today=None):
 def _split_future_payments(debt, today=None):
     if not getattr(debt, 'id', None):
         return []
-    today = today or date.today()
+    today = today or financial_today(debt)
     return (
         Payment.query
         .filter(Payment.debt_id == debt.id, Payment.payment_date > today)
@@ -435,7 +443,7 @@ def _split_payment_days(debt, paid_payments):
     elif debt.next_payment_date:
         anchor_day = debt.next_payment_date.day
     else:
-        anchor_day = date.today().day
+        anchor_day = financial_today().day
 
     second_day = anchor_day + 15 if anchor_day <= 15 else anchor_day - 15
     return sorted({max(min(anchor_day, 31), 1), max(min(second_day, 31), 1)})
@@ -448,7 +456,7 @@ def _next_split_payment_date(debt, paid_payments, payment_days):
 
     base_date = last_payment_date or debt.next_payment_date
     if not base_date:
-        return _next_split_cycle_date_after(date.today(), payment_days, include_same=True)
+        return _next_split_cycle_date_after(financial_today(), payment_days, include_same=True)
     return _next_split_cycle_date_after(base_date, payment_days)
 
 

@@ -3,6 +3,8 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
+from app.time_utils import financial_today
+from app.models import User
 from extensions import db
 from app.models import Debt, Income, Expense, Payment
 from app.services.goal_service import empty_goal_transfers, month_transfers
@@ -194,7 +196,7 @@ def _with_finance_insights(summary):
     free_balance = _money_value(summary.get('free_balance', 0))
     month_start = summary.get('month_start')
     month_end = summary.get('month_end')
-    today = summary.get('today') or date.today()
+    today = summary.get('today') or financial_today()
 
     expense_items = [_expense_view(expense) for expense in expenses]
     recurring_expenses = [item for item in expense_items if item['is_monthly']]
@@ -247,7 +249,7 @@ def _with_finance_insights(summary):
 
 
 def get_finance_summary(user_id, year=None, month=None):
-    today = date.today()
+    today = financial_today(db.session.get(User, user_id) if user_id else None)
     use_selected_month = year is not None and month is not None
     if use_selected_month:
         try:
@@ -437,7 +439,7 @@ def get_finance_summary(user_id, year=None, month=None):
             'total_mortgage_original': total_mortgage_original,
             'total_mortgage_interest': total_mortgage_interest,
             'total_remaining': sum((_debt_total(d, today) for d in debts), ZERO),
-            'total_principal': sum((_money_value(d.remaining_amount) for d in debts), ZERO),
+            'total_principal': sum((d.accrual_state(today)['principal'] for d in debts), ZERO),
             'total_original': sum((_money_value(d.total_amount) for d in debts), ZERO),
             'incomes_this_month': incomes_this_month,
             'expenses_this_month': expenses_this_month,
@@ -460,7 +462,7 @@ def get_finance_summary(user_id, year=None, month=None):
         active_debts = Debt.query.filter_by(status='active', user_id=user_id).order_by(db.case((Debt.next_payment_date.is_(None), 1), else_=0), Debt.next_payment_date.asc()).all()
         active_debts = sorted(active_debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
         total_remaining = sum((_debt_total(d, today) for d in active_debts), ZERO)
-        total_principal = sum((_money_value(d.remaining_amount) for d in active_debts), ZERO)
+        total_principal = sum((d.accrual_state(today)['principal'] for d in active_debts), ZERO)
         total_original = sum((_money_value(d.total_amount) for d in active_debts), ZERO)
 
         # Пустой месяц не заменяем прошлым: test_deleting_archived_debt_does_not_change_displayed_month.

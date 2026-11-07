@@ -7,9 +7,9 @@ gives the corrected picture. Nothing is accrued by a scheduler.
 Conventions:
 - accruals start on debt.accrual_start_date; payments on or before that
   date are settled history and are already reflected in remaining_amount;
-- the principal on that date is remaining_amount plus the principal parts
-  of later payments, so remaining_amount must be stored as the computed
-  principal minus capitalized interest;
+- the principal on that date is opening_principal_amount; legacy rows without
+  an independent anchor reconstruct it from remaining_amount and later
+  principal parts, and need statement reconciliation before trusting that base;
 - a payment cycle is (previous due date, due date]; a cycle is paid on time
   when the required part of its payments covers the required payment;
 - interest and penalty accrue over half-open day ranges [start, end), so a
@@ -37,6 +37,7 @@ from app.services.debt_calendar_service import (
     split_default_payment_amount,
 )
 from app.services.debt_math_service import calculate_interest_segments, days_in_year
+from app.time_utils import financial_today
 
 
 MONEY = Decimal('0.01')
@@ -103,7 +104,7 @@ class _Ledger:
 
 def get_debt_state(debt, as_of=None, payments=None):
     """Return the debt state at the start of `as_of` (today by default)."""
-    as_of = as_of or date.today()
+    as_of = as_of or financial_today(debt)
     if payments is None:
         payments = _load_payments(debt)
     return _AccrualEngine(debt, payments).run(as_of)
@@ -116,7 +117,7 @@ def cached_debt_state(debt, as_of=None):
     The key includes the fields every payment change touches, so a state
     computed before a change is not reused after it.
     """
-    as_of = as_of or date.today()
+    as_of = as_of or financial_today(debt)
     if not has_app_context():
         return get_debt_state(debt, as_of=as_of)
     cache = g.setdefault('_debt_state_cache', {})
@@ -126,6 +127,8 @@ def cached_debt_state(debt, as_of=None):
         as_of,
         getattr(debt, 'updated_at', None),
         str(getattr(debt, 'remaining_amount', None)),
+        str(getattr(debt, 'opening_principal_amount', None)),
+        getattr(debt, 'payment_day', None),
         getattr(debt, 'next_payment_date', None),
         getattr(debt, 'accrual_start_date', None),
     )
@@ -151,7 +154,10 @@ def invalidate_debt_state_cache(debt=None):
 
 
 def opening_principal(debt, payments):
-    """Principal on the accrual start date implied by the stored balances."""
+    """Confirmed principal on the start date, or the legacy reconstructed base."""
+    anchor = getattr(debt, 'opening_principal_amount', None)
+    if anchor is not None:
+        return money(anchor)
     start = accrual_start_date(debt)
     later = [payment for payment in payments if start is None or payment.payment_date > start]
     return money(debt.remaining_amount) + sum((_stored_principal(payment) for payment in later), ZERO)
@@ -207,8 +213,14 @@ class _AccrualEngine:
     def __init__(self, debt, payments):
         self.debt = debt
         self.start = accrual_start_date(debt)
+        unique = {}
+        for payment in payments:
+            key = payment.id if payment.id is not None else id(payment)
+            if key in unique and unique[key] is not payment:
+                raise ValueError('В истории есть разные операции с одинаковым идентификатором')
+            unique[key] = payment
         self.all_payments = sorted(
-            (payment for payment in payments if payment.payment_date),
+            (payment for payment in unique.values() if payment.payment_date),
             key=_sort_key,
         )
         self.payments = [
@@ -282,13 +294,14 @@ class _AccrualEngine:
         # Monthly dates are offsets from one anchor so the day of month
         # does not drift after short months.
         offset = 0
+        day = getattr(self.debt, 'payment_day', None) or anchor.day
         if after is not None:
-            while anchor + relativedelta(months=offset - 1) > after and offset > -MAX_CYCLES:
+            while anchor + relativedelta(months=offset - 1, day=day) > after and offset > -MAX_CYCLES:
                 offset -= 1
-            while anchor + relativedelta(months=offset) <= after and offset < MAX_CYCLES:
+            while anchor + relativedelta(months=offset, day=day) <= after and offset < MAX_CYCLES:
                 offset += 1
         for _ in range(MAX_CYCLES):
-            due = anchor + relativedelta(months=offset)
+            due = anchor + relativedelta(months=offset, day=day)
             yield due
             if due >= limit_date:
                 return
@@ -299,7 +312,7 @@ class _AccrualEngine:
             return previous_payment_due_date(self.debt, due)
         anchor = self.debt.next_payment_date
         months = (due.year - anchor.year) * 12 + due.month - anchor.month
-        return anchor + relativedelta(months=months - 1)
+        return anchor + relativedelta(months=months - 1, day=getattr(self.debt, 'payment_day', None) or anchor.day)
 
     # --- accrual ---------------------------------------------------------
     def _accrue(self, ledger, until):
@@ -445,6 +458,10 @@ class _AccrualEngine:
         if getattr(payment, 'is_early_repayment', False):
             scheduled = min(money(getattr(payment, 'scheduled_payment_amount', None)), available)
         else:
+            scheduled = available
+        if available >= money(ledger.principal + ledger.current_interest + ledger.overdue_interest + ledger.penalty):
+            # A full payoff must also settle interest even for a standalone
+            # early payment whose ordinary contract rule targets principal.
             scheduled = available
         left = available
         paid_overdue_interest, left = self._pay_overdue(ledger, 'interest', left)
@@ -693,6 +710,8 @@ class _AccrualEngine:
             next_due_amount = money(next_due_amount + penalty)
         return {
             'as_of': as_of,
+            'diagnostics': self._diagnostics(opening),
+            'data_consistent': not self._history_mismatch(opening),
             'accrual_start_date': self.start,
             'opening_principal': money(opening),
             'principal': principal,
@@ -731,3 +750,48 @@ class _AccrualEngine:
             'cycles': self.cycles,
             'allocations': self.allocations,
         }
+
+    def _diagnostics(self, opening):
+        messages = []
+        fee = money(getattr(self.debt, 'monthly_fee_amount', None))
+        minimum = money(getattr(self.debt, 'minimum_payment', None))
+        if minimum > 0 and fee >= minimum:
+            messages.append('Ежемесячная комиссия не меньше обязательного платежа. Проверьте условия кредита перед построением графика.')
+        if getattr(self.debt, 'opening_principal_amount', None) is None and self.all_payments:
+            messages.append('Начальный остаток восстановлен из сохранённой истории. Сверьте основной долг на дату начала расчёта с банком.')
+        if self._history_mismatch(opening):
+            messages.append('Сохранённые остатки или разбивка платежей не согласованы с расчётом. Требуется сверка истории.')
+        return messages
+
+    def _history_mismatch(self, opening):
+        if self.debt_type == 'split':
+            # Purchases are added to the split balance independently of payments.
+            return False
+        if getattr(self.debt, 'opening_principal_amount', None) is not None:
+            expected = opening - sum((_stored_principal(payment) for payment in self.payments), ZERO)
+            if money(self.debt.remaining_amount) != money(expected):
+                return True
+        issue = getattr(self.debt, 'interest_period_start_date', None)
+        first = money(getattr(self.debt, 'first_payment_amount', None))
+        if self.all_payments and issue and first > 0:
+            payment = self.all_payments[0]
+            if (issue < payment.payment_date <= (self.start or issue)
+                    and money(payment.amount) == first
+                    and money(payment.interest_amount) == 0
+                    and Decimal(str(self.debt.interest_rate_for(issue) or 0)) > 0
+                    and self._accrues_interest()):
+                return True
+        running = opening
+        for payment in self.payments:
+            running -= _stored_principal(payment)
+            stored = getattr(payment, 'remaining_after_payment', None)
+            if not self.capitalize and stored is not None and money(stored) != money(running):
+                return True
+            allocation = self.allocations.get(payment.id)
+            if stored is not None and allocation and (
+                money(stored) != allocation['remaining_after']
+                or _stored_principal(payment) != allocation['principal']
+                or money(payment.interest_amount) != allocation['interest']
+            ):
+                return True
+        return False

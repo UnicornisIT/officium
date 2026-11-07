@@ -543,7 +543,7 @@ class MonthlyExpensesTestCase(unittest.TestCase):
                 user_id=self.user_id,
                 amount=Decimal('680.00'),
                 category='subscriptions',
-                title='ChatGPT',
+                title='Подписка',
                 expense_date=date(2026, 9, 19),
                 is_monthly=True,
                 monthly_group_id='calendar-rollover',
@@ -606,18 +606,18 @@ class MonthlyExpensesTestCase(unittest.TestCase):
             self.post_expense(
                 amount='680',
                 category='subscriptions',
-                title='ChatGPT',
+                title='Подписка',
                 expense_date='2026-03-19',
                 payment_method='card',
                 comment='old settings',
                 is_monthly='on',
             )
             may = Expense.query.filter_by(
-                title='ChatGPT',
+                title='Подписка',
                 generated_for_month='2026-05',
             ).one()
             march = Expense.query.filter_by(
-                title='ChatGPT',
+                title='Подписка',
                 generated_for_month='2026-03',
             ).one()
 
@@ -625,7 +625,7 @@ class MonthlyExpensesTestCase(unittest.TestCase):
                 may.id,
                 amount='750.50',
                 category='communication',
-                title='ChatGPT Plus',
+                title='Подписка Плюс',
                 expense_date='2026-05-31',
                 payment_method='cash',
                 comment='new settings',
@@ -645,10 +645,10 @@ class MonthlyExpensesTestCase(unittest.TestCase):
             ).one()
 
             self.assertEqual(march.amount, Decimal('680.00'))
-            self.assertEqual(march.title, 'ChatGPT')
+            self.assertEqual(march.title, 'Подписка')
             self.assertEqual(june.amount, Decimal('750.50'))
             self.assertEqual(june.category, 'communication')
-            self.assertEqual(june.title, 'ChatGPT Plus')
+            self.assertEqual(june.title, 'Подписка Плюс')
             self.assertEqual(june.payment_method, 'cash')
             self.assertEqual(june.comment, 'new settings')
             self.assertEqual(june.expense_date, date(2026, 6, 30))

@@ -32,6 +32,25 @@ const scheduleModal   = scheduleModalEl ? new bootstrap.Modal(scheduleModalEl) :
 const splitPurchaseModal = splitPurchaseModalEl ? new bootstrap.Modal(splitPurchaseModalEl) : null;
 const archiveConfirmModal = archiveConfirmEl ? new bootstrap.Modal(archiveConfirmEl) : null;
 
+async function refreshCalendarDate() {
+    if (document.hidden || document.querySelector('.modal.show, .offcanvas.show')) return;
+    const renderedDate = document.documentElement.dataset.financialDate;
+    if (!renderedDate) return;
+    try {
+        const response = await fetch('/api/calendar-date', {cache: 'no-store'});
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.today && data.today !== renderedDate) window.location.reload();
+    } catch {
+        // Keep the current page usable while the connection is unavailable.
+    }
+}
+
+window.addEventListener('pageshow', refreshCalendarDate);
+document.addEventListener('visibilitychange', refreshCalendarDate);
+document.addEventListener('hidden.bs.modal', refreshCalendarDate);
+setInterval(refreshCalendarDate, 60000);
+
 // ══════════════════════════════════════════════════════════
 // УТИЛИТЫ
 // ══════════════════════════════════════════════════════════
@@ -449,18 +468,30 @@ function initInfoHints() {
         const gap = 8;
         const margin = 12;
         const rect = button.getBoundingClientRect();
+        const modal = hint.closest('.modal');
+        const bounds = modal?.querySelector('.modal-content').getBoundingClientRect();
+        const viewportWidth = document.documentElement.clientWidth;
+        const viewportHeight = window.innerHeight;
+        const minLeft = bounds ? Math.max(margin, bounds.left + margin) : margin;
+        const maxRight = bounds ? Math.min(viewportWidth - margin, bounds.right - margin) : viewportWidth - margin;
+        const minTop = bounds ? Math.max(margin, bounds.top + margin) : margin;
+        const maxBottom = bounds ? Math.min(viewportHeight - margin, bounds.bottom - margin) : viewportHeight - margin;
+        if (modal) {
+            bubble.style.maxWidth = `${Math.min(340, Math.max(1, maxRight - minLeft))}px`;
+            bubble.style.maxHeight = `${Math.max(1, maxBottom - minTop)}px`;
+            bubble.style.overflowY = 'auto';
+        }
         bubble.style.left = '0px';
         bubble.style.top = '0px';
         const width = bubble.offsetWidth;
         const height = bubble.offsetHeight;
-        const viewportWidth = document.documentElement.clientWidth;
-        const viewportHeight = window.innerHeight;
         let left = rect.left + rect.width / 2 - width / 2;
-        left = Math.max(margin, Math.min(left, viewportWidth - width - margin));
+        left = Math.max(minLeft, Math.min(left, maxRight - width));
         let top = rect.bottom + gap;
-        if (top + height > viewportHeight - margin && rect.top - gap - height > margin) {
+        if (top + height > maxBottom && rect.top - gap - height >= minTop) {
             top = rect.top - gap - height;
         }
+        if (modal) top = Math.max(minTop, Math.min(top, maxBottom - height));
         bubble.style.left = `${Math.round(left)}px`;
         bubble.style.top = `${Math.round(top)}px`;
     }
@@ -512,14 +543,25 @@ function initInfoHints() {
         if (event.key !== 'Escape') return;
         const openHint = hints.find((hint) => hint.classList.contains('is-open'));
         if (openHint) {
+            if (openHint.closest('.modal')) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
             close(openHint);
-            openHint.dataset.infoHintRefocus = '1';
-            openHint.querySelector('[data-info-hint-toggle]').focus({ preventScroll: true });
+            const button = openHint.querySelector('[data-info-hint-toggle]');
+            if (document.activeElement !== button) {
+                openHint.dataset.infoHintRefocus = '1';
+                button.focus({ preventScroll: true });
+            }
         }
-    });
+    }, { capture: true });
     const reposition = () => hints.forEach((hint) => { if (hint.classList.contains('is-open')) place(hint); });
     window.addEventListener('resize', reposition);
-    window.addEventListener('scroll', reposition, { passive: true });
+    document.addEventListener('scroll', reposition, { capture: true, passive: true });
+    document.addEventListener('shown.bs.modal', reposition);
+    document.addEventListener('hidden.bs.modal', (event) => {
+        hints.forEach((hint) => { if (event.target.contains(hint)) close(hint); });
+    });
 }
 
 function initImpersonationBanner() {
@@ -810,6 +852,10 @@ function syncAccrualSettings({ applyDefaults = false } = {}) {
 
     const isCard = debtType.value === 'credit_card';
     const isSplit = debtType.value === 'split';
+    const supportsOpeningPrincipal = ['consumer_credit', 'mortgage'].includes(debtType.value);
+    const openingGroup = document.getElementById('opening_principal_group');
+    if (openingGroup) openingGroup.classList.toggle('d-none', !supportsOpeningPrincipal);
+    if (!supportsOpeningPrincipal) document.getElementById('f_opening_principal_amount').value = '';
     graceGroup.classList.toggle('d-none', !isCard);
     if (!isCard) graceInput.value = '';
     capitalizeGroup.classList.toggle('d-none', isSplit);
@@ -939,7 +985,7 @@ function clearDebtForm() {
     if (recurring) recurring.checked = false;
     const includePaymentDay = document.getElementById('f_include_payment_day');
     if (includePaymentDay) includePaymentDay.checked = false;
-    ['f_penalty_rate', 'f_grace_period_end_date', 'f_accrual_start_date'].forEach(id => {
+    ['f_penalty_rate', 'f_grace_period_end_date', 'f_accrual_start_date', 'f_opening_principal_amount'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -970,7 +1016,7 @@ function openAddModal() {
 function fillDebtSampleData() {
     const sampleDate = new Date();
     sampleDate.setDate(sampleDate.getDate() + 7);
-    const formattedDate = sampleDate.toISOString().slice(0, 10);
+    const formattedDate = `${sampleDate.getFullYear()}-${String(sampleDate.getMonth() + 1).padStart(2, '0')}-${String(sampleDate.getDate()).padStart(2, '0')}`;
 
     const sampleData = {
         f_bank_name: 'Тинькофф',
@@ -1044,6 +1090,7 @@ async function openEditModal(debtId) {
         document.getElementById('f_capitalize_interest').checked = Boolean(d.capitalize_interest);
         document.getElementById('f_grace_period_end_date').value = d.grace_period_end_date || '';
         document.getElementById('f_accrual_start_date').value = d.accrual_start_date || '';
+        document.getElementById('f_opening_principal_amount').value = '';
         syncCardLimitHelperVisibility();
         syncConsumerEarlyRepaymentSettings();
         syncAccrualSettings();
@@ -1103,6 +1150,7 @@ async function saveDebt() {
         capitalize_interest: document.getElementById('f_capitalize_interest').checked,
         grace_period_end_date: document.getElementById('f_grace_period_end_date').value || null,
         accrual_start_date: document.getElementById('f_accrual_start_date').value || null,
+        opening_principal_amount: document.getElementById('f_opening_principal_amount').value || null,
         comment:           document.getElementById('f_comment').value.trim() || null,
     };
 
@@ -1178,7 +1226,13 @@ async function openPaymentModal(debtId, plan = null) {
         const d = data.debt;
         document.getElementById('pm_date').value = d.today;
         document.getElementById('pm_name').textContent = `${d.bank_name} — ${d.product_name}`;
-        document.getElementById('pm_remaining').textContent = formatMoney(d.total_debt ?? d.remaining_amount);
+        document.getElementById('pm_remaining').textContent = d.calculation_valid
+            ? formatMoney(d.total_debt ?? d.remaining_amount) : 'Требуется сверка';
+        if (!d.calculation_valid) {
+            const error = document.getElementById('paymentFormError');
+            error.textContent = (d.calculation_diagnostics || []).join(' ');
+            error.classList.remove('d-none');
+        }
         const minimumPayment = parseNumberInputValue(d.effective_next_payment_amount ?? d.minimum_payment);
         const remainingAmount = parseNumberInputValue(d.total_debt ?? d.remaining_amount);
         currentMinimumPaymentAmount = d.is_first_payment_pending
@@ -1349,7 +1403,8 @@ async function submitPayment(planned = false) {
             }
             const card = document.querySelector(`.debt-card[data-id="${currentDebtId}"]`);
             if (card && data.debt) {
-                card.querySelector('.debt-card__amount-main').textContent = formatMoney(data.debt.total_debt);
+                card.querySelector('.debt-card__amount-main').textContent = data.debt.calculation_valid
+                    ? formatMoney(data.debt.total_debt) : 'Требуется сверка';
                 const progressLabel = card.querySelector('.debt-card__progress-label');
                 if (progressLabel) {
                     progressLabel.firstElementChild.textContent = `Погашено ${data.debt.paid_percent}%`;
@@ -1441,7 +1496,9 @@ async function openHistoryModal(debtId, title) {
         const payments = data.payments;
         paymentHistoryCache = new Map(payments.map(payment => [String(payment.id), payment]));
         plannedPaymentHistory = new Map(data.planned_payments.map(plan => [plan.id, plan]));
-        const planned = data.planned_payments.length ? `
+        const diagnostics = (data.debt.calculation_diagnostics || []).map(message =>
+            `<div class="alert alert-warning" role="status">${escapeHtml(message)}</div>`).join('');
+        const planned = diagnostics + (data.planned_payments.length ? `
             <section class="mb-3">
                 <h6>Запланированные платежи</h6>
                 ${data.planned_payments.map(plan => `
@@ -1457,7 +1514,7 @@ async function openHistoryModal(debtId, title) {
                     </div>
                 `).join('')}
             </section>
-        ` : '';
+        ` : '');
         if (payments.length === 0) {
             document.getElementById('historyContent').innerHTML = planned +
                 '<div class="history-empty"><i class="bi bi-inbox fs-3 d-block mb-2"></i>Платежей ещё не было</div>';
@@ -1482,7 +1539,7 @@ async function openHistoryModal(debtId, title) {
             if (p.bank_remaining_after_payment !== null && p.bank_remaining_after_payment !== undefined) {
                 const bankDelta = Math.abs(Number(p.bank_remaining_after_payment) - Number(p.remaining_after_payment));
                 const acceptButton = bankDelta >= 0.01
-                    ? ` <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="acceptBankRemaining(${debtId}, ${p.id})" title="Подобрать разбивку платежа так, чтобы остаток совпал с банком">принять</button>`
+                    ? ` <button type="button" class="btn btn-outline-secondary btn-sm" onclick="acceptBankRemaining(${debtId}, ${p.id})" title="Подобрать разбивку платежа так, чтобы остаток совпал с банком">принять</button>`
                     : '';
                 splitParts.push(`банк ${formatMoney(p.bank_remaining_after_payment)}${acceptButton}`);
             }
@@ -1856,7 +1913,7 @@ function openSplitPurchaseModal(debtId) {
     document.getElementById('sp_title').value = '';
     document.getElementById('sp_amount').value = '';
     document.getElementById('sp_installments_count').value = '4';
-    document.getElementById('sp_purchase_date').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('sp_purchase_date').value = document.documentElement.dataset.financialDate || '';
     splitPurchaseModal.show();
 }
 

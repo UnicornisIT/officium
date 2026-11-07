@@ -1,5 +1,5 @@
-{% from '_brand.html' import brand_mark %}{% from '_avatar.html' import user_avatar, user_display_name, user_menu %}<!DOCTYPE html>
-<html lang="ru" data-theme="dark" data-bs-theme="dark"{% if amount_privacy_available %} data-amounts-default-hidden="{{ 'true' if amounts_initially_hidden else 'false' }}"{% endif %}{% if amounts_initially_hidden %} class="amounts-hidden amounts-pending"{% endif %}>
+{% from '_brand.html' import brand_mark %}{% from '_avatar.html' import user_avatar, user_display_name, user_menu %}{% from '_info_hint.html' import info_hint %}<!DOCTYPE html>
+<html lang="ru" data-financial-date="{{ financial_date }}" data-theme="dark" data-bs-theme="dark"{% if amount_privacy_available %} data-amounts-default-hidden="{{ 'true' if amounts_initially_hidden else 'false' }}"{% endif %}{% if amounts_initially_hidden %} class="amounts-hidden amounts-pending"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -427,11 +427,22 @@
                                     <input type="number" class="form-control" id="f_loan_term_months" min="1" step="1" placeholder="если известен">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label">Комиссии в месяц</label>
+                                    {% set monthly_fee_help %}
+                                    <strong>Что такое комиссии в месяц?</strong><br><br>
+                                    Дополнительные платежи, которые банк взимает ежемесячно сверх основного платежа по кредиту, если они предусмотрены договором.<br><br>
+                                    Например: плата за обслуживание кредита — 300 ₽ в месяц.<br><br>
+                                    <strong>Важно:</strong> здесь не нужно указывать первоначальную сумму кредита, остаток задолженности, проценты по кредиту или ежемесячный платёж.<br><br>
+                                    Если дополнительных ежемесячных комиссий нет, оставьте значение <strong>0 ₽</strong>.<br><br>
+                                    Указанная комиссия добавляется к ежемесячным обязательствам и учитывается при расчёте финансового плана.
+                                    {% endset %}
+                                    <div class="d-flex align-items-center mb-2">
+                                        <label class="form-label mb-0" for="f_monthly_fee_amount">Комиссии в месяц</label>
+                                        {{ info_hint(monthly_fee_help, 'hint-monthly-fee', 'Подсказка: Комиссии в месяц') }}
+                                    </div>
                                     <input type="text" inputmode="decimal" class="form-control number-format" id="f_monthly_fee_amount" placeholder="0,00">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label">Остаток по банку</label>
+                                    <label class="form-label">Основной долг по банку</label>
                                     <input type="text" inputmode="decimal" class="form-control number-format" id="f_bank_remaining_amount" placeholder="для сверки">
                                 </div>
                                 <div class="col-12">
@@ -461,6 +472,11 @@
                                     <label class="form-label" for="f_accrual_start_date">Расчёт ведётся с</label>
                                     <input type="date" class="form-control" id="f_accrual_start_date">
                                     <small class="text-muted">Платежи до этой даты — закрытая история, их разбивка не меняется. Укажите дату раньше, чтобы пересчитать старые платежи; позже — чтобы закрыть прошлые циклы (неоплаченные проценты и неустойка сохранятся). Пусто — с начала текущего цикла.</small>
+                                </div>
+                                <div class="col-md-6" id="opening_principal_group">
+                                    <label class="form-label" for="f_opening_principal_amount">Основной долг на дату начала расчёта</label>
+                                    <input type="text" inputmode="decimal" class="form-control number-format" id="f_opening_principal_amount" placeholder="По выписке банка">
+                                    <small class="text-muted">Заполняйте при сверке с выпиской. До изменения сохраните резервную копию базы. Сохранение пересчитает автоматическую разбивку платежей после указанной даты; суммы платежей сохранятся.</small>
                                 </div>
                                 <div class="col-12" id="capitalize_interest_group">
                                     <div class="form-check form-switch mb-0">

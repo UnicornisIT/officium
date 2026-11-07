@@ -206,7 +206,7 @@ class DebtTypesTestCase(unittest.TestCase):
             debt_id = debt.id
 
         # Before the due date: the schedule starts from today's state.
-        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+        with patch('app.services.debt_schedule_service.financial_today', return_value=FrozenDate.today()), patch('app.models.financial_today', return_value=FrozenDate.today()):
             response = self.client.get(f'/api/debts/{debt_id}/schedule')
 
         self.assertEqual(response.status_code, 200)
@@ -242,7 +242,7 @@ class DebtTypesTestCase(unittest.TestCase):
             debt_id = debt.id
 
         # Before the due date: the schedule starts from today's state.
-        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+        with patch('app.services.debt_schedule_service.financial_today', return_value=FrozenDate.today()), patch('app.models.financial_today', return_value=FrozenDate.today()):
             response = self.client.get(f'/api/debts/{debt_id}/schedule')
 
         self.assertEqual(response.status_code, 200)
@@ -274,7 +274,7 @@ class DebtTypesTestCase(unittest.TestCase):
             debt_id = debt.id
 
         # Before the due date: the schedule starts from today's state.
-        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+        with patch('app.services.debt_schedule_service.financial_today', return_value=FrozenDate.today()), patch('app.models.financial_today', return_value=FrozenDate.today()):
             response = self.client.get(f'/api/debts/{debt_id}/schedule')
 
         self.assertEqual(response.status_code, 200)
@@ -419,7 +419,7 @@ class DebtTypesTestCase(unittest.TestCase):
             debt_id = debt.id
 
         # Before the due date: the schedule starts from today's state.
-        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+        with patch('app.services.debt_schedule_service.financial_today', return_value=FrozenDate.today()), patch('app.models.financial_today', return_value=FrozenDate.today()):
             response = self.client.get(f'/api/debts/{debt_id}/schedule')
 
         self.assertEqual(response.status_code, 200)
@@ -616,7 +616,7 @@ class DebtTypesTestCase(unittest.TestCase):
             db.session.commit()
             debt_id = debt.id
 
-        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+        with patch('app.services.debt_schedule_service.financial_today', return_value=FrozenDate.today()), patch('app.models.financial_today', return_value=FrozenDate.today()):
             response = self.client.get(f'/api/debts/{debt_id}/schedule')
 
         self.assertEqual(response.status_code, 200)
@@ -660,7 +660,7 @@ class DebtTypesTestCase(unittest.TestCase):
         )
         self.assertEqual(rows[-1]['remaining'], 0.0)
 
-        with self.app.app_context(), patch('app.models.date', FrozenDate):
+        with self.app.app_context(), patch('app.models.financial_today', return_value=FrozenDate.today()):
             debt = db.session.get(Debt, debt_id)
             self.assertEqual(debt.effective_next_payment_date(), date(2026, 8, 12))
 
@@ -692,7 +692,7 @@ class DebtTypesTestCase(unittest.TestCase):
             db.session.commit()
             debt_id = debt.id
 
-        with patch('app.services.debt_schedule_service.date', FrozenDate), patch('app.models.date', FrozenDate):
+        with patch('app.services.debt_schedule_service.financial_today', return_value=FrozenDate.today()), patch('app.models.financial_today', return_value=FrozenDate.today()):
             response = self.client.get(f'/api/debts/{debt_id}/schedule')
 
         self.assertEqual(response.status_code, 200)

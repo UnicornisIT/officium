@@ -112,7 +112,8 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20261128_payment_cascade'], '20261127_debt_payment_plans')
         self.assertEqual(revisions['20261129_monthly_expense_stops'], '20261128_payment_cascade')
         self.assertEqual(revisions['20261130_expense_auto'], '20261129_monthly_expense_stops')
-        self.assertEqual(heads, {'20261130_expense_auto'})
+        self.assertEqual(revisions['20261201_debt_opening'], '20261130_expense_auto')
+        self.assertEqual(heads, {'20261201_debt_opening'})
 
     def test_payment_cascade_migration_preserves_data_and_deletes_payments(self):
         migration = next(module for module in self.modules if module.revision == '20261128_payment_cascade')

@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.time_utils import financial_today
 from app.models import (
     Debt,
     EmergencyFundTransaction,
@@ -25,6 +26,7 @@ from app.services.pay_period_service import (
 )
 from app.services.payment_service import paid_toward_payment_cycle
 from app.utils import EXPENSE_CATEGORIES, INCOME_CATEGORY_LABELS, format_currency
+from app.models import User
 from extensions import db
 
 
@@ -88,7 +90,7 @@ def preference_values(preference=None):
 
 
 def build_financial_plan(user_id, preference=None, today=None, year=None, month=None):
-    today = today or date.today()
+    today = today or financial_today(db.session.get(User, user_id) if user_id else None)
     period_start = _selected_month_start(today, year, month)
     period_end = period_start + relativedelta(months=1)
     period_last_day = period_end - relativedelta(days=1)
@@ -769,7 +771,8 @@ def _build_debt_items(debts, today, planning_horizon_end):
             'debt_type': debt.debt_type,
             'debt_type_label': Debt.DEBT_TYPE_LABELS.get(debt.debt_type, 'Долг'),
             'remaining': _float(accrual['total'] if accrual else debt.remaining_amount),
-            'principal': _float(debt.remaining_amount),
+            'principal': _float(accrual['principal'] if accrual else debt.remaining_amount),
+            'calculation_valid': not accrual or accrual['data_consistent'],
             'is_overdue': bool(accrual and accrual['is_overdue']),
             'overdue_amount': _float(accrual['overdue_amount'] if accrual else 0),
             'penalty': _float(unpaid_penalty),

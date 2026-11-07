@@ -138,6 +138,9 @@ class ScheduleAccrualTestCase(unittest.TestCase):
     def test_schedule_fallback_uses_latest_payment_anchor_without_month_end_drift(self):
         debt = self.stale_debt()
         add_payment(debt, Decimal('25000'), payment_date=date(2026, 10, 31))
+        # Migrated records can lack a contractual day until their next payment.
+        debt.payment_day = None
+        db.session.commit()
         today = date(2027, 3, 1)
 
         with patch('app.services.debt_schedule_service._accrual_state', return_value=None):
@@ -145,6 +148,15 @@ class ScheduleAccrualTestCase(unittest.TestCase):
 
         self.assertEqual(rows[0]['payment_date'], '2027-03-31')
         self.assertEqual(debt.next_payment_date, date(2025, 3, 25))
+
+    def test_schedule_fallback_prefers_explicit_contract_day(self):
+        debt = self.stale_debt(payment_day=25)
+        add_payment(debt, Decimal('25000'), payment_date=date(2026, 10, 31))
+
+        with patch('app.services.debt_schedule_service._accrual_state', return_value=None):
+            rows = build_debt_payment_schedule(debt, today=date(2027, 3, 1))['rows']
+
+        self.assertEqual(rows[0]['payment_date'], '2027-03-25')
 
     def test_plan_ignores_past_rows_without_overdue_status(self):
         self.debt()

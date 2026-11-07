@@ -124,12 +124,14 @@ def init_app(app):
                 product_name=product_name,
                 total_amount=total_amount,
                 remaining_amount=remaining_amount,
+                opening_principal_amount=remaining_amount if debt_type in ('consumer_credit', 'mortgage') else None,
                 minimum_payment=minimum_payment,
                 first_payment_amount=first_payment_amount,
                 interest_rate=interest_rate,
                 interest_rate_after_change=interest_rate_after_change,
                 interest_rate_change_date=interest_rate_change_date,
                 next_payment_date=next_payment_date,
+                payment_day=next_payment_date.day if next_payment_date and debt_type != 'split' else None,
                 is_payment_recurring=is_payment_recurring,
                 repayment_type=repayment_type,
                 day_count_convention=day_count_convention,
@@ -151,6 +153,13 @@ def init_app(app):
             if explicit_start and next_payment_date and explicit_start >= next_payment_date:
                 raise ValueError('Дата начала расчёта должна быть раньше даты платежа')
             debt.accrual_start_date = explicit_start or accrual_start_date(debt)
+            opening = parse_decimal(data.get('opening_principal_amount'), 'Основной долг на дату начала расчёта', required=False)
+            if opening is not None:
+                if debt.debt_type not in ('consumer_credit', 'mortgage'):
+                    raise ValueError('Исходный основной долг задаётся только для кредита или ипотеки')
+                if opening != remaining_amount:
+                    raise ValueError('Для нового кредита начальный основной долг должен совпадать с остатком')
+                debt.opening_principal_amount = opening
             db.session.add(debt)
             db.session.commit()
             return jsonify({'success': True, 'debt': debt.to_dict()}), 201
@@ -176,6 +185,8 @@ def init_app(app):
         if not debt:
             return jsonify({'success': False, 'error': 'Долг не найден'}), 404
         try:
+            if not debt.accrual_state()['data_consistent']:
+                raise ValueError('История платежей не согласована с остатком долга. Сверьте начальный основной долг и дату начала расчёта.')
             schedule = build_debt_payment_schedule(debt)
             return jsonify({'success': True, 'schedule': schedule})
         except ValueError as e:
@@ -259,6 +270,8 @@ def init_app(app):
             previous_next_payment_date = debt.next_payment_date
             previous_start = debt.accrual_start_date
             previous_period_start = debt.interest_period_start_date
+            previous_remaining = debt.remaining_amount
+            previous_opening = debt.opening_principal_amount
 
             if 'bank_name' in data:
                 bank_name = str(data['bank_name']).strip()
@@ -301,6 +314,9 @@ def init_app(app):
                 debt.interest_rate_change_date = interest_rate_change_date
             if 'next_payment_date' in data:
                 debt.next_payment_date = parse_date(data['next_payment_date'], 'Дата следующего платежа')
+                if debt.next_payment_date and debt.debt_type != 'split':
+                    if debt.payment_day is None or not previous_next_payment_date or debt.next_payment_date.day != previous_next_payment_date.day:
+                        debt.payment_day = debt.next_payment_date.day
             if 'is_payment_recurring' in data:
                 debt.is_payment_recurring = bool(data['is_payment_recurring']) and debt.next_payment_date is not None
             if 'repayment_type' in data:
@@ -362,6 +378,23 @@ def init_app(app):
                 explicit='accrual_start_date' in data and explicit_start != previous_start,
                 explicit_start=explicit_start,
             )
+
+            opening = parse_decimal(data.get('opening_principal_amount'), 'Основной долг на дату начала расчёта', required=False)
+            if debt.debt_type not in ('consumer_credit', 'mortgage'):
+                if opening is not None:
+                    raise ValueError('Исходный основной долг задаётся только для кредита или ипотеки')
+                debt.opening_principal_amount = None
+            elif opening is not None:
+                if opening > debt.total_amount:
+                    raise ValueError('Основной долг на дату начала расчёта не может превышать сумму кредита')
+                debt.opening_principal_amount = opening
+            elif previous_opening is not None:
+                payments = Payment.query.filter_by(debt_id=debt.id).all()
+                if payments and debt.remaining_amount != previous_remaining:
+                    raise ValueError('Для кредита с историей укажите подтверждённый основной долг на дату начала расчёта. Текущий остаток рассчитывается по платежам.')
+                before = sum((p.principal_amount for p in payments if previous_start and p.payment_date <= previous_start), Decimal('0'))
+                after = sum((p.principal_amount for p in payments if debt.accrual_start_date and p.payment_date <= debt.accrual_start_date), Decimal('0'))
+                debt.opening_principal_amount = previous_opening + before - after + debt.remaining_amount - previous_remaining
 
             debt.updated_at = utc_now()
             if not is_local_test_user():

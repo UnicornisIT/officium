@@ -2,7 +2,8 @@
 
 import re
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timezone
+from unittest.mock import patch
 
 from app import create_app
 from app.models import AppSetting, Debt, User
@@ -14,6 +15,9 @@ from extensions import db
 
 class RevivedSettingsTestCase(unittest.TestCase):
     def setUp(self):
+        clock = patch('app.time_utils.utc_now', return_value=datetime(2026, 8, 20, 12, tzinfo=timezone.utc))
+        clock.start()
+        self.addCleanup(clock.stop)
         self.app = create_app({
             'TESTING': True,
             'ENVIRONMENT': 'testing',
@@ -36,7 +40,7 @@ class RevivedSettingsTestCase(unittest.TestCase):
                 product_name='Карта',
                 total_amount=1000,
                 remaining_amount=1000,
-                next_payment_date=date.today() + timedelta(days=5),
+                next_payment_date=date(2026, 8, 25),
                 status='active',
             ))
             db.session.commit()

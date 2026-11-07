@@ -5,6 +5,10 @@
 {% from '_debt_amounts.html' import debt_amounts %}
 
 {% block content %}
+{% set debt_check = namespace(valid=true) %}
+{% for debt in debts %}
+{% if not debt.accrual_state(today).data_consistent %}{% set debt_check.valid = false %}{% endif %}
+{% endfor %}
 <div class="d-flex align-items-center justify-content-between gap-3 mb-4">
     <div>
         <h1 class="page-title mb-1"><i class="bi bi-bank2 text-primary me-2"></i>Ипотечные кредиты{{ info_hint('Отдельная страница для ипотек и крупных долгов.', 'hint-mortgages') }}</h1>
@@ -27,7 +31,7 @@
     <div class="col-12 col-md-4">
         <div class="summary-card summary-card--danger">
             <div class="summary-icon"><i class="bi bi-cash-stack"></i></div>
-            <div class="summary-value">{{ total_remaining|money }}</div>
+            <div class="summary-value">{% if debt_check.valid %}{{ total_remaining|money }}{% else %}Требуется сверка{% endif %}</div>
             <div class="summary-label">Общая задолженность по ипотеке</div>
         </div>
     </div>
@@ -78,7 +82,7 @@
             </div>
             <div class="debt-card__progress-label">
                 <span>Погашено {{ paid_pct }}%</span>
-                <span>{{ accrual.principal|money }} основного долга</span>
+                <span>{% if accrual.data_consistent %}{{ accrual.principal|money }} основного долга{% else %}Требуется сверка{% endif %}</span>
             </div>
 
             {{ debt_amounts(debt, today) }}
@@ -127,7 +131,7 @@
                     <span class="detail-label"><i class="bi bi-bank"></i> Сверка</span>
                     <span class="detail-value">
                         {{ debt.bank_remaining_amount|money }}
-                        {% set bank_delta = debt.bank_remaining_amount - debt.remaining_amount %}
+                        {% set bank_delta = debt.bank_remaining_amount - accrual.principal %}
                         {% if bank_delta < -0.01 or bank_delta > 0.01 %}
                         <span class="badge bg-warning text-dark ms-1">{{ bank_delta|money }}</span>
                         {% else %}

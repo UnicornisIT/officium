@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from extensions import db
@@ -7,12 +7,13 @@ from app.services.debt_accrual_service import (
     accrual_start_date,
     get_debt_state,
     invalidate_debt_state_cache,
+    opening_principal,
 )
 from app.services.debt_calendar_service import (
     previous_payment_due_date as _previous_payment_due_date,
     scheduled_payment_component as _scheduled_payment_component,
 )
-from app.time_utils import utc_now
+from app.time_utils import financial_today, utc_now
 
 
 MONEY = Decimal('0.01')
@@ -35,7 +36,7 @@ def add_payment(
     manual_breakdown=None,
 ):
     if not payment_date:
-        payment_date = date.today()
+        payment_date = financial_today(debt)
     amount = _money(amount, 'Сумма платежа')
 
     try:
@@ -143,6 +144,11 @@ def delete_payment(debt, payment):
 def _principal_before_payments(debt):
     """Principal before every recorded payment, from the stored balances."""
     payments = Payment.query.filter_by(debt_id=debt.id).all()
+    if debt.opening_principal_amount is not None:
+        start = accrual_start_date(debt)
+        return opening_principal(debt, payments) + sum(
+            (_payment_principal(p) for p in payments if start and p.payment_date <= start), ZERO,
+        )
     return (
         Decimal(str(debt.remaining_amount or 0))
         + sum((_payment_principal(payment) for payment in payments), ZERO)
@@ -154,6 +160,8 @@ def _pin_accrual_start(debt):
     # payments move; pin it so recalculations stay deterministic.
     if getattr(debt, 'accrual_start_date', None) is None:
         debt.accrual_start_date = accrual_start_date(debt)
+    if debt.payment_day is None and debt.next_payment_date and debt.debt_type != 'split':
+        debt.payment_day = debt.next_payment_date.day
 
 
 def _recalculate(debt, principal_before_payments):
@@ -181,10 +189,13 @@ def _recalculate(debt, principal_before_payments):
             raise ValueError('Сумма платежа превышает остаток долга')
         payment.remaining_after_payment = running
 
+    if debt.opening_principal_amount is not None:
+        debt.opening_principal_amount = running
+
     # The engine takes the principal on the start date as remaining_amount
     # plus the stored principal of tracked payments.
     debt.remaining_amount = (running - sum((_payment_principal(p) for p in tracked), ZERO)).quantize(MONEY)
-    today = date.today()
+    today = financial_today(debt)
     last_payment_date = max((payment.payment_date for payment in payments), default=today)
     as_of = max(today, last_payment_date)
     state = get_debt_state(debt, as_of=as_of + timedelta(days=1), payments=payments)

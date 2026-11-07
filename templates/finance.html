@@ -3,6 +3,10 @@
 {% block title %}Куда уходят деньги — officium{% endblock %}
 
 {% block content %}
+{% set debt_check = namespace(valid=true) %}
+{% for debt in active_debts %}
+{% if not debt.accrual_state(today).data_consistent %}{% set debt_check.valid = false %}{% endif %}
+{% endfor %}
 <div class="finance-page">
     <div class="finance-header mb-4">
         <div>
@@ -413,7 +417,7 @@
                 <div class="finance-load">
                     <div class="finance-load__top">
                         <span>Задолженность</span>
-                        <strong>{{ total_remaining|money }}</strong>
+                        <strong>{% if debt_check.valid %}{{ total_remaining|money }}{% else %}Требуется сверка{% endif %}</strong>
                     </div>
                     <div class="finance-load__meta">Всего долгов: {{ total_debts }}, в архиве: {{ archived_count }}</div>
                 </div>
@@ -471,7 +475,7 @@
                             <div class="fw-semibold">{{ debt.bank_name }}</div>
                             <div class="text-muted small">{{ debt.product_name }}</div>
                         </td>
-                        <td>{{ debt.total_debt(today)|money }}{% if debt.is_overdue(today) %} <span class="badge bg-danger ms-1">просрочка</span>{% endif %}</td>
+                        <td>{% if debt.accrual_state(today).data_consistent %}{{ debt.total_debt(today)|money }}{% if debt.is_overdue(today) %} <span class="badge bg-danger ms-1">просрочка</span>{% endif %}{% else %}Требуется сверка{% endif %}</td>
                         {% set display_interest_rate = debt.interest_rate_for(month_start) %}
                         <td>{{ display_interest_rate if display_interest_rate is not none else '—' }}%</td>
                         <td>{{ debt.minimum_payment|money }}</td>

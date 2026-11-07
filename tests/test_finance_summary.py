@@ -52,9 +52,8 @@ class FinanceSummaryTestCase(unittest.TestCase):
         return debt
 
     def test_archived_debt_payments_are_excluded_from_summary(self):
-        with self.app.app_context(), patch('app.services.finance_summary_service.date') as clock:
-            clock.today.return_value = date(2026, 11, 7)
-            clock.side_effect = date
+        with self.app.app_context(), patch('app.services.finance_summary_service.financial_today') as clock:
+            clock.return_value = date(2026, 11, 7)
             debt = self._debt_with_payment()
             before = get_finance_summary(self.user_id)
             self.assertEqual(before['total_payments'], Decimal('7302'))
@@ -69,9 +68,8 @@ class FinanceSummaryTestCase(unittest.TestCase):
             self.assertEqual(after['free_balance'], Decimal('0'))
 
     def test_deleting_archived_debt_does_not_change_displayed_month(self):
-        with self.app.app_context(), patch('app.services.finance_summary_service.date') as clock:
-            clock.today.return_value = date(2026, 11, 7)
-            clock.side_effect = date
+        with self.app.app_context(), patch('app.services.finance_summary_service.financial_today') as clock:
+            clock.return_value = date(2026, 11, 7)
             db.session.add_all([
                 Income(user_id=self.user_id, amount=Decimal('90000'),
                        category='salary', income_date=date(2026, 10, 5)),

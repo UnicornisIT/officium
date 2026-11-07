@@ -43,7 +43,16 @@ def main():
     parser.add_argument('--as-of', type=date.fromisoformat, default=date.today())
     parser.add_argument('--penalty-rate', type=Decimal, default=None,
                         help='use this penalty rate for debts other than split instead of the stored one')
+    parser.add_argument('--debt-id', type=int)
+    parser.add_argument('--start', type=date.fromisoformat, help='preview a confirmed accrual start date')
+    parser.add_argument('--opening-principal', type=Decimal, help='preview a confirmed principal on --start')
     args = parser.parse_args()
+    if (args.start is None) != (args.opening_principal is None):
+        parser.error('--start and --opening-principal must be supplied together')
+    if args.start is not None and args.debt_id is None:
+        parser.error('select one debt with --debt-id for a reconciliation preview')
+    if args.opening_principal is not None and (not args.opening_principal.is_finite() or args.opening_principal < 0):
+        parser.error('--opening-principal must be a finite non-negative amount')
 
     from app import create_app
     from app.models import Debt, Payment
@@ -54,7 +63,10 @@ def main():
     with app.app_context(), db.session.no_autoflush:
         print(f'Database: {db.engine.url.render_as_string(hide_password=True)}')
         print(f'As of {args.as_of}; penalty rate: {args.penalty_rate or "as stored"}\n')
-        for debt in Debt.query.order_by(Debt.id).all():
+        query = Debt.query.order_by(Debt.id)
+        if args.debt_id is not None:
+            query = query.filter_by(id=args.debt_id)
+        for debt in query.all():
             payments = Payment.query.filter_by(debt_id=debt.id).all()
             overrides = {}
             if args.penalty_rate is not None and debt.debt_type != 'split':
@@ -66,10 +78,24 @@ def main():
             print(f'   {"WAS":<8} principal {Decimal(str(debt.remaining_amount)):>12}')
             forward = get_debt_state(DebtView(debt, **overrides), as_of=args.as_of, payments=payments)
             _print_state('FORWARD', forward)
+            if args.start is not None:
+                preview = get_debt_state(
+                    DebtView(debt, accrual_start_date=args.start,
+                             opening_principal_amount=args.opening_principal,
+                             opening_interest_amount=Decimal('0'), opening_penalty_amount=Decimal('0'), **overrides),
+                    as_of=args.as_of, payments=payments,
+                )
+                _print_state('PREVIEW', preview)
+                for payment in sorted(payments, key=lambda p: (p.payment_date, p.id)):
+                    allocation = preview['allocations'].get(payment.id)
+                    if allocation:
+                        print(f'   payment #{payment.id} {payment.payment_date}: amount {payment.amount}, '
+                              f'interest {allocation["interest"]}, principal {allocation["principal"]}, '
+                              f'balance {allocation["remaining_after"]} ({allocation["source"]})')
             full_start = full_history_start(debt, payments)
             if full_start != forward['accrual_start_date']:
                 full = get_debt_state(
-                    DebtView(debt, accrual_start_date=full_start, **overrides),
+                    DebtView(debt, accrual_start_date=full_start, opening_principal_amount=None, **overrides),
                     as_of=args.as_of,
                     payments=payments,
                 )
@@ -86,6 +112,8 @@ def _print_state(label, state):
                  f'{state["overdue_days"]} d since {state["overdue_since"]}; '
                  f'to clear today {state["amount_to_clear_overdue"]}')
     print(line)
+    for message in state['diagnostics']:
+        print(f'   CHECK: {message}')
 
 
 if __name__ == '__main__':

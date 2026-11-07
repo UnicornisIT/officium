@@ -35,7 +35,7 @@ class OverduePageTestCase(unittest.TestCase):
             'WTF_CSRF_ENABLED': False,
         })
         self.client = self.app.test_client()
-        self.date_patch = patch('app.routes.main.date', FrozenDate)
+        self.date_patch = patch('app.routes.main.financial_today', return_value=FrozenDate.today())
         self.date_patch.start()
 
         with self.app.app_context():

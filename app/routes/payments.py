@@ -1,6 +1,6 @@
-from datetime import date
 from decimal import Decimal
 from flask import current_app, jsonify, request
+from app.time_utils import financial_today
 from app.models import DebtPaymentPlan, Payment
 from app.services.debt_service import get_user_debt
 from app.services.payment_service import accept_bank_remaining, add_payment, delete_payment, update_payment
@@ -16,10 +16,11 @@ def init_app(app):
             return jsonify({'success': False, 'error': 'Долг не найден'}), 404
 
         payments = Payment.query.filter_by(debt_id=debt_id).order_by(Payment.payment_date.desc()).all()
+        state = debt.accrual_state()
         return jsonify({
             'success': True,
             'debt': debt.to_dict(),
-            'payments': [p.to_dict() for p in payments],
+            'payments': [p.to_dict(state=state) for p in payments],
             'planned_payments': [plan.to_dict() for plan in debt.payment_plans],
         })
 
@@ -39,7 +40,7 @@ def init_app(app):
             due_date = parse_date(data.get('payment_date'), 'Дата по плану', required=True)
             if amount <= 0:
                 raise ValueError('Сумма платежа должна быть больше нуля')
-            if due_date < date.today():
+            if due_date < financial_today(debt):
                 raise ValueError('Дата по плану не может быть в прошлом')
         except ValueError as exc:
             return jsonify({'success': False, 'error': str(exc)}), 422
@@ -96,9 +97,9 @@ def init_app(app):
             if payment_date_str:
                 payment_date = parse_date(payment_date_str, 'Дата платежа')
             else:
-                payment_date = date.today()
+                payment_date = financial_today(debt)
 
-            if payment_date > date.today():
+            if payment_date > financial_today(debt):
                 raise ValueError('Укажите фактическую дату оплаты или запланируйте платеж')
             plan_id = data.get('plan_id')
             if plan_id is not None:
@@ -182,7 +183,7 @@ def init_app(app):
                 scheduled_payment_amount = None
 
             payment_date = parse_date(data.get('payment_date'), 'Дата платежа', required=True)
-            if payment_date > date.today():
+            if payment_date > financial_today(debt):
                 raise ValueError('Укажите фактическую дату оплаты')
             payment = update_payment(
                 debt,
