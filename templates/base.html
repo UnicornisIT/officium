@@ -28,7 +28,7 @@
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=33" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=35" rel="stylesheet">
     {% block extra_css %}{% endblock %}
     <link href="{{ url_for('static', filename='css/ui-controls.css', v='3') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/amount-privacy.css', v='3') }}" rel="stylesheet">
@@ -88,6 +88,9 @@
                     <a href="{{ url_for('goals') }}" class="{% if request.path.startswith('/goals') %}active{% endif %}">
                         <i class="bi bi-bullseye" aria-hidden="true"></i><span>Цели</span>
                     </a>
+                    <button class="telegram-more-menu__modules" type="button" data-wishlist-open aria-haspopup="dialog" aria-controls="wishlistModal">
+                        <i class="bi bi-gift" aria-hidden="true"></i><span>Список желаний</span>
+                    </button>
                 </div>
             </div>
             {% if archive_enabled %}<a href="{{ url_for('archive') }}" class="{% if request.path == '/archive' %}active{% endif %}">
@@ -164,6 +167,7 @@
                     <ul id="modulesMenu" class="dropdown-menu dropdown-menu-end" aria-labelledby="modulesMenuToggle">
                         {% if vehicles_enabled %}<li><a class="dropdown-item {% if request.path.startswith('/vehicles') %}active{% endif %}" href="{{ url_for('vehicles') }}"><i class="bi bi-car-front me-2" aria-hidden="true"></i>Автомобили</a></li>{% endif %}
                         <li><a class="dropdown-item {% if request.path.startswith('/goals') %}active{% endif %}" href="{{ url_for('goals') }}"><i class="bi bi-bullseye me-2" aria-hidden="true"></i>Цели</a></li>
+                        <li><button class="dropdown-item" type="button" data-wishlist-open aria-haspopup="dialog" aria-controls="wishlistModal"><i class="bi bi-gift me-2" aria-hidden="true"></i>Список желаний</button></li>
                     </ul>
                 </li>
                 {% if archive_enabled %}
@@ -248,7 +252,7 @@
 {% endif %}
 
 <!-- Основной контент -->
-<main class="app-main container-fluid px-4 py-4">
+<main class="app-main container-fluid px-4 pb-4">
     {% if amount_privacy_available %}<div id="amountPrivacySource" class="amount-privacy-corner"><button type="button" id="amountPrivacyToggle" class="btn btn-outline-secondary amount-privacy-toggle" title="{{ 'Показать суммы' if amounts_initially_hidden else 'Скрыть суммы' }}" aria-pressed="{{ 'true' if amounts_initially_hidden else 'false' }}"><i class="bi bi-{{ 'eye' if amounts_initially_hidden else 'eye-slash' }}" aria-hidden="true"></i><span class="visually-hidden">{{ 'Показать суммы' if amounts_initially_hidden else 'Скрыть суммы' }}</span></button></div>{% endif %}
     {% block content %}{% endblock %}
 </main>
@@ -295,6 +299,7 @@
 {% endif %}
 
 {% if not request.path.startswith('/admin') %}
+{% include '_wishlist.html' %}
 <!-- Toast уведомления -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999">
     <div id="mainToast" class="toast align-items-center border-0" role="alert">
@@ -803,8 +808,9 @@
 </script>
 {% if whats_new and not request.path.startswith('/admin') %}{% include '_whats_new.html' %}{% endif %}
 {% block extra_js %}{% endblock %}
-<script src="{{ url_for('static', filename='js/vehicle-mileage.js', v='1') }}"></script>
-<script src="{{ url_for('static', filename='js/vehicle-disclosures.js', v='1') }}"></script>
+<script src="{{ url_for('static', filename='js/vehicle-mileage.js', v='3') }}"></script>
+<script src="{{ url_for('static', filename='js/vehicle-disclosures.js', v='3') }}"></script>
 <script src="{{ url_for('static', filename='js/ui-controls.js', v='1') }}"></script>
+{% if not request.path.startswith('/admin') %}<script src="{{ url_for('static', filename='js/wishlist.js', v='1') }}"></script>{% endif %}
 </body>
 </html>

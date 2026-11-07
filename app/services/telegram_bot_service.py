@@ -2,9 +2,11 @@ import json
 import re
 import shlex
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from threading import Lock, RLock
 from typing import Optional, Union
 from uuid import uuid4
 
@@ -268,6 +270,10 @@ CANCEL_WORDS = {'отмена', 'cancel', 'стоп', 'stop'}
 CONFIRM_WORDS = {'да', 'сохранить', 'ok', 'okay', 'yes', 'confirm'}
 REJECT_WORDS = {'нет', 'no', 'не', 'отмена', 'cancel'}
 _RATE_LIMIT_BUCKETS = {}
+_RATE_LIMIT_LOCK = Lock()
+_CLEANUP_INTERVAL_SECONDS = 3600
+_LAST_CLEANUP_AT = None
+_CLEANUP_LOCK = Lock()
 BUTTON_COMMANDS = {
     'предложить идею': 'idea',
     'сообщить об ошибке': 'bug',
@@ -331,7 +337,9 @@ def handle_telegram_update(update):
             callback_query_id=callback_query_id,
         )
 
-    if _is_rate_limited(telegram_id, chat_id):
+    with _RATE_LIMIT_LOCK:
+        rate_limited = _is_rate_limited(telegram_id, chat_id)
+    if rate_limited:
         return TelegramBotResult(
             chat_id=chat_id,
             reply_text='Слишком много сообщений подряд. Попробуйте через минуту.',
@@ -378,11 +386,14 @@ def handle_telegram_update(update):
 def handle_telegram_update_once(update):
     update_id = _parse_update_id(update)
     if update_id is None:
+        _send_typing_indicator(update)
         return handle_telegram_update(update)
 
     if db.session.get(TelegramProcessedUpdate, update_id):
         return TelegramBotResult(chat_id=_update_chat_id(update), reply_text=None)
 
+    # A slow typing request must not hold the write lock taken by the marker insert.
+    _send_typing_indicator(update)
     marker = TelegramProcessedUpdate(update_id=update_id)
     db.session.add(marker)
     try:
@@ -394,10 +405,18 @@ def handle_telegram_update_once(update):
     result = handle_telegram_update(update)
     if not db.session.get(TelegramProcessedUpdate, update_id):
         db.session.add(TelegramProcessedUpdate(update_id=update_id))
-    _cleanup_processed_updates()
-    _cleanup_expired_conversation_states()
-    db.session.commit()
+    _commit_update_with_periodic_cleanup()
     return result
+
+
+def _send_typing_indicator(update):
+    chat_id = _update_chat_id(update)
+    if chat_id is None or not telegram_bot_enabled(current_app.config):
+        return
+    try:
+        api_request('sendChatAction', {'chat_id': chat_id, 'action': 'typing'}, timeout=(2, 3))
+    except Exception:
+        current_app.logger.debug('Telegram typing indicator failed.')
 
 
 def process_telegram_text(user, text):
@@ -530,18 +549,78 @@ def process_telegram_callback_result(user, chat_id, callback_data):
 def deliver_telegram_result(result, *, sender=None, callback_answerer=None):
     sender = sender or send_telegram_message
     callback_answerer = callback_answerer or answer_telegram_callback_query
+    accepted = True
     if result.callback_query_id:
         try:
             if not callback_answerer(result.callback_query_id, result.callback_answer_text):
+                accepted = False
                 current_app.logger.warning('Telegram callback answer rejected.')
         except Exception:
+            accepted = False
             current_app.logger.warning('Telegram callback answer failed.')
     if result.chat_id is not None and result.reply_text:
         try:
             if not sender(result.chat_id, result.reply_text, reply_markup=result.reply_markup):
+                accepted = False
                 current_app.logger.warning('Telegram reply rejected.')
         except Exception:
+            accepted = False
             current_app.logger.warning('Telegram reply delivery failed.')
+    return accepted
+
+
+class TelegramDeliveryQueue:
+    def __init__(self):
+        self._lock = RLock()
+        self._pending = {}
+
+    def submit(self, executor, key, deliver, logger):
+        with self._lock:
+            if key in self._pending:
+                self._pending[key].append(deliver)
+                return
+            self._pending[key] = deque([deliver])
+            try:
+                executor.submit(self._drain, key, logger)
+            except RuntimeError:
+                del self._pending[key]
+                raise
+
+    def _drain(self, key, logger):
+        while True:
+            with self._lock:
+                pending = self._pending[key]
+                if not pending:
+                    del self._pending[key]
+                    return
+                deliver = pending.popleft()
+            try:
+                deliver()
+            except Exception:
+                logger.warning('Telegram delivery worker failed.')
+
+
+def deliver_telegram_result_async(result, *, executor=None, sender=None, callback_answerer=None):
+    if not result.callback_query_id and (result.chat_id is None or not result.reply_text):
+        return
+
+    app = current_app._get_current_object()
+    if executor is None:
+        executor = app.extensions['telegram_delivery_executor']
+
+    def deliver():
+        # The worker gets its own Flask context and SQLAlchemy session scope.
+        with app.app_context():
+            if deliver_telegram_result(result, sender=sender, callback_answerer=callback_answerer):
+                app.logger.info('Telegram delivery completed.')
+
+    key = ('chat', str(result.chat_id)) if result.chat_id is not None else ('callback', result.callback_query_id)
+    try:
+        app.extensions['telegram_delivery_queue'].submit(executor, key, deliver, app.logger)
+    except RuntimeError:
+        app.logger.warning('Telegram delivery could not be queued.')
+    else:
+        app.logger.debug('telegram delivery queued: chat_id=%s', result.chat_id)
 
 
 def send_telegram_message(chat_id, text, bot_token=None, reply_markup=None, parse_mode=None):
@@ -1367,7 +1446,6 @@ def _save_state(user, chat_id, flow, step, data, state=None):
 
 
 def _get_active_state(user):
-    _cleanup_expired_conversation_states()
     state = TelegramConversationState.query.filter_by(telegram_id=user.telegram_id).first()
     if not state:
         return None
@@ -1391,6 +1469,24 @@ def _conversation_ttl_minutes():
     except (TypeError, ValueError):
         ttl = 30
     return max(ttl, 1)
+
+
+def _commit_update_with_periodic_cleanup():
+    global _LAST_CLEANUP_AT
+    # Bulk cleanup reclaims storage. State lookups already enforce expiry per user.
+    # Skip cleanup on concurrent updates and start the interval after a successful commit.
+    if _CLEANUP_LOCK.acquire(blocking=False):
+        try:
+            now = time.monotonic()
+            if _LAST_CLEANUP_AT is None or now - _LAST_CLEANUP_AT >= _CLEANUP_INTERVAL_SECONDS:
+                _cleanup_processed_updates()
+                _cleanup_expired_conversation_states()
+                db.session.commit()
+                _LAST_CLEANUP_AT = time.monotonic()
+                return
+        finally:
+            _CLEANUP_LOCK.release()
+    db.session.commit()
 
 
 def _cleanup_expired_conversation_states():
@@ -1570,6 +1666,8 @@ def _parse_command(text):
         return 'income', tokens
 
     command_key = _command_key(first)
+    if command_key == '/start' and tokens[1:] == ['wishlist_idea']:
+        return 'idea', []
     command = COMMAND_ALIASES.get(command_key)
     if command:
         return command, tokens[1:]

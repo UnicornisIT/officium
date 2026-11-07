@@ -1,9 +1,14 @@
 """Receive commands on hosts without inbound access from Telegram."""
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Event
 
 from flask import current_app
 
-from app.services.telegram_bot_service import deliver_telegram_result, handle_telegram_update_once
+from app.services.telegram_bot_service import (
+    _update_context,
+    deliver_telegram_result,
+    handle_telegram_update_once,
+)
 from app.services.telegram_transport import TelegramDeliveryError, api_request, require_accepted
 from extensions import db
 
@@ -24,13 +29,25 @@ def run_polling(*, remove_webhook=False, stop=None):
         if result is not True:
             raise ValueError('Webhook removal was not confirmed.')
 
-    offset = None
+    app = current_app._get_current_object()
+    executor = ThreadPoolExecutor(max_workers=app.config['TELEGRAM_POLLING_WORKERS'])
     current_app.logger.info('Telegram polling started.')
+    try:
+        _poll_updates(app, executor, stop)
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+        current_app.logger.info('Telegram polling stopped.')
+
+
+def _poll_updates(app, executor, stop):
+    offset = None
     while not stop.is_set():
         payload = {'timeout': 25, 'allowed_updates': ['message', 'callback_query']}
         if offset is not None:
             payload['offset'] = offset
         status, updates = api_request('getUpdates', payload, timeout=(10, 35))
+        if stop.is_set():
+            return
         if not status.accepted:
             if status.failure_kind in ('invalid_token', 'not_configured', 'conflict', 'blocked'):
                 raise TelegramDeliveryError(status)
@@ -43,22 +60,50 @@ def run_polling(*, remove_webhook=False, stop=None):
             for update in updates
         ):
             raise ValueError('Invalid polling response.')
+        groups = {}
+        pending = {}
         for update in sorted(updates, key=lambda item: item['update_id']):
-            if stop.is_set():
-                break
-            if offset is not None and update['update_id'] < offset:
+            update_id = update['update_id']
+            if update_id in pending or (offset is not None and update_id < offset):
                 continue
+            # Conversation state is keyed by sender, including across chats.
+            try:
+                context = _update_context(update)
+                sender = str(context['telegram_id'] or context['chat_id'])
+            except AttributeError:
+                sender = None  # Let the worker apply the usual processing error policy.
+            groups.setdefault(sender, []).append(update)
+            pending[update_id] = None
+
+        futures = [executor.submit(_process_updates, app, group, stop) for group in groups.values()]
+        completed = set()
+        for future in as_completed(futures):
+            if stop.is_set():
+                return
+            completed.update(future.result())
+
+        # A single offset can acknowledge only the completed prefix of the batch.
+        for update_id in pending:
+            if update_id not in completed:
+                stop.wait(5)
+                break
+            offset = update_id + 1
+
+
+def _process_updates(app, updates, stop):
+    completed = []
+    for update in updates:
+        if stop.is_set():
+            break
+        # A new app context gives each update its own SQLAlchemy session scope.
+        with app.app_context():
             try:
                 result = handle_telegram_update_once(update)
             except Exception:
                 db.session.rollback()
-                current_app.logger.warning('Telegram polling update processing failed.')
-                stop.wait(5)
+                app.logger.warning('Telegram polling update processing failed.')
                 break
-            else:
-                # Preserve webhook delivery semantics: uncertain sends are not repeated.
-                deliver_telegram_result(result)
-                offset = update['update_id'] + 1
-            finally:
-                db.session.remove()
-    current_app.logger.info('Telegram polling stopped.')
+            # The update is committed, so an uncertain send is never repeated.
+            deliver_telegram_result(result)
+            completed.append(update['update_id'])
+    return completed

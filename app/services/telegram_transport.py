@@ -1,9 +1,36 @@
 """Bot API boundary. Never retain response descriptions, URLs or exceptions."""
 from dataclasses import dataclass
+from threading import Lock
+from typing import Optional
 from uuid import uuid4
 
 import requests
 from flask import current_app
+from requests.adapters import HTTPAdapter
+
+
+_SESSION: Optional[requests.Session] = None
+_SESSION_LOCK = Lock()
+
+
+def _get_session():
+    global _SESSION
+    with _SESSION_LOCK:
+        if _SESSION is None:
+            session = requests.Session()
+            session.mount('https://', HTTPAdapter(pool_connections=2, pool_maxsize=10, max_retries=0))
+            _SESSION = session
+        return _SESSION
+
+
+def reset_session():
+    """Discard the cached session and close its connection pools."""
+    global _SESSION
+    with _SESSION_LOCK:
+        session = _SESSION
+        _SESSION = None
+    if session is not None:
+        session.close()
 
 
 @dataclass(frozen=True)
@@ -37,15 +64,18 @@ def api_request(method, payload, bot_token=None, *, timeout=10):
     def failed(kind, code=None, retry=None):
         result = TelegramDeliveryResult(error_code=code, failure_kind=kind,
             retry_after=retry, correlation_id=correlation_id)
-        current_app.logger.warning('Telegram API failure: kind=%s code=%s correlation_id=%s',
-                                   kind, code, correlation_id)
+        logger = current_app.logger
+        log_failure = logger.debug if method == 'sendChatAction' else logger.warning
+        log_failure('Telegram API failure: kind=%s code=%s correlation_id=%s',
+                    kind, code, correlation_id)
         return result, None
 
     if not token:
         return failed('not_configured')
     try:
-        response = requests.post(f'https://api.telegram.org/bot{token}/{method}',
-                                 json=payload, timeout=timeout)
+        response = _get_session().post(
+            f'https://api.telegram.org/bot{token}/{method}', json=payload, timeout=timeout,
+        )
     except requests.Timeout:
         return failed('timeout')
     except requests.exceptions.SSLError:

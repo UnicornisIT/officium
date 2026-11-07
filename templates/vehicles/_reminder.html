@@ -3,12 +3,14 @@
     <p>Свежие показания помогут следить за автомобилями.</p>
     <form method="post" action="{{ url_for('vehicle_mileage_batch') }}" class="d-flex flex-wrap gap-3 align-items-end">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_endpoint" value="{{ request.endpoint }}">
         {% for vehicle in mileage_due %}
         <input type="hidden" name="vehicle_ids" value="{{ vehicle.id }}">
-        <div><label for="km{{ vehicle.id }}" class="form-label">{{ vehicle.name }} · км</label><input id="km{{ vehicle.id }}" class="form-control" name="km_{{ vehicle.id }}" type="text" inputmode="numeric" data-vehicle-km pattern="[0-9 ]*"></div>
+        <div data-mileage-vehicle="{{ vehicle.id }}"><label for="km{{ vehicle.id }}" class="form-label">{{ vehicle.name }} · км</label><input id="km{{ vehicle.id }}" class="form-control" name="km_{{ vehicle.id }}" type="text" inputmode="numeric" data-vehicle-km pattern="[0-9 ]*"></div>
         {% endfor %}
         <button class="btn btn-primary" name="action" value="save">Обновить пробег</button>
         <label class="mileage-snooze"><span>Напомнить через</span><input class="form-control" type="number" name="snooze_days" min="1" max="365" value="3" aria-label="Срок напоминания в днях"><span>дн.</span></label>
         <button class="btn btn-outline-secondary" name="action" value="snooze">Напомнить позже</button>
     </form>
+    <p class="text-danger mt-3 mb-0" role="alert" data-mileage-error hidden></p>
 </section>

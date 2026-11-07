@@ -7,7 +7,7 @@
 <header class="admin-page-header"><div><p class="admin-page-kicker">Конфигурация</p><h1>Настройки приложения</h1><p>Управление общими параметрами и доступностью пользовательских функций.</p></div></header>
 {% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
 
-<form method="post" class="admin-settings-form" data-admin-confirm="Сохранить изменения настроек приложения?" data-confirm-tone="primary">
+<form id="admin-settings-form" method="post" class="admin-settings-form" data-admin-confirm="Сохранить изменения настроек приложения?" data-confirm-tone="primary">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% for group in settings_groups %}
     <section class="admin-panel" aria-labelledby="settings-group-{{ loop.index }}">
@@ -51,38 +51,37 @@
         </div>
     </section>
     {% endfor %}
-    <div class="admin-sticky-actions"><span>{{ icon('info', 17) }} Изменения применяются сразу после сохранения.</span><button type="submit" class="btn btn-primary">{{ icon('check-circle', 17) }} Сохранить настройки</button></div>
-</form>
 
-<section class="admin-panel" aria-labelledby="update-notifications-title">
+<section class="admin-panel admin-update-notifications" aria-labelledby="update-notifications-title">
     <div class="admin-panel__header"><div><p class="admin-page-kicker">Telegram</p><h2 id="update-notifications-title">Уведомления об обновлениях</h2><p>Проверка новых релизов и результаты установки сервера.</p></div></div>
     <div class="admin-panel__body">
         {% if not update_bot_configured %}<p class="alert alert-warning">Токен Telegram-бота не настроен на сервере. Включение уведомлений и тестовая отправка недоступны.</p>{% endif %}
-        <form method="post" action="{{ url_for('admin_update_notification_settings') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div>
             <div class="admin-switch-list">
                 <label><span><strong>Включить уведомления об обновлениях</strong><small>По умолчанию выключены. Отправка выполняется по расписанию на сервере.</small></span><input type="checkbox" name="update_notifications_enabled" {% if update_settings.update_notifications_enabled == 'true' %}checked{% endif %} {% if not update_bot_configured %}disabled{% endif %}><i aria-hidden="true"></i></label>
                 <label><span><strong>Уведомлять о выходе нового релиза</strong><small>Тег, название и ссылка на страницу релиза.</small></span><input type="checkbox" name="update_notify_new_release" {% if update_settings.update_notify_new_release == 'true' %}checked{% endif %}><i aria-hidden="true"></i></label>
                 <label><span><strong>Уведомлять о результате установки</strong><small>Итог завершённой операции: успех или ошибка.</small></span><input type="checkbox" name="update_notify_install_result" {% if update_settings.update_notify_install_result == 'true' %}checked{% endif %}><i aria-hidden="true"></i></label>
             </div>
-            <div class="admin-form-grid">
+            <div class="admin-form-grid mt-3">
                 <label class="admin-control"><span>Получатели</span><select name="update_notify_recipients"><option value="superadmin" {% if update_settings.update_notify_recipients == 'superadmin' %}selected{% endif %}>Только superadmin</option><option value="admins" {% if update_settings.update_notify_recipients == 'admins' %}selected{% endif %}>Все админы</option></select><small>Только незаблокированные аккаунты с Telegram.</small></label>
                 <label class="admin-control"><span>Интервал проверки, минут</span><input type="number" name="update_check_interval_minutes" min="15" max="1440" required value="{{ update_settings.update_check_interval_minutes }}"><small>От 15 до 1440 минут.</small></label>
             </div>
-            <button type="submit" class="btn btn-primary">Сохранить уведомления</button>
-        </form>
-        <div class="admin-form-grid">
-            <label class="admin-control"><span>Последний уведомлённый релиз</span><input readonly value="{{ update_settings.update_last_notified_release or '—' }}"></label>
-            <label class="admin-control"><span>Последняя проверка (UTC)</span><input readonly value="{{ update_settings.update_last_check_at or '—' }}"></label>
-            <label class="admin-control"><span>Статус проверки</span><input readonly value="{{ update_status_labels.get(update_settings.update_last_check_status, 'Неизвестный статус') }}"></label>
+            <div class="admin-form-grid mt-3">
+                <label class="admin-control"><span>Последний уведомлённый релиз</span><input readonly value="{{ update_settings.update_last_notified_release or '—' }}"></label>
+                <label class="admin-control"><span>Последняя проверка (UTC)</span><input readonly value="{{ update_settings.update_last_check_at or '—' }}"></label>
+                <label class="admin-control"><span>Статус проверки</span><input readonly value="{{ update_status_labels.get(update_settings.update_last_check_status, 'Неизвестный статус') }}"></label>
+            </div>
         </div>
-        <div class="admin-contact-card__actions">
-            <form method="post" action="{{ url_for('admin_update_notification_test') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-outline-primary" {% if not update_bot_configured %}disabled{% endif %}>Отправить тестовое сообщение</button></form>
-            <form method="post" action="{{ url_for('admin_update_notification_check') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-outline-secondary">Проверить сейчас</button></form>
+        <div class="admin-contact-card__actions border-top pt-3">
+            <button type="submit" form="update-notification-test-form" class="btn btn-outline-primary" {% if not update_bot_configured %}disabled{% endif %}>Отправить тестовое сообщение</button>
+            <button type="submit" form="update-notification-check-form" class="btn btn-outline-secondary">Проверить сейчас</button>
         </div>
-        <p class="small text-muted">Тест отправляется текущему администратору не чаще раза в минуту. Проверка сейчас учитывает сохранённые переключатели. Само сохранение настроек сообщения не отправляет.</p>
+        <p class="small text-muted mb-0">Тест отправляется текущему администратору не чаще раза в минуту. Проверка сейчас учитывает сохранённые переключатели. Само сохранение настроек сообщения не отправляет.</p>
     </div>
 </section>
+</form>
+<form id="update-notification-test-form" method="post" action="{{ url_for('admin_update_notification_test') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+<form id="update-notification-check-form" method="post" action="{{ url_for('admin_update_notification_check') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
 
 <section class="admin-panel admin-contacts" aria-labelledby="contacts-title">
     <div class="admin-panel__header">
@@ -113,6 +112,8 @@
     {% endif %}
     </div>
 </section>
+
+<div class="admin-settings-actions"><span>{{ icon('info', 17) }} Изменения применяются сразу после сохранения.</span><button type="submit" form="admin-settings-form" class="btn btn-primary">{{ icon('check-circle', 17) }} Сохранить настройки</button></div>
 
 <div class="modal fade" id="contactModal" tabindex="-1" aria-labelledby="contactModalTitle" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable admin-contact-modal"><div class="modal-content">

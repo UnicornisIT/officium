@@ -91,6 +91,78 @@ class ContactAdminRouteTestCase(unittest.TestCase):
         with self.app.app_context():
             self.assertEqual(load_contacts(), [])
 
+    def test_wishlist_uses_current_published_email_from_admin_settings(self):
+        from urllib.parse import unquote, urlsplit
+
+        from app.services.contact_service import idea_contact
+
+        self.login(self.superadmin_id)
+        for address in ['ideas@example.org', 'suggestions@example.org']:
+            with self.app.app_context():
+                contacts = load_contacts()
+            response = self.client.post(
+                '/admin/settings/contacts',
+                data={
+                    'action': 'save',
+                    'contact_id': contacts[0]['id'] if contacts else '',
+                    'type': 'email',
+                    'label': 'Идеи',
+                    'address': address,
+                    'icon': 'envelope',
+                    'published': '1',
+                    'locations': ['footer'],
+                    'order': '0',
+                },
+            )
+            self.assertEqual(response.status_code, 302)
+            with self.app.app_context():
+                contact = idea_contact(
+                    {'TELEGRAM_BOT_USERNAME': 'example_bot'}, bot_available=True
+                )
+                self.assertEqual(contact['channel'], 'email')
+                self.assertTrue(
+                    contact['href'].startswith(f'mailto:{address}?subject=')
+                )
+                query = urlsplit(contact['href']).query
+                self.assertNotIn('+', query)
+                self.assertIn('%20', query)
+                self.assertEqual(
+                    unquote(query), 'subject=Идея для раздела «Список желаний»'
+                )
+            html = self.client.get('/goals').get_data(as_text=True)
+            self.assertIn(f'mailto:{address}?subject=', html)
+            self.assertIn('Сервис в разработке.', html)
+
+    def test_wishlist_does_not_expose_unpublished_email_and_checks_bot(self):
+        from app.services.contact_service import idea_contact
+        from app.utils import set_setting
+        import json
+
+        with self.app.app_context():
+            contact = validate_contact(
+                {
+                    'type': 'email',
+                    'label': 'Личный',
+                    'address': 'private@example.org',
+                    'icon': 'envelope',
+                    'published': False,
+                    'locations': ['help'],
+                    'order': 0,
+                }
+            )
+            set_setting('public_contacts', json.dumps([contact]))
+            self.assertIsNone(idea_contact({}))
+            config = {'TELEGRAM_BOT_USERNAME': 'example_bot'}
+            self.assertIsNone(idea_contact(config))
+            self.assertEqual(
+                idea_contact(config, bot_available=True),
+                {
+                    'href': 'https://t.me/example_bot?start=wishlist_idea',
+                    'channel': 'Telegram',
+                },
+            )
+            self.assertIsNone(idea_contact({'TELEGRAM_BOT_USERNAME': 'bad/path'}, bot_available=True))
+
     def test_contact_mutation_requires_csrf(self):
         self.login(self.superadmin_id)
         self.app.config['WTF_CSRF_ENABLED'] = True

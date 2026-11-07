@@ -44,7 +44,7 @@ class UpdateNotifierTests(unittest.TestCase):
         self.get = self.github.start()
         response = Mock(status_code=200)
         response.json.return_value = {'ok': True, 'result': {'message_id': 1}}
-        self.telegram = patch('app.services.telegram_transport.requests.post', return_value=response)
+        self.telegram = patch('app.services.telegram_transport.requests.Session.post', return_value=response)
         self.post = self.telegram.start()
         self.addCleanup(self.github.stop)
         self.addCleanup(self.telegram.stop)
@@ -266,6 +266,19 @@ class UpdateNotifierTests(unittest.TestCase):
             self.assertEqual(self.client.post(path, data=self.form()).status_code, 400)
         self.get.assert_not_called()
         self.post.assert_not_called()
+
+    def test_invalid_notification_settings_do_not_save_application_settings(self):
+        set_setting('app_name', 'Before')
+        response = self.client.post('/admin/settings', data=self.form(
+            app_name='After', debt_limit_per_user='37', payment_warning_days='7',
+            urgent_payment_days='3', impersonation_timeout_minutes='15',
+            update_check_interval_minutes='14',
+        ))
+
+        self.assertIn('Интервал проверки должен быть целым числом', response.get_data(as_text=True))
+        self.assertEqual(AppSetting.query.filter_by(key='app_name').one().value, 'Before')
+        self.assertEqual(notifier.load_settings()['update_notifications_enabled'], 'false')
+        self.assertEqual(ActivityLog.query.filter_by(entity_type='setting').count(), 0)
 
     def test_server_validation_and_missing_token(self):
         for value in ('14', '1441', '1.5', 'oops', '-15', '999999999999999999999'):

@@ -1,0 +1,21 @@
+<div class="modal fade" id="wishlistModal" tabindex="-1" aria-labelledby="wishlistTitle" aria-describedby="wishlistDescription">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="wishlistTitle">Список желаний</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                <p id="wishlistDescription">Сервис в разработке. Здесь появится список желаний, который поможет планировать будущие покупки.</p>
+                <p>Расскажите, что вы хотели бы видеть в этом разделе.</p>
+                {% if wishlist_idea_contact %}
+                <a class="btn btn-primary" href="{{ wishlist_idea_contact.href }}" target="_blank" rel="noopener noreferrer"><i class="bi bi-lightbulb" aria-hidden="true"></i>Предложить идею</a>
+                <p class="text-muted small mt-3 mb-0">Откроется {{ 'Telegram-бот' if wishlist_idea_contact.channel == 'Telegram' else 'почтовое приложение с темой письма' }}.</p>
+                {% else %}
+                <button type="button" class="btn btn-primary" disabled>Предложить идею</button>
+                <p class="text-muted small mt-3 mb-0">Контакты для идей пока не опубликованы. Обратитесь к администратору.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>

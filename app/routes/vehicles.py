@@ -1,4 +1,6 @@
 """Thin vehicle HTTP adapters; all ownership and validation live in services."""
+from urllib.parse import urlsplit
+
 from flask import Response, abort, current_app, flash, redirect, render_template, request, url_for, jsonify, send_file
 from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
@@ -271,8 +273,30 @@ def init_app(app):
     @login_required
     def vehicle_mileage_batch():
         service._user(current_user)
+        if request.accept_mimetypes.best == 'application/json':
+            try:
+                service.update_mileage_batch(current_user, request.form)
+            except ValueError as exc:
+                db.session.rollback()
+                return jsonify(error=str(exc)), 422
+            except SQLAlchemyError:
+                db.session.rollback()
+                current_app.logger.error(
+                    "Vehicle operation failed; database details withheld"
+                )
+                return jsonify(
+                    error="Не удалось сохранить данные автомобиля. Повторите попытку."
+                ), 503
+            return jsonify(
+                vehicle_ids=[
+                    vehicle.id for vehicle in service.due_vehicles(current_user)
+                ]
+            )
         _attempt(lambda: service.update_mileage_batch(current_user, request.form))
-        return redirect(url_for('vehicles'))
+        return_endpoint = request.form.get('return_endpoint')
+        if return_endpoint not in ('index', 'vehicles'):
+            return_endpoint = 'index' if urlsplit(request.referrer or '').path == '/' else 'vehicles'
+        return redirect(url_for(return_endpoint))
 
     @app.route('/vehicles/<int:vehicle_id>/expense')
     @login_required

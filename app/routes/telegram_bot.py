@@ -1,16 +1,25 @@
 import secrets
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import abort, current_app, jsonify, request
 
 from app.services.telegram_bot_service import (
+    TelegramDeliveryQueue,
     answer_telegram_callback_query,
-    deliver_telegram_result,
+    deliver_telegram_result_async,
     handle_telegram_update_once,
     send_telegram_message,
 )
 
 
 def init_app(app, csrf=None):
+    app.extensions['telegram_delivery_queue'] = TelegramDeliveryQueue()
+    # ThreadPoolExecutor drains pending deliveries on normal interpreter shutdown.
+    app.extensions['telegram_delivery_executor'] = ThreadPoolExecutor(
+        max_workers=app.config['TELEGRAM_DELIVERY_WORKERS'],
+        thread_name_prefix='telegram-delivery',
+    )
+
     @app.route('/telegram/webhook', methods=['POST'])
     def telegram_webhook():
         if not current_app.config.get('TELEGRAM_BOT_TOKEN'):
@@ -30,8 +39,9 @@ def init_app(app, csrf=None):
             return jsonify({'ok': True})
 
         result = handle_telegram_update_once(update)
-        deliver_telegram_result(result, sender=send_telegram_message,
-                                callback_answerer=answer_telegram_callback_query)
+        deliver_telegram_result_async(
+            result, sender=send_telegram_message, callback_answerer=answer_telegram_callback_query,
+        )
         return jsonify({'ok': True})
 
     if csrf is not None:
