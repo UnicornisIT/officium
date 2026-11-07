@@ -473,7 +473,7 @@
                                     <input type="date" class="form-control" id="f_accrual_start_date">
                                     <small class="text-muted">Платежи до этой даты — закрытая история, их разбивка не меняется. Укажите дату раньше, чтобы пересчитать старые платежи; позже — чтобы закрыть прошлые циклы (неоплаченные проценты и неустойка сохранятся). Пусто — с начала текущего цикла.</small>
                                 </div>
-                                <div class="col-md-6">
+                                <div class="col-md-6" id="opening_principal_group">
                                     <label class="form-label" for="f_opening_principal_amount">Основной долг на дату начала расчёта</label>
                                     <input type="text" inputmode="decimal" class="form-control number-format" id="f_opening_principal_amount" placeholder="По выписке банка">
                                     <small class="text-muted">Заполняйте при сверке с выпиской. До изменения сохраните резервную копию базы. Сохранение пересчитает автоматическую разбивку платежей после указанной даты; суммы платежей сохранятся.</small>

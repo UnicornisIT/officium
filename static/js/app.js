@@ -852,6 +852,10 @@ function syncAccrualSettings({ applyDefaults = false } = {}) {
 
     const isCard = debtType.value === 'credit_card';
     const isSplit = debtType.value === 'split';
+    const supportsOpeningPrincipal = ['consumer_credit', 'mortgage'].includes(debtType.value);
+    const openingGroup = document.getElementById('opening_principal_group');
+    if (openingGroup) openingGroup.classList.toggle('d-none', !supportsOpeningPrincipal);
+    if (!supportsOpeningPrincipal) document.getElementById('f_opening_principal_amount').value = '';
     graceGroup.classList.toggle('d-none', !isCard);
     if (!isCard) graceInput.value = '';
     capitalizeGroup.classList.toggle('d-none', isSplit);

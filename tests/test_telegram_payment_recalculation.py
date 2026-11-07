@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -12,8 +12,13 @@ from extensions import db
 
 
 @pytest.mark.parametrize('days_ahead', [0, 1])
-def test_payment_reply_uses_recalculated_balance(days_ahead):
-    payment_date = date.today() + timedelta(days=days_ahead)
+@pytest.mark.parametrize('instant', [
+    datetime(2026, 11, 4, 23, 12, tzinfo=timezone.utc),
+    datetime(2026, 11, 5, 9, tzinfo=timezone.utc),
+])
+def test_payment_reply_uses_recalculated_balance(days_ahead, instant, monkeypatch):
+    monkeypatch.setattr('app.time_utils.utc_now', lambda: instant)
+    payment_date = date(2026, 11, 5) + timedelta(days=days_ahead)
     app = create_app(
         {
             'TESTING': True,
@@ -21,6 +26,7 @@ def test_payment_reply_uses_recalculated_balance(days_ahead):
             'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
             'SQLALCHEMY_ENGINE_OPTIONS': {},
             'WTF_CSRF_ENABLED': False,
+            'APP_TIMEZONE': 'Europe/Moscow',
         }
     )
     with app.app_context():

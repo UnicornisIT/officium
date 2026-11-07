@@ -155,6 +155,8 @@ def init_app(app):
             debt.accrual_start_date = explicit_start or accrual_start_date(debt)
             opening = parse_decimal(data.get('opening_principal_amount'), 'Основной долг на дату начала расчёта', required=False)
             if opening is not None:
+                if debt.debt_type not in ('consumer_credit', 'mortgage'):
+                    raise ValueError('Исходный основной долг задаётся только для кредита или ипотеки')
                 if opening != remaining_amount:
                     raise ValueError('Для нового кредита начальный основной долг должен совпадать с остатком')
                 debt.opening_principal_amount = opening
@@ -378,7 +380,11 @@ def init_app(app):
             )
 
             opening = parse_decimal(data.get('opening_principal_amount'), 'Основной долг на дату начала расчёта', required=False)
-            if opening is not None:
+            if debt.debt_type not in ('consumer_credit', 'mortgage'):
+                if opening is not None:
+                    raise ValueError('Исходный основной долг задаётся только для кредита или ипотеки')
+                debt.opening_principal_amount = None
+            elif opening is not None:
                 if opening > debt.total_amount:
                     raise ValueError('Основной долг на дату начала расчёта не может превышать сумму кредита')
                 debt.opening_principal_amount = opening

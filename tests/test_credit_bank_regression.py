@@ -309,6 +309,34 @@ class BankPersistenceTests(unittest.TestCase):
         self.assertEqual(Payment.query.filter_by(debt_id=self.debt.id).count(), 3)
         self.assertEqual(self.debt.remaining_amount, D('475517.02'))
 
+    def test_conversion_to_split_allows_new_purchase_to_increase_principal(self):
+        response = self.client.put(f'/api/debts/{self.debt.id}', json={'debt_type': 'split'})
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertIsNone(self.debt.opening_principal_amount)
+        response = self.client.post(
+            f'/api/debts/{self.debt.id}/split-purchases',
+            json={
+                'title': 'Покупка',
+                'amount': '1000',
+                'purchase_date': CHECK_DATE.isoformat(),
+                'installments_count': 4,
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.get_json())
+        self.assertEqual(response.get_json()['debt']['current_principal'], 501000)
+
+    def test_conversion_to_card_does_not_keep_fixed_loan_principal(self):
+        response = self.client.put(
+            f'/api/debts/{self.debt.id}',
+            json={
+                'debt_type': 'credit_card',
+                'remaining_amount': '490000',
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertIsNone(self.debt.opening_principal_amount)
+        self.assertEqual(response.get_json()['debt']['current_principal'], 490000)
+
     def test_partial_early_payment_rebuilds_both_projection_strategies(self):
         debt = bank_debt(
             user_id=self.user.id,

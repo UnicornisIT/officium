@@ -3,7 +3,7 @@ hand in comments: interest = balance * 18% * days / 365, penalty = overdue
 amount * 20% * days / 365, both rounded half up to kopecks."""
 
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -30,7 +30,7 @@ class PaymentAccrualApiTestCase(unittest.TestCase):
             'WTF_CSRF_ENABLED': False,
         })
         self.client = self.app.test_client()
-        self.date_patch = patch('app.services.payment_service.financial_today', return_value=FrozenDate.today())
+        self.date_patch = patch('app.time_utils.utc_now', return_value=datetime(2026, 8, 26, 12, tzinfo=timezone.utc))
         self.date_patch.start()
 
         with self.app.app_context():
@@ -235,7 +235,7 @@ class PaymentAccrualApiTestCase(unittest.TestCase):
     def test_payment_plan_only_changes_balance_after_explicit_confirmation(self):
         self.login()
         debt_url = f'/api/debts/{self.debt_id}'
-        today = date.today()
+        today = FrozenDate.today()
         due_date = (today + timedelta(days=5)).isoformat()
         planned = {'amount': '5000', 'payment_date': due_date}
         rejected = self.client.post(f'{debt_url}/payments', json=planned)
@@ -274,7 +274,7 @@ class PaymentAccrualApiTestCase(unittest.TestCase):
 
     def test_legacy_future_payment_does_not_change_progress_today(self):
         self.login()
-        today = date.today()
+        today = FrozenDate.today()
         with self.app.app_context():
             debt = db.session.get(Debt, self.debt_id)
             debt.accrual_start_date = today - timedelta(days=1)
