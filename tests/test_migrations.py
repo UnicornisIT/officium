@@ -1,9 +1,13 @@
 import importlib.util
 import inspect as python_inspect
+import io
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
-from sqlalchemy import create_engine, text
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy import create_engine, inspect, text
 
 from app.migration_preflight import (
     BASELINE_REVISION,
@@ -105,7 +109,53 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(revisions['20261125_feedback'], '20261124_monthly_reminders')
         self.assertEqual(revisions['20261126_attachment_dedup'], '20261125_feedback')
         self.assertEqual(revisions['20261127_debt_payment_plans'], '20261126_attachment_dedup')
-        self.assertEqual(heads, {'20261127_debt_payment_plans'})
+        self.assertEqual(revisions['20261128_payment_cascade'], '20261127_debt_payment_plans')
+        self.assertEqual(heads, {'20261128_payment_cascade'})
+
+    def test_payment_cascade_migration_preserves_data_and_deletes_payments(self):
+        migration = next(module for module in self.modules if module.revision == '20261128_payment_cascade')
+        engine = create_engine('sqlite:///:memory:')
+        with engine.begin() as connection:
+            connection.exec_driver_sql('PRAGMA foreign_keys=ON')
+            connection.exec_driver_sql('CREATE TABLE debts (id INTEGER PRIMARY KEY)')
+            connection.exec_driver_sql(
+                'CREATE TABLE payments (id INTEGER PRIMARY KEY, debt_id INTEGER NOT NULL, '
+                'amount NUMERIC(12, 2) NOT NULL, FOREIGN KEY(debt_id) REFERENCES debts(id))'
+            )
+            connection.exec_driver_sql('CREATE INDEX ix_payments_debt_date ON payments (debt_id)')
+            connection.exec_driver_sql('INSERT INTO debts VALUES (1), (2)')
+            connection.exec_driver_sql('INSERT INTO payments VALUES (1, 1, 7302), (2, 2, 25000)')
+            operations = Operations(MigrationContext.configure(connection))
+            with patch.object(migration, 'op', operations):
+                migration.upgrade()
+                self.assertEqual(connection.execute(text('SELECT amount FROM payments ORDER BY id')).scalars().all(), [7302, 25000])
+                self.assertEqual(inspect(connection).get_foreign_keys('payments')[0]['options']['ondelete'], 'CASCADE')
+                self.assertEqual(inspect(connection).get_indexes('payments')[0]['name'], 'ix_payments_debt_date')
+                connection.execute(text('DELETE FROM debts WHERE id = 1'))
+                self.assertEqual(connection.execute(text('SELECT id FROM payments')).scalars().all(), [2])
+                migration.downgrade()
+                self.assertNotEqual(inspect(connection).get_foreign_keys('payments')[0]['options'].get('ondelete'), 'CASCADE')
+                self.assertEqual(connection.execute(text('SELECT amount FROM payments')).scalar(), 25000)
+        engine.dispose()
+
+    def test_payment_cascade_migration_emits_mysql_and_mariadb_ddl(self):
+        migration = next(module for module in self.modules if module.revision == '20261128_payment_cascade')
+        for dialect in ('mysql', 'mariadb'):
+            with self.subTest(dialect=dialect):
+                output = io.StringIO()
+                context = MigrationContext.configure(
+                    url=f'{dialect}+pymysql://', opts={'as_sql': True, 'output_buffer': output},
+                )
+                with patch.object(migration.sa, 'inspect') as inspector:
+                    inspector.return_value.get_foreign_keys.return_value = [{
+                        'name': 'payments_ibfk_1', 'constrained_columns': ['debt_id'],
+                        'referred_table': 'debts',
+                    }]
+                    with patch.object(migration, 'op', Operations(context)):
+                        migration.upgrade()
+                sql = output.getvalue()
+                self.assertIn('ALTER TABLE payments DROP FOREIGN KEY payments_ibfk_1', sql)
+                self.assertIn('FOREIGN KEY(debt_id) REFERENCES debts (id) ON DELETE CASCADE', sql)
 
     def test_migrations_do_not_drop_tables(self):
         migration_text = '\n'.join(path.read_text(encoding='utf-8') for path in MIGRATIONS_DIR.glob('*.py'))

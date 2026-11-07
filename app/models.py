@@ -313,7 +313,7 @@ class Payment(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    debt_id = db.Column(db.Integer, db.ForeignKey('debts.id'), nullable=False)
+    debt_id = db.Column(db.Integer, db.ForeignKey('debts.id', ondelete='CASCADE'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     principal_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     interest_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
