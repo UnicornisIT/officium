@@ -364,10 +364,12 @@
                         <input type="text" inputmode="decimal" class="form-control number-format" id="f_minimum_payment" placeholder="0 000,00">
                     </div>
                     <div class="col-md-6" id="first_payment_amount_group">
-                        <label class="form-label" for="f_first_payment_amount">Первый платёж (₽)</label>
+                        <div class="d-flex align-items-center mb-2">
+                            <label class="form-label mb-0" for="f_first_payment_amount">Первый платёж (₽)</label>
+                            {{ info_hint('Со второго платежа будет использоваться минимальная сумма.', 'hint-first-payment', 'Подсказка: Первый платёж (₽)') }}
+                        </div>
                         <input type="text" inputmode="decimal" class="form-control number-format"
                                id="f_first_payment_amount" placeholder="если отличается">
-                        <small class="text-muted">Со второго платежа будет использоваться минимальная сумма.</small>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Процентная ставка (%/год)</label>
