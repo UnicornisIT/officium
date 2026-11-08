@@ -1563,12 +1563,14 @@ async function openHistoryModal(debtId, title) {
                     <td class="payment-history-remaining">${formatMoney(p.remaining_after_payment)}</td>
                     <td class="payment-history-comment">${comment}</td>
                     <td class="payment-history-actions">
-                        <button class="history-icon-btn history-icon-btn-edit" onclick="openEditPaymentModal(${debtId}, ${p.id})" title="Редактировать платеж">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button class="history-icon-btn history-icon-btn-delete" onclick="deletePayment(${debtId}, ${p.id})" title="Удалить платеж">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                        <div class="history-actions flex-column gap-2">
+                            <button class="history-icon-btn history-icon-btn-edit" onclick="openEditPaymentModal(${debtId}, ${p.id})" title="Редактировать платеж">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="history-icon-btn history-icon-btn-delete" onclick="deletePayment(${debtId}, ${p.id})" title="Удалить платеж">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `;
