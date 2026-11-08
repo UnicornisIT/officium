@@ -47,7 +47,7 @@
                     <label class="admin-control" for="feedback-status-{{ report.id }}"><span>Статус обращения №{{ report.id }}</span><select name="status" id="feedback-status-{{ report.id }}">
                         {% for key, label in statuses.items() %}<option value="{{ key }}" {% if report.status == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
                     </select></label>
-                    <button type="submit" class="btn btn-outline-primary btn-sm">Сохранить статус</button>
+                    <button type="submit" class="btn btn-outline-primary btn-sm"><i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить статус</button>
                 </form>
             </div>
         </article>

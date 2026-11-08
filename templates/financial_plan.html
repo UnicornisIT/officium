@@ -801,7 +801,7 @@
             goalForm.reset();
             goalModal.classList.toggle('plan-goal-modal--system', isEmergency);
             document.getElementById('goalModalTitle').textContent = isCreate ? 'Новая цель' : `Редактировать: ${trigger.dataset.goalName}`;
-            document.getElementById('goalSubmitButton').textContent = isCreate ? 'Создать цель' : 'Сохранить изменения';
+            document.getElementById('goalSubmitButton').innerHTML = isCreate ? 'Создать цель' : '<i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить изменения';
             goalName.value = isCreate ? '' : trigger.dataset.goalName;
             goalName.readOnly = isEmergency;
             goalTarget.value = isCreate ? '' : trigger.dataset.goalTarget;

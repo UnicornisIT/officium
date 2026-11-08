@@ -1055,7 +1055,7 @@ async function openEditModal(debtId) {
     clearDebtForm();
     currentDebtId = debtId;
     document.getElementById('debtModalTitle').textContent = 'Редактировать долг';
-    document.getElementById('debtSaveBtn').innerHTML = '<i class="bi bi-check-lg me-1"></i>Сохранить изменения';
+    document.getElementById('debtSaveBtn').innerHTML = '<i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить изменения';
 
     try {
         const resp = await fetch(`/api/debts/${debtId}`);
@@ -1183,7 +1183,7 @@ async function saveDebt() {
         errEl.classList.remove('d-none');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Сохранить';
+        btn.innerHTML = '<i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить';
     }
 }
 
@@ -1563,12 +1563,14 @@ async function openHistoryModal(debtId, title) {
                     <td class="payment-history-remaining">${formatMoney(p.remaining_after_payment)}</td>
                     <td class="payment-history-comment">${comment}</td>
                     <td class="payment-history-actions">
-                        <button class="history-icon-btn history-icon-btn-edit" onclick="openEditPaymentModal(${debtId}, ${p.id})" title="Редактировать платеж">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button class="history-icon-btn history-icon-btn-delete" onclick="deletePayment(${debtId}, ${p.id})" title="Удалить платеж">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                        <div class="history-actions flex-column gap-2">
+                            <button class="history-icon-btn history-icon-btn-edit" onclick="openEditPaymentModal(${debtId}, ${p.id})" title="Редактировать платеж">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="history-icon-btn history-icon-btn-delete" onclick="deletePayment(${debtId}, ${p.id})" title="Удалить платеж">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `;

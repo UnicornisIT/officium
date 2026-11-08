@@ -67,7 +67,7 @@
                     </select>
                 </div>
                 <div class="d-flex gap-2 align-items-center">
-                    <button type="submit" class="btn btn-success">{{ 'Сохранить изменения' if edit_income else 'Сохранить доход' }}</button>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-floppy me-1" aria-hidden="true"></i>{{ 'Сохранить изменения' if edit_income else 'Сохранить доход' }}</button>
                     {% if edit_income %}
                     <a href="{{ url_for('incomes') }}" class="btn btn-outline-secondary">Отменить</a>
                     {% endif %}

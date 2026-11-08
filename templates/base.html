@@ -31,7 +31,7 @@
     <link href="{{ url_for('static', filename='css/style.css') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=36" rel="stylesheet">
     {% block extra_css %}{% endblock %}
     <link href="{{ url_for('static', filename='css/ui-controls.css', v='3') }}" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/amount-privacy.css', v='3') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/amount-privacy.css', v='4') }}" rel="stylesheet">
     {% if amount_privacy_available %}<script defer src="{{ url_for('static', filename='js/amount-privacy.js', v='3') }}"></script>{% endif %}
 </head>
 <body class="{% if is_telegram_mini_app %}telegram-mini-app{% elif current_user.is_authenticated and not request.path.startswith('/admin') %}has-mobile-app-nav{% endif %}{% if current_user.is_authenticated and current_user.is_admin and request.path.startswith('/admin') %} admin-page{% elif request.endpoint == 'admin_login' %} admin-login-page{% endif %}">
@@ -364,10 +364,12 @@
                         <input type="text" inputmode="decimal" class="form-control number-format" id="f_minimum_payment" placeholder="0 000,00">
                     </div>
                     <div class="col-md-6" id="first_payment_amount_group">
-                        <label class="form-label" for="f_first_payment_amount">Первый платёж (₽)</label>
+                        <div class="d-flex align-items-center mb-2">
+                            <label class="form-label mb-0" for="f_first_payment_amount">Первый платёж (₽)</label>
+                            {{ info_hint('Со второго платежа будет использоваться минимальная сумма.', 'hint-first-payment', 'Подсказка: Первый платёж (₽)') }}
+                        </div>
                         <input type="text" inputmode="decimal" class="form-control number-format"
                                id="f_first_payment_amount" placeholder="если отличается">
-                        <small class="text-muted">Со второго платежа будет использоваться минимальная сумма.</small>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Процентная ставка (%/год)</label>
@@ -459,31 +461,41 @@
                             <div class="bank-calc-settings__title">Просрочка и неустойка</div>
                             <div class="row g-3">
                                 <div class="col-md-6">
-                                    <label class="form-label" for="f_penalty_rate">Неустойка (%/год)</label>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <label class="form-label mb-0" for="f_penalty_rate">Неустойка (%/год)</label>
+                                        {{ info_hint('На просроченную сумму за каждый день просрочки. По закону — не больше 20% годовых, пока идут проценты. Пусто — не начисляется.', 'hint-penalty-rate', 'Подсказка: Неустойка (%/год)') }}
+                                    </div>
                                     <input type="number" class="form-control" id="f_penalty_rate" min="0" max="100" step="0.01" placeholder="не начисляется">
-                                    <small class="text-muted">На просроченную сумму за каждый день просрочки. По закону — не больше 20% годовых, пока идут проценты. Пусто — не начисляется.</small>
                                 </div>
                                 <div class="col-md-6" id="grace_period_group">
-                                    <label class="form-label" for="f_grace_period_end_date">Льготный период до</label>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <label class="form-label mb-0" for="f_grace_period_end_date">Льготный период до</label>
+                                        {{ info_hint('Погасите долг к этой дате — проценты не начислятся. Иначе они начисляются с «Начала периода процентов». Пусто — проценты по карте не считаются.', 'hint-grace-period', 'Подсказка: Льготный период до') }}
+                                    </div>
                                     <input type="date" class="form-control" id="f_grace_period_end_date">
-                                    <small class="text-muted">Погасите долг к этой дате — проценты не начислятся. Иначе они начисляются с «Начала периода процентов». Пусто — проценты по карте не считаются.</small>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label" for="f_accrual_start_date">Расчёт ведётся с</label>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <label class="form-label mb-0" for="f_accrual_start_date">Расчёт ведётся с</label>
+                                        {{ info_hint('Платежи до этой даты — закрытая история, их разбивка не меняется. Укажите дату раньше, чтобы пересчитать старые платежи; позже — чтобы закрыть прошлые циклы (неоплаченные проценты и неустойка сохранятся). Пусто — с начала текущего цикла.', 'hint-accrual-start', 'Подсказка: Расчёт ведётся с') }}
+                                    </div>
                                     <input type="date" class="form-control" id="f_accrual_start_date">
-                                    <small class="text-muted">Платежи до этой даты — закрытая история, их разбивка не меняется. Укажите дату раньше, чтобы пересчитать старые платежи; позже — чтобы закрыть прошлые циклы (неоплаченные проценты и неустойка сохранятся). Пусто — с начала текущего цикла.</small>
                                 </div>
                                 <div class="col-md-6" id="opening_principal_group">
-                                    <label class="form-label" for="f_opening_principal_amount">Основной долг на дату начала расчёта</label>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <label class="form-label mb-0" for="f_opening_principal_amount">Основной долг на дату начала расчёта</label>
+                                        {{ info_hint('Заполняйте при сверке с выпиской. До изменения сохраните резервную копию базы. Сохранение пересчитает автоматическую разбивку платежей после указанной даты; суммы платежей сохранятся.', 'hint-opening-principal', 'Подсказка: Основной долг на дату начала расчёта') }}
+                                    </div>
                                     <input type="text" inputmode="decimal" class="form-control number-format" id="f_opening_principal_amount" placeholder="По выписке банка">
-                                    <small class="text-muted">Заполняйте при сверке с выпиской. До изменения сохраните резервную копию базы. Сохранение пересчитает автоматическую разбивку платежей после указанной даты; суммы платежей сохранятся.</small>
                                 </div>
                                 <div class="col-12" id="capitalize_interest_group">
-                                    <div class="form-check form-switch mb-0">
-                                        <input class="form-check-input" type="checkbox" id="f_capitalize_interest">
-                                        <label class="form-check-label" for="f_capitalize_interest">Капитализировать проценты</label>
+                                    <div class="d-flex align-items-center">
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" id="f_capitalize_interest">
+                                            <label class="form-check-label" for="f_capitalize_interest">Капитализировать проценты</label>
+                                        </div>
+                                        {{ info_hint('Неоплаченные проценты в дату платежа добавляются к основному долгу. Обычно выключено; неустойка не капитализируется никогда.', 'hint-capitalize-interest', 'Подсказка: Капитализировать проценты') }}
                                     </div>
-                                    <small class="text-muted">Неоплаченные проценты в дату платежа добавляются к основному долгу. Обычно выключено; неустойка не капитализируется никогда.</small>
                                 </div>
                             </div>
                         </div>
@@ -538,7 +550,7 @@
                 {% endif %}
                 <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" id="debtSaveBtn" onclick="saveDebt()">
-                    <i class="bi bi-check-lg me-1"></i>Сохранить
+                    <i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить
                 </button>
             </div>
         </div>
@@ -696,7 +708,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" onclick="submitPaymentEdit()">
-                    <i class="bi bi-check-lg me-1"></i>Сохранить
+                    <i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить
                 </button>
             </div>
         </div>
@@ -802,7 +814,7 @@
 
 {% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=9"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=11"></script>
 <script src="{{ url_for('static', filename='js/modules-menu.js', v='4') }}"></script>
 {% if telegram_login_launch %}
 <script src="{{ url_for('static', filename='js/telegram-login.js') }}?v={{ config.APP_VERSION|urlencode }}" data-available="{{ 'true' if telegram_login_launch.available else 'false' }}" data-bot-id="{{ telegram_login_launch.bot_id or '' }}" data-auth-url="{{ telegram_login_launch.auth_url }}"></script>

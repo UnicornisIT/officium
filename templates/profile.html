@@ -52,7 +52,7 @@
                 </div>
                 <p class="small text-muted mb-0">Один список предстоящих списаний. Напоминание приходит в течение шести часов после выбранного времени; расписание проверяется каждые 5 минут.</p>
                 {{ feedback('monthly_reminders') }}
-                <button type="submit" class="btn btn-primary">Сохранить</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить</button>
             </form>
         </section>
         <hr class="my-1">
@@ -74,7 +74,7 @@
                 <p class="small text-muted mb-0">После указанного времени по выбранному часовому поясу; расписание проверяется каждые 5 минут. При пропуске времени из-за перевода часов — после перехода. Сроки ТО и документов задаются в автомобиле.</p>
                 {% if not automated_notifications_enabled %}<p class="small text-muted mb-0">Автоматические автомобильные напоминания отключены в настройках сервера. Ваши предпочтения сохраняются.</p>{% endif %}
                 {{ feedback('notifications') }}
-                <button type="submit" class="btn btn-primary">Сохранить</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить</button>
             </form>
         </section>
         {% if not bot_commands_enabled %}<p class="small text-muted">Команды бота отключены на сервере (TELEGRAM_BOT_ENABLED=false). Вход через Telegram и тест исходящего сообщения проверяются отдельно.</p>{% endif %}
@@ -99,7 +99,7 @@
             <label class="ui-switch-label"><input type="checkbox" name="hide_amounts_on_open" {% if privacy_checked %}checked{% endif %}><span>Скрывать суммы при открытии</span></label>
             <p class="small text-muted mb-0">Суммы и денежные графики будут скрыты при открытии страницы. Кнопка «Показать суммы» раскрывает их до следующего перехода. Повторное нажатие скрывает суммы. Ввод, расчёты и экспорт сохраняются.</p>
             {{ feedback('privacy') }}
-            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить</button>
         </form>{% else %}<p class="mb-0">Сохранение личных настроек недоступно для временного локального аккаунта.</p>{% endif %}
     </section>
 </div>

@@ -1,6 +1,7 @@
-.money-mask, .money-chart-message { display: none; }
+.money-mask { display: none !important; }
+.money-chart-message { display: none; }
 .amounts-hidden .money-value { display: none !important; }
-.amounts-hidden .money-mask { display: inline; letter-spacing: .08em; }
+.amounts-hidden .money-mask { display: inline !important; letter-spacing: .08em; }
 .amounts-hidden canvas { visibility: hidden !important; pointer-events: none; }
 .amounts-hidden .money-chart-message { display: block; color: var(--text-muted); font-size: .875rem; }
 .amounts-pending main { visibility: hidden; }

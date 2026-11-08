@@ -16,7 +16,7 @@ from app.services.debt_calendar_service import previous_payment_due_date
 from app.services.debt_schedule_service import build_debt_payment_schedule
 from app.services.payment_service import recalculate_debt
 from app.time_utils import utc_now
-from app.utils import get_setting, is_local_test_user, parse_date, parse_decimal
+from app.utils import get_setting, is_local_test_user, parse_date, parse_decimal, record_activity
 from extensions import db
 
 
@@ -399,6 +399,16 @@ def init_app(app):
             debt.updated_at = utc_now()
             if not is_local_test_user():
                 recalculate_debt(debt)
+                if opening is not None:
+                    # Join the balance transaction and keep financial amounts
+                    # out of the administrative journal.
+                    record_activity(
+                        'Подтвердил исходный остаток кредита',
+                        current_user,
+                        entity_type='debt',
+                        entity_id=debt.id,
+                        commit=False,
+                    )
                 db.session.commit()
                 db.session.refresh(debt)
             invalidate_debt_state_cache(debt)
