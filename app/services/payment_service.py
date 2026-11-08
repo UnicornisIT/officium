@@ -19,6 +19,7 @@ from app.time_utils import financial_today, utc_now
 MONEY = Decimal('0.01')
 MAX_MONEY = Decimal('9999999999.99')
 ZERO = Decimal('0.00')
+_UNSET = object()
 
 
 def add_payment(
@@ -84,13 +85,13 @@ def update_payment(
     amount,
     payment_date,
     comment=None,
-    is_early_repayment=False,
-    scheduled_payment_amount=None,
+    is_early_repayment=_UNSET,
+    scheduled_payment_amount=_UNSET,
     principal_amount=None,
     interest_amount=None,
-    fee_amount=None,
+    fee_amount=_UNSET,
     penalty_amount=None,
-    bank_remaining_after_payment=None,
+    bank_remaining_after_payment=_UNSET,
     manual_breakdown=None,
 ):
     if payment.debt_id != debt.id:
@@ -100,20 +101,73 @@ def update_payment(
     try:
         principal_before_payments = _principal_before_payments(debt)
         _pin_accrual_start(debt)
+        if fee_amount is _UNSET:
+            fee_amount = payment.fee_amount
+        typed_parts = any(value is not None for value in (principal_amount, interest_amount, penalty_amount))
+        manual = manual_breakdown if manual_breakdown is not None else typed_parts
+        if not typed_parts and manual_breakdown is not False and payment.breakdown_source == 'manual':
+            principal_amount = payment.principal_amount
+            interest_amount = payment.interest_amount
+            penalty_amount = payment.penalty_amount
+            manual = True
+        settled = debt.accrual_start_date and payment_date <= debt.accrual_start_date
+        principal_only = (
+            not payment.interest_amount
+            and not payment.penalty_amount
+            and (
+                debt.debt_type == 'split'
+                or (
+                    not debt.interest_rate_for(payment_date)
+                    and not debt.interest_rate_for(payment.payment_date)
+                    and not debt.penalty_rate
+                    and not debt.opening_interest_amount
+                    and not debt.opening_penalty_amount
+                )
+            )
+        )
+        preserve_settled = settled and not manual and not principal_only
+        if preserve_settled:
+            # Closed periods cannot be replayed from the current anchor. Keep
+            # their allocation, or ask for the statement instead of guessing.
+            parts = sum(
+                (
+                    Decimal(str(value or 0))
+                    for value in (
+                        payment.principal_amount,
+                        payment.interest_amount,
+                        payment.penalty_amount,
+                        payment.fee_amount,
+                    )
+                ),
+                ZERO,
+            )
+            if (
+                payment_date != payment.payment_date
+                or amount != payment.amount
+                or _optional_money(fee_amount) != _optional_money(payment.fee_amount)
+                or parts != amount
+            ):
+                raise ValueError(
+                    'Для изменения платежа до начала расчёта укажите ручную разбивку по выписке или уточните дату начала расчёта'
+                )
         payment.amount = amount
         payment.payment_date = payment_date
         payment.comment = comment
-        payment.is_early_repayment = is_early_repayment
-        payment.scheduled_payment_amount = scheduled_payment_amount
-        payment.bank_remaining_after_payment = bank_remaining_after_payment
-        _apply_breakdown_input(
-            payment,
-            principal_amount=principal_amount,
-            interest_amount=interest_amount,
-            fee_amount=fee_amount,
-            penalty_amount=penalty_amount,
-            manual_breakdown=manual_breakdown,
-        )
+        if is_early_repayment is not _UNSET:
+            payment.is_early_repayment = is_early_repayment
+        if scheduled_payment_amount is not _UNSET:
+            payment.scheduled_payment_amount = scheduled_payment_amount
+        if bank_remaining_after_payment is not _UNSET:
+            payment.bank_remaining_after_payment = bank_remaining_after_payment
+        if not preserve_settled:
+            _apply_breakdown_input(
+                payment,
+                principal_amount=principal_amount,
+                interest_amount=interest_amount,
+                fee_amount=fee_amount,
+                penalty_amount=penalty_amount,
+                manual_breakdown=manual,
+            )
         _recalculate(debt, principal_before_payments)
         debt.updated_at = utc_now()
         db.session.commit()

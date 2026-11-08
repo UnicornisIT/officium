@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import create_app
-from app.models import Payment, User
+from app.models import ActivityLog, Payment, User
 from app.services.debt_accrual_service import get_debt_state
 from app.services.debt_math_service import calculate_period_interest
 from app.services.debt_calendar_service import next_payment_due_date
@@ -308,6 +308,135 @@ class BankPersistenceTests(unittest.TestCase):
         add_payment(self.debt, D('25000'), payment_date=date(2026, 10, 28))
         self.assertEqual(self.debt.remaining_amount, D('475517.02'))
 
+    def test_edit_without_breakdown_preserves_manual_parts_and_bank_checkpoint(self):
+        payment = add_payment(
+            self.debt,
+            D('5000'),
+            payment_date=date(2026, 8, 28),
+            principal_amount=D('2000'),
+            interest_amount=D('2900'),
+            fee_amount=D('100'),
+            bank_remaining_after_payment=D('498000'),
+        )
+        response = self.client.put(
+            f'/api/debts/{self.debt.id}/payments/{payment.id}',
+            json={'amount': '5000', 'payment_date': '2026-08-28', 'comment': 'Выписка'},
+        )
+        self.assertEqual(response.status_code, 200, response.get_json())
+        db.session.refresh(payment)
+        self.assertEqual(payment.breakdown_source, 'manual')
+        self.assertEqual(
+            (payment.principal_amount, payment.interest_amount, payment.fee_amount), (D('2000'), D('2900'), D('100'))
+        )
+        self.assertEqual(payment.bank_remaining_after_payment, D('498000'))
+        self.assertEqual(self.debt.remaining_amount, D('498000'))
+
+    def test_manual_amount_edit_without_new_parts_is_rejected(self):
+        payment = add_payment(
+            self.debt,
+            D('5000'),
+            payment_date=date(2026, 8, 28),
+            principal_amount=D('2000'),
+            interest_amount=D('3000'),
+        )
+        with self.assertRaises(ValueError):
+            update_payment(self.debt, payment, D('6000'), payment.payment_date)
+        self.assertEqual(payment.amount, D('5000'))
+        self.assertEqual(payment.breakdown_source, 'manual')
+        self.assertEqual(self.debt.remaining_amount, D('498000'))
+
+    def test_edit_closed_automatic_payment_keeps_interest(self):
+        payments = self.record_statement()
+        response = self.client.put(
+            f'/api/debts/{self.debt.id}',
+            json={'accrual_start_date': '2026-10-28'},
+        )
+        self.assertEqual(response.status_code, 200, response.get_json())
+        before = self.debt.total_debt(CHECK_DATE)
+        payment = payments[0]
+        response = self.client.put(
+            f'/api/debts/{self.debt.id}/payments/{payment.id}',
+            json={'amount': '2539.73', 'payment_date': '2026-08-28', 'manual_breakdown': False, 'comment': 'Выписка'},
+        )
+        self.assertEqual(response.status_code, 200, response.get_json())
+        db.session.refresh(payment)
+        self.assertEqual(payment.principal_amount, D('0'))
+        self.assertEqual(payment.interest_amount, D('2539.73'))
+        self.assertEqual(self.debt.remaining_amount, D('475517.02'))
+        recalculate_debt(self.debt)
+        self.assertEqual(self.debt.total_debt(CHECK_DATE), before)
+
+    def test_closed_automatic_amount_edit_requires_explicit_parts(self):
+        payments = self.record_statement()
+        response = self.client.put(
+            f'/api/debts/{self.debt.id}',
+            json={'accrual_start_date': '2026-10-28'},
+        )
+        self.assertEqual(response.status_code, 200, response.get_json())
+        with self.assertRaises(ValueError):
+            update_payment(self.debt, payments[0], D('3000'), date(2026, 8, 28))
+        self.assertEqual(payments[0].amount, D('2539.73'))
+        self.assertEqual(self.debt.remaining_amount, D('475517.02'))
+
+    def test_closed_payment_can_be_corrected_with_statement_parts(self):
+        payments = self.record_statement()
+        self.client.put(f'/api/debts/{self.debt.id}', json={'accrual_start_date': '2026-10-28'})
+        payment = payments[0]
+        update_payment(
+            self.debt,
+            payment,
+            D('3000'),
+            payment.payment_date,
+            principal_amount=D('0'),
+            interest_amount=D('3000'),
+            manual_breakdown=True,
+        )
+        self.assertEqual(payment.breakdown_source, 'manual')
+        self.assertEqual(payment.principal_amount + payment.interest_amount, payment.amount)
+        self.assertEqual(self.debt.opening_principal_amount, D('475517.02'))
+        self.assertEqual(self.debt.remaining_amount, D('475517.02'))
+
+    def test_bank_checkpoint_survives_replay_and_can_be_explicitly_cleared(self):
+        payments = self.record_statement()
+        payment = payments[1]
+        payment.bank_remaining_after_payment = D('488120.11')
+        db.session.commit()
+        update_payment(self.debt, payment, payment.amount, payment.payment_date, comment='Выписка')
+        delete_payment(self.debt, payments[0])
+        self.assertEqual(payment.bank_remaining_after_payment, D('488120.11'))
+        self.assertTrue(payment.is_early_repayment)
+        self.assertEqual(payment.scheduled_payment_amount, D('16616.48'))
+        self.assertNotEqual(payment.remaining_after_payment, payment.bank_remaining_after_payment)
+        response = self.client.put(
+            f'/api/debts/{self.debt.id}/payments/{payment.id}',
+            json={
+                'amount': str(payment.amount),
+                'payment_date': payment.payment_date.isoformat(),
+                'bank_remaining_after_payment': None,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.get_json())
+        db.session.refresh(payment)
+        self.assertIsNone(payment.bank_remaining_after_payment)
+        self.assertTrue(payment.is_early_repayment)
+
+    def test_editing_earlier_payment_keeps_later_manual_breakdown(self):
+        first = add_payment(self.debt, D('2539.73'), payment_date=date(2026, 8, 28))
+        manual = add_payment(
+            self.debt,
+            D('25000'),
+            payment_date=date(2026, 9, 28),
+            principal_amount=D('12000'),
+            interest_amount=D('13000'),
+            bank_remaining_after_payment=D('488000'),
+        )
+        update_payment(self.debt, first, D('2600'), first.payment_date)
+        delete_payment(self.debt, first)
+        recalculate_debt(self.debt)
+        self.assertEqual((manual.principal_amount, manual.interest_amount), (D('12000'), D('13000')))
+        self.assertEqual(manual.bank_remaining_after_payment, D('488000'))
+        self.assertEqual(self.debt.remaining_amount, D('488000'))
+
     def test_explicit_reconciliation_preserves_payment_amounts(self):
         payments = self.record_statement()
         self.debt.opening_principal_amount = None
@@ -318,6 +447,20 @@ class BankPersistenceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.get_json())
         self.assertEqual(self.debt.remaining_amount, D('475517.02'))
         self.assertEqual([(p.id, p.amount) for p in payments], amounts)
+        log = ActivityLog.query.filter_by(entity_type='debt', entity_id=self.debt.id).one()
+        self.assertEqual(log.action, 'Подтвердил исходный остаток кредита')
+        self.assertEqual(log.user_id, self.user.id)
+        self.assertIsNone(log.description)
+
+    def test_failed_reconciliation_does_not_leave_an_audit_entry(self):
+        self.record_statement()
+        response = self.client.put(
+            f'/api/debts/{self.debt.id}',
+            json={'opening_principal_amount': '100'},
+        )
+        self.assertEqual(response.status_code, 422, response.get_json())
+        self.assertEqual(ActivityLog.query.filter_by(entity_type='debt', entity_id=self.debt.id).count(), 0)
+        self.assertEqual(self.debt.opening_principal_amount, D('500000'))
 
     def test_current_balance_edit_cannot_silently_rebase_payment_history(self):
         self.record_statement()

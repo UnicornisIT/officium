@@ -162,7 +162,7 @@ def init_app(app):
             amount = parse_decimal(data.get('amount'), 'Сумма платежа', required=True)
             principal_amount = parse_decimal(data.get('principal_amount'), 'Основной долг', required=False)
             interest_amount = parse_decimal(data.get('interest_amount'), 'Проценты', required=False)
-            fee_amount = parse_decimal(data.get('fee_amount'), 'Комиссии', required=False)
+            fee_amount = parse_decimal(data.get('fee_amount', payment.fee_amount), 'Комиссии', required=False)
             penalty_amount = parse_decimal(data.get('penalty_amount'), 'Неустойка', required=False)
             manual_breakdown = _manual_breakdown_flag(data)
             scheduled_payment_amount = parse_decimal(
@@ -170,7 +170,11 @@ def init_app(app):
                 'Обязательная часть платежа',
                 required=False,
             )
-            bank_remaining_after_payment = parse_decimal(data.get('bank_remaining_after_payment'), 'Остаток банка после платежа', required=False)
+            bank_remaining_after_payment = parse_decimal(
+                data.get('bank_remaining_after_payment', payment.bank_remaining_after_payment),
+                'Остаток банка после платежа',
+                required=False,
+            )
             if amount <= 0:
                 raise ValueError('Сумма платежа должна быть больше нуля')
             if scheduled_payment_amount is not None and scheduled_payment_amount < 0:
@@ -178,7 +182,7 @@ def init_app(app):
             if scheduled_payment_amount is not None and scheduled_payment_amount > amount:
                 raise ValueError('Обязательная часть не может быть больше суммы платежа')
 
-            is_early_repayment = bool(data.get('is_early_repayment'))
+            is_early_repayment = bool(data.get('is_early_repayment', payment.is_early_repayment))
             if not is_early_repayment:
                 scheduled_payment_amount = None
 
