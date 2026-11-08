@@ -70,8 +70,8 @@
             </div>
             <i class="bi bi-dash-lg finance-equation__sign"></i>
             <div class="finance-equation__item">
-                <span>Долги</span>
-                <strong>{{ total_payments|money }}</strong>
+                <span>{{ 'Долги (сверх расходов)' if cashflow.payments_in_expenses else 'Долги' }}</span>
+                <strong>{{ cashflow.payments_outside_expenses|money }}</strong>
             </div>
             <i class="bi bi-dash-lg finance-equation__sign"></i>
             <div class="finance-equation__item" data-goal-transfers>
