@@ -34,7 +34,7 @@ class MaintenanceMigrationTests(unittest.TestCase):
                     check(directory=str(ROOT/'migrations'))
                     config = Config()
                     config.set_main_option('script_location', str(ROOT/'migrations'))
-                    self.assertEqual(ScriptDirectory.from_config(config).get_heads(), ['20261202_card_grace'])
+                    self.assertEqual(ScriptDirectory.from_config(config).get_heads(), ['20261202_expense_repayment'])
                 finally:
                     db.session.remove()
                     db.engine.dispose()

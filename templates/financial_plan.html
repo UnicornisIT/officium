@@ -655,6 +655,8 @@
                             <span>
                                 {% if item.excluded_as_debt_duplicate %}
                                 Уже учтено в «{{ item.duplicate_debt_label }}»
+                                {% elif item.potential_debt_duplicate %}
+                                Возможный дубль платежа — требуется сверка. Расход включён в бюджет.
                                 {% else %}
                                 {{ 'Регулярная помощь' if item.is_family_support else item.category_label }}
                                 {% endif %}

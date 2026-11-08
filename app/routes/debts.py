@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from flask import current_app, jsonify, request
 from flask_login import current_user
-from app.models import Debt, Payment, SplitPurchase
+from app.models import Debt, Expense, Payment, SplitPurchase
 from app.services.debt_service import check_debt_limit, get_demo_debts, get_user_debt
 from app.services.debt_accrual_service import (
     MAX_PENALTY_RATE,
@@ -463,6 +463,10 @@ def init_app(app):
             return jsonify({'success': False, 'error': 'Долг не найден'}), 404
 
         if not is_local_test_user():
+            # SQLite installations may have foreign-key enforcement disabled.
+            Expense.query.filter_by(repayment_debt_id=debt.id).update(
+                {Expense.repayment_debt_id: None}, synchronize_session='fetch',
+            )
             db.session.delete(debt)
             db.session.commit()
         else:

@@ -8,7 +8,7 @@ from flask import g
 from werkzeug.exceptions import NotFound
 
 from app import create_app
-from app.models import ActivityLog, Expense, MonthlyExpenseStop, User
+from app.models import ActivityLog, Debt, Expense, MonthlyExpenseStop, User
 from app.services.expense_service import create_expense, update_expense, delete_expense, stop_expense_recurrence
 from app.services.monthly_expenses_service import generate_monthly_expenses
 from extensions import db
@@ -57,6 +57,56 @@ class ExpenseServiceTestCase(unittest.TestCase):
         self.assertEqual(expense.amount, Decimal('2.01'))
         self.assertIsNone(expense.payment_method)
         self.assertIsNone(expense.comment)
+
+    def test_repayment_link_is_owned_explicit_and_copied_to_monthly_occurrences(self):
+        debt = Debt(user_id=self.owner_id, bank_name='Bank', product_name='Loan', debt_type='consumer_credit',
+                    total_amount=10000, remaining_amount=10000, minimum_payment=1250)
+        db.session.add(debt)
+        db.session.commit()
+        expense = self.create(category='loans', repayment_debt_id=str(debt.id), is_monthly=True)
+        self.assertEqual(expense.amount, Decimal('1250.26'))
+        copies = Expense.query.filter_by(monthly_group_id=expense.monthly_group_id).all()
+        self.assertEqual(len(copies), 3)
+        self.assertTrue(all(row.repayment_debt_id == debt.id for row in copies))
+        self.update(expense, category='loans', is_monthly=True)
+        self.assertEqual(expense.repayment_debt_id, debt.id)
+        self.update(expense, category='products', is_monthly=True)
+        self.assertIsNone(expense.repayment_debt_id)
+        self.assertEqual(debt.remaining_amount, Decimal('10000.00'))
+        for invalid in (str(debt.id), 'bad-id', 999999):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    create_expense(user_id=self.other_id, **(self.values | {
+                        'category': 'loans', 'repayment_debt_id': invalid,
+                    }))
+                db.session.rollback()
+        with self.assertRaises(ValueError):
+            self.create(category='products', repayment_debt_id=debt.id)
+
+    def test_web_form_saves_and_clears_repayment_link(self):
+        debt = Debt(user_id=self.owner_id, bank_name='Repayment bank', product_name='Loan', debt_type='consumer_credit',
+                    total_amount=10000, remaining_amount=10000)
+        foreign = Debt(user_id=self.other_id, bank_name='Private other bank', product_name='Loan', debt_type='consumer_credit',
+                       total_amount=20000, remaining_amount=20000)
+        db.session.add_all([debt, foreign])
+        db.session.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session['_user_id'] = str(self.owner_id)
+            session['_fresh'] = True
+        page = client.get('/expenses').get_data(as_text=True)
+        self.assertIn('Repayment bank', page)
+        self.assertNotIn('Private other bank', page)
+        values = self.values | {'category': 'loans', 'repayment_debt_id': str(debt.id)}
+        self.assertEqual(client.post('/expenses', data=values).status_code, 302)
+        expense = Expense.query.filter_by(user_id=self.owner_id).one()
+        self.assertEqual(expense.repayment_debt_id, debt.id)
+        page = client.get(f'/expenses/edit/{expense.id}').get_data(as_text=True)
+        self.assertIn(f'value="{debt.id}" selected', page)
+        self.assertEqual(client.post(f'/expenses/edit/{expense.id}', data=values | {
+            'repayment_debt_id': '',
+        }).status_code, 302)
+        self.assertIsNone(expense.repayment_debt_id)
 
     def test_invalid_create_and_update_leave_data_and_log_unchanged(self):
         expense = self.create()

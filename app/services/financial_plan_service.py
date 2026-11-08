@@ -914,12 +914,14 @@ def _build_recurring_expense_items(expenses, today):
             'amount': _float(current.amount),
             'title': current.title,
             'category': current.category,
+            'repayment_debt_id': current.repayment_debt_id,
             'category_label': EXPENSE_CATEGORY_LABELS.get(current.category, 'Другое'),
             'expense_date': current.expense_date,
             'due_date': due_date,
             'is_family_support': any(marker in searchable_text for marker in FAMILY_SUPPORT_MARKERS),
             'excluded_as_debt_duplicate': False,
             'duplicate_debt_label': None,
+            'potential_debt_duplicate': False,
         })
     return sorted(items, key=lambda item: (item['due_date'], -item['amount'], item['title'].lower()))
 
@@ -953,8 +955,22 @@ def _current_recurring_expense(group, today):
 
 
 def _mark_debt_expense_duplicates(expense_items, debt_items):
+    matched_debts = set()
     for expense in expense_items:
         if expense['category'] != 'loans':
+            continue
+        linked_id = expense.get('repayment_debt_id')
+        if linked_id is not None:
+            debt = next((item for item in debt_items if item['id'] == linked_id), None)
+            # The link declares repayment, but only one fully represented monthly
+            # obligation can be omitted. Mismatches remain visible and counted.
+            if (debt is not None and linked_id not in matched_debts
+                    and _decimal(expense['amount']) == _decimal(debt['monthly_amount'])):
+                expense['excluded_as_debt_duplicate'] = True
+                expense['duplicate_debt_label'] = debt['label']
+                matched_debts.add(linked_id)
+            else:
+                expense['potential_debt_duplicate'] = True
             continue
         expense_title = _search_key(expense['title'])
         for debt in debt_items:
@@ -962,7 +978,7 @@ def _mark_debt_expense_duplicates(expense_items, debt_items):
             amount_matches = abs(_decimal(expense['amount']) - _decimal(debt['monthly_amount'])) <= MONEY
             title_matches = any(name and name in expense_title for name in debt_names)
             if amount_matches or title_matches:
-                expense['excluded_as_debt_duplicate'] = True
+                expense['potential_debt_duplicate'] = True
                 expense['duplicate_debt_label'] = debt['label']
                 break
 
@@ -1341,6 +1357,15 @@ def _build_forecast(debt_items, savings, emergency_gap, strategy, today):
 
 def _build_missing_data(income_summary, debt_gaps, recurring_items):
     items = list(debt_gaps)
+    for expense in recurring_items:
+        if expense.get('potential_debt_duplicate'):
+            items.append({
+                'kind': 'expenses',
+                'title': f'Проверьте погашение долга: {expense["title"]}.',
+                'detail': 'Расход включён в бюджет. Для исключения дубля выберите долг в расходе; '
+                          'сумма должна совпадать с месячным платежом в плане. '
+                          'Оплата покупки кредитной картой не является погашением долга.',
+            })
     if not income_summary['items']:
         items.insert(0, {
             'kind': 'income',

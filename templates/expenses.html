@@ -82,6 +82,17 @@
                     </select>
                 </div>
                 <div class="mb-3">
+                    <label class="form-label" for="repayment_debt_id">Погашение долга</label>
+                    {% set selected_repayment = form_data.get('repayment_debt_id', '') if form_data else (edit_expense.repayment_debt_id if edit_expense and edit_expense.repayment_debt_id else '') %}
+                    <select class="form-select" name="repayment_debt_id" id="repayment_debt_id">
+                        <option value="">Не связано с погашением</option>
+                        {% for debt in repayment_debts %}
+                        <option value="{{ debt.id }}" {% if selected_repayment|string == debt.id|string %}selected{% endif %}>{{ debt.bank_name }} · {{ debt.product_name or 'Долг' }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Для категории «Кредиты»: выберите долг, если расход повторяет его платёж. Покупка кредитной картой — отдельный расход. Связь не создаёт платёж и не изменяет остаток долга.</div>
+                </div>
+                <div class="mb-3">
                     <label class="form-label">Комментарий</label>
                     <textarea name="comment" class="form-control" rows="3" placeholder="Покупка в магазине">{{ form_data.get('comment', edit_expense.comment if edit_expense and edit_expense.comment else '') }}</textarea>
                 </div>

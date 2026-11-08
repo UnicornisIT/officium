@@ -113,6 +113,10 @@ class FinancialPlanTestCase(unittest.TestCase):
                 generated_for_month='2026-08',
             ),
         ])
+        db.session.flush()
+        Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one().repayment_debt_id = (
+            Debt.query.filter_by(user_id=self.user_id, bank_name='Сбер').one().id
+        )
         db.session.add(FinancialPlanPreference(
             user_id=self.user_id,
             living_minimum=Decimal('20000.00'),
@@ -174,6 +178,80 @@ class FinancialPlanTestCase(unittest.TestCase):
 
         self.assertGreater(after['totals']['debt_payments'], before['totals']['debt_payments'])
         self.assertLess(after['totals']['living_budget'], before['totals']['living_budget'])
+
+    def test_independent_loan_expense_with_same_amount_is_counted(self):
+        with self.app.app_context():
+            debt = Debt.query.filter_by(user_id=self.user_id, bank_name='Сбер').one()
+            debt.minimum_payment = Decimal('15000.00')
+            expense = Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one()
+            expense.title = 'Рассрочка за оборудование'
+            expense.amount = Decimal('15000.00')
+            expense.repayment_debt_id = None
+            db.session.commit()
+            plan = build_financial_plan(self.user_id, today=date(2026, 8, 21))
+
+        self.assertEqual(plan['totals']['regular_expenses'], 22000.0)
+        self.assertEqual(plan['totals']['debt_payments'], 19172.0)
+        self.assertEqual(plan['totals']['obligations'], 61172.0)
+        self.assertEqual(plan['excluded_recurring_items'], [])
+
+    def test_legacy_title_match_is_visible_and_counted_without_rewriting_history(self):
+        with self.app.app_context():
+            expense = Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one()
+            expense.repayment_debt_id = None
+            expense.amount = Decimal('123.45')
+            db.session.commit()
+            before = expense.to_dict()
+            plan = build_financial_plan(self.user_id, today=date(2026, 8, 21))
+            repeated = build_financial_plan(self.user_id, today=date(2026, 8, 21))
+            self.assertEqual(expense.to_dict(), before)
+
+        self.assertEqual(plan['totals']['regular_expenses'], 7123.45)
+        self.assertEqual(plan['excluded_recurring_items'], [])
+        self.assertEqual(plan['totals'], repeated['totals'])
+        self.assertTrue(any(item['potential_debt_duplicate'] for item in plan['regular_items']))
+        self.assertTrue(any('Расход включён в бюджет' in item['detail'] for item in plan['missing_data']))
+
+    def test_credit_card_purchase_is_an_independent_expense(self):
+        with self.app.app_context():
+            expense = Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one()
+            expense.category = 'products'
+            expense.payment_method = 'card'
+            expense.comment = 'Оплачено кредитной картой'
+            expense.repayment_debt_id = None
+            db.session.commit()
+            plan = build_financial_plan(self.user_id, today=date(2026, 8, 21))
+
+        self.assertEqual(plan['totals']['regular_expenses'], 23454.0)
+        self.assertEqual(plan['excluded_recurring_items'], [])
+
+    def test_linked_expenses_do_not_suppress_more_than_one_monthly_payment(self):
+        with self.app.app_context():
+            original = Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one()
+            db.session.add(Expense(
+                user_id=self.user_id, amount=original.amount, category='loans',
+                title='Дополнительное обязательство', expense_date=date(2026, 8, 6),
+                is_monthly=True, repayment_debt_id=original.repayment_debt_id,
+            ))
+            db.session.commit()
+            plan = build_financial_plan(self.user_id, today=date(2026, 8, 21))
+
+        self.assertEqual(len(plan['excluded_recurring_items']), 1)
+        self.assertEqual(plan['totals']['regular_expenses'], 23454.0)
+
+    def test_linked_mismatch_and_closed_debt_are_counted_for_reconciliation(self):
+        with self.app.app_context():
+            expense = Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one()
+            debt = db.session.get(Debt, expense.repayment_debt_id)
+            for amount, status in [('16454.01', 'active'), ('16454.00', 'archived')]:
+                with self.subTest(amount=amount, status=status):
+                    expense.amount = Decimal(amount)
+                    debt.status = status
+                    db.session.commit()
+                    plan = build_financial_plan(self.user_id, today=date(2026, 8, 21))
+                    self.assertEqual(plan['excluded_recurring_items'], [])
+                    self.assertEqual(Decimal(str(plan['totals']['regular_expenses'])), Decimal(amount) + 7000)
+                    self.assertTrue(any(item['potential_debt_duplicate'] for item in plan['regular_items']))
 
     def test_plan_prefers_configured_consumer_credit_and_caps_early_repayment(self):
         with self.app.app_context():
@@ -356,6 +434,7 @@ class FinancialPlanTestCase(unittest.TestCase):
                 # Mirrors the credit payment that the debt itself already plans.
                 Expense(user_id=self.user_id, amount=Decimal('5000.00'), category='loans',
                         title='Кредит наличными', expense_date=date(2026, 10, 2), is_monthly=True,
+                        repayment_debt_id=Debt.query.filter_by(user_id=self.user_id).one().id,
                         monthly_group_id='scenario-2', generated_for_month='2026-10'),
             ])
             db.session.commit()

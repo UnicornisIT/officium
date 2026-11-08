@@ -6,7 +6,7 @@ from decimal import Decimal
 from flask import abort, current_app, redirect, render_template, request, url_for
 from sqlalchemy import or_
 from werkzeug.exceptions import HTTPException
-from app.models import Expense, MonthlyExpenseStop
+from app.models import Debt, Expense, MonthlyExpenseStop
 from app.services import import_storage_service as import_storage
 from app.services.bank_statement_import_service import (
     parse_bank_statement,
@@ -54,6 +54,8 @@ def init_app(app):
             else:
                 try:
                     values = _expense_form_values()
+                    if values.get("vehicle_id") and values.get("repayment_debt_id"):
+                        raise ValueError("Трата на автомобиль и погашение долга — отдельные расходы.")
                     if (
                         request.files.get("file")
                         and request.files["file"].filename
@@ -168,6 +170,7 @@ def init_app(app):
             success_message=success_message,
             error_message=error_message,
             edit_expense=None,
+            repayment_debts=_repayment_choices(),
             form_data=form_data,
         )
 
@@ -444,6 +447,7 @@ def init_app(app):
             success_message=success_message,
             error_message=error_message,
             edit_expense=expense,
+            repayment_debts=_repayment_choices(),
             form_data=form_data,
         )
 
@@ -710,6 +714,10 @@ def _expense_form_values():
         title=request.form.get("title", ""),
         expense_date=request.form.get("expense_date"),
         payment_method=request.form.get("payment_method"),
+        **(
+            {"repayment_debt_id": request.form.get("repayment_debt_id")}
+            if "repayment_debt_id" in request.form else {}
+        ),
         comment=request.form.get("comment"),
         is_monthly=request.form.get("is_monthly") == "on",
         **(
@@ -718,3 +726,9 @@ def _expense_form_values():
             else {}
         ),
     )
+
+
+def _repayment_choices():
+    if is_local_test_user():
+        return []
+    return Debt.query.filter_by(user_id=current_user.id).order_by(Debt.bank_name, Debt.id).all()
