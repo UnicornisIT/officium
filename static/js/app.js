@@ -985,7 +985,7 @@ function clearDebtForm() {
     if (recurring) recurring.checked = false;
     const includePaymentDay = document.getElementById('f_include_payment_day');
     if (includePaymentDay) includePaymentDay.checked = false;
-    ['f_penalty_rate', 'f_grace_period_end_date', 'f_accrual_start_date', 'f_opening_principal_amount'].forEach(id => {
+    ['f_penalty_rate', 'f_grace_period_end_date', 'f_grace_policy', 'f_accrual_start_date', 'f_opening_principal_amount'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -1089,6 +1089,7 @@ async function openEditModal(debtId) {
         document.getElementById('f_penalty_rate').value = d.penalty_rate ?? '';
         document.getElementById('f_capitalize_interest').checked = Boolean(d.capitalize_interest);
         document.getElementById('f_grace_period_end_date').value = d.grace_period_end_date || '';
+        document.getElementById('f_grace_policy').value = d.grace_policy || '';
         document.getElementById('f_accrual_start_date').value = d.accrual_start_date || '';
         document.getElementById('f_opening_principal_amount').value = '';
         syncCardLimitHelperVisibility();
@@ -1149,6 +1150,7 @@ async function saveDebt() {
         penalty_rate: document.getElementById('f_penalty_rate').value || null,
         capitalize_interest: document.getElementById('f_capitalize_interest').checked,
         grace_period_end_date: document.getElementById('f_grace_period_end_date').value || null,
+        grace_policy: document.getElementById('f_grace_policy').value || null,
         accrual_start_date: document.getElementById('f_accrual_start_date').value || null,
         opening_principal_amount: document.getElementById('f_opening_principal_amount').value || null,
         comment:           document.getElementById('f_comment').value.trim() || null,

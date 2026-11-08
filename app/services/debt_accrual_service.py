@@ -239,6 +239,15 @@ class _AccrualEngine:
             include_payment_day=False,
         )
         self.grace_start, self.grace_end = self._grace_window()
+        self.calculation_issue = None
+        if self.debt_type == 'credit_card':
+            policy = getattr(debt, 'grace_policy', None)
+            if self.grace_end is None and policy != 'no_grace':
+                self.calculation_issue = 'Условия льготного периода неизвестны. Уточните договор и сверьте начисления с банком.'
+            elif self.start is None or getattr(debt, 'interest_rate', None) is None:
+                self.calculation_issue = 'Для расчёта процентов нужны ставка и дата начала расчёта. Требуется сверка с банком.'
+            elif policy == 'retroactive' and not getattr(debt, 'interest_period_start_date', None):
+                self.calculation_issue = 'Для начисления с начала льготы нужна дата начала процентного периода. Уточните её у банка.'
         self.split_anchor = None
         self.split_plan = None
         self.periods = []
@@ -253,6 +262,8 @@ class _AccrualEngine:
     def _grace_window(self):
         if self.debt_type != 'credit_card':
             return None, None
+        if getattr(self.debt, 'grace_policy', None) == 'no_grace':
+            return None, None
         end = getattr(self.debt, 'grace_period_end_date', None)
         if not end:
             return None, None
@@ -262,7 +273,7 @@ class _AccrualEngine:
     def _accrues_interest(self):
         if self.debt_type == 'split':
             return False
-        if self.debt_type == 'credit_card' and self.grace_end is None:
+        if self.debt_type == 'credit_card' and self.calculation_issue:
             return False
         return True
 
@@ -365,9 +376,11 @@ class _AccrualEngine:
         })
 
     def _settle_grace(self, ledger):
-        # Interest for the whole grace period becomes payable only if the
-        # grace balance was not repaid by the end of the period.
-        if ledger.principal > 0:
+        # Unpaid principal alone cannot establish the bank's retroactive rule.
+        policy = getattr(self.debt, 'grace_policy', None)
+        if ledger.principal > 0 and policy not in ('retroactive', 'forward'):
+            self.calculation_issue = 'Льгота завершилась с непогашенным долгом. Выберите договорное правило начисления и сверьте расчёт с банком.'
+        if ledger.principal > 0 and policy == 'retroactive':
             ledger.current_interest += ledger.grace_interest
             for period in self.periods:
                 if period['kind'] == 'grace_interest':
@@ -614,6 +627,10 @@ class _AccrualEngine:
         # Interest and penalty left unpaid when the start was moved forward.
         ledger.current_interest = Decimal(str(getattr(self.debt, 'opening_interest_amount', None) or 0))
         ledger.penalty = Decimal(str(getattr(self.debt, 'opening_penalty_amount', None) or 0))
+        if self.grace_end is not None and self.grace_end < start and opening > 0:
+            # A historical balance does not tell us whether the bank waived interest.
+            if getattr(self.debt, 'grace_policy', None) != 'forward':
+                self.calculation_issue = 'Льгота завершилась до начала расчёта. Уточните правило договора и сверьте остаток с банком.'
         if self.grace_start is not None and self.grace_start < start and self._accrues_interest():
             # The grace period began before accruals are tracked; the balance
             # on the start date stands in for the earlier days.
@@ -711,7 +728,8 @@ class _AccrualEngine:
         return {
             'as_of': as_of,
             'diagnostics': self._diagnostics(opening),
-            'data_consistent': not self._history_mismatch(opening),
+            'data_consistent': not self.calculation_issue and not self._history_mismatch(opening),
+            'calculation_status': 'needs_reconciliation' if self.calculation_issue else 'calculated',
             'accrual_start_date': self.start,
             'opening_principal': money(opening),
             'principal': principal,
@@ -753,6 +771,8 @@ class _AccrualEngine:
 
     def _diagnostics(self, opening):
         messages = []
+        if self.calculation_issue:
+            messages.append(self.calculation_issue)
         fee = money(getattr(self.debt, 'monthly_fee_amount', None))
         minimum = money(getattr(self.debt, 'minimum_payment', None))
         if minimum > 0 and fee >= minimum:

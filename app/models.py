@@ -129,6 +129,7 @@ class Debt(db.Model):
     penalty_rate = db.Column(db.Numeric(5, 2), nullable=True)
     capitalize_interest = db.Column(db.Boolean, default=False, nullable=False)
     grace_period_end_date = db.Column(db.Date, nullable=True)
+    grace_policy = db.Column(db.String(20), nullable=True)
     accrual_start_date = db.Column(db.Date, nullable=True)
     opening_principal_amount = db.Column(db.Numeric(12, 2), nullable=True)
     payment_day = db.Column(db.SmallInteger, nullable=True)
@@ -285,8 +286,10 @@ class Debt(db.Model):
             'comment': self.comment,
             'status': self.status,
             'days_until_payment': days_until_payment,
-            'total_debt': float(accrual['total']),
-            'accrued_interest': float(accrual['accrued_interest']),
+            'total_debt': float(accrual['total']) if accrual['calculation_status'] == 'calculated' else None,
+            'accrued_interest': float(accrual['accrued_interest']) if accrual['calculation_status'] == 'calculated' else None,
+            'calculation_status': accrual['calculation_status'],
+            'grace_policy': self.grace_policy,
             'penalty': float(accrual['penalty']),
             'overdue_amount': float(accrual['overdue_amount']),
             'amount_to_clear_overdue': float(accrual['amount_to_clear_overdue']),

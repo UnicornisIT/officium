@@ -470,9 +470,16 @@
                                 <div class="col-md-6" id="grace_period_group">
                                     <div class="d-flex align-items-center mb-2">
                                         <label class="form-label mb-0" for="f_grace_period_end_date">Льготный период до</label>
-                                        {{ info_hint('Погасите долг к этой дате — проценты не начислятся. Иначе они начисляются с «Начала периода процентов». Пусто — проценты по карте не считаются.', 'hint-grace-period', 'Подсказка: Льготный период до') }}
+                                        {{ info_hint('Погасите долг к этой дате — проценты не начислятся. При неполном погашении действует выбранное правило договора. Без даты уточните, применяется ли льгота.', 'hint-grace-period', 'Подсказка: Льготный период до') }}
                                     </div>
                                     <input type="date" class="form-control" id="f_grace_period_end_date">
+                                    <label class="form-label mt-2" for="f_grace_policy">Условия льготы по договору</label>
+                                    <select class="form-select" id="f_grace_policy">
+                                        <option value="">Условия неизвестны — требуется сверка</option>
+                                        <option value="no_grace">Льгота не применяется</option>
+                                        <option value="forward">При потере льготы — проценты после её окончания</option>
+                                        <option value="retroactive">При потере льготы — проценты с начала периода</option>
+                                    </select>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="d-flex align-items-center mb-2">

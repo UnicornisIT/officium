@@ -94,6 +94,29 @@ class DebtAccrualSettingsTestCase(unittest.TestCase):
             self.assertEqual(response.status_code, 422, value)
             self.assertIn('Ставка неустойки', response.get_json()['error'])
 
+    def test_card_unknown_conditions_are_not_reported_as_zero(self):
+        debt = self.create(debt_type='credit_card').get_json()['debt']
+        self.assertIsNone(debt['grace_policy'])
+        self.assertIsNone(debt['accrued_interest'])
+        self.assertIsNone(debt['total_debt'])
+        self.assertFalse(debt['calculation_valid'])
+        self.assertEqual(debt['calculation_status'], 'needs_reconciliation')
+        page = self.client.get(f"/debts/{debt['id']}/overdue")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('Требуется сверка', page.get_data(as_text=True))
+        updated = self.client.put(f"/api/debts/{debt['id']}", json={'grace_policy': 'no_grace'}).get_json()['debt']
+        self.assertEqual(updated['grace_policy'], 'no_grace')
+        self.assertGreater(updated['accrued_interest'], 0)
+        self.assertEqual(updated['calculation_status'], 'calculated')
+
+    def test_card_grace_policy_validation(self):
+        for values in (
+            {'grace_policy': 'invalid'},
+            {'grace_policy': 'forward'},
+            {'grace_policy': 'no_grace', 'grace_period_end_date': '2026-10-20'},
+        ):
+            self.assertEqual(self.create(debt_type='credit_card', **values).status_code, 422)
+
     def test_grace_period_belongs_to_cards_only(self):
         card = self.create(
             debt_type='credit_card', interest_period_start_date='2026-07-20',
