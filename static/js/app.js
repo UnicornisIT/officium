@@ -1055,7 +1055,7 @@ async function openEditModal(debtId) {
     clearDebtForm();
     currentDebtId = debtId;
     document.getElementById('debtModalTitle').textContent = 'Редактировать долг';
-    document.getElementById('debtSaveBtn').innerHTML = '<i class="bi bi-check-lg me-1"></i>Сохранить изменения';
+    document.getElementById('debtSaveBtn').innerHTML = '<i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить изменения';
 
     try {
         const resp = await fetch(`/api/debts/${debtId}`);
@@ -1183,7 +1183,7 @@ async function saveDebt() {
         errEl.classList.remove('d-none');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Сохранить';
+        btn.innerHTML = '<i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить';
     }
 }
 

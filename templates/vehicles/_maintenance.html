@@ -13,7 +13,7 @@
 <label>Интервал, месяцев<input class="form-control" name="interval_months" type="number" min="1" max="1200" value="{{ item.interval_months or '' }}"></label>
 <label>Последняя замена<input class="form-control" name="last_done_date" type="date" max="{{ today }}" value="{{ item.last_done_date or '' }}"></label>
 {% if vehicle.kind!='trailer' %}<label>Пробег при замене<input class="form-control" name="last_done_km" type="text" value="{{ item.last_done_km if item.last_done_km is not none else '' }}" inputmode="numeric" data-vehicle-km pattern="[0-9 ]*"></label>{% endif %}
-<label class="vehicle-choice"><input type="checkbox" name="is_active" value="1" {% if item.is_active %}checked{% endif %}> Активна</label><input type="hidden" name="is_active" value="0"><button class="btn btn-outline-primary">Сохранить позицию</button></form></details>{% endif %}
+<label class="vehicle-choice"><input type="checkbox" name="is_active" value="1" {% if item.is_active %}checked{% endif %}> Активна</label><input type="hidden" name="is_active" value="0"><button class="btn btn-outline-primary"><i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить позицию</button></form></details>{% endif %}
 </article>{% else %}<p>Позиций пока нет. Добавьте их из шаблона или задайте свой интервал.</p>{% endfor %}
 {% if not vehicle.archived_at %}
 <details class="vehicle-disclosure vehicle-disclosure-add mb-3"><summary><span>Добавить из шаблона</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><form class="vehicle-maintenance-fields mt-3" method="post" action="{{ url_for('vehicle_maintenance',vehicle_id=vehicle.id) }}">

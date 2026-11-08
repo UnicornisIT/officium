@@ -15,7 +15,7 @@
 {% if entity_id is not none %}<input type="hidden" name="entity_id" value="{{ entity_id }}">{% endif %}
 <label>Изображение (JPEG, PNG, WebP, до 5 МБ)<input class="form-control" type="file" name="file" accept="image/jpeg,image/png,image/webp" required></label>
 <p class="text-muted mb-0">Можно перетащить изображение в эту форму.</p>
-<label>Подпись<input class="form-control" name="caption" maxlength="500"></label><button class="btn btn-primary">Сохранить фото</button>
+<label>Подпись<input class="form-control" name="caption" maxlength="500"></label><button class="btn btn-primary"><i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить фото</button>
 </form></details>{% endif %}
 {% endmacro %}
 

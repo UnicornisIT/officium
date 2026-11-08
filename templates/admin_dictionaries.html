@@ -35,7 +35,7 @@
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="rename">
                             <label class="visually-hidden" for="entry-{{ entry.id }}">Значение</label>
                             <input type="text" id="entry-{{ entry.id }}" name="value" maxlength="150" value="{{ entry.value }}" required>
-                            <button type="submit" class="btn btn-sm btn-outline-secondary">Сохранить</button>
+                            <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить</button>
                         </form>
                     </td>
                     <td data-label="Статус"><span class="admin-badge admin-badge--{{ 'success' if entry.is_active else 'neutral' }}">{{ 'Предлагается' if entry.is_active else 'Выключен' }}</span></td>

@@ -12,6 +12,6 @@
 <div class="monthly-switch"><input class="monthly-switch-input" type="checkbox" role="switch" id="fuelFullTank" name="is_full_tank" value="1" {% if form.get('is_full_tank',true) in (true,'1','on','true') %}checked{% endif %}><label class="monthly-switch-label" for="fuelFullTank">До полного</label></div><input type="hidden" name="is_full_tank" value="0" data-fuel-unchecked>
 <label>Комментарий<textarea class="form-control" name="comment" maxlength="2000">{{ form.get('comment') or '' }}</textarea></label>
 <label>Фото чека (JPEG, PNG, WebP, до 5 МБ)<input class="form-control" type="file" name="file" accept="image/jpeg,image/png,image/webp"></label>
-<button class="btn btn-primary">Сохранить заправку</button>
+<button class="btn btn-primary"><i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить заправку</button>
 </form>
 <script src="{{ url_for('static',filename='js/vehicle-fuel.js',v='2') }}" defer></script>

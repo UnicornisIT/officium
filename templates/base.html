@@ -550,7 +550,7 @@
                 {% endif %}
                 <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" id="debtSaveBtn" onclick="saveDebt()">
-                    <i class="bi bi-check-lg me-1"></i>Сохранить
+                    <i class="bi bi-floppy me-1" aria-hidden="true"></i>Сохранить
                 </button>
             </div>
         </div>
@@ -814,7 +814,7 @@
 
 {% endif %}
 <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=10"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v={{ config.APP_VERSION|urlencode }}&amp;rev=11"></script>
 <script src="{{ url_for('static', filename='js/modules-menu.js', v='4') }}"></script>
 {% if telegram_login_launch %}
 <script src="{{ url_for('static', filename='js/telegram-login.js') }}?v={{ config.APP_VERSION|urlencode }}" data-available="{{ 'true' if telegram_login_launch.available else 'false' }}" data-bot-id="{{ telegram_login_launch.bot_id or '' }}" data-auth-url="{{ telegram_login_launch.auth_url }}"></script>

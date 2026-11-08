@@ -94,7 +94,7 @@
                     </div>
                 </div>
                 <div class="d-flex gap-2 align-items-center">
-                    <button type="submit" class="btn btn-danger">{{ 'Сохранить изменения' if edit_expense else 'Сохранить расход' }}</button>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-floppy me-1" aria-hidden="true"></i>{{ 'Сохранить изменения' if edit_expense else 'Сохранить расход' }}</button>
                     {% if edit_expense %}
                     <a href="{{ url_for('expenses') }}" class="btn btn-outline-secondary">Отменить</a>
                     {% endif %}
