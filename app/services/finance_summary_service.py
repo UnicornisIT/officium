@@ -9,7 +9,7 @@ from extensions import db
 from app.models import Debt, Income, Expense, Payment
 from app.services.goal_service import empty_goal_transfers, month_transfers
 from app.services.expense_title_service import clean_expense_title, expense_group_key
-from app.services.debt_math_service import calculate_period_interest
+from app.services.mortgage_interest_service import mortgage_month_interest
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS
 
 
@@ -217,6 +217,8 @@ def _with_finance_insights(summary):
     )
 
     summary.update({
+        'mortgage_interest_is_estimate': month_start > today,
+        'mortgage_interest_as_of': min(today, month_end),
         'cashflow': {
             'total_outflow': total_outflow,
             'goal_transfers_net': goal_transfers_net,
@@ -421,11 +423,8 @@ def get_finance_summary(user_id, year=None, month=None):
         mortgage_debts = [d for d in debts if d.debt_type == 'mortgage']
         total_mortgage_remaining = sum((_debt_total(d, today) for d in mortgage_debts), ZERO)
         total_mortgage_original = sum((_money_value(d.total_amount) for d in mortgage_debts), ZERO)
-        total_mortgage_interest = sum(
-            (calculate_period_interest(d, d.remaining_amount, month_start, month_end)
-            for d in mortgage_debts
-            if d.interest_rate_for(month_start) is not None),
-            ZERO,
+        total_mortgage_interest = mortgage_month_interest(
+            mortgage_debts, month_start, month_end, today
         )
 
         return _with_finance_insights({
@@ -526,11 +525,8 @@ def get_finance_summary(user_id, year=None, month=None):
     mortgage_debts = [d for d in active_debts if d.debt_type == 'mortgage']
     total_mortgage_remaining = sum((_debt_total(d, today) for d in mortgage_debts), ZERO)
     total_mortgage_original = sum((_money_value(d.total_amount) for d in mortgage_debts), ZERO)
-    total_mortgage_interest = sum(
-        (calculate_period_interest(d, d.remaining_amount, month_start, month_end)
-        for d in mortgage_debts
-        if d.interest_rate_for(month_start) is not None),
-        ZERO,
+    total_mortgage_interest = mortgage_month_interest(
+        mortgage_debts, month_start, month_end, today
     )
 
     return _with_finance_insights({

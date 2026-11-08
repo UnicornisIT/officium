@@ -110,6 +110,31 @@ def get_debt_state(debt, as_of=None, payments=None):
     return _AccrualEngine(debt, payments).run(as_of)
 
 
+def calculate_accrued_interest(debt, period_start, period_end, payments=None):
+    """Interest generated in [start, end), including amounts already repaid.
+
+    Clip the engine's unrounded segments before rounding the period total;
+    summing displayed segment amounts would introduce kopeck drift.
+    """
+    if period_end <= period_start:
+        return ZERO
+    engine = _AccrualEngine(
+        debt, _load_payments(debt) if payments is None else payments
+    )
+    engine.run(period_end)
+    total = Decimal('0')
+    for segment in engine.interest_segments:
+        start = max(period_start, segment['start'])
+        end = min(period_end, segment['end'])
+        if end > start:
+            total += (
+                segment['interest']
+                * Decimal((end - start).days)
+                / Decimal(segment['days'])
+            )
+    return money(total)
+
+
 def cached_debt_state(debt, as_of=None):
     """get_debt_state memoized for the current request.
 
@@ -251,6 +276,7 @@ class _AccrualEngine:
         self.split_anchor = None
         self.split_plan = None
         self.periods = []
+        self.interest_segments = []
         self.cycles = []
         self.allocations = {}
 
@@ -364,6 +390,8 @@ class _AccrualEngine:
                 day = segment_end
 
     def _record_period(self, kind, segment, base):
+        if kind == 'interest':
+            self.interest_segments.append(segment)
         self.periods.append({
             'kind': kind,
             'start': segment['start'],

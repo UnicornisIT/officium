@@ -212,7 +212,8 @@ def init_app(app):
         ]
         month_options = list(enumerate(month_names, start=1))
 
-        return render_template('finance.html',
+        return render_template(
+            'finance.html',
             active_count=len(summary['active_debts']),
             total_remaining=summary['total_remaining'],
             total_principal=summary['total_principal'],
@@ -227,13 +228,19 @@ def init_app(app):
             free_balance=summary['free_balance'],
             goal_transfers=summary['goal_transfers'],
             days_left=summary['days_left'],
-            daily_budget=(summary['free_balance'] / summary['days_left'] if summary['days_left'] > 0 else 0),
+            daily_budget=(
+                summary['free_balance'] / summary['days_left']
+                if summary['days_left'] > 0
+                else 0
+            ),
             archived_count=summary['archived_count'],
             total_debts=summary['total_debts'],
             mortgage_debts=summary['mortgage_debts'],
             mortgage_count=summary['mortgage_count'],
             total_mortgage_remaining=summary['total_mortgage_remaining'],
             total_mortgage_interest=summary['total_mortgage_interest'],
+            mortgage_interest_is_estimate=summary['mortgage_interest_is_estimate'],
+            mortgage_interest_as_of=summary['mortgage_interest_as_of'],
             incomes_this_month=summary['incomes_this_month'],
             expenses_this_month=summary['expenses_this_month'],
             payments_this_month=summary['payments_this_month'],
