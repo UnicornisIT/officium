@@ -305,7 +305,7 @@ def split_schedule_rows(debt, today=None):
         return None
 
     rows = []
-    payment_days = _split_payment_days(debt, paid_payments)
+    payment_days = _split_payment_days(debt, paid_payments, today)
     outstanding_remaining = (remaining + future_total).quantize(MONEY, rounding=ROUND_HALF_UP)
     legacy_remaining = max(outstanding_remaining - purchases_total, Decimal('0.00')).quantize(MONEY, rounding=ROUND_HALF_UP) if purchases else outstanding_remaining
     running_remaining = (outstanding_remaining + paid_total).quantize(MONEY, rounding=ROUND_HALF_UP)
@@ -347,7 +347,7 @@ def split_schedule_rows(debt, today=None):
         payment_date = (
             _next_split_cycle_date(last_known_legacy_date, payment_days)
             if last_known_legacy_date
-            else _next_split_payment_date(debt, paid_payments, payment_days)
+            else _next_split_payment_date(debt, paid_payments, payment_days, today)
         )
         for payment_amount in _split_planned_installments(debt, legacy_left, installment_amount):
             _add_split_planned_amount(planned_by_date, payment_date, payment_amount, 'Текущий сплит')
@@ -434,7 +434,7 @@ def _payment_principal(payment):
     return Decimal(str(value or 0)).quantize(MONEY, rounding=ROUND_HALF_UP)
 
 
-def _split_payment_days(debt, paid_payments):
+def _split_payment_days(debt, paid_payments, today):
     last_payment_date = max((payment.payment_date for payment in paid_payments), default=None)
     if debt.next_payment_date and (last_payment_date is None or debt.next_payment_date > last_payment_date):
         anchor_day = debt.next_payment_date.day
@@ -443,20 +443,20 @@ def _split_payment_days(debt, paid_payments):
     elif debt.next_payment_date:
         anchor_day = debt.next_payment_date.day
     else:
-        anchor_day = financial_today().day
+        anchor_day = today.day
 
     second_day = anchor_day + 15 if anchor_day <= 15 else anchor_day - 15
     return sorted({max(min(anchor_day, 31), 1), max(min(second_day, 31), 1)})
 
 
-def _next_split_payment_date(debt, paid_payments, payment_days):
+def _next_split_payment_date(debt, paid_payments, payment_days, today):
     last_payment_date = max((payment.payment_date for payment in paid_payments), default=None)
     if debt.next_payment_date and (last_payment_date is None or debt.next_payment_date > last_payment_date):
         return debt.next_payment_date
 
     base_date = last_payment_date or debt.next_payment_date
     if not base_date:
-        return _next_split_cycle_date_after(financial_today(), payment_days, include_same=True)
+        return _next_split_cycle_date_after(today, payment_days, include_same=True)
     return _next_split_cycle_date_after(base_date, payment_days)
 
 

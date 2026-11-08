@@ -6,13 +6,14 @@ the net transfer (deposits − withdrawals) separately from expenses.
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from decimal import ROUND_CEILING, Decimal
 
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func
 
-from app.models import EmergencyFundTransaction, FinancialGoal, FinancialGoalTransaction
+from app.models import EmergencyFundTransaction, FinancialGoal, FinancialGoalTransaction, User
+from app.time_utils import financial_today
 from extensions import db
 
 
@@ -233,7 +234,7 @@ def forecast(current_balance, target_amount, history, monthly_contribution, toda
 
     The pace is the average net transfer over the last PACE_MONTHS full months.
     """
-    today = today or date.today()
+    today = today or financial_today()
     target = _money(target_amount)
     current_balance = _money(current_balance)
     gap = max(target - current_balance, ZERO)
@@ -314,7 +315,7 @@ def month_transfers(user_id, month_start, month_end):
 
 def goal_overview(user_id, plan_goals, today=None):
     """Cards for the goals page from the plan's goal settings and the full history."""
-    today = today or date.today()
+    today = today or financial_today(db.session.get(User, user_id))
     cards = []
     for plan_goal in plan_goals:
         ref = get_goal_ref(user_id, goal_key(plan_goal['id']))

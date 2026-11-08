@@ -208,7 +208,7 @@ def _stop_monthly_series(expense, stopped_from):
         Expense.monthly_group_id == expense.monthly_group_id,
         Expense.monthly_is_automatic.is_(True),
         Expense.expense_date >= stop.stopped_from,
-        Expense.expense_date > _today(),
+        Expense.expense_date > _today(expense),
         Expense.id != expense.id,
     ).all()
     for copy in future_copies:

@@ -1,7 +1,6 @@
 """Owner-scoped vehicle operations. Audit records contain identifiers only."""
 import re
-from datetime import timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import timedelta
 
 from flask import abort, current_app
 from sqlalchemy import or_
@@ -10,7 +9,7 @@ from sqlalchemy import inspect
 
 from app.models import Expense, RegistrationCountry, Vehicle, VehicleOdometerReading
 from app.services.personal_access_service import can_use_personal_cabinet
-from app.time_utils import utc_now
+from app.time_utils import calendar_timezone, financial_today, utc_now
 from app.vehicle_catalog import VEHICLE_CATALOG
 from app.utils import parse_date, record_activity
 from extensions import db
@@ -23,13 +22,11 @@ ARCHIVE_REASONS = dict(sold='Продано', written_off='Списано', othe
 
 
 def app_timezone():
-    name = current_app.config['APP_TIMEZONE']
-    zone = timezone.utc if name.upper() == 'UTC' else timezone(timedelta(hours=3)) if name == 'Europe/Moscow' else ZoneInfo(name)
-    return zone
+    return calendar_timezone()
 
 
-def today():
-    return utc_now().astimezone(app_timezone()).date()
+def today(owner=None):
+    return financial_today(owner)
 
 
 def require_enabled():
@@ -185,7 +182,7 @@ def update_mileage_batch(user, data):
         for vehicle in vehicles:
             value = data.get(f'km_{vehicle.id}', '').strip()
             if value:
-                add_odometer_reading(user, vehicle.id, today().isoformat(), value, commit=False)
+                add_odometer_reading(user, vehicle.id, today(user).isoformat(), value, commit=False)
         db.session.commit()
 
 
@@ -227,7 +224,7 @@ def add_odometer_reading(user, vehicle_id, reading_date, odometer_km, source='ma
     if vehicle.kind == 'trailer':
         raise ValueError('У прицепа нет собственного пробега.')
     day = parse_date(reading_date, 'Дата замера', required=True)
-    if day > today():
+    if day > today(user):
         raise ValueError('Дата замера не может быть в будущем.')
     km = _integer(odometer_km, 'Пробег')
     if source not in ('manual', 'service', 'fuel', 'bot'):
@@ -267,7 +264,7 @@ def needs_mileage_update(vehicle, today):
 
 def due_vehicles(user, *, day=None):
     _user(user)
-    day = day if day is not None else today()
+    day = day if day is not None else today(user)
     return [v for v in Vehicle.query.filter_by(user_id=user.id, archived_at=None).options(selectinload(Vehicle.readings)).all() if needs_mileage_update(v, day)]
 
 
@@ -279,7 +276,7 @@ def snooze(user, vehicle_ids, *, days=3, commit=True):
     for vehicle in vehicles:
         _writable(vehicle)
     for vehicle in vehicles:
-        vehicle.mileage_snooze_until = today() + timedelta(days=days)
+        vehicle.mileage_snooze_until = today(user) + timedelta(days=days)
         _audit(user, 'vehicle_snooze', vehicle, False)
     if commit:
         db.session.commit()
@@ -301,7 +298,7 @@ def list_vehicles(user, args):
             Vehicle.make.ilike(search, escape='\\'), Vehicle.plate.ilike(search, escape='\\')))
     if args.get('attention') == '1':
         from app.services.vehicle_maintenance_service import technical_condition
-        day = today()
+        day = today(user)
         ids = [v.id for v in query.all() if technical_condition(v, day=day) in ('soon', 'overdue')]
         query = query.filter(Vehicle.id.in_(ids))
     return query.order_by(Vehicle.created_at.desc(), Vehicle.id.desc()).paginate(page=max(args.get('page', 1, type=int) or 1, 1), per_page=12, error_out=False)

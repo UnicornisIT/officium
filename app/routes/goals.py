@@ -1,11 +1,10 @@
-from datetime import date
-
 from flask import abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app.routes.main import goal_operation_form_values
 from app.services import goal_service
 from app.services.financial_plan_service import build_financial_plan, get_financial_plan_preference
+from app.time_utils import financial_today
 from app.utils import is_local_test_user, record_goal_activity
 from extensions import db
 
@@ -36,7 +35,7 @@ def init_app(app):
     def goals():
         if is_local_test_user():
             return render_template('goals.html', cards=[], is_demo=True)
-        cards = goal_service.goal_overview(current_user.id, _plan_goals(), date.today())
+        cards = goal_service.goal_overview(current_user.id, _plan_goals(), financial_today(current_user))
         return render_template('goals.html', cards=cards, is_demo=False)
 
     @app.route('/goals/<key>')
@@ -47,7 +46,7 @@ def init_app(app):
             item for item in _plan_goals()
             if goal_service.goal_key(item['id']) == ref.key
         )
-        card = goal_service.goal_overview(current_user.id, [plan_goal], date.today())[0]
+        card = goal_service.goal_overview(current_user.id, [plan_goal], financial_today(current_user))[0]
         history = goal_service.operation_history(ref)
         return render_template(
             'goal_detail.html',
@@ -55,7 +54,7 @@ def init_app(app):
             history=history,
             months=goal_service.monthly_summary(history),
             operation_action=_operation_action(ref),
-            today=date.today(),
+            today=financial_today(current_user),
         )
 
     @app.route('/goals/<key>/operations/<int:transaction_id>/edit', methods=['POST'])

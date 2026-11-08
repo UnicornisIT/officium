@@ -348,7 +348,7 @@ class VehicleServiceTestCase(unittest.TestCase):
         self.assertFalse(service.needs_mileage_update(vehicle, day+timedelta(days=40)))
 
     def test_timezone_today(self):
-        with patch.object(service, 'utc_now', return_value=datetime(2026, 10, 26, 22, 30, tzinfo=timezone.utc)):
+        with patch('app.time_utils.utc_now', return_value=datetime(2026, 10, 26, 22, 30, tzinfo=timezone.utc)):
             self.assertEqual(service.today(), date(2026, 10, 27))
 
     def test_tractor_trailer_atomic_creation_and_restrictions(self):

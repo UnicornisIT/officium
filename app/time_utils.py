@@ -11,7 +11,8 @@ _calendar_owner = ContextVar('calendar_owner', default=None)
 
 def utc_now():
     """Return the current instant as a timezone-aware UTC datetime."""
-    return datetime.now(timezone.utc)
+    provider = current_app.config.get('UTC_NOW_PROVIDER') if has_app_context() else None
+    return as_utc(provider()) if provider is not None else datetime.now(timezone.utc)
 
 
 def as_utc(value):
@@ -29,14 +30,25 @@ def financial_today(owner=None, *, now=None):
         from flask_login import current_user
 
         user = current_user
-    zone_name = getattr(user, 'timezone', None)
-    if not zone_name:
-        zone_name = current_app.config.get('APP_TIMEZONE', 'UTC') if has_app_context() else 'Europe/Moscow'
-    try:
-        zone = ZoneInfo(zone_name)
-    except (ZoneInfoNotFoundError, ValueError, TypeError):
-        zone = timezone.utc
-    return as_utc(now or utc_now()).astimezone(zone).date()
+    zone = calendar_timezone(user)
+    return as_utc(now if now is not None else utc_now()).astimezone(zone).date()
+
+
+def calendar_timezone(user=None):
+    """Account timezone, then APP_TIMEZONE, then UTC for invalid settings."""
+    app_zone = (
+        current_app.config.get('APP_TIMEZONE', 'UTC') if has_app_context() else 'UTC'
+    )
+    for name in (getattr(user, 'timezone', None), app_zone):
+        if not name:
+            continue
+        if name == 'UTC':
+            return timezone.utc
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError, TypeError):
+            continue
+    return timezone.utc
 
 
 def account_calendar(function):
