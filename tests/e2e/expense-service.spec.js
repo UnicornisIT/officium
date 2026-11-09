@@ -62,10 +62,24 @@ for (const width of [1440, 390]) {
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           document.scrollingElement.scrollTop = 0;
         });
-        // Subpixel layout can leave Chromium reporting 1px at the document top.
-        await expect.poll(() => page.evaluate(() => Math.abs(window.scrollY))).toBeLessThanOrEqual(1);
+        // Desktop screenshots use the real sticky header and therefore require
+        // the document top. Chromium can keep a Telegram visual viewport panned
+        // after the virtual keyboard closes, so mobile captures place sticky
+        // bars in document flow instead of depending on that viewport offset.
+        if (width !== 390) {
+          await expect.poll(() => page.evaluate(() => Math.abs(window.scrollY))).toBeLessThanOrEqual(1);
+        }
         const file = path.join(root, `${width}-${theme}-${name}-${phase}.png`);
-        await page.screenshot({ path: file, fullPage: true, animations: 'disabled' });
+        await page.screenshot({
+          path: file,
+          fullPage: true,
+          animations: 'disabled',
+          style: width === 390 ? `
+            body { position: relative !important; }
+            .telegram-app-bar { position: relative !important; }
+            .telegram-bottom-nav { position: absolute !important; }
+          ` : undefined,
+        });
         await testInfo.attach(`${name}-${phase}`, { path: file, contentType: 'image/png' });
         const before = file.replace(/-after\.png$/, '-before.png');
         if (phase === 'after' && fs.existsSync(before)) {
