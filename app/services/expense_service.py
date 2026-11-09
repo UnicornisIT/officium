@@ -8,7 +8,7 @@ Extra keyword fields are rejected until explicitly supported.
 
 import uuid
 
-from app.models import Expense, MonthlyExpenseStop, User, Vehicle, VehicleRefueling, VehicleServiceRecord, VehicleDocument
+from app.models import Debt, Expense, MonthlyExpenseStop, User, Vehicle, VehicleRefueling, VehicleServiceRecord, VehicleDocument
 from app.services.monthly_expenses_service import (
     find_monthly_expense_for_month,
     generate_monthly_expenses_from_start_date,
@@ -80,6 +80,20 @@ def _check_options(extra_fields):
         raise TypeError('Unsupported expense options: ' + ', '.join(sorted(extra_fields)))
 
 
+def _repayment_debt(user_id, debt_id, category):
+    if debt_id in (None, ''):
+        return None
+    try:
+        debt_id = int(debt_id)
+    except (TypeError, ValueError):
+        raise ValueError('Выберите корректный долг для погашения.') from None
+    if category != 'loans':
+        raise ValueError('Связать погашение долга можно только с категорией «Кредиты».')
+    if not Debt.query.filter_by(id=debt_id, user_id=user_id).first():
+        raise ValueError('Выберите свой долг для погашения.')
+    return debt_id
+
+
 def _owned_expense(user_id, expense_id):
     return Expense.query.filter_by(id=expense_id, user_id=user_id).first_or_404()
 
@@ -107,7 +121,7 @@ def _save(expense, action, commit, defer_commit=False):
 
 
 def create_expense(*, user_id, amount, title, expense_date, category=None,
-                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=None, vehicle_cost_kind=None, defer_commit=False, **extra_fields):
+                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=None, vehicle_cost_kind=None, defer_commit=False, repayment_debt_id=None, **extra_fields):
     _check_options(extra_fields)
     if vehicle_cost_kind is not None:
         from app.services.vehicle_cost_service import KINDS
@@ -120,6 +134,7 @@ def create_expense(*, user_id, amount, title, expense_date, category=None,
         category = category or 'transport'
     values = _validate(amount=amount, category=category, title=title, expense_date=expense_date,
                        payment_method=payment_method, comment=comment)
+    values['repayment_debt_id'] = _repayment_debt(user_id, repayment_debt_id, category)
     # Deferred writes keep monthly copies atomic with the caller's receipt upload.
     if is_monthly and not commit and not defer_commit:
         raise ValueError('Monthly expenses require commit=True')
@@ -131,11 +146,14 @@ def create_expense(*, user_id, amount, title, expense_date, category=None,
 
 
 def update_expense(*, user_id, expense_id, amount, category, title, expense_date,
-                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=_UNCHANGED, defer_commit=False, **extra_fields):
+                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=_UNCHANGED, defer_commit=False, repayment_debt_id=_UNCHANGED, **extra_fields):
     _check_options(extra_fields)
     expense = _owned_expense(user_id, expense_id)
     values = _validate(amount=amount, category=category, title=title, expense_date=expense_date,
                        payment_method=payment_method, comment=comment)
+    if repayment_debt_id is _UNCHANGED:
+        repayment_debt_id = expense.repayment_debt_id if category == 'loans' else None
+    values['repayment_debt_id'] = _repayment_debt(user_id, repayment_debt_id, category)
     vehicle_id = expense.vehicle_id if vehicle_id is _UNCHANGED else (vehicle_id or None)
     _check_vehicle_update(expense, vehicle_id, values['amount'])
     # Deferred writes keep monthly copies atomic with the caller's receipt upload.
@@ -208,7 +226,7 @@ def _stop_monthly_series(expense, stopped_from):
         Expense.monthly_group_id == expense.monthly_group_id,
         Expense.monthly_is_automatic.is_(True),
         Expense.expense_date >= stop.stopped_from,
-        Expense.expense_date > _today(),
+        Expense.expense_date > _today(expense),
         Expense.id != expense.id,
     ).all()
     for copy in future_copies:

@@ -70,8 +70,8 @@
             </div>
             <i class="bi bi-dash-lg finance-equation__sign"></i>
             <div class="finance-equation__item">
-                <span>Долги</span>
-                <strong>{{ total_payments|money }}</strong>
+                <span>{{ 'Долги (сверх расходов)' if cashflow.payments_in_expenses else 'Долги' }}</span>
+                <strong>{{ cashflow.payments_outside_expenses|money }}</strong>
             </div>
             <i class="bi bi-dash-lg finance-equation__sign"></i>
             <div class="finance-equation__item" data-goal-transfers>
@@ -447,10 +447,10 @@
             <div class="col-12 col-lg-3">
                 <div class="finance-load">
                     <div class="finance-load__top">
-                        <span>Проценты за месяц</span>
-                        <strong>{{ total_mortgage_interest|money }}</strong>
+                        <span>{{ 'Проценты за месяц — оценка' if mortgage_interest_is_estimate else 'Начислено процентов за месяц' }}</span>
+                        <strong>{{ total_mortgage_interest|money if total_mortgage_interest is not none else 'Нет оценки' }}</strong>
                     </div>
-                    <div class="finance-load__meta">Оценка по ипотечным ставкам</div>
+                    <div class="finance-load__meta">{% if mortgage_interest_is_estimate %}Оценка по графику при своевременных платежах{% else %}Расчёт по истории до {{ mortgage_interest_as_of.strftime('%d.%m.%Y') }} (не включая эту дату){% endif %}; не банковская выписка</div>
                 </div>
             </div>
         </div>

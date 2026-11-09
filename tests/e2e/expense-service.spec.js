@@ -43,12 +43,27 @@ for (const width of [1440, 390]) {
       const capture = async name => {
         await page.evaluate(() => document.fonts.ready);
         // Filling a low field scrolls the page; normalize fixed header placement.
-        await page.evaluate(() => {
-          document.activeElement.blur();
+        await page.evaluate(() => document.activeElement.blur());
+        // The viewport helper clears its active field on a short focusout delay.
+        // Wait for that cleanup before scrolling, otherwise its queued reveal can
+        // move the page back to the field and make the screenshot nondeterministic.
+        await expect.poll(() => page.evaluate(() => (
+          document.activeElement === document.body
+          && !document.body.classList.contains('keyboard-open')
+        ))).toBe(true);
+        await page.evaluate(async () => {
+          // Disable scroll anchoring while positioning the page for a full-page
+          // capture; Chromium can otherwise restore the previously focused row.
+          document.documentElement.style.overflowAnchor = 'none';
+          document.body.style.overflowAnchor = 'none';
           document.documentElement.style.scrollBehavior = 'auto';
-          window.scrollTo(0, 0);
+          document.scrollingElement.scrollTop = 0;
+          window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          document.scrollingElement.scrollTop = 0;
         });
-        await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+        // Subpixel layout can leave Chromium reporting 1px at the document top.
+        await expect.poll(() => page.evaluate(() => Math.abs(window.scrollY))).toBeLessThanOrEqual(1);
         const file = path.join(root, `${width}-${theme}-${name}-${phase}.png`);
         await page.screenshot({ path: file, fullPage: true, animations: 'disabled' });
         await testInfo.attach(`${name}-${phase}`, { path: file, contentType: 'image/png' });

@@ -445,7 +445,7 @@ class CreditCardTestCase(unittest.TestCase):
         self.assertEqual(state['total'], D('0.00'))
 
     def test_grace_balance_not_repaid_charges_interest_from_the_start(self):
-        state = get_debt_state(self.card(), as_of=date(2026, 9, 5), payments=[
+        state = get_debt_state(self.card(grace_policy='retroactive'), as_of=date(2026, 9, 5), payments=[
             pay(date(2026, 6, 20), '3000'),
             pay(date(2026, 7, 20), '3000'),
             pay(date(2026, 8, 20), '3000'),
@@ -469,7 +469,7 @@ class CreditCardTestCase(unittest.TestCase):
         self.assertEqual(state['accrued_interest'], D('0.00'))
         self.assertEqual(state['grace_interest_pending'], D('739.73'))
 
-    def test_card_without_grace_period_has_no_interest_but_minimum_is_enforced(self):
+    def test_card_without_known_grace_requires_reconciliation(self):
         card = self.card(grace_period_end_date=None)
 
         state = get_debt_state(card, as_of=date(2026, 7, 5), payments=[])
@@ -478,6 +478,61 @@ class CreditCardTestCase(unittest.TestCase):
         self.assertEqual(state['accrued_interest'], D('0.00'))
         self.assertEqual(state['overdue_principal'], D('3000.00'))
         self.assertEqual(state['penalty'], D('16.44'))
+        self.assertEqual(state['calculation_status'], 'needs_reconciliation')
+        self.assertFalse(state['data_consistent'])
+        self.assertTrue(state['diagnostics'])
+
+    def test_explicit_no_grace_accrues_interest(self):
+        card = self.card(grace_period_end_date=None, grace_policy='no_grace')
+        state = get_debt_state(card, as_of=date(2026, 6, 11), payments=[])
+        self.assertEqual(state['accrued_interest'], D('246.58'))
+        self.assertEqual(state['calculation_status'], 'calculated')
+        self.assertEqual(state, get_debt_state(card, as_of=date(2026, 6, 11), payments=[]))
+
+    def test_expired_grace_requires_contract_rule(self):
+        state = get_debt_state(self.card(), as_of=date(2026, 9, 5), payments=[])
+        self.assertEqual(state['calculation_status'], 'needs_reconciliation')
+        self.assertFalse(any(p['kind'] == 'interest' for p in state['periods']))
+
+    def test_forward_rule_never_charges_grace_days(self):
+        state = get_debt_state(self.card(grace_policy='forward'), as_of=date(2026, 9, 5), payments=[])
+        self.assertEqual(state['accrued_interest'], D('98.63'))
+        self.assertTrue(all(p['start'] >= date(2026, 9, 1) for p in state['periods'] if p['kind'] == 'interest'))
+
+    def test_missing_rate_requires_reconciliation(self):
+        state = get_debt_state(self.card(grace_period_end_date=None, grace_policy='no_grace', interest_rate=None), as_of=date(2026, 6, 11), payments=[])
+        self.assertEqual(state['calculation_status'], 'needs_reconciliation')
+
+    def test_partial_payment_does_not_choose_retroactive_rule(self):
+        state = get_debt_state(self.card(), as_of=date(2026, 9, 5), payments=[pay(date(2026, 8, 20), '3000')])
+        self.assertEqual(state['calculation_status'], 'needs_reconciliation')
+        self.assertEqual(state['accrued_interest'], D('0.00'))
+
+    def test_zero_rate_without_grace_is_a_real_zero(self):
+        state = get_debt_state(self.card(grace_period_end_date=None, grace_policy='no_grace', interest_rate=D('0')), as_of=date(2026, 6, 11), payments=[])
+        self.assertEqual(state['calculation_status'], 'calculated')
+        self.assertEqual(state['accrued_interest'], D('0.00'))
+
+    def test_expired_grace_before_tracking_requires_reconciliation(self):
+        state = get_debt_state(self.card(accrual_start_date=date(2026, 9, 2)), as_of=date(2026, 9, 5), payments=[])
+        self.assertEqual(state['calculation_status'], 'needs_reconciliation')
+
+    def test_bank_manual_split_does_not_establish_unknown_contract(self):
+        payment = pay(date(2026, 6, 10), '3100', principal_amount=D('3000'), interest_amount=D('100'), breakdown_source='manual')
+        state = get_debt_state(self.card(grace_period_end_date=None, opening_principal_amount=D('30000'), remaining_amount=D('27000')), as_of=date(2026, 6, 11), payments=[payment])
+        self.assertEqual(state['principal'], D('27000.00'))
+        self.assertEqual(state['allocations'][payment.id]['interest'], D('100.00'))
+        self.assertEqual(state['calculation_status'], 'needs_reconciliation')
+
+    def test_retroactive_rule_requires_period_start(self):
+        state = get_debt_state(self.card(grace_policy='retroactive', interest_period_start_date=None), as_of=date(2026, 9, 5), payments=[])
+        self.assertEqual(state['calculation_status'], 'needs_reconciliation')
+
+    def test_full_repayment_on_grace_end_waives_interest(self):
+        state = get_debt_state(self.card(grace_policy='retroactive', minimum_payment=D('0'), penalty_rate=None), as_of=date(2026, 9, 1), payments=[pay(date(2026, 8, 31), '30000')])
+        self.assertEqual(state['accrued_interest'], D('0.00'))
+        self.assertEqual(state['principal'], D('0.00'))
+        self.assertEqual(state['calculation_status'], 'calculated')
 
 
 class SplitTestCase(unittest.TestCase):

@@ -1,16 +1,15 @@
 """Service for managing monthly (recurring) expenses."""
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 import uuid
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil.relativedelta import relativedelta
 from flask import current_app
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Expense, MonthlyExpenseStop
-from app.time_utils import as_utc
+from app.models import Expense, MonthlyExpenseStop, User
+from app.time_utils import as_utc, financial_today
 from extensions import db
 
 
@@ -31,36 +30,16 @@ def monthly_series_stopped(user_id, monthly_group_id, month, *, session=None):
     return stop is not None and _month_start(month) >= stop.stopped_from
 
 
-def _today():
-    configured = None
+def _today(owner=None):
     try:
         configured = current_app.config.get('MONTHLY_EXPENSES_TODAY')
     except RuntimeError:
         configured = None
-
     if isinstance(configured, date):
         return configured
     if isinstance(configured, str) and configured:
         return date.fromisoformat(configured)
-
-    try:
-        timezone_name = current_app.config.get('APP_TIMEZONE', 'UTC')
-    except RuntimeError:
-        timezone_name = 'UTC'
-    # UTC and Europe/Moscow (UTC+03:00 since 2014) are resolved explicitly so
-    # they work on Windows hosts without IANA tzdata.
-    if timezone_name.upper() == 'UTC':
-        return datetime.now(timezone.utc).date()
-    if timezone_name == 'Europe/Moscow':
-        return datetime.now(timezone(timedelta(hours=3))).date()
-    try:
-        return datetime.now(ZoneInfo(timezone_name)).date()
-    except ZoneInfoNotFoundError:
-        try:
-            current_app.logger.error('Unknown APP_TIMEZONE %s; using the server date', timezone_name)
-        except RuntimeError:
-            pass
-        return date.today()
+    return financial_today(owner)
 
 
 def _month_key(value):
@@ -132,6 +111,7 @@ def _create_monthly_copy(settings_expense, origin_expense, target_month, anchor_
         title=settings_expense.title,
         expense_date=_date_in_month(anchor_day, target_month),
         payment_method=settings_expense.payment_method,
+        repayment_debt_id=settings_expense.repayment_debt_id,
         comment=settings_expense.comment,
         is_monthly=True,
         monthly_is_automatic=True,
@@ -262,6 +242,7 @@ _MONTHLY_COPY_FIELDS = (
     "category",
     "title",
     "payment_method",
+    "repayment_debt_id",
     "comment",
     "vehicle_id",
     "vehicle_cost_kind",
@@ -278,7 +259,7 @@ def snapshot_monthly_expense_settings(expense):
 
 def refresh_future_monthly_expenses(source_expense, previous_settings):
     """Update future generated copies that still use the replaced settings."""
-    cutoff = max(_today(), source_expense.expense_date)
+    cutoff = max(_today(source_expense), source_expense.expense_date)
     copies = Expense.query.filter(
         Expense.user_id == source_expense.user_id,
         Expense.monthly_group_id == source_expense.monthly_group_id,
@@ -330,7 +311,7 @@ def generate_monthly_expenses_from_start_date(expense_id, end_month=None, *, com
     group_expenses = _group_expenses(source_expense.user_id, source_expense.monthly_group_id)
     origin_expense = _pick_origin_expense(group_expenses)
     start_month = _month_key(origin_expense.expense_date)
-    end_month = _month_key(end_month or _today())
+    end_month = _month_key(end_month or _today(source_expense))
     return generate_monthly_expenses_between(
         source_expense.user_id,
         source_expense.monthly_group_id,
@@ -348,7 +329,8 @@ def generate_monthly_expenses(user_id=None, target_month=None):
     Existing groups are deduplicated in code by user_id and monthly_group_id,
     and each generated month is checked by generated_for_month and expense_date.
     """
-    target_month = _month_key(target_month or _today())
+    explicit_month = target_month
+    target_month = _month_key(target_month or _today(db.session.get(User, user_id) if user_id else None))
     stats = _stats(user_id=user_id, target_month=target_month)
 
     query = Expense.query.filter(
@@ -366,8 +348,9 @@ def generate_monthly_expenses(user_id=None, target_month=None):
         group_expenses = _group_expenses(group_user_id, monthly_group_id)
         origin_expense = _pick_origin_expense(group_expenses)
         source_expense = _pick_settings_expense(active_expenses)
+        group_target = _month_key(explicit_month or _today(source_expense))
         start_month = _month_key(origin_expense.expense_date)
-        if _month_start(start_month) > _month_start(target_month):
+        if _month_start(start_month) > _month_start(group_target):
             stats['skipped'] += 1
             continue
 
@@ -375,7 +358,7 @@ def generate_monthly_expenses(user_id=None, target_month=None):
             group_user_id,
             monthly_group_id,
             start_month,
-            target_month,
+            group_target,
             source_expense=source_expense,
         )
         stats['created'] += group_stats['created']
@@ -387,4 +370,4 @@ def generate_monthly_expenses(user_id=None, target_month=None):
 
 def create_monthly_expenses_for_new_month():
     """Generate missing monthly expenses for the current month."""
-    return generate_monthly_expenses(user_id=None, target_month=_today())
+    return generate_monthly_expenses()

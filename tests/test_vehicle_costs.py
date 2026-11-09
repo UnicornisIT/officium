@@ -70,7 +70,7 @@ class VehicleCostsTestCase(test_vehicle_service.VehicleServiceTestCase):
             comment='Учебный; "чек"\nстрока',
         )
         with patch(
-            "app.services.vehicle_service.utc_now",
+            "app.time_utils.utc_now",
             return_value=datetime(2026, 2, 28, 22, tzinfo=timezone.utc),
         ):
             report = costs.vehicle_report(self.owner)

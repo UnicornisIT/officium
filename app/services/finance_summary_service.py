@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -9,7 +10,7 @@ from extensions import db
 from app.models import Debt, Income, Expense, Payment
 from app.services.goal_service import empty_goal_transfers, month_transfers
 from app.services.expense_title_service import clean_expense_title, expense_group_key
-from app.services.debt_math_service import calculate_period_interest
+from app.services.mortgage_interest_service import mortgage_month_interest
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS
 
 
@@ -188,12 +189,36 @@ def _build_expense_title_breakdown(expense_items, total_expenses):
     return breakdown[:12]
 
 
+def _payment_expense_overlap(expenses, payments):
+    # Only an explicit debt link and an exact date/amount match identify the
+    # same cash movement. Consume matches so repeated entries cannot reuse it.
+    unmatched = Counter(
+        (payment.debt_id, payment.payment_date, _money_value(payment.amount))
+        for payment in payments
+    )
+    overlap = recurring_overlap = ZERO
+    for expense in expenses:
+        key = (expense.repayment_debt_id, expense.expense_date, _money_value(expense.amount))
+        if expense.category != 'loans' or key[0] is None or not unmatched[key]:
+            continue
+        unmatched[key] -= 1
+        overlap += key[2]
+        if expense.is_monthly:
+            recurring_overlap += key[2]
+    return overlap, recurring_overlap
+
+
 def _with_finance_insights(summary):
     expenses = summary.get('expenses_this_month', [])
     total_expenses = _money_value(summary.get('total_expenses', 0))
     total_incomes = _money_value(summary.get('total_incomes', 0))
     total_payments = _money_value(summary.get('total_payments', 0))
-    free_balance = _money_value(summary.get('free_balance', 0))
+    overlap, recurring_overlap = _payment_expense_overlap(
+        expenses, summary.get('payments_this_month', [])
+    )
+    goal_transfers_net = _money_value((summary.get('goal_transfers') or {}).get('net', 0))
+    total_outflow = total_expenses + total_payments - overlap
+    free_balance = total_incomes - total_outflow - goal_transfers_net
     month_start = summary.get('month_start')
     month_end = summary.get('month_end')
     today = summary.get('today') or financial_today()
@@ -201,24 +226,29 @@ def _with_finance_insights(summary):
     expense_items = [_expense_view(expense) for expense in expenses]
     recurring_expenses = [item for item in expense_items if item['is_monthly']]
     recurring_expenses_total = sum((item['amount'] for item in recurring_expenses), ZERO)
-    one_time_expenses_total = max(total_expenses - recurring_expenses_total, ZERO)
-    total_outflow = total_expenses + total_payments
-    required_outflow = recurring_expenses_total + total_payments
+    one_time_expenses_total = max(
+        total_expenses - recurring_expenses_total - (overlap - recurring_overlap), ZERO
+    )
+    required_outflow = recurring_expenses_total + total_payments - recurring_overlap
 
     month_days = _month_day_count(month_start, month_end) if month_start and month_end else 0
     elapsed_days = _elapsed_days(month_start, month_end, today) if month_start and month_end else 0
     is_current_month = bool(month_start and month_start.year == today.year and month_start.month == today.month)
     average_daily_expenses = total_expenses / elapsed_days if elapsed_days else ZERO
     projected_expenses = average_daily_expenses * month_days if is_current_month and elapsed_days else total_expenses
-    goal_transfers_net = _money_value((summary.get('goal_transfers') or {}).get('net', 0))
     projected_balance = (
-        total_incomes - projected_expenses - total_payments - goal_transfers_net
+        total_incomes - projected_expenses - total_payments + overlap - goal_transfers_net
         if is_current_month else free_balance
     )
 
     summary.update({
+        'free_balance': free_balance,
+        'mortgage_interest_is_estimate': month_start > today,
+        'mortgage_interest_as_of': min(today, month_end),
         'cashflow': {
             'total_outflow': total_outflow,
+            'payments_in_expenses': overlap,
+            'payments_outside_expenses': total_payments - overlap,
             'goal_transfers_net': goal_transfers_net,
             'recurring_expenses_total': recurring_expenses_total,
             'one_time_expenses_total': one_time_expenses_total,
@@ -413,7 +443,6 @@ def get_finance_summary(user_id, year=None, month=None):
         total_incomes = sum((_money_value(item.amount) for item in incomes_this_month), ZERO)
         total_expenses = sum((_money_value(item.amount) for item in expenses_this_month), ZERO)
         total_payments = sum((_money_value(item.amount) for item in payments_this_month), ZERO)
-        free_balance = total_incomes - total_expenses - total_payments
         debts = sorted(debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
         overdue_count = len([d for d in debts if _is_overdue(d, today)])
         nearest_debt = next((d for d in debts if _effective_debt_payment_date(d, today) and _effective_debt_payment_date(d, today) >= today), None)
@@ -421,11 +450,8 @@ def get_finance_summary(user_id, year=None, month=None):
         mortgage_debts = [d for d in debts if d.debt_type == 'mortgage']
         total_mortgage_remaining = sum((_debt_total(d, today) for d in mortgage_debts), ZERO)
         total_mortgage_original = sum((_money_value(d.total_amount) for d in mortgage_debts), ZERO)
-        total_mortgage_interest = sum(
-            (calculate_period_interest(d, d.remaining_amount, month_start, month_end)
-            for d in mortgage_debts
-            if d.interest_rate_for(month_start) is not None),
-            ZERO,
+        total_mortgage_interest = mortgage_month_interest(
+            mortgage_debts, month_start, month_end, today
         )
 
         return _with_finance_insights({
@@ -448,7 +474,6 @@ def get_finance_summary(user_id, year=None, month=None):
             'total_expenses': total_expenses,
             'total_payments': total_payments,
             'goal_transfers': empty_goal_transfers(),
-            'free_balance': free_balance,
             'days_left': (month_end - today).days if month_start.year == today.year and month_start.month == today.month else 0,
             'nearest_debt': nearest_debt,
             'overdue_count': overdue_count,
@@ -468,12 +493,12 @@ def get_finance_summary(user_id, year=None, month=None):
         # Пустой месяц не заменяем прошлым: test_deleting_archived_debt_does_not_change_displayed_month.
         incomes_this_month = Income.query.filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).all()
         expenses_this_month = Expense.query.filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).all()
-        # Архив исключён из сводки: test_archived_debt_payments_are_excluded_from_summary.
-        payments_this_month = Payment.query.join(Debt).filter(Debt.user_id == user_id, Debt.status == 'active', Payment.payment_date >= month_start, Payment.payment_date < month_end).all()
+        # Archiving changes obligations, not the history of recorded payments.
+        payments_this_month = Payment.query.join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).all()
 
         total_incomes = _money_value(Income.query.with_entities(func.coalesce(func.sum(Income.amount), 0)).filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).scalar())
         total_expenses = _money_value(Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0)).filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).scalar())
-        total_payments = _money_value(Payment.query.with_entities(func.coalesce(func.sum(Payment.amount), 0)).join(Debt).filter(Debt.user_id == user_id, Debt.status == 'active', Payment.payment_date >= month_start, Payment.payment_date < month_end).scalar())
+        total_payments = sum((_money_value(payment.amount) for payment in payments_this_month), ZERO)
         archived_count = Debt.query.filter_by(status='archived', user_id=user_id).count()
         total_debts = Debt.query.filter_by(user_id=user_id).count()
     except SQLAlchemyError:
@@ -510,7 +535,6 @@ def get_finance_summary(user_id, year=None, month=None):
     # Transfers to goals and the fund are not expenses, but the money set aside
     # is no longer free: subtract the month's net transfer separately.
     goal_transfers = month_transfers(user_id, month_start, month_end)
-    free_balance = total_incomes - total_expenses - total_payments - goal_transfers['net']
     active_debts = sorted(active_debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
     overdue_count = len([d for d in active_debts if _is_overdue(d, today)])
     archived_count = Debt.query.filter_by(status='archived', user_id=user_id).count()
@@ -526,11 +550,8 @@ def get_finance_summary(user_id, year=None, month=None):
     mortgage_debts = [d for d in active_debts if d.debt_type == 'mortgage']
     total_mortgage_remaining = sum((_debt_total(d, today) for d in mortgage_debts), ZERO)
     total_mortgage_original = sum((_money_value(d.total_amount) for d in mortgage_debts), ZERO)
-    total_mortgage_interest = sum(
-        (calculate_period_interest(d, d.remaining_amount, month_start, month_end)
-        for d in mortgage_debts
-        if d.interest_rate_for(month_start) is not None),
-        ZERO,
+    total_mortgage_interest = mortgage_month_interest(
+        mortgage_debts, month_start, month_end, today
     )
 
     return _with_finance_insights({
@@ -553,7 +574,6 @@ def get_finance_summary(user_id, year=None, month=None):
         'total_expenses': total_expenses,
         'total_payments': total_payments,
         'goal_transfers': goal_transfers,
-        'free_balance': free_balance,
         'days_left': days_left,
         'nearest_debt': nearest_debt,
         'overdue_count': overdue_count,

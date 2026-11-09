@@ -129,6 +129,7 @@ class Debt(db.Model):
     penalty_rate = db.Column(db.Numeric(5, 2), nullable=True)
     capitalize_interest = db.Column(db.Boolean, default=False, nullable=False)
     grace_period_end_date = db.Column(db.Date, nullable=True)
+    grace_policy = db.Column(db.String(20), nullable=True)
     accrual_start_date = db.Column(db.Date, nullable=True)
     opening_principal_amount = db.Column(db.Numeric(12, 2), nullable=True)
     payment_day = db.Column(db.SmallInteger, nullable=True)
@@ -285,8 +286,10 @@ class Debt(db.Model):
             'comment': self.comment,
             'status': self.status,
             'days_until_payment': days_until_payment,
-            'total_debt': float(accrual['total']),
-            'accrued_interest': float(accrual['accrued_interest']),
+            'total_debt': float(accrual['total']) if accrual['calculation_status'] == 'calculated' else None,
+            'accrued_interest': float(accrual['accrued_interest']) if accrual['calculation_status'] == 'calculated' else None,
+            'calculation_status': accrual['calculation_status'],
+            'grace_policy': self.grace_policy,
             'penalty': float(accrual['penalty']),
             'overdue_amount': float(accrual['overdue_amount']),
             'amount_to_clear_overdue': float(accrual['amount_to_clear_overdue']),
@@ -482,6 +485,12 @@ class Expense(db.Model):
     title = db.Column(db.String(150), nullable=False)
     expense_date = db.Column(db.Date, nullable=False)
     payment_method = db.Column(db.String(80), nullable=True)
+    repayment_debt_id = db.Column(
+        db.Integer,
+        db.ForeignKey('debts.id', name='fk_expenses_repayment_debt_id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
     comment = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
     
@@ -513,6 +522,7 @@ class Expense(db.Model):
             'expense_date': self.expense_date.strftime('%Y-%m-%d') if self.expense_date else None,
             'expense_date_display': self.expense_date.strftime('%d.%m.%Y') if self.expense_date else None,
             'payment_method': self.payment_method,
+            'repayment_debt_id': self.repayment_debt_id,
             'comment': self.comment,
             'created_at': self.created_at.strftime('%d.%m.%Y %H:%M') if self.created_at else None,
             'is_monthly': self.is_monthly,

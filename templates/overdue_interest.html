@@ -18,6 +18,11 @@
 <div class="alert alert-danger">{{ error }}</div>
 {% else %}
 
+{% if state.calculation_status == 'needs_reconciliation' %}
+<div class="alert alert-warning" role="status">
+    Требуется сверка. {% for message in state.diagnostics %}{{ message }} {% endfor %}
+</div>
+{% else %}
 {% if state.is_overdue %}
 <div class="alert alert-danger d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4" data-testid="overdue-clear-amount">
     <div>
@@ -71,7 +76,7 @@
             <div class="small text-muted">годовых, на весь основной долг</div>
             {% else %}
             <div class="fs-4 fw-semibold">—</div>
-            <div class="small text-muted">{% if debt.debt_type == 'split' %}по сплиту проценты не начисляются{% elif debt.debt_type == 'credit_card' %}льготный период не задан — проценты не начисляются{% else %}ставка не задана{% endif %}</div>
+            <div class="small text-muted">{% if debt.debt_type == 'split' %}по сплиту проценты не начисляются{% elif debt.debt_type == 'credit_card' %}условия расчёта требуют сверки{% else %}ставка не задана{% endif %}</div>
             {% endif %}
         </div>
     </div>
@@ -190,5 +195,6 @@
         <li>Расчёт строится по введённым параметрам долга и истории платежей. Точные суммы по договору сверяйте с банком.</li>
     </ul>
 </div>
+{% endif %}
 {% endif %}
 {% endblock %}

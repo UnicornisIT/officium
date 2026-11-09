@@ -27,16 +27,12 @@ class MonthlyExpenseTimestampTestCase(unittest.TestCase):
     def test_today_without_app_context_uses_utc(self):
         fixed_now = datetime(2026, 5, 31, 22, 30, tzinfo=timezone.utc)
 
-        class FixedDateTime(datetime):
-            @classmethod
-            def now(cls, tz=None):
-                return fixed_now.astimezone(tz) if tz else fixed_now.replace(tzinfo=None)
-
-        with patch.object(monthly_expenses_service, 'datetime', FixedDateTime):
+        with patch('app.time_utils.utc_now', return_value=fixed_now):
             self.assertEqual(monthly_expenses_service._today(), date(2026, 5, 31))
 
+
     def test_utc_does_not_depend_on_tzdata(self):
-        with patch.object(monthly_expenses_service, 'ZoneInfo', side_effect=AssertionError('tzdata lookup')):
+        with patch('app.time_utils.ZoneInfo', side_effect=AssertionError('tzdata lookup')):
             self.assertEqual(
                 monthly_expenses_service._today(),
                 datetime.now(timezone.utc).date(),

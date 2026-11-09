@@ -1,7 +1,7 @@
 """Which month group of an operation history is expanded on the page."""
 
 import re
-from datetime import date
+from app.time_utils import financial_today
 
 
 _MONTH_PATTERN = re.compile(r'^(\d{4})-(\d{2})$')
@@ -29,7 +29,7 @@ def resolve_active_month(groups, requested=None, today=None):
     requested_month = parse_month_param(requested)
     if requested_month in available:
         return requested_month
-    current_month = month_key(today or date.today())
+    current_month = month_key(today or financial_today())
     if not available or current_month in available:
         return current_month
     return available[0]
