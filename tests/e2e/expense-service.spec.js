@@ -45,8 +45,9 @@ for (const width of [1440, 390]) {
         // Filling a low field scrolls the page; normalize fixed header placement.
         await page.evaluate(() => document.activeElement.blur());
         // The viewport helper clears its active field on a short focusout delay.
-        // Wait for that cleanup before scrolling, otherwise its queued reveal can
-        // move the page back to the field and make the screenshot nondeterministic.
+        // Let that timer run before checking the visible state, otherwise a queued
+        // reveal can move the page back to the field after we scroll to the top.
+        await page.waitForTimeout(150);
         await expect.poll(() => page.evaluate(() => (
           document.activeElement === document.body
           && !document.body.classList.contains('keyboard-open')
