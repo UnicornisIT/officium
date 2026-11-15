@@ -62,7 +62,7 @@ class MaintenanceMigrationTests(unittest.TestCase):
                     config.set_main_option('script_location', str(ROOT / 'migrations'))
                     self.assertEqual(
                         ScriptDirectory.from_config(config).get_heads(),
-                        ['20261203_bank_import_entries'],
+                        ['20261204_vehicle_delivery'],
                     )
                 finally:
                     db.session.remove()

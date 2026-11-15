@@ -160,7 +160,10 @@ class MigrationContractTestCase(unittest.TestCase):
         self.assertEqual(
             revisions['20261203_bank_import_entries'], '20261202_expense_repayment'
         )
-        self.assertEqual(heads, {'20261203_bank_import_entries'})
+        self.assertEqual(
+            revisions['20261204_vehicle_delivery'], '20261203_bank_import_entries'
+        )
+        self.assertEqual(heads, {'20261204_vehicle_delivery'})
 
     def test_payment_cascade_migration_preserves_data_and_deletes_payments(self):
         migration = next(

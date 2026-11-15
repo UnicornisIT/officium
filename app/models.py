@@ -1578,6 +1578,7 @@ class VehicleNotificationLog(db.Model):
         db.UniqueConstraint(
             'user_id', 'kind', 'payload_hash', name='uq_notification_log_day'
         ),
+        db.Index('ix_vehicle_notification_reservation', 'status', 'attempted_at'),
     )
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
@@ -1596,3 +1597,7 @@ class VehicleNotificationLog(db.Model):
     sent_at = db.Column(db.DateTime, nullable=False, default=utc_now)
     payload_hash = db.Column(db.String(64), nullable=False)
     delivered = db.Column(db.Boolean, nullable=False, default=False)
+    status = db.Column(db.String(16), nullable=False, server_default='unknown')
+    attempt_count = db.Column(db.Integer, nullable=False, server_default='0')
+    attempted_at = db.Column(db.DateTime)
+    retry_at = db.Column(db.DateTime)
