@@ -14,6 +14,7 @@ from app.services.debt_accrual_service import (
 )
 from app.services.debt_calendar_service import previous_payment_due_date
 from app.services.debt_schedule_service import build_debt_payment_schedule
+from app.services.financial_data import require_financial_data
 from app.services.payment_service import recalculate_debt
 from app.time_utils import utc_now
 from app.utils import get_setting, is_local_test_user, parse_date, parse_decimal, record_activity
@@ -28,6 +29,7 @@ EARLY_REPAYMENT_STRATEGIES = ('reduce_term', 'reduce_payment')
 
 def init_app(app):
     @app.route('/api/debts', methods=['GET'])
+    @require_financial_data()
     def api_get_debts():
         if is_local_test_user():
             debts = get_demo_debts()
@@ -174,6 +176,7 @@ def init_app(app):
             return jsonify({'success': False, 'error': 'Не удалось сохранить долг'}), 500
 
     @app.route('/api/debts/<int:debt_id>', methods=['GET'])
+    @require_financial_data()
     def api_get_debt(debt_id):
         debt = get_user_debt(debt_id)
         if not debt:
@@ -181,6 +184,7 @@ def init_app(app):
         return jsonify({'success': True, 'debt': debt.to_dict()})
 
     @app.route('/api/debts/<int:debt_id>/schedule', methods=['GET'])
+    @require_financial_data()
     def api_get_debt_schedule(debt_id):
         debt = get_user_debt(debt_id)
         if not debt:

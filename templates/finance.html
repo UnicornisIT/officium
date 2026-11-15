@@ -44,6 +44,9 @@
         </button>
     </form>
 
+    {% if cashflow_error %}
+    <p class="alert alert-warning" role="status">Итоги месяца временно недоступны.</p>
+    {% else %}
     <section class="finance-panel finance-hero mb-4">
         <div class="finance-hero__main">
             <div class="finance-kicker">Итог за {{ month_start.strftime('%m.%Y') }}</div>
@@ -397,6 +400,11 @@
         </div>
     </div>
 
+    {% endif %}
+
+    {% if debt_error %}
+    <p class="alert alert-warning" role="status">Данные о долгах временно недоступны.</p>
+    {% else %}
     <section class="finance-panel mb-4">
         <div class="finance-panel__header">
             <div>
@@ -495,5 +503,6 @@
         </div>
         {% endif %}
     </section>
+    {% endif %}
 </div>
 {% endblock %}

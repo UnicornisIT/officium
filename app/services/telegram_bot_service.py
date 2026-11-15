@@ -21,6 +21,7 @@ from app.services import feedback_service as feedback
 from app.services.debt_accrual_service import accrual_start_date, default_penalty_rate
 from app.services.debt_service import check_debt_limit
 from app.services.finance_summary_service import get_finance_summary
+from app.services.financial_data import FinancialDataUnavailable
 from app.services.payment_service import add_payment
 from app.services.expense_service import create_expense
 from app.time_utils import account_calendar, as_utc, financial_today, utc_now
@@ -1362,7 +1363,10 @@ def _list_debts(user):
 
 
 def _build_summary(user):
-    summary = get_finance_summary(user.id)
+    try:
+        summary = get_finance_summary(user.id)
+    except FinancialDataUnavailable as exc:
+        return exc.message
     month_start = summary.get('month_start') or financial_today().replace(day=1)
     lines = [
         f'Итог за {month_start.strftime("%m.%Y")}:',

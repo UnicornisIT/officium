@@ -3,11 +3,11 @@ from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import func
-from sqlalchemy.exc import SQLAlchemyError
 from app.time_utils import financial_today
 from app.models import User
 from extensions import db
 from app.models import Debt, Income, Expense, Payment
+from app.services.financial_data import FinancialDataUnavailable, require_financial_data
 from app.services.goal_service import empty_goal_transfers, month_transfers
 from app.services.expense_title_service import clean_expense_title, expense_group_key
 from app.services.mortgage_interest_service import mortgage_month_interest
@@ -243,8 +243,6 @@ def _with_finance_insights(summary):
 
     summary.update({
         'free_balance': free_balance,
-        'mortgage_interest_is_estimate': month_start > today,
-        'mortgage_interest_as_of': min(today, month_end),
         'cashflow': {
             'total_outflow': total_outflow,
             'payments_in_expenses': overlap,
@@ -278,7 +276,8 @@ def _with_finance_insights(summary):
     return summary
 
 
-def get_finance_summary(user_id, year=None, month=None):
+@require_financial_data()
+def get_finance_summary(user_id, year=None, month=None, *, allow_partial=False):
     today = financial_today(db.session.get(User, user_id) if user_id else None)
     use_selected_month = year is not None and month is not None
     if use_selected_month:
@@ -464,6 +463,8 @@ def get_finance_summary(user_id, year=None, month=None):
             'total_mortgage_remaining': total_mortgage_remaining,
             'total_mortgage_original': total_mortgage_original,
             'total_mortgage_interest': total_mortgage_interest,
+            'mortgage_interest_is_estimate': month_start > today,
+            'mortgage_interest_as_of': min(today, month_end),
             'total_remaining': sum((_debt_total(d, today) for d in debts), ZERO),
             'total_principal': sum((d.accrual_state(today)['principal'] for d in debts), ZERO),
             'total_original': sum((_money_value(d.total_amount) for d in debts), ZERO),
@@ -483,90 +484,45 @@ def get_finance_summary(user_id, year=None, month=None):
             'selected_month': month_start.month,
         })
 
-    try:
-        active_debts = Debt.query.filter_by(status='active', user_id=user_id).order_by(db.case((Debt.next_payment_date.is_(None), 1), else_=0), Debt.next_payment_date.asc()).all()
-        active_debts = sorted(active_debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
-        total_remaining = sum((_debt_total(d, today) for d in active_debts), ZERO)
-        total_principal = sum((d.accrual_state(today)['principal'] for d in active_debts), ZERO)
-        total_original = sum((_money_value(d.total_amount) for d in active_debts), ZERO)
-
-        # Пустой месяц не заменяем прошлым: test_deleting_archived_debt_does_not_change_displayed_month.
-        incomes_this_month = Income.query.filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).all()
-        expenses_this_month = Expense.query.filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).all()
-        # Archiving changes obligations, not the history of recorded payments.
-        payments_this_month = Payment.query.join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).all()
-
-        total_incomes = _money_value(Income.query.with_entities(func.coalesce(func.sum(Income.amount), 0)).filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).scalar())
-        total_expenses = _money_value(Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0)).filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).scalar())
-        total_payments = sum((_money_value(payment.amount) for payment in payments_this_month), ZERO)
-        archived_count = Debt.query.filter_by(status='archived', user_id=user_id).count()
-        total_debts = Debt.query.filter_by(user_id=user_id).count()
-    except SQLAlchemyError:
-        return _with_finance_insights({
-            'today': today,
-            'month_start': month_start,
-            'month_end': month_end,
-            'active_debts': [],
-            'mortgage_debts': [],
-            'mortgage_count': 0,
-            'total_mortgage_remaining': ZERO,
-            'total_mortgage_original': ZERO,
-            'total_mortgage_interest': ZERO,
-            'total_remaining': ZERO,
-            'total_principal': ZERO,
-            'total_original': ZERO,
-            'incomes_this_month': [],
-            'expenses_this_month': [],
-            'payments_this_month': [],
-            'total_incomes': ZERO,
-            'total_expenses': ZERO,
-            'total_payments': ZERO,
-            'goal_transfers': empty_goal_transfers(),
-            'free_balance': ZERO,
-            'days_left': 0,
-            'nearest_debt': None,
-            'overdue_count': 0,
-            'archived_count': 0,
-            'total_debts': 0,
-            'selected_year': month_start.year,
-            'selected_month': month_start.month,
-        })
-
-    # Transfers to goals and the fund are not expenses, but the money set aside
-    # is no longer free: subtract the month's net transfer separately.
-    goal_transfers = month_transfers(user_id, month_start, month_end)
-    active_debts = sorted(active_debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
-    overdue_count = len([d for d in active_debts if _is_overdue(d, today)])
-    archived_count = Debt.query.filter_by(status='archived', user_id=user_id).count()
-    total_debts = Debt.query.filter_by(user_id=user_id).count()
-
-    if month_start.year == today.year and month_start.month == today.month:
-        days_left = (month_end - today).days
-    else:
-        days_left = 0
-
-    nearest_debt = next((d for d in active_debts if _effective_debt_payment_date(d, today) and _effective_debt_payment_date(d, today) >= today), None)
-
-    mortgage_debts = [d for d in active_debts if d.debt_type == 'mortgage']
-    total_mortgage_remaining = sum((_debt_total(d, today) for d in mortgage_debts), ZERO)
-    total_mortgage_original = sum((_money_value(d.total_amount) for d in mortgage_debts), ZERO)
-    total_mortgage_interest = mortgage_month_interest(
-        mortgage_debts, month_start, month_end, today
-    )
-
-    return _with_finance_insights({
+    period = {
         'today': today,
         'month_start': month_start,
         'month_end': month_end,
-        'active_debts': active_debts,
-        'mortgage_debts': mortgage_debts,
-        'mortgage_count': len(mortgage_debts),
-        'total_mortgage_remaining': total_mortgage_remaining,
-        'total_mortgage_original': total_mortgage_original,
-        'total_mortgage_interest': total_mortgage_interest,
-        'total_remaining': total_remaining,
-        'total_principal': total_principal,
-        'total_original': total_original,
+        'selected_year': month_start.year,
+        'selected_month': month_start.month,
+    }
+    summary = dict(period)
+    try:
+        summary.update(_cashflow_summary(user_id, period))
+    except FinancialDataUnavailable:
+        if not allow_partial:
+            raise
+        summary['cashflow_error'] = FinancialDataUnavailable.code
+    try:
+        summary.update(_debt_summary(user_id, today, month_start, month_end))
+    except FinancialDataUnavailable:
+        if not allow_partial:
+            raise
+        summary['debt_error'] = FinancialDataUnavailable.code
+    return summary
+
+
+@require_financial_data()
+def _cashflow_summary(user_id, period):
+    month_start = period['month_start']
+    month_end = period['month_end']
+    today = period['today']
+    incomes_this_month = Income.query.filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).all()
+    expenses_this_month = Expense.query.filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).all()
+    # Archiving changes obligations, not the history of recorded payments.
+    payments_this_month = Payment.query.join(Debt).filter(Debt.user_id == user_id, Payment.payment_date >= month_start, Payment.payment_date < month_end).all()
+    total_incomes = _money_value(Income.query.with_entities(func.coalesce(func.sum(Income.amount), 0)).filter_by(user_id=user_id).filter(Income.income_date >= month_start, Income.income_date < month_end).scalar())
+    total_expenses = _money_value(Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0)).filter_by(user_id=user_id).filter(Expense.expense_date >= month_start, Expense.expense_date < month_end).scalar())
+    total_payments = sum((_money_value(payment.amount) for payment in payments_this_month), ZERO)
+    # Transfers to goals reduce free cash without counting as expenses.
+    goal_transfers = month_transfers(user_id, month_start, month_end)
+    return _with_finance_insights({
+        **period,
         'incomes_this_month': incomes_this_month,
         'expenses_this_month': expenses_this_month,
         'payments_this_month': payments_this_month,
@@ -574,11 +530,34 @@ def get_finance_summary(user_id, year=None, month=None):
         'total_expenses': total_expenses,
         'total_payments': total_payments,
         'goal_transfers': goal_transfers,
-        'days_left': days_left,
+        'days_left': (month_end - today).days if month_start <= today < month_end else 0,
+    })
+
+
+@require_financial_data()
+def _debt_summary(user_id, today, month_start, month_end):
+    active_debts = Debt.query.filter_by(status='active', user_id=user_id).order_by(db.case((Debt.next_payment_date.is_(None), 1), else_=0), Debt.next_payment_date.asc()).all()
+    active_debts = sorted(active_debts, key=lambda d: _effective_debt_payment_date(d, today) or date.max)
+    next_dates = [(debt, _effective_debt_payment_date(debt, today)) for debt in active_debts]
+    nearest_debt = next((debt for debt, due_date in next_dates if due_date and due_date >= today), None)
+    overdue_count = sum(_is_overdue(debt, today) for debt in active_debts)
+    archived_count = Debt.query.filter_by(status='archived', user_id=user_id).count()
+    total_debts = Debt.query.filter_by(user_id=user_id).count()
+    mortgage_debts = [debt for debt in active_debts if debt.debt_type == 'mortgage']
+    return {
+        'active_debts': active_debts,
+        'mortgage_debts': mortgage_debts,
+        'mortgage_count': len(mortgage_debts),
+        'total_mortgage_remaining': sum((_debt_total(debt, today) for debt in mortgage_debts), ZERO),
+        'total_mortgage_original': sum((_money_value(debt.total_amount) for debt in mortgage_debts), ZERO),
+        'total_mortgage_interest': mortgage_month_interest(mortgage_debts, month_start, month_end, today),
+        'mortgage_interest_is_estimate': month_start > today,
+        'mortgage_interest_as_of': min(today, month_end),
+        'total_remaining': sum((_debt_total(debt, today) for debt in active_debts), ZERO),
+        'total_principal': sum((debt.accrual_state(today)['principal'] for debt in active_debts), ZERO),
+        'total_original': sum((_money_value(debt.total_amount) for debt in active_debts), ZERO),
         'nearest_debt': nearest_debt,
         'overdue_count': overdue_count,
         'archived_count': archived_count,
         'total_debts': total_debts,
-        'selected_year': month_start.year,
-        'selected_month': month_start.month,
-    })
+    }

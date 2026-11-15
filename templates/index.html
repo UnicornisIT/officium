@@ -9,7 +9,7 @@
 {% if not debt.accrual_state(today).data_consistent %}{% set debt_check.valid = false %}{% endif %}
 {% endfor %}
 {% if vehicles_enabled and mileage_due %}{% include 'vehicles/_reminder.html' %}{% endif %}
-{% set raw_paid_total_pct = ((1 - total_principal / total_original) * 100) | round(0) if total_original > 0 else 0 %}
+{% set raw_paid_total_pct = ((1 - total_principal / total_original) * 100) | round(0) if not debt_error and total_original > 0 else 0 %}
 {% set paid_total_pct = 0 if raw_paid_total_pct < 0 else (100 if raw_paid_total_pct > 100 else raw_paid_total_pct) %}
 {% set nearest_payment_date = nearest_debt.effective_next_payment_date(today) if nearest_debt else none %}
 
@@ -21,17 +21,25 @@
         </div>
     </header>
 
-    <section class="balance-hero {% if free_balance < 0 %}balance-hero--negative{% endif %}" aria-label="Свободные средства">
+    <section class="balance-hero {% if not cashflow_error and free_balance < 0 %}balance-hero--negative{% endif %}" aria-label="Свободные средства">
         <div class="balance-hero__orb balance-hero__orb--one" aria-hidden="true"></div>
         <div class="balance-hero__orb balance-hero__orb--two" aria-hidden="true"></div>
         <div class="balance-hero__top">
             <span><i class="bi bi-stars"></i> Свободно до конца месяца</span>
+            {% if not cashflow_error %}
             <span class="balance-hero__status">{{ 'Дефицит' if free_balance < 0 else 'Доступно' }}</span>
+            {% endif %}
         </div>
+        {% if cashflow_error %}
+        <p role="status">Свободный остаток временно недоступен.</p>
+        {% else %}
         <strong class="balance-hero__amount">{{ free_balance|money }}</strong>
         <p>{{ 'Расходы превышают доходы — стоит пересмотреть план.' if free_balance < 0 else 'После расходов, платежей по долгам и переводов в цели.' }}</p>
+        {% endif %}
         <div class="balance-hero__footer">
-            {% if window_daily %}
+            {% if window_daily_error %}
+            <div role="status">Дневной лимит временно недоступен.</div>
+            {% elif window_daily %}
             {% set window_days = window_daily.days_left %}
             <div title="По финансовому плану: повседневные деньги текущего периода выплат минус записанные траты">
                 <span>На каждый день до {% if window_daily.end %}{% if window_daily.end_is_estimated %}~{% endif %}{{ window_daily.end.strftime('%d.%m') }}{% else %}поступления{% endif %}</span>
@@ -41,7 +49,7 @@
                 <span>До следующего поступления</span>
                 <strong>{{ window_days }} {{ 'день' if window_days % 10 == 1 and window_days % 100 != 11 else ('дня' if window_days % 10 in [2,3,4] and window_days % 100 not in [12,13,14] else 'дней') }}</strong>
             </div>
-            {% else %}
+            {% elif not cashflow_error %}
             <div>
                 <span>На каждый день</span>
                 <strong>{{ daily_budget|money }}</strong>
@@ -55,6 +63,7 @@
 
     </section>
 
+    {% if not cashflow_error %}
     <nav class="money-flow" aria-label="Движение денег за месяц">
         <a class="money-flow__item money-flow__item--income" href="{{ url_for('incomes') }}">
             <span class="money-flow__icon"><i class="bi bi-arrow-down-left"></i></span>
@@ -73,10 +82,12 @@
         </a>
         <a class="money-flow__item money-flow__item--goals" href="{{ url_for('goals') }}" data-goal-transfers>
             <span class="money-flow__icon"><i class="bi bi-safe2"></i></span>
-            <span class="money-flow__copy"><small>Отложено в цели за месяц</small><strong>{{ goal_transfers_net|money }}</strong></span>
+            <span class="money-flow__copy"><small>Отложено в цели за месяц</small><strong>{{ goal_transfers.net|money }}</strong></span>
             <i class="bi bi-chevron-right money-flow__chevron"></i>
         </a>
     </nav>
+
+    {% endif %}
 
     <nav class="dashboard-shortcuts" aria-label="Разделы для анализа и планирования">
         {% if vehicles_enabled %}
@@ -104,6 +115,9 @@
         </a>
     </nav>
 
+    {% if debt_error %}
+    <p class="alert alert-warning" role="status">Данные о долгах временно недоступны.</p>
+    {% else %}
     <div class="dashboard-v2__status-grid">
         <section class="debt-overview" aria-label="Состояние долгов">
             <div class="debt-overview__ring" style="--progress: {{ paid_total_pct }}%;">
@@ -375,11 +389,13 @@
     <p class="text-muted">Попробуйте изменить поисковый запрос или фильтры</p>
 </div>
 </section>
+{% endif %}
 </div>
 
 {% endblock %}
 
 {% block extra_js %}
+{% if not debt_error %}
 <script>
 // Фильтрация и сортировка карточек
 const searchInput = document.getElementById('searchInput');
@@ -436,4 +452,5 @@ filterBtns.forEach(btn => {
     });
 });
 </script>
+{% endif %}
 {% endblock %}

@@ -3,7 +3,6 @@ from datetime import date
 from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 
 from dateutil.relativedelta import relativedelta
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.time_utils import financial_today
 from app.models import (
@@ -18,6 +17,7 @@ from app.models import (
 from app.services.debt_schedule_service import build_debt_payment_schedule
 from app.services.monthly_expenses_service import monthly_series_stopped
 from app.services.finance_summary_service import get_finance_summary
+from app.services.financial_data import FinancialDataUnavailable, require_financial_data
 from app.services.pay_period_service import (
     PAY_HISTORY_LOOKAHEAD_DAYS,
     PAY_HISTORY_LOOKBACK_DAYS,
@@ -67,14 +67,11 @@ def default_financial_plan_preferences():
     return dict(DEFAULT_PREFERENCES)
 
 
+@require_financial_data()
 def get_financial_plan_preference(user_id):
     if user_id is None:
         return None
-    try:
-        return FinancialPlanPreference.query.filter_by(user_id=user_id).first()
-    except SQLAlchemyError:
-        db.session.rollback()
-        return None
+    return FinancialPlanPreference.query.filter_by(user_id=user_id).first()
 
 
 def preference_values(preference=None):
@@ -89,6 +86,7 @@ def preference_values(preference=None):
     }
 
 
+@require_financial_data()
 def build_financial_plan(user_id, preference=None, today=None, year=None, month=None):
     today = today or financial_today(db.session.get(User, user_id) if user_id else None)
     period_start = _selected_month_start(today, year, month)
@@ -180,39 +178,57 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
         living_budget=max(living_budget, Decimal('0.00')),
         deficit=deficit,
     )
-    pay_plan = recommend_income_allocation(
-        income_summary['items'],
-        allocation,
-        period_start,
-        period_end=period_end,
-        history_incomes=_load_pay_history(user_id, period_start, period_end),
-        living_minimum=preferences['living_minimum'],
-        next_month_obligations=_build_next_month_recurring_obligations(
-            recurring_expenses,
-            period_end,
-            debt_items,
-        ),
-    )
-    income_allocations = pay_plan['allocations']
-    window_daily = (
-        window_daily_limit(
-            income_allocations,
-            today,
-            lambda start, until: _everyday_spending(user_id, start, until),
-            period_end,
+    pay_plan = None
+    try:
+        pay_plan = recommend_income_allocation(
+            income_summary['items'],
+            allocation,
+            period_start,
+            period_end=period_end,
+            history_incomes=_load_pay_history(user_id, period_start, period_end),
+            living_minimum=preferences['living_minimum'],
+            next_month_obligations=_build_next_month_recurring_obligations(
+                recurring_expenses,
+                period_end,
+                debt_items,
+            ),
         )
-        if period_start <= today < period_end
-        else None
-    )
-    window_shortfall = _decimal(sum(
-        (_decimal(item['amount']) for item in pay_plan['shortfalls']),
-        Decimal('0.00'),
+    except FinancialDataUnavailable:
+        pay_period_error = FinancialDataUnavailable.code
+    else:
+        pay_period_error = None
+
+    window_daily = None
+    window_daily_error = pay_period_error
+    if pay_plan is not None and period_start <= today < period_end:
+        try:
+            window_daily = window_daily_limit(
+                pay_plan['allocations'],
+                today,
+                lambda start, until: _everyday_spending(user_id, start, until),
+                period_end,
+            )
+        except FinancialDataUnavailable:
+            window_daily_error = FinancialDataUnavailable.code
+
+    allocation_totals = dict.fromkeys((
+        'allocated_income', 'allocation_balance', 'allocation_is_balanced',
+        'window_shortfall', 'living_reserve_shortfall',
     ))
-    allocated_income_total = _decimal(sum(
-        (_decimal(item['allocated_total']) for item in income_allocations),
-        Decimal('0.00'),
-    ))
-    allocation_balance = _decimal(income_total - allocated_income_total)
+    if pay_plan is not None:
+        allocated_income = _decimal(sum(
+            (_decimal(item['allocated_total']) for item in pay_plan['allocations']), Decimal('0.00'),
+        ))
+        allocation_balance = _decimal(income_total - allocated_income)
+        allocation_totals = {
+            'allocated_income': _float(allocated_income),
+            'allocation_balance': _float(allocation_balance),
+            'allocation_is_balanced': allocation_balance == 0,
+            'window_shortfall': _float(sum(
+                (_decimal(item['amount']) for item in pay_plan['shortfalls']), Decimal('0.00'),
+            )),
+            'living_reserve_shortfall': pay_plan['reserve_shortfall'],
+        }
     state = _financial_state(income_total, obligations_total, living_minimum)
     missing_data = _build_missing_data(income_summary, debt_gaps, recurring_items)
     analysis = _build_analysis(
@@ -275,11 +291,13 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
         'emergency_fund': emergency_fund,
         'goals': goals,
         'allocation': allocation,
-        'income_allocations': income_allocations,
-        'shortfalls': pay_plan['shortfalls'],
-        'awaiting_obligations': pay_plan['awaiting'],
-        'covered_by_previous_period': pay_plan['covered_by_previous'],
+        'pay_period_error': pay_period_error,
+        'income_allocations': pay_plan['allocations'] if pay_plan is not None else None,
+        'shortfalls': pay_plan['shortfalls'] if pay_plan is not None else None,
+        'awaiting_obligations': pay_plan['awaiting'] if pay_plan is not None else None,
+        'covered_by_previous_period': pay_plan['covered_by_previous'] if pay_plan is not None else None,
         'window_daily': window_daily,
+        'window_daily_error': window_daily_error,
         'analysis': analysis,
         'recommendations': recommendations,
         'forecast': forecast,
@@ -302,11 +320,7 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
             'emergency_target': _float(emergency_target),
             'emergency_gap': _float(emergency_gap),
             'emergency_progress': _percent(min(emergency_current, emergency_target), emergency_target),
-            'allocated_income': _float(allocated_income_total),
-            'allocation_balance': _float(allocation_balance),
-            'allocation_is_balanced': allocation_balance == 0,
-            'window_shortfall': _float(window_shortfall),
-            'living_reserve_shortfall': pay_plan['reserve_shortfall'],
+            **allocation_totals,
         },
     }
 
@@ -316,6 +330,8 @@ def current_window_daily(user_id, today=None):
     if user_id is None:
         return None
     plan = build_financial_plan(user_id, get_financial_plan_preference(user_id), today=today)
+    if plan['window_daily_error']:
+        raise FinancialDataUnavailable(FinancialDataUnavailable.message)
     return plan['window_daily']
 
 
@@ -329,22 +345,18 @@ def _build_emergency_fund_summary(user_id, period_start=None, period_end=None):
             'withdrawals_in_period': 0.0,
             'transactions': [],
         }
-    try:
-        query = EmergencyFundTransaction.query.filter_by(user_id=user_id)
-        if period_end is not None:
-            query = query.filter(EmergencyFundTransaction.transaction_date < period_end)
-        transactions = (
-            query
-            .order_by(
-                EmergencyFundTransaction.transaction_date.desc(),
-                EmergencyFundTransaction.created_at.desc(),
-                EmergencyFundTransaction.id.desc(),
-            )
-            .all()
+    query = EmergencyFundTransaction.query.filter_by(user_id=user_id)
+    if period_end is not None:
+        query = query.filter(EmergencyFundTransaction.transaction_date < period_end)
+    transactions = (
+        query
+        .order_by(
+            EmergencyFundTransaction.transaction_date.desc(),
+            EmergencyFundTransaction.created_at.desc(),
+            EmergencyFundTransaction.id.desc(),
         )
-    except SQLAlchemyError:
-        db.session.rollback()
-        transactions = []
+        .all()
+    )
 
     deposits = sum(
         (_decimal(item.amount) for item in transactions if item.transaction_type == 'deposit'),
@@ -430,16 +442,12 @@ def _build_goals(user_id, preferences, emergency_fund, emergency_target, period_
 
     if user_id is None:
         return goals
-    try:
-        custom_goals = (
-            FinancialGoal.query
-            .filter_by(user_id=user_id)
-            .order_by(FinancialGoal.priority.asc(), FinancialGoal.id.asc())
-            .all()
-        )
-    except SQLAlchemyError:
-        db.session.rollback()
-        custom_goals = []
+    custom_goals = (
+        FinancialGoal.query
+        .filter_by(user_id=user_id)
+        .order_by(FinancialGoal.priority.asc(), FinancialGoal.id.asc())
+        .all()
+    )
 
     for index, goal in enumerate(custom_goals, start=2):
         summary = _summarize_goal_transactions(goal.id, period_start, period_end)
@@ -590,47 +598,43 @@ def _load_sources(user_id, period_start, period_end):
     return debts, incomes, recurring_expenses
 
 
+@require_financial_data()
 def _load_pay_history(user_id, period_start, period_end):
     """Incomes around the month; they only shape pay period boundaries."""
     if user_id is None:
         return None
-    try:
-        rows = (
-            db.session.query(Income.income_date, Income.category, Income.pay_period_mode)
-            .filter(
-                Income.user_id == user_id,
-                Income.income_date >= period_start - relativedelta(days=PAY_HISTORY_LOOKBACK_DAYS),
-                Income.income_date < period_end + relativedelta(days=PAY_HISTORY_LOOKAHEAD_DAYS),
-            )
-            .all()
+    rows = (
+        db.session.query(Income.income_date, Income.category, Income.pay_period_mode)
+        .filter(
+            Income.user_id == user_id,
+            Income.income_date >= period_start - relativedelta(days=PAY_HISTORY_LOOKBACK_DAYS),
+            Income.income_date < period_end + relativedelta(days=PAY_HISTORY_LOOKAHEAD_DAYS),
         )
-    except SQLAlchemyError:
-        db.session.rollback()
-        return None
+        .all()
+    )
+
     return [
         {'date': income_date, 'category': category, 'pay_period_mode': mode}
         for income_date, category, mode in rows
     ]
 
 
+@require_financial_data()
 def _everyday_spending(user_id, start, until):
     """Recorded everyday expenses from ``start`` to ``until``; recurring ones are obligations."""
     if user_id is None:
         return Decimal('0.00')
-    try:
-        total = (
-            db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0))
-            .filter(
-                Expense.user_id == user_id,
-                Expense.is_monthly.is_(False),
-                Expense.expense_date >= start,
-                Expense.expense_date <= until,
-            )
-            .scalar()
+    total = (
+        db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0))
+        .filter(
+            Expense.user_id == user_id,
+            Expense.is_monthly.is_(False),
+            Expense.expense_date >= start,
+            Expense.expense_date <= until,
         )
-    except SQLAlchemyError:
-        db.session.rollback()
-        return Decimal('0.00')
+        .scalar()
+    )
+
     return _decimal(total)
 
 
@@ -666,7 +670,7 @@ def _build_debt_items(debts, today, planning_horizon_end):
         schedule = None
         try:
             schedule = build_debt_payment_schedule(debt, today=today)
-        except (ValueError, ArithmeticError, SQLAlchemyError):
+        except (ValueError, ArithmeticError):
             pass
 
         planned_rows = _planned_schedule_rows(schedule, planning_horizon_end, today)
@@ -849,7 +853,7 @@ def _debt_accrual(debt, today):
         return None
     try:
         return debt.accrual_state(today)
-    except (ValueError, ArithmeticError, SQLAlchemyError):
+    except (ValueError, ArithmeticError):
         return None
 
 
@@ -992,7 +996,7 @@ def _debt_completion(debt, today, schedule=None):
     if schedule is None:
         try:
             schedule = build_debt_payment_schedule(debt, today=today)
-        except (ValueError, ArithmeticError, SQLAlchemyError):
+        except (ValueError, ArithmeticError):
             return None, None
     future_rows = [
         row for row in schedule.get('rows', [])

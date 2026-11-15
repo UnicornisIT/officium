@@ -1,11 +1,18 @@
 import unittest
+from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
+
+from sqlalchemy import event
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import create_app
 from app.models import Debt, EmergencyFundTransaction, Expense, FinancialGoal, FinancialGoalTransaction, FinancialPlanPreference, Income, Payment, User
 from app.services.financial_plan_service import build_financial_plan
 from app.services.finance_summary_service import get_finance_summary
+from app.services.financial_data import FinancialDataUnavailable
+from app.services.telegram_bot_service import _build_summary
 from extensions import db
 
 
@@ -595,6 +602,131 @@ class FinancialPlanTestCase(unittest.TestCase):
         with self.client.session_transaction() as session:
             session['_user_id'] = str(self.user_id)
             session['_fresh'] = True
+
+    @contextmanager
+    def _fail_select(self, *fragments):
+        def fail_query(conn, cursor, statement, parameters, context, executemany):
+            sql = statement.lower().strip()
+            if sql.startswith('select') and all(fragment in sql for fragment in fragments):
+                raise SQLAlchemyError('private query details')
+
+        with self.app.app_context():
+            engine = db.engine
+        event.listen(engine, 'before_cursor_execute', fail_query)
+        try:
+            yield
+        finally:
+            event.remove(engine, 'before_cursor_execute', fail_query)
+
+    def test_daily_limit_distinguishes_failed_query_from_no_expenses(self):
+        today = date(2026, 8, 21)
+        self._login()
+        with self.app.app_context():
+            plan = build_financial_plan(self.user_id, today=today)
+            self.assertEqual(plan['window_daily']['spent'], 0)
+            self.assertIsNone(plan['window_daily_error'])
+
+        with self._fail_select('sum(expenses.amount)', 'expenses.is_monthly'), patch(
+            'app.services.financial_plan_service.financial_today', return_value=today
+        ), patch('app.services.finance_summary_service.financial_today', return_value=today):
+            with self.app.app_context():
+                plan = build_financial_plan(self.user_id, today=today)
+                self.assertIsNone(plan['window_daily'])
+                self.assertEqual(plan['window_daily_error'], 'data_unavailable')
+                self.assertTrue(plan['income_allocations'])
+            dashboard = self.client.get('/')
+            page = self.client.get('/financial-plan')
+            self.assertEqual(dashboard.status_code, 200)
+            self.assertEqual(page.status_code, 200)
+            self.assertIn('Дневной лимит временно недоступен', dashboard.get_data(as_text=True))
+            self.assertIn('Расчёт временно недоступен', page.get_data(as_text=True))
+            self.assertNotIn('Дневной ориентир', page.get_data(as_text=True))
+
+    def test_failed_pay_history_hides_only_pay_period_calculations(self):
+        with self.app.app_context(), self._fail_select(
+            'select incomes.income_date', 'incomes.pay_period_mode'
+        ):
+            plan = build_financial_plan(self.user_id, today=date(2026, 8, 21))
+        self.assertEqual(plan['pay_period_error'], 'data_unavailable')
+        self.assertIsNone(plan['income_allocations'])
+        self.assertIsNone(plan['totals']['allocation_is_balanced'])
+        self.assertIsNone(plan['window_daily'])
+        self.assertEqual(plan['totals']['income'], 75000.0)
+
+    def test_failed_monthly_cashflow_keeps_debts_visible_in_web_and_mini_app(self):
+        self._login()
+        with self.client.session_transaction() as session:
+            session['telegram_mini_app'] = True
+        with self._fail_select('sum(expenses.amount)', 'expenses.expense_date <'):
+            with self.app.app_context():
+                user = db.session.get(User, self.user_id)
+                with self.assertRaises(FinancialDataUnavailable):
+                    get_finance_summary(user.id)
+                self.assertEqual(_build_summary(user), FinancialDataUnavailable.message)
+            for path, unavailable in (
+                ('/', 'Свободный остаток временно недоступен'),
+                ('/finance', 'Итоги месяца временно недоступны'),
+            ):
+                with self.subTest(path=path):
+                    response = self.client.get(path)
+                    self.assertEqual(response.status_code, 503)
+                    page = response.get_data(as_text=True)
+                    self.assertIn(unavailable, page)
+                    self.assertIn('Сбер', page)
+                    self.assertNotIn('private query details', page)
+                    self.assertNotIn('finance-balance--good', page)
+                    self.assertNotIn('balance-hero__amount', page)
+
+    def test_failed_debt_read_returns_error_in_web_and_api(self):
+        self._login()
+        with self._fail_select('from debts', 'debts.status'):
+            response = self.client.get('/api/debts')
+            page = self.client.get('/finance')
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json(), {
+            'success': False,
+            'code': 'data_unavailable',
+            'error': FinancialDataUnavailable.message,
+        })
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('Данные о долгах временно недоступны', page.get_data(as_text=True))
+        self.assertIn('finance-balance', page.get_data(as_text=True))
+
+    def test_empty_month_keeps_decimal_zero_balance(self):
+        with self.app.app_context():
+            summary = get_finance_summary(self.user_id, 2026, 6)
+            self.assertEqual(summary['total_expenses'], Decimal('0.00'))
+            self.assertEqual(summary['free_balance'], Decimal('0.00'))
+            self.assertIsInstance(summary['free_balance'], Decimal)
+
+    def test_restored_cashflow_returns_same_balance_to_the_kopeck(self):
+        with self.app.app_context():
+            db.session.add(Expense(
+                user_id=self.user_id,
+                amount=Decimal('12.34'),
+                title='Покупка',
+                category='other',
+                expense_date=date(2026, 6, 1),
+            ))
+            db.session.commit()
+            for _ in range(2):
+                summary = get_finance_summary(self.user_id, 2026, 6)
+                self.assertEqual(summary['free_balance'], Decimal('-12.34'))
+                with self._fail_select('sum(expenses.amount)', 'expenses.expense_date <'):
+                    with self.assertRaises(FinancialDataUnavailable):
+                        get_finance_summary(self.user_id, 2026, 6)
+
+    def test_failed_emergency_fund_query_hides_advice_but_keeps_dashboard_balance(self):
+        self._login()
+        with self._fail_select('from emergency_fund_transactions', 'order by'):
+            page = self.client.get('/financial-plan')
+            dashboard = self.client.get('/')
+        self.assertEqual(page.status_code, 503)
+        self.assertIn(FinancialDataUnavailable.message, page.get_data(as_text=True))
+        self.assertNotIn('Что делать с деньгами сейчас', page.get_data(as_text=True))
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn('balance-hero__amount', dashboard.get_data(as_text=True))
+        self.assertIn('Дневной лимит временно недоступен', dashboard.get_data(as_text=True))
 
     def test_income_form_saves_and_validates_the_pay_period_mark(self):
         self._login()

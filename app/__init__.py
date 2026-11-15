@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from config import Config
 from extensions import db
 from app.models import User
+from app.services.financial_data import FinancialDataUnavailable
 from app.admin_presenters import (
     admin_entity_label,
     admin_event_icon,
@@ -152,6 +153,17 @@ def create_app(config_overrides=None):
     @app.errorhandler(413)
     def request_too_large(_error):
         return error_response(413)
+
+    @app.errorhandler(FinancialDataUnavailable)
+    def financial_data_error(error):
+        if request.path.startswith('/api/'):
+            return jsonify({'success': False, 'error': error.message, 'code': error.code}), 503
+        return render_template(
+            'error.html',
+            status_code=503,
+            error_title='Расчёт временно недоступен',
+            error_message=error.message,
+        ), 503
 
     @app.errorhandler(SQLAlchemyError)
     def database_error(_error):

@@ -13,6 +13,7 @@ from app.models import (
     Payment,
 )
 from app.services.finance_summary_service import get_finance_summary
+from app.services.financial_data import FinancialDataUnavailable, require_financial_data
 from app.services import goal_service
 from app.services.financial_plan_service import (
     build_financial_plan,
@@ -138,69 +139,33 @@ def _normalize_financial_goal_priorities(user_id):
 def init_app(app):
     @app.route('/')
     def index():
-        if is_local_test_user():
-            summary = get_finance_summary(None)
-        else:
-            summary = get_finance_summary(current_user.id)
-        total_incomes = summary['total_incomes']
-        total_expenses = summary['total_expenses']
-        total_payments = summary['total_payments']
-        free_balance = summary['free_balance']
-        days_left = summary['days_left']
-        total_remaining = summary['total_remaining']
-        total_original = summary['total_original']
-        nearest_debt = summary['nearest_debt']
-        overdue_count = summary['overdue_count']
-        today = summary['today']
-        month_start = summary['month_start']
-        active_debts = summary['active_debts']
-
-        active_debts = sorted(
-            active_debts,
-            key=lambda d: d.effective_next_payment_date(today) or date.max,
-        )
-        upcoming = [d for d in active_debts if d.effective_next_payment_date(today) and d.effective_next_payment_date(today) >= today]
-        nearest_debt = upcoming[0] if upcoming else None
-        overdue_count = len([d for d in active_debts if d.is_overdue(today)])
-
-        daily_budget = free_balance / days_left if days_left > 0 else 0
+        user_id = None if is_local_test_user() else current_user.id
+        summary = get_finance_summary(user_id, allow_partial=True)
         window_daily = None
-        if not is_local_test_user():
-            try:
-                window_daily = current_window_daily(current_user.id, today=today)
-            except Exception:
-                db.session.rollback()
-                current_app.logger.exception('Failed to build the pay window daily limit')
-        return render_template('index.html',
-            debts=active_debts,
-            total_remaining=total_remaining,
-            total_principal=summary['total_principal'],
-            total_original=total_original,
-            active_count=len(active_debts),
-            nearest_debt=nearest_debt,
-            overdue_count=overdue_count,
-            today=today,
-            month_start=month_start,
-            total_incomes=total_incomes,
-            total_expenses=total_expenses,
-            total_payments=total_payments,
-            free_balance=free_balance,
-            goal_transfers_net=summary['goal_transfers']['net'],
-            days_left=days_left,
-            daily_budget=daily_budget,
+        window_daily_error = None
+        try:
+            window_daily = current_window_daily(user_id, today=summary['today'])
+        except FinancialDataUnavailable as exc:
+            window_daily_error = exc.code
+        days_left = summary.get('days_left')
+        page = render_template(
+            'index.html',
+            **summary,
+            debts=summary.get('active_debts', ()),
+            active_count=len(summary.get('active_debts', ())),
+            daily_budget=summary['free_balance'] / days_left if days_left else 0,
             window_daily=window_daily,
+            window_daily_error=window_daily_error,
         )
+        return page, 503 if summary.get('cashflow_error') else 200
 
     @app.route('/finance')
     def finance():
         selected_year = request.args.get('year', type=int)
         selected_month = request.args.get('month', type=int)
-        if is_local_test_user():
-            summary = get_finance_summary(None, selected_year, selected_month)
-        else:
-            summary = get_finance_summary(current_user.id, selected_year, selected_month)
-
-        today = financial_today()
+        user_id = None if is_local_test_user() else current_user.id
+        summary = get_finance_summary(user_id, selected_year, selected_month, allow_partial=True)
+        today = summary['today']
         year_options = [today.year - i for i in range(0, 5)]
         if summary['selected_year'] not in year_options:
             year_options.append(summary['selected_year'])
@@ -212,50 +177,16 @@ def init_app(app):
         ]
         month_options = list(enumerate(month_names, start=1))
 
-        return render_template(
+        days_left = summary.get('days_left')
+        page = render_template(
             'finance.html',
-            active_count=len(summary['active_debts']),
-            total_remaining=summary['total_remaining'],
-            total_principal=summary['total_principal'],
-            total_original=summary['total_original'],
-            nearest_debt=summary['nearest_debt'],
-            overdue_count=summary['overdue_count'],
-            today=summary['today'],
-            month_start=summary['month_start'],
-            total_incomes=summary['total_incomes'],
-            total_expenses=summary['total_expenses'],
-            total_payments=summary['total_payments'],
-            free_balance=summary['free_balance'],
-            goal_transfers=summary['goal_transfers'],
-            days_left=summary['days_left'],
-            daily_budget=(
-                summary['free_balance'] / summary['days_left']
-                if summary['days_left'] > 0
-                else 0
-            ),
-            archived_count=summary['archived_count'],
-            total_debts=summary['total_debts'],
-            mortgage_debts=summary['mortgage_debts'],
-            mortgage_count=summary['mortgage_count'],
-            total_mortgage_remaining=summary['total_mortgage_remaining'],
-            total_mortgage_interest=summary['total_mortgage_interest'],
-            mortgage_interest_is_estimate=summary['mortgage_interest_is_estimate'],
-            mortgage_interest_as_of=summary['mortgage_interest_as_of'],
-            incomes_this_month=summary['incomes_this_month'],
-            expenses_this_month=summary['expenses_this_month'],
-            payments_this_month=summary['payments_this_month'],
-            cashflow=summary['cashflow'],
-            expense_category_breakdown=summary['expense_category_breakdown'],
-            expense_title_breakdown=summary['expense_title_breakdown'],
-            payment_method_breakdown=summary['payment_method_breakdown'],
-            largest_expenses=summary['largest_expenses'],
-            recurring_expenses_this_month=summary['recurring_expenses_this_month'],
-            top_spending_days=summary['top_spending_days'],
-            selected_year=summary['selected_year'],
-            selected_month=summary['selected_month'],
+            **summary,
+            active_count=len(summary.get('active_debts', ())),
+            daily_budget=summary['free_balance'] / days_left if days_left else 0,
             year_options=year_options,
             month_options=month_options,
         )
+        return page, 503 if summary.get('cashflow_error') else 200
 
     @app.route('/financial-plan', methods=['GET', 'POST'])
     def financial_plan():
@@ -284,7 +215,7 @@ def init_app(app):
                 )
                 preference.strategy = strategy
                 db.session.commit()
-                flash('Финансовый план пересчитан.', 'success')
+                flash('Настройки финансового плана сохранены.', 'success')
                 return _financial_plan_redirect()
             except ValueError as exc:
                 db.session.rollback()
@@ -309,16 +240,19 @@ def init_app(app):
             set(range(financial_today().year - 4, financial_today().year + 3)) | {plan['period']['year']},
             reverse=True,
         )
-        if local_test_user:
-            source_suggestions = []
-        else:
-            previous_incomes = (
-                Income.query
-                .filter_by(user_id=user_id)
-                .order_by(Income.income_date.desc(), Income.id.desc())
-                .all()
-            )
-            source_suggestions = income_source_suggestions(previous_incomes)
+        source_suggestions = []
+        if not local_test_user:
+            try:
+                with require_financial_data():
+                    previous_incomes = (
+                        Income.query
+                        .filter_by(user_id=user_id)
+                        .order_by(Income.income_date.desc(), Income.id.desc())
+                        .all()
+                    )
+                    source_suggestions = income_source_suggestions(previous_incomes)
+            except FinancialDataUnavailable:
+                pass
         return render_template(
             'financial_plan.html',
             plan=plan,
@@ -424,6 +358,8 @@ def init_app(app):
             preference.desired_monthly_savings = monthly_contribution
             db.session.commit()
             flash('Параметры финансовой подушки обновлены.', 'success')
+        except FinancialDataUnavailable:
+            raise
         except ValueError as exc:
             db.session.rollback()
             flash(str(exc), 'danger')

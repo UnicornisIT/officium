@@ -108,7 +108,12 @@
             <strong>≈ {{ plan.totals.weekly_limit|money }}</strong>
             <small>на повседневные расходы</small>
         </div>
-        {% if plan.window_daily %}
+        {% if plan.window_daily_error %}
+        <div class="plan-metric" id="plan-window-daily" role="status">
+            <span>В день до следующего поступления</span>
+            <strong>Расчёт временно недоступен</strong>
+        </div>
+        {% elif plan.window_daily %}
         {% set window = plan.window_daily %}
         <div class="plan-metric" id="plan-window-daily">
             <span>В день до следующего поступления</span>
@@ -239,6 +244,9 @@
             </form>
 
             <div class="plan-income-allocations">
+                {% if plan.pay_period_error %}
+                <p class="alert alert-warning" role="status">Распределение по поступлениям временно недоступно.</p>
+                {% else %}
                 {% for income in plan.income_allocations %}
                 <article class="plan-income-allocation" id="income-allocation-{{ income.id }}">
                     <div class="plan-income-allocation__header">
@@ -331,6 +339,7 @@
                     </div>
                     {% endfor %}
                 </div>
+                {% endif %}
                 {% endif %}
             </div>
         </div>

@@ -3,6 +3,7 @@ from flask import current_app, jsonify, request
 from app.time_utils import financial_today
 from app.models import DebtPaymentPlan, Payment
 from app.services.debt_service import get_user_debt
+from app.services.financial_data import require_financial_data
 from app.services.payment_service import accept_bank_remaining, add_payment, delete_payment, update_payment
 from app.utils import is_local_test_user, parse_date, parse_decimal
 from extensions import db
@@ -10,6 +11,7 @@ from extensions import db
 
 def init_app(app):
     @app.route('/api/debts/<int:debt_id>/payments', methods=['GET'])
+    @require_financial_data()
     def api_get_payments(debt_id):
         debt = get_user_debt(debt_id)
         if not debt:
