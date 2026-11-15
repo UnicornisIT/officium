@@ -135,8 +135,12 @@
                     {% set index = loop.index0 %}
                     <tr class="{{ 'import-row--duplicate' if row.duplicate and not row.monthly_match_id else '' }} {{ 'import-row--monthly' if row.monthly_match_id else '' }}" data-import-row data-order="{{ index }}" data-source="Строка {{ row.row_number }}{% if row.source_category %}, банк: {{ row.source_category }}{% endif %}" data-monthly="{{ row.monthly_match_title or '' }}">
                         <td>
-                            <select class="form-select form-select-sm import-action" name="action_{{ index }}" title="{% if row.monthly_match_id %}Похоже на ежемесячный: {{ row.monthly_match_title }}{% elif row.duplicate %}Возможный дубликат{% else %}Что сделать со строкой{% endif %}">
-                                {% if row.monthly_match_id %}
+                            {% set duplicate_label = {'new': 'Новая', 'possible': 'Возможный дубликат', 'exact': 'Точный дубликат'}[row.duplicate_status] %}
+                            <span class="small text-body-secondary" id="import-status-{{ index }}">{{ duplicate_label }}</span>
+                            <select class="form-select form-select-sm import-action" name="action_{{ index }}" aria-describedby="import-status-{{ index }}">
+                                {% if row.duplicate_status == 'exact' %}
+                                <option value="skip" selected>Пропуск</option>
+                                {% elif row.monthly_match_id %}
                                 <option value="update_monthly" {% if row.default_import_action == 'update_monthly' %}selected{% endif %}>Обновить</option>
                                 <option value="create" {% if row.default_import_action == 'create' %}selected{% endif %}>Отдельно</option>
                                 <option value="skip" {% if row.default_import_action == 'skip' %}selected{% endif %}>Пропуск</option>
@@ -157,7 +161,7 @@
                                     <i class="bi bi-repeat"></i>
                                 </span>
                                 {% elif row.duplicate %}
-                                <span class="import-row-marker import-row-marker--duplicate" title="Возможный дубликат">
+                                <span class="import-row-marker import-row-marker--duplicate" title="{{ duplicate_label }}">
                                     <i class="bi bi-copy"></i>
                                 </span>
                                 {% endif %}

@@ -462,6 +462,21 @@ class Income(db.Model):
         return f'<Income {self.amount} {self.category}>'
 
 
+class BankImportEntry(db.Model):
+    __tablename__ = 'bank_import_entries'
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'transaction_key', name='uq_bank_import_transaction'),
+        db.Index('ix_bank_import_fallback', 'user_id', 'fallback_key'),
+    )
+
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    file_row_key = db.Column(db.String(64), primary_key=True)
+    transaction_key = db.Column(db.String(64))
+    fallback_key = db.Column(db.String(64), nullable=False)
+    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', ondelete='CASCADE'), nullable=False, index=True)
+    expense = db.relationship('Expense', back_populates='bank_import_entries')
+
+
 class Expense(db.Model):
     __tablename__ = 'expenses'
     __table_args__ = (
@@ -512,6 +527,9 @@ class Expense(db.Model):
     monthly_settings_updated_at = db.Column(db.DateTime, nullable=True)
 
     user = db.relationship('User', back_populates='expenses')
+    bank_import_entries = db.relationship(
+        'BankImportEntry', back_populates='expense', cascade='all, delete-orphan',
+    )
 
     def to_dict(self):
         return {

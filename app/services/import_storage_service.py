@@ -3,7 +3,7 @@
 A preview is one small JSON file per upload in IMPORT_STORAGE_DIR (by default
 <instance>/bank_imports, which is <APP_ROOT>/shared/instance/bank_imports on a
 managed server). It holds no statement content: only the owner, the creation
-time, the number of preview rows and the monthly expense each row may update.
+time, the number of preview rows, their hashes, and their monthly match IDs.
 Titles, amounts and dates travel in the confirmation form, as before.
 
 File names:
@@ -35,7 +35,7 @@ from flask import current_app
 
 from app.time_utils import as_utc, utc_now
 
-PAYLOAD_VERSION = 2
+PAYLOAD_VERSION = 3
 TOKEN_RE = re.compile(r'^[A-Za-z0-9_-]{16,64}$')
 PREVIEW_RE = re.compile(r'^u(?P<user>[0-9]{1,20})-(?P<token>[A-Za-z0-9_-]{16,64})\.json$')
 CLAIMED_RE = re.compile(r'^u[0-9]{1,20}-[A-Za-z0-9_-]{16,64}\.json\.claimed$')
@@ -81,6 +81,8 @@ class StoredPreview:
     created_at: datetime
     row_count: int
     monthly_match_ids: list
+    row_keys: list
+    possible_duplicates: list
 
 
 @dataclass
@@ -297,6 +299,8 @@ def save_preview(user_id, rows):
         'created_at': utc_now().replace(tzinfo=None).isoformat(),
         'row_count': len(rows),
         'monthly_match_ids': [getattr(row, 'monthly_match_id', None) for row in rows],
+        'row_keys': [row.import_keys for row in rows],
+        'possible_duplicates': [row.duplicate_status == 'possible' for row in rows],
     }
     data = json.dumps(payload, separators=(',', ':')).encode('utf-8')
     _check_limits(directory, user_id, len(data))
@@ -344,7 +348,8 @@ def _read_payload(path):
 
 
 def _preview_from_payload(token, payload):
-    if payload.get('version') == PAYLOAD_VERSION:
+    version = payload.get('version')
+    if version in (2, PAYLOAD_VERSION):
         row_count = int(payload.get('row_count', 0))
         match_ids = list(payload.get('monthly_match_ids') or [])
     else:
@@ -353,6 +358,13 @@ def _preview_from_payload(token, payload):
         row_count = len(rows)
         match_ids = [row.get('monthly_match_id') if isinstance(row, dict) else None for row in rows]
     match_ids = (match_ids + [None] * row_count)[:row_count]
+    row_keys = [None] * row_count
+    possible_duplicates = [False] * row_count
+    if version == PAYLOAD_VERSION:
+        row_keys = payload.get('row_keys') or []
+        possible_duplicates = payload.get('possible_duplicates') or []
+        if len(row_keys) != row_count or len(possible_duplicates) != row_count:
+            raise ImportStorageError('not_found', 'Импорт не найден. Загрузите выписку еще раз.')
     try:
         created_at = as_utc(datetime.fromisoformat(str(payload.get('created_at'))))
     except ValueError:
@@ -363,6 +375,8 @@ def _preview_from_payload(token, payload):
         created_at=created_at,
         row_count=row_count,
         monthly_match_ids=match_ids,
+        row_keys=row_keys,
+        possible_duplicates=possible_duplicates,
     )
 
 

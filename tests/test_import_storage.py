@@ -22,7 +22,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app import create_app, resolve_instance_path
-from app.models import Expense, User
+from app.models import BankImportEntry, Expense, User
 from app.services import import_storage_service as storage
 from app.services.bank_statement_import_service import parse_bank_statement
 from extensions import db
@@ -177,6 +177,87 @@ class ImportStorageAppTestCase(unittest.TestCase):
 
 
 class ImportFlowTestCase(ImportStorageAppTestCase):
+    def test_two_previews_of_same_file_only_import_once(self):
+        self.login(self.client, self.user_id)
+        data = statement(*expense_lines(1))
+        first = self.preview_token(self.upload(self.client, data))
+        second = self.preview_token(self.upload(self.client, data, 'renamed.csv'))
+
+        self.assertEqual(self.confirm(self.client, first).status_code, 302)
+        self.assertEqual(self.confirm(self.client, second).status_code, 302)
+        self.assertEqual(self.expense_count(), 1)
+        repeated = self.upload(self.client, data)
+        self.assertIn('Точный дубликат', repeated.get_data(as_text=True))
+
+    def test_parallel_confirmations_of_separate_previews_only_import_once(self):
+        clients = [self.app.test_client(), self.app.test_client()]
+        data = statement(*expense_lines(1))
+        for client in clients:
+            self.login(client, self.user_id)
+        tokens = [self.preview_token(self.upload(client, data)) for client in clients]
+        barrier = threading.Barrier(2)
+        statuses = []
+
+        def confirm(client, token):
+            barrier.wait(timeout=10)
+            statuses.append(self.confirm(client, token).status_code)
+
+        threads = [threading.Thread(target=confirm, args=pair) for pair in zip(clients, tokens)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=15)
+
+        self.assertEqual(statuses, [302, 302])
+        self.assertEqual(self.expense_count(), 1)
+
+    def test_identical_rows_in_one_file_are_separate_and_reexport_is_possible_duplicate(self):
+        self.login(self.client, self.user_id)
+        line = expense_lines(1)[0]
+        token = self.preview_token(self.upload(self.client, statement(line, line)))
+        self.assertEqual(self.confirm(self.client, token, rows=2, title_1='SYNTH SHOP 0', amount_1='100').status_code, 302)
+        self.assertEqual(self.expense_count(), 2)
+
+        reexport = statement(line.replace('-100,00', '-100,001'))
+        preview = self.upload(self.client, reexport)
+        html = preview.get_data(as_text=True)
+        self.assertIn('Возможный дубликат', html)
+        self.assertRegex(html, r'name="action_0"[\s\S]*value="skip" selected')
+        self.assertEqual(self.confirm(self.client, self.preview_token(preview), action_0='skip').status_code, 302)
+        self.assertEqual(self.expense_count(), 2)
+        token = self.preview_token(self.upload(self.client, reexport))
+        self.assertEqual(self.confirm(self.client, token).status_code, 302)
+        self.assertEqual(self.expense_count(), 3)
+
+    def test_bank_transaction_ids_distinguish_purchases_and_are_scoped_to_source_and_user(self):
+        self.login(self.client, self.user_id)
+        other = self.app.test_client()
+        self.login(other, self.other_user_id)
+
+        def export(transaction_id, bank='Сбербанк Онлайн', card='*0000', trailing=''):
+            header = CSV_HEADER.rstrip('\n').replace('Сбербанк Онлайн', bank)
+            line = expense_lines(1)[0].replace('*0000', card)
+            return f'{header};Transaction ID\n{line};{transaction_id}\n{trailing}'.encode('cp1251')
+
+        token = self.preview_token(self.upload(self.client, export('a')))
+        self.assertEqual(self.confirm(self.client, token, title_0='Edited title', amount_0='99.99').status_code, 302)
+        repeat = self.upload(self.client, export('a', trailing='\n'))
+        self.assertIn('Точный дубликат', repeat.get_data(as_text=True))
+        self.assertEqual(self.confirm(self.client, self.preview_token(repeat)).status_code, 302)
+        self.assertEqual(self.expense_count(), 1)
+
+        for client, data in (
+            (self.client, export('b')),
+            (self.client, export('a', bank='Т-Банк')),
+            (self.client, export('a', card='*1111')),
+            (other, export('a')),
+        ):
+            preview = self.upload(client, data)
+            self.assertNotIn('дубликат', preview.get_data(as_text=True))
+            self.assertEqual(self.confirm(client, self.preview_token(preview)).status_code, 302)
+        self.assertEqual(self.expense_count(), 4)
+        self.assertEqual(self.expense_count(self.other_user_id), 1)
+
     def test_preview_is_stored_outside_the_release_and_confirmed(self):
         self.login(self.client, self.user_id)
         response = self.upload(self.client, statement(*expense_lines(1)))
@@ -200,7 +281,14 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
         raw = (self.storage_dir / f'u{self.user_id}-{token}.json').read_text(encoding='utf-8')
         self.assertNotIn('SYNTH', raw)
         payload = json.loads(raw)
-        self.assertEqual(set(payload), {'version', 'user_id', 'created_at', 'row_count', 'monthly_match_ids'})
+        self.assertEqual(set(payload), {
+            'version', 'user_id', 'created_at', 'row_count', 'monthly_match_ids',
+            'row_keys', 'possible_duplicates',
+        })
+        for file_key, transaction_key, fallback_key in payload['row_keys']:
+            self.assertRegex(file_key, r'^[a-f0-9]{64}$')
+            self.assertIsNone(transaction_key)
+            self.assertRegex(fallback_key, r'^[a-f0-9]{64}$')
         self.assertEqual(payload['version'], storage.PAYLOAD_VERSION)
         self.assertEqual(payload['created_at'], now.replace(tzinfo=None).isoformat())
         self.assertEqual(payload['monthly_match_ids'], [None, None, None])
@@ -217,7 +305,8 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
         self.assertEqual(response.status_code, 200)
         token = self.preview_token(response)
         size = (self.storage_dir / f'u{self.user_id}-{token}.json').stat().st_size
-        self.assertLess(size, 16 * 1024)
+        # Each row can now carry three SHA-256 fingerprints and its action metadata.
+        self.assertLess(size, 512 + rows * 230)
         response = self.confirm(self.client, token, rows=rows)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.expense_count(), rows)
@@ -284,6 +373,8 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
         response = self.confirm(self.client, token, rows=2, category_1='not-a-category')
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.expense_count(), 1)
+        with self.app.app_context():
+            self.assertEqual(BankImportEntry.query.count(), 0)
         self.assertEqual(self.stored_files(), [f'u{self.user_id}-{token}.json'])
 
         self.assertEqual(self.confirm(self.client, token, rows=2).status_code, 302)

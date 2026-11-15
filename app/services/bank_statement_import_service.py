@@ -61,6 +61,11 @@ BANK_ALIASES = (
     ('vtb', ('втб', 'vtb')),
 )
 
+TRANSACTION_ID_HEADERS = {
+    'id операции', 'id транзакции', 'идентификатор операции', 'идентификатор транзакции',
+    'transaction id', 'transaction identifier', 'operation id',
+}
+
 BANK_LABELS = {
     'sber': 'Сбер',
     'tbank': 'Т-Банк',
@@ -143,6 +148,11 @@ class ImportedExpenseRow:
     monthly_match_category: str = ''
     monthly_match_score: int = 0
     default_import_action: str = 'create'
+    transaction_id: str = ''
+    source_account: str = ''
+    source_description: str = ''
+    duplicate_status: str = 'new'
+    import_keys: tuple = ()
 
     def to_dict(self):
         return {
@@ -410,6 +420,7 @@ def _parse_sber_credit_card_block(block, bank, line_number):
         return None
 
     clean_description = _clean_pdf_description(description, money_values)
+    card_match = re.search(r'\*{2,}\d{4}', description)
     title = _normalize_title(clean_description or source_category or 'Операция по карте')
     category = _guess_category(' '.join((source_category, clean_description)))
     bank_label = BANK_LABELS.get(bank, BANK_LABELS['unknown'])
@@ -424,6 +435,8 @@ def _parse_sber_credit_card_block(block, bank, line_number):
         source_category=source_category,
         raw_amount=amount_raw,
         row_number=line_number,
+        source_account=card_match.group() if card_match else '',
+        source_description=clean_description,
     )
 
 
@@ -505,6 +518,7 @@ def _parse_tbank_movement_block(block, bank, line_number):
         bank=bank,
         raw_amount=amount_raw,
         row_number=line_number,
+        source_description=description,
     )
 
 
@@ -662,6 +676,7 @@ def _parse_pdf_operation_line(line, bank, line_number):
         bank=bank,
         raw_amount=amount_raw,
         row_number=line_number,
+        source_description=description,
     )
 
 
@@ -872,6 +887,9 @@ def _map_headers(row):
     mapping = {}
     for index, header in enumerate(row):
         normalized = _normalize_header(header)
+        if normalized in TRANSACTION_ID_HEADERS:
+            mapping.setdefault('transaction_id', index)
+            continue
         for key, aliases in HEADER_ALIASES.items():
             if key in mapping:
                 continue
@@ -938,6 +956,9 @@ def _parse_operation_row(row, mapping, bank, row_number):
         source_category=source_category,
         raw_amount=raw_amount,
         row_number=row_number,
+        transaction_id=_get(row, mapping.get('transaction_id')),
+        source_account=card,
+        source_description=description,
     )
 
 

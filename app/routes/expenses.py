@@ -1,3 +1,4 @@
+import hashlib
 import sys
 import traceback
 from datetime import date
@@ -7,6 +8,7 @@ from flask import abort, current_app, redirect, render_template, request, url_fo
 from sqlalchemy import or_
 from werkzeug.exceptions import HTTPException
 from app.models import Debt, Expense, MonthlyExpenseStop
+from app.services import bank_import_identity_service as import_identity
 from app.services import import_storage_service as import_storage
 from app.services.bank_statement_import_service import (
     parse_bank_statement,
@@ -205,10 +207,11 @@ def init_app(app):
                                 "IMPORT_MAX_SOURCE_ROWS"
                             ),
                         )
+                        statement_digest = hashlib.sha256(file_bytes).hexdigest()
                         del file_bytes
                         if len(parse_result.rows) > max_rows:
                             raise ValueError(too_many_rows_message(max_rows))
-                    _prepare_import_rows(parse_result.rows)
+                    _prepare_import_rows(parse_result.rows, statement_digest)
                     import_token = import_storage.save_preview(
                         current_user.id, parse_result.rows
                     )
@@ -255,8 +258,8 @@ def init_app(app):
         try:
             claim = import_storage.claimed_preview(current_user.id, token)
             with claim as preview:
-                created, updated_monthly, skipped_unselected = _apply_confirmed_import(
-                    preview
+                created, updated_monthly, skipped_unselected, skipped_duplicates = (
+                    _apply_confirmed_import(preview)
                 )
                 db.session.commit()
                 claim.complete()
@@ -267,6 +270,8 @@ def init_app(app):
                 details.append(f"ежемесячных обновлено: {updated_monthly}")
             if skipped_unselected:
                 details.append(f"строк не выбрано: {skipped_unselected}")
+            if skipped_duplicates:
+                details.append(f"совпадений пропущено: {skipped_duplicates}")
             if details:
                 message += " " + ", ".join(details) + "."
             return redirect(url_for("expenses", success=message))
@@ -306,6 +311,11 @@ def init_app(app):
         created = 0
         updated_monthly = 0
         skipped_unselected = 0
+        skipped_duplicates = 0
+        user_id = preview.user_id
+        import_identity.lock_imports(user_id)
+        statuses = import_identity.duplicate_statuses(user_id, preview.row_keys)
+        accepted_transactions = set()
 
         for index, monthly_match_id in enumerate(preview.monthly_match_ids):
             action = request.form.get(f"action_{index}")
@@ -318,6 +328,17 @@ def init_app(app):
 
             if action == "skip":
                 skipped_unselected += 1
+                continue
+
+            keys = preview.row_keys[index]
+            transaction_key = keys[1] if keys else None
+            status = statuses[index]
+            if (
+                status == "exact"
+                or transaction_key in accepted_transactions
+                or (status == "possible" and not preview.possible_duplicates[index])
+            ):
+                skipped_duplicates += 1
                 continue
 
             amount = parse_decimal(
@@ -363,11 +384,10 @@ def init_app(app):
                     comment=comment,
                 )
                 updated_monthly += 1
-                continue
-
-            db.session.add(
-                Expense(
-                    user_id=current_user.id,
+                expense = monthly_expense
+            else:
+                expense = Expense(
+                    user_id=user_id,
                     amount=amount,
                     category=category,
                     title=title[:150],
@@ -375,10 +395,15 @@ def init_app(app):
                     payment_method=payment_method,
                     comment=comment,
                 )
-            )
-            created += 1
+                db.session.add(expense)
+                created += 1
 
-        return created, updated_monthly, skipped_unselected
+            if keys:
+                import_identity.record_import(user_id, keys, expense)
+            if transaction_key:
+                accepted_transactions.add(transaction_key)
+
+        return created, updated_monthly, skipped_unselected, skipped_duplicates
 
     @app.route("/expenses/edit/<int:expense_id>", methods=["GET", "POST"])
     def edit_expense(expense_id):
@@ -483,34 +508,18 @@ def _stopped_monthly_groups():
     return {stop.monthly_group_id for stop in MonthlyExpenseStop.query.filter_by(user_id=current_user.id).all()}
 
 
-def _prepare_import_rows(rows):
-    _mark_import_duplicates(rows)
+def _prepare_import_rows(rows, statement_digest):
     _mark_import_monthly_matches(rows)
-    for row in rows:
-        if getattr(row, "monthly_match_id", None):
-            continue
-        row.default_import_action = (
-            "skip" if getattr(row, "duplicate", False) else "create"
-        )
-
-
-def _mark_import_duplicates(rows):
-    for row in rows:
-        row.duplicate = _expense_duplicate_exists(
-            current_user.id, row.expense_date, row.amount, row.title
-        )
-
-
-def _expense_duplicate_exists(user_id, expense_date, amount, title):
-    return (
-        Expense.query.filter_by(
-            user_id=user_id,
-            expense_date=expense_date,
-            amount=amount,
-            title=title,
-        ).first()
-        is not None
-    )
+    keys = [import_identity.row_keys(row, statement_digest) for row in rows]
+    statuses = import_identity.duplicate_statuses(current_user.id, keys)
+    for row, row_keys, status in zip(rows, keys, statuses):
+        row.import_keys = row_keys
+        if status == "new" and import_identity.legacy_match_exists(current_user.id, row):
+            status = "possible"
+        row.duplicate_status = status
+        row.duplicate = status != "new"
+        if row.duplicate:
+            row.default_import_action = "skip"
 
 
 def _mark_import_monthly_matches(rows):
@@ -537,8 +546,6 @@ def _mark_import_monthly_matches(rows):
         )[0]
         for row in monthly_rows:
             row.default_import_action = "update_monthly" if row is chosen else "create"
-            if row is not chosen and row.duplicate:
-                row.default_import_action = "skip"
 
 
 def _find_import_monthly_match(row):
