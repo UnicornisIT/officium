@@ -28,29 +28,63 @@ HEADER_SCAN_ROWS = 40
 
 HEADER_ALIASES = {
     'date': (
-        'дата операции', 'дата транзакции', 'дата платежа', 'дата списания',
-        'дата', 'operation date', 'transaction date', 'date',
+        'дата операции',
+        'дата транзакции',
+        'дата платежа',
+        'дата списания',
+        'дата',
+        'operation date',
+        'transaction date',
+        'date',
     ),
     'description': (
-        'описание операции', 'описание', 'назначение платежа', 'назначение',
-        'операция', 'получатель', 'контрагент', 'наименование', 'merchant',
-        'description', 'details',
+        'описание операции',
+        'описание',
+        'назначение платежа',
+        'назначение',
+        'операция',
+        'получатель',
+        'контрагент',
+        'наименование',
+        'merchant',
+        'description',
+        'details',
     ),
     'amount': (
-        'сумма операции', 'сумма платежа', 'сумма в валюте счета',
-        'сумма', 'amount', 'transaction amount',
+        'сумма операции',
+        'сумма платежа',
+        'сумма в валюте счета',
+        'сумма',
+        'amount',
+        'transaction amount',
     ),
     'debit': (
-        'расход', 'списание', 'дебет', 'debit', 'withdrawal', 'outcome',
+        'расход',
+        'списание',
+        'дебет',
+        'debit',
+        'withdrawal',
+        'outcome',
     ),
     'credit': (
-        'приход', 'зачисление', 'кредит', 'credit', 'income',
+        'приход',
+        'зачисление',
+        'кредит',
+        'credit',
+        'income',
     ),
     'category': (
-        'категория', 'category', 'тип операции',
+        'категория',
+        'category',
+        'тип операции',
     ),
     'card': (
-        'карта', 'номер карты', 'счет', 'счёт', 'account', 'card',
+        'карта',
+        'номер карты',
+        'счет',
+        'счёт',
+        'account',
+        'card',
     ),
 }
 
@@ -62,8 +96,13 @@ BANK_ALIASES = (
 )
 
 TRANSACTION_ID_HEADERS = {
-    'id операции', 'id транзакции', 'идентификатор операции', 'идентификатор транзакции',
-    'transaction id', 'transaction identifier', 'operation id',
+    'id операции',
+    'id транзакции',
+    'идентификатор операции',
+    'идентификатор транзакции',
+    'transaction id',
+    'transaction identifier',
+    'operation id',
 }
 
 BANK_LABELS = {
@@ -75,57 +114,199 @@ BANK_LABELS = {
 }
 
 CATEGORY_RULES = (
-    ('products', (
-        'продукт', 'супермаркет', 'пятероч', '5ka', 'перекресток', 'perekrestok',
-        'магнит', 'magnit', 'лента', 'lenta', 'вкусвилл', 'dixy', 'дикси',
-        'ашан', 'auchan', 'самокат', 'лавка', 'яндекс еда', 'yandex eda',
-        'yandex*5814*eda', '*eda',
-    )),
-    ('transport', (
-        'такси', 'taxi', 'яндекс go', 'yandex go', 'uber', 'метро', 'metro',
-        'тройка', 'transport', 'ржд', 'rzd', 'аэрофлот', 'aeroflot',
-        'авиасейлс', 'azs', 'азс', 'бензин', 'fuel', 'yandex*4121*go',
-        'yandex*go', 'автомобиль', 'автомобил', 'авто ',
-    )),
-    ('communication', (
-        'мтс', 'mts', 'билайн', 'beeline', 'мегафон', 'megafon', 'tele2',
-        'yota', 'йота', 'связь', 'интернет', 'internet',
-    )),
-    ('rent', (
-        'аренда', 'rent', 'жкх', 'квартплата', 'коммуналь', 'mosenergo',
-        'мосэнерго', 'водоканал',
-    )),
-    ('loans', (
-        'кредит', 'loan', 'ипотек', 'mortgage', 'платеж по кредиту',
-        'платёж по кредиту',
-    )),
-    ('restaurants', (
-        'рестораны и кафе', 'ресторан', 'restaurant', 'кафе', 'cafe',
-        'пекарн', 'point pita', 'panda', 'familnaya pekarnya', 'kulinariya',
-        'кулинар', 'hachaturyan', 'hachatryan',
-    )),
-    ('entertainment', (
-        'кино', 'cinema', 'театр', 'бар', 'steam', 'playstation', 'xbox',
-        'развлеч',
-    )),
-    ('health', (
-        'аптека', 'pharmacy', 'clinic', 'клиник', 'медицин', 'здоров',
-        'лаборатор', 'инвитро', 'gemotest',
-    )),
-    ('education', (
-        'курс', 'курсы', 'обуч', 'school', 'университет', 'udemy',
-        'coursera', 'skillbox', 'geekbrains',
-    )),
-    ('clothing', (
-        'одеж', 'clothes', 'fashion', 'lamoda', 'zara', 'befree',
-        'gloria jeans', 'ostin', 'wildberries', 'wb ',
-    )),
-    ('subscriptions', (
-        'подпис', 'subscription', 'spotify', 'netflix', 'youtube', 'apple.com/bill',
-        'google', 'яндекс плюс', 'yandex plus', 'ivi', 'kion', 'okko', 'wink',
-        'vk music', 'telegram', 'телеграм', 'yandex oblako', 'яндекс облако',
-        'oblako',
-    )),
+    (
+        'products',
+        (
+            'продукт',
+            'супермаркет',
+            'пятероч',
+            '5ka',
+            'перекресток',
+            'perekrestok',
+            'магнит',
+            'magnit',
+            'лента',
+            'lenta',
+            'вкусвилл',
+            'dixy',
+            'дикси',
+            'ашан',
+            'auchan',
+            'самокат',
+            'лавка',
+            'яндекс еда',
+            'yandex eda',
+            'yandex*5814*eda',
+            '*eda',
+        ),
+    ),
+    (
+        'transport',
+        (
+            'такси',
+            'taxi',
+            'яндекс go',
+            'yandex go',
+            'uber',
+            'метро',
+            'metro',
+            'тройка',
+            'transport',
+            'ржд',
+            'rzd',
+            'аэрофлот',
+            'aeroflot',
+            'авиасейлс',
+            'azs',
+            'азс',
+            'бензин',
+            'fuel',
+            'yandex*4121*go',
+            'yandex*go',
+            'автомобиль',
+            'автомобил',
+            'авто ',
+        ),
+    ),
+    (
+        'communication',
+        (
+            'мтс',
+            'mts',
+            'билайн',
+            'beeline',
+            'мегафон',
+            'megafon',
+            'tele2',
+            'yota',
+            'йота',
+            'связь',
+            'интернет',
+            'internet',
+        ),
+    ),
+    (
+        'rent',
+        (
+            'аренда',
+            'rent',
+            'жкх',
+            'квартплата',
+            'коммуналь',
+            'mosenergo',
+            'мосэнерго',
+            'водоканал',
+        ),
+    ),
+    (
+        'loans',
+        (
+            'кредит',
+            'loan',
+            'ипотек',
+            'mortgage',
+            'платеж по кредиту',
+            'платёж по кредиту',
+        ),
+    ),
+    (
+        'restaurants',
+        (
+            'рестораны и кафе',
+            'ресторан',
+            'restaurant',
+            'кафе',
+            'cafe',
+            'пекарн',
+            'point pita',
+            'panda',
+            'familnaya pekarnya',
+            'kulinariya',
+            'кулинар',
+            'hachaturyan',
+            'hachatryan',
+        ),
+    ),
+    (
+        'entertainment',
+        (
+            'кино',
+            'cinema',
+            'театр',
+            'бар',
+            'steam',
+            'playstation',
+            'xbox',
+            'развлеч',
+        ),
+    ),
+    (
+        'health',
+        (
+            'аптека',
+            'pharmacy',
+            'clinic',
+            'клиник',
+            'медицин',
+            'здоров',
+            'лаборатор',
+            'инвитро',
+            'gemotest',
+        ),
+    ),
+    (
+        'education',
+        (
+            'курс',
+            'курсы',
+            'обуч',
+            'school',
+            'университет',
+            'udemy',
+            'coursera',
+            'skillbox',
+            'geekbrains',
+        ),
+    ),
+    (
+        'clothing',
+        (
+            'одеж',
+            'clothes',
+            'fashion',
+            'lamoda',
+            'zara',
+            'befree',
+            'gloria jeans',
+            'ostin',
+            'wildberries',
+            'wb ',
+        ),
+    ),
+    (
+        'subscriptions',
+        (
+            'подпис',
+            'subscription',
+            'spotify',
+            'netflix',
+            'youtube',
+            'apple.com/bill',
+            'google',
+            'яндекс плюс',
+            'yandex plus',
+            'ivi',
+            'kion',
+            'okko',
+            'wink',
+            'vk music',
+            'telegram',
+            'телеграм',
+            'yandex oblako',
+            'яндекс облако',
+            'oblako',
+        ),
+    ),
 )
 
 
@@ -199,7 +380,9 @@ def too_many_rows_message(max_rows):
 
 
 def too_many_source_rows_message(max_source_rows):
-    return f'В файле больше {max_source_rows} строк. Загрузите выписку за меньший период.'
+    return (
+        f'В файле больше {max_source_rows} строк. Загрузите выписку за меньший период.'
+    )
 
 
 def parse_bank_statement(file_bytes, filename, *, max_rows=None, max_source_rows=None):
@@ -220,9 +403,15 @@ def parse_bank_statement(file_bytes, filename, *, max_rows=None, max_source_rows
         raise ValueError('Поддерживаются файлы CSV, TXT, TSV, XLSX и PDF.')
 
     if extension == '.pdf':
-        return _parse_pdf_statement(file_bytes, max_rows=max_rows, max_source_rows=max_source_rows)
+        return _parse_pdf_statement(
+            file_bytes, max_rows=max_rows, max_source_rows=max_source_rows
+        )
 
-    rows = _trim_table(_iter_xlsx_rows(file_bytes) if extension == '.xlsx' else _iter_csv_rows(file_bytes))
+    rows = _trim_table(
+        _iter_xlsx_rows(file_bytes)
+        if extension == '.xlsx'
+        else _iter_csv_rows(file_bytes)
+    )
     try:
         head = list(islice(rows, HEADER_SCAN_ROWS))
         if not head:
@@ -230,7 +419,7 @@ def parse_bank_statement(file_bytes, filename, *, max_rows=None, max_source_rows
 
         bank = _detect_bank(head)
         header_index, mapping = _detect_header(head)
-        data_rows = chain(head[header_index + 1:], rows)
+        data_rows = chain(head[header_index + 1 :], rows)
         result = BankStatementParseResult(bank=bank, rows=[])
 
         for offset, raw_row in enumerate(data_rows, start=header_index + 2):
@@ -255,7 +444,9 @@ def parse_bank_statement(file_bytes, filename, *, max_rows=None, max_source_rows
         rows.close()
 
     if not result.rows and not result.errors:
-        raise ValueError('В файле не найдено расходов. Возможно, выписка содержит только пополнения.')
+        raise ValueError(
+            'В файле не найдено расходов. Возможно, выписка содержит только пополнения.'
+        )
     return result
 
 
@@ -263,7 +454,9 @@ def _parse_pdf_statement(file_bytes, *, max_rows=None, max_source_rows=None):
     text = _extract_pdf_text(file_bytes)
     lines = _normalize_pdf_lines(text)
     if not lines:
-        raise ValueError('PDF не содержит распознаваемого текста. Если это скан, загрузите CSV/XLSX или текстовый PDF.')
+        raise ValueError(
+            'PDF не содержит распознаваемого текста. Если это скан, загрузите CSV/XLSX или текстовый PDF.'
+        )
     if max_source_rows is not None and len(lines) > max_source_rows:
         raise ValueError(too_many_source_rows_message(max_source_rows))
 
@@ -296,7 +489,9 @@ def _parse_pdf_statement(file_bytes, *, max_rows=None, max_source_rows=None):
 
 def _finalize_pdf_result(result, max_rows=None):
     if not result.rows and not result.errors:
-        raise ValueError('В PDF не найдено расходов. Поддерживаются текстовые PDF Сбера и Т-Банка, а также CSV/XLSX.')
+        raise ValueError(
+            'В PDF не найдено расходов. Поддерживаются текстовые PDF Сбера и Т-Банка, а также CSV/XLSX.'
+        )
     if max_rows is not None and len(result.rows) > max_rows:
         raise ValueError(too_many_rows_message(max_rows))
     return result
@@ -306,7 +501,9 @@ def _extract_pdf_text(file_bytes):
     try:
         from pypdf import PdfReader
     except ImportError:
-        raise ValueError('Для импорта PDF установите зависимость pypdf и перезапустите приложение.')
+        raise ValueError(
+            'Для импорта PDF установите зависимость pypdf и перезапустите приложение.'
+        )
 
     try:
         reader = PdfReader(io.BytesIO(file_bytes))
@@ -316,10 +513,14 @@ def _extract_pdf_text(file_bytes):
     except ValueError:
         raise
     except Exception:
-        raise ValueError('Не удалось прочитать PDF-файл. Проверьте, что файл не поврежден и не защищен паролем.')
+        raise ValueError(
+            'Не удалось прочитать PDF-файл. Проверьте, что файл не поврежден и не защищен паролем.'
+        )
 
     if len(text.strip()) < 10:
-        raise ValueError('PDF не содержит распознаваемого текста. Если это скан, загрузите CSV/XLSX или текстовый PDF.')
+        raise ValueError(
+            'PDF не содержит распознаваемого текста. Если это скан, загрузите CSV/XLSX или текстовый PDF.'
+        )
     return text
 
 
@@ -334,17 +535,29 @@ def _normalize_pdf_lines(text):
 
 def _is_sber_credit_card_pdf(text):
     normalized = _normalize_header(text)
-    return 'выписка по счету кредитной карты' in normalized and 'расшифровка операций' in normalized
+    return (
+        'выписка по счету кредитной карты' in normalized
+        and 'расшифровка операций' in normalized
+    )
 
 
 def _is_tbank_movement_pdf(text):
     normalized = _normalize_header(text)
-    has_bank_name = any(alias in normalized for alias in ('тбанк', 'т-банк', 'тинькофф', 'tbank', 't-bank'))
-    return has_bank_name and 'справка о движении средств' in normalized and 'движение средств за период' in normalized
+    has_bank_name = any(
+        alias in normalized
+        for alias in ('тбанк', 'т-банк', 'тинькофф', 'tbank', 't-bank')
+    )
+    return (
+        has_bank_name
+        and 'справка о движении средств' in normalized
+        and 'движение средств за период' in normalized
+    )
 
 
 def _parse_sber_credit_card_pdf(lines, bank):
-    result = BankStatementParseResult(bank='sber' if bank == 'unknown' else bank, rows=[])
+    result = BankStatementParseResult(
+        bank='sber' if bank == 'unknown' else bank, rows=[]
+    )
     in_operations = False
     block = []
     block_line_number = 0
@@ -421,7 +634,9 @@ def _parse_sber_credit_card_block(block, bank, line_number):
 
     clean_description = _clean_pdf_description(description, money_values)
     card_match = re.search(r'\*{2,}\d{4}', description)
-    title = _normalize_title(clean_description or source_category or 'Операция по карте')
+    title = _normalize_title(
+        clean_description or source_category or 'Операция по карте'
+    )
     category = _guess_category(' '.join((source_category, clean_description)))
     bank_label = BANK_LABELS.get(bank, BANK_LABELS['unknown'])
     return ImportedExpenseRow(
@@ -442,14 +657,20 @@ def _parse_sber_credit_card_block(block, bank, line_number):
 
 def _extract_sber_pdf_money_values(description):
     search_area = re.split(r'\*{2,}\d{4}', description)[-1]
-    money_values = [match.group(0).strip() for match in _find_money_matches(search_area)]
+    money_values = [
+        match.group(0).strip() for match in _find_money_matches(search_area)
+    ]
     if not money_values:
-        money_values = [match.group(0).strip() for match in _find_money_matches(description)]
+        money_values = [
+            match.group(0).strip() for match in _find_money_matches(description)
+        ]
     return money_values
 
 
 def _parse_tbank_movement_pdf(lines, bank):
-    result = BankStatementParseResult(bank='tbank' if bank == 'unknown' else bank, rows=[])
+    result = BankStatementParseResult(
+        bank='tbank' if bank == 'unknown' else bank, rows=[]
+    )
     in_operations = False
     block = []
     block_line_number = 0
@@ -492,7 +713,9 @@ def _parse_tbank_movement_block(block, bank, line_number):
     if operation_date is None:
         raise ValueError('не распознана дата операции')
 
-    details = ' '.join(line for line in block[1:] if not _is_tbank_processing_date_line(line))
+    details = ' '.join(
+        line for line in block[1:] if not _is_tbank_processing_date_line(line)
+    )
     money_matches = _find_money_matches(details)
     if not money_matches:
         raise ValueError('не распознана сумма операции')
@@ -504,7 +727,9 @@ def _parse_tbank_movement_block(block, bank, line_number):
     if amount >= 0:
         return None
 
-    description_start = money_matches[1].end() if len(money_matches) > 1 else money_matches[0].end()
+    description_start = (
+        money_matches[1].end() if len(money_matches) > 1 else money_matches[0].end()
+    )
     description = _clean_pdf_description(details[description_start:])
     title = _normalize_title(description or 'Операция Т-Банка')
     bank_label = BANK_LABELS.get(bank, BANK_LABELS['unknown'])
@@ -548,7 +773,8 @@ def _is_sber_pdf_noise_line(line):
         or 'код авторизациикатегория' in normalized
         or normalized.startswith('описание операции')
         or normalized.startswith('сумма в валюте')
-        or normalized.startswith('операции') and 'остаток средств' in normalized
+        or normalized.startswith('операции')
+        and 'остаток средств' in normalized
         or normalized.startswith('остаток средств')
         or normalized.startswith('продолжение на следующей странице')
         or normalized.startswith('выписка по счету кредитной карты страница')
@@ -565,7 +791,8 @@ def _is_sber_pdf_noise_line(line):
         or normalized.startswith('проверить подпись')
         or normalized == '*'
         or re.match(r'^[0-9a-f]{20,}$', normalized) is not None
-        or re.match(r'^с \d{2}\.\d{2}\.\d{4} по \d{2}\.\d{2}\.\d{4}$', normalized) is not None
+        or re.match(r'^с \d{2}\.\d{2}\.\d{4} по \d{2}\.\d{2}\.\d{4}$', normalized)
+        is not None
     )
 
 
@@ -595,11 +822,13 @@ def _is_tbank_pdf_noise_line(line):
 
 
 def _find_money_matches(text):
-    return list(re.finditer(
-        r'[+−-]?\s*(?:\d{1,3}(?:\s\d{3})+|\d+)(?:[,.]\d{2})\s*(?:₽|руб\.?|rub|rur)?',
-        text,
-        flags=re.IGNORECASE,
-    ))
+    return list(
+        re.finditer(
+            r'[+−-]?\s*(?:\d{1,3}(?:\s\d{3})+|\d+)(?:[,.]\d{2})\s*(?:₽|руб\.?|rub|rur)?',
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def _clean_pdf_description(description, money_values=None):
@@ -639,7 +868,9 @@ def _parse_pdf_operation_line(line, bank, line_number):
     for value in date_matches:
         line_without_dates = line_without_dates.replace(value, ' ', 1)
 
-    amount_matches = [match.group(0).strip() for match in _find_money_matches(line_without_dates)]
+    amount_matches = [
+        match.group(0).strip() for match in _find_money_matches(line_without_dates)
+    ]
     if not amount_matches:
         return None
 
@@ -717,14 +948,14 @@ def _iter_lines(text):
         if end == -1:
             yield text[start:]
             return
-        yield text[start:end + 1]
+        yield text[start : end + 1]
         start = end + 1
 
 
 def _detect_delimiter(text):
     # 30 lines never need more than this window; splitting the whole text
     # would copy a 10 MB statement once more.
-    lines = [line for line in text[:256 * 1024].splitlines()[:30] if line.strip()]
+    lines = [line for line in text[: 256 * 1024].splitlines()[:30] if line.strip()]
     best = (';', -1, -1)
     for delimiter in (';', '\t', ','):
         column_counts = [len(line.split(delimiter)) for line in lines]
@@ -771,7 +1002,9 @@ def _iter_xlsx_rows(file_bytes):
             sheet_data_tag = f'{{{XLSX_NAMESPACE}}}sheetData'
             with archive.open(worksheet_name) as stream:
                 sheet_data = None
-                for event, element in ElementTree.iterparse(stream, events=('start', 'end')):
+                for event, element in ElementTree.iterparse(
+                    stream, events=('start', 'end')
+                ):
                     if event == 'start':
                         if element.tag == sheet_data_tag:
                             sheet_data = element
@@ -784,7 +1017,9 @@ def _iter_xlsx_rows(file_bytes):
                         col_index = _xlsx_column_index(cell_ref)
                         while len(values) < col_index:
                             values.append('')
-                        values.append(_xlsx_cell_value(cell_el, shared_strings, namespace))
+                        values.append(
+                            _xlsx_cell_value(cell_el, shared_strings, namespace)
+                        )
                     # Remove the converted row from the tree iterparse builds.
                     if sheet_data is not None:
                         sheet_data.clear()
@@ -792,7 +1027,9 @@ def _iter_xlsx_rows(file_bytes):
                         element.clear()
                     yield values
         except (ElementTree.ParseError, KeyError, zipfile.BadZipFile, EOFError):
-            raise ValueError('XLSX-файл поврежден или имеет неподдерживаемую структуру.')
+            raise ValueError(
+                'XLSX-файл поврежден или имеет неподдерживаемую структуру.'
+            )
 
 
 def _xlsx_shared_strings(archive):
@@ -811,7 +1048,11 @@ def _xlsx_shared_strings(archive):
 
 
 def _first_worksheet_name(archive):
-    names = [name for name in archive.namelist() if name.startswith('xl/worksheets/sheet') and name.endswith('.xml')]
+    names = [
+        name
+        for name in archive.namelist()
+        if name.startswith('xl/worksheets/sheet') and name.endswith('.xml')
+    ]
     if not names:
         raise ValueError('В XLSX-файле не найден лист с операциями.')
     return sorted(names)[0]
@@ -879,7 +1120,9 @@ def _detect_header(rows):
             best = (score, index, mapping)
 
     if best is None:
-        raise ValueError('Не удалось определить заголовки выписки. Проверьте, что есть колонки даты, описания и суммы.')
+        raise ValueError(
+            'Не удалось определить заголовки выписки. Проверьте, что есть колонки даты, описания и суммы.'
+        )
     return best[1], best[2]
 
 
@@ -930,7 +1173,9 @@ def _parse_operation_row(row, mapping, bank, row_number):
     description = _get(row, mapping.get('description')) or 'Операция по карте'
     source_category = _get(row, mapping.get('category'))
     card = _get(row, mapping.get('card'))
-    amount, is_expense, raw_amount = _extract_amount(row, mapping, ' '.join((description, source_category)))
+    amount, is_expense, raw_amount = _extract_amount(
+        row, mapping, ' '.join((description, source_category))
+    )
     if amount is None:
         raise ValueError('не распознана сумма операции')
     if not is_expense:
@@ -938,7 +1183,9 @@ def _parse_operation_row(row, mapping, bank, row_number):
 
     title = _normalize_title(description)
     category = _guess_category(' '.join((description, source_category)))
-    payment_method = 'card' if card or bank in {'sber', 'tbank', 'alfabank', 'vtb'} else 'other'
+    payment_method = (
+        'card' if card or bank in {'sber', 'tbank', 'alfabank', 'vtb'} else 'other'
+    )
     comment_parts = [f'Импорт выписки: {BANK_LABELS.get(bank, BANK_LABELS["unknown"])}']
     if source_category:
         comment_parts.append(f'категория банка: {source_category}')
@@ -950,7 +1197,9 @@ def _parse_operation_row(row, mapping, bank, row_number):
         amount=amount,
         expense_date=operation_date,
         category=category,
-        payment_method=payment_method if payment_method in PAYMENT_METHOD_KEYS else 'other',
+        payment_method=payment_method
+        if payment_method in PAYMENT_METHOD_KEYS
+        else 'other',
         comment='; '.join(comment_parts),
         bank=bank,
         source_category=source_category,
@@ -1001,8 +1250,14 @@ def _parse_date_value(value):
         value.split('T')[0],
     ]
     formats = (
-        '%d.%m.%Y', '%d.%m.%y', '%Y-%m-%d', '%d/%m/%Y', '%d/%m/%y',
-        '%d-%m-%Y', '%d-%m-%y', '%Y.%m.%d',
+        '%d.%m.%Y',
+        '%d.%m.%y',
+        '%Y-%m-%d',
+        '%d/%m/%Y',
+        '%d/%m/%y',
+        '%d-%m-%Y',
+        '%d-%m-%y',
+        '%Y.%m.%d',
     )
     for candidate in candidates:
         for fmt in formats:
@@ -1028,8 +1283,14 @@ def _parse_amount_value(value):
     if not text:
         return None
 
-    negative = text.startswith('-') or text.startswith('−') or (text.startswith('(') and text.endswith(')'))
-    text = text.replace('−', '-').replace('₽', '').replace('руб.', '').replace('руб', '')
+    negative = (
+        text.startswith('-')
+        or text.startswith('−')
+        or (text.startswith('(') and text.endswith(')'))
+    )
+    text = (
+        text.replace('−', '-').replace('₽', '').replace('руб.', '').replace('руб', '')
+    )
     text = re.sub(r'(?i)\b(rub|rur)\b', '', text)
     text = re.sub(r'[^0-9,.\-]', '', text)
     if text in {'', '-', '.', ','}:
@@ -1063,7 +1324,9 @@ def _normalize_title(description):
 def _guess_category(text):
     normalized = _normalize_header(text)
     for category, keywords in CATEGORY_RULES:
-        if category in EXPENSE_CATEGORY_KEYS and any(keyword in normalized for keyword in keywords):
+        if category in EXPENSE_CATEGORY_KEYS and any(
+            keyword in normalized for keyword in keywords
+        ):
             return category
     return 'other'
 
@@ -1073,7 +1336,12 @@ def _looks_like_expense(text):
     if _guess_category(normalized) != 'other':
         return True
     expense_words = (
-        'покупка', 'оплата', 'списание', 'расход', 'withdrawal',
-        'purchase', 'payment',
+        'покупка',
+        'оплата',
+        'списание',
+        'расход',
+        'withdrawal',
+        'purchase',
+        'payment',
     )
     return any(word in normalized for word in expense_words)

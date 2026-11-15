@@ -45,8 +45,19 @@ TARGET_MODE_LABELS = {
     'three_months': '3 месяца расходов',
 }
 MONTH_LABELS = (
-    '', 'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
-    'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+    '',
+    'январь',
+    'февраль',
+    'март',
+    'апрель',
+    'май',
+    'июнь',
+    'июль',
+    'август',
+    'сентябрь',
+    'октябрь',
+    'ноябрь',
+    'декабрь',
 )
 
 DEFAULT_PREFERENCES = {
@@ -58,8 +69,17 @@ DEFAULT_PREFERENCES = {
 }
 
 FAMILY_SUPPORT_MARKERS = (
-    'родствен', 'помощ', 'маме', 'мама', 'папе', 'папа', 'семье',
-    'семья', 'алименты', 'бабуш', 'дедуш',
+    'родствен',
+    'помощ',
+    'маме',
+    'мама',
+    'папе',
+    'папа',
+    'семье',
+    'семья',
+    'алименты',
+    'бабуш',
+    'дедуш',
 )
 
 
@@ -80,7 +100,9 @@ def preference_values(preference=None):
     return {
         'living_minimum': _decimal(preference.living_minimum),
         'desired_monthly_savings': _decimal(preference.desired_monthly_savings),
-        'emergency_fund_target_amount': _decimal(preference.emergency_fund_target_amount),
+        'emergency_fund_target_amount': _decimal(
+            preference.emergency_fund_target_amount
+        ),
         'emergency_fund_target_mode': preference.emergency_fund_target_mode or 'fixed',
         'strategy': preference.strategy or 'balanced',
     }
@@ -99,7 +121,9 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
         else period_last_day
     )
     preferences = preference_values(preference)
-    debts, incomes, recurring_expenses = _load_sources(user_id, period_start, period_end)
+    debts, incomes, recurring_expenses = _load_sources(
+        user_id, period_start, period_end
+    )
     emergency_fund = _build_emergency_fund_summary(user_id, period_start, period_end)
 
     income_summary = _build_income_summary(incomes, period_start)
@@ -108,18 +132,34 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
         calculation_date,
         planning_horizon_end,
     )
-    recurring_items = _build_recurring_expense_items(recurring_expenses, period_last_day)
+    recurring_items = _build_recurring_expense_items(
+        recurring_expenses, period_last_day
+    )
     _mark_debt_expense_duplicates(recurring_items, debt_items)
-    counted_recurring_items = [item for item in recurring_items if not item['excluded_as_debt_duplicate']]
-    excluded_recurring_items = [item for item in recurring_items if item['excluded_as_debt_duplicate']]
+    counted_recurring_items = [
+        item for item in recurring_items if not item['excluded_as_debt_duplicate']
+    ]
+    excluded_recurring_items = [
+        item for item in recurring_items if item['excluded_as_debt_duplicate']
+    ]
 
-    support_items = [item for item in counted_recurring_items if item['is_family_support']]
-    regular_items = [item for item in counted_recurring_items if not item['is_family_support']]
+    support_items = [
+        item for item in counted_recurring_items if item['is_family_support']
+    ]
+    regular_items = [
+        item for item in counted_recurring_items if not item['is_family_support']
+    ]
 
     income_total = _decimal(income_summary['total'])
-    debt_total = _decimal(sum((_decimal(item['monthly_amount']) for item in debt_items), Decimal('0.00')))
-    support_total = _decimal(sum((_decimal(item['amount']) for item in support_items), Decimal('0.00')))
-    regular_total = _decimal(sum((_decimal(item['amount']) for item in regular_items), Decimal('0.00')))
+    debt_total = _decimal(
+        sum((_decimal(item['monthly_amount']) for item in debt_items), Decimal('0.00'))
+    )
+    support_total = _decimal(
+        sum((_decimal(item['amount']) for item in support_items), Decimal('0.00'))
+    )
+    regular_total = _decimal(
+        sum((_decimal(item['amount']) for item in regular_items), Decimal('0.00'))
+    )
     mandatory_total = _decimal(debt_total + regular_total)
     obligations_total = _decimal(mandatory_total + support_total)
 
@@ -130,7 +170,9 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
     emergency_gap = _decimal(max(emergency_target - emergency_current, Decimal('0.00')))
 
     available_after_obligations = _decimal(income_total - obligations_total)
-    affordable_for_goals = _decimal(max(available_after_obligations - living_minimum, Decimal('0.00')))
+    affordable_for_goals = _decimal(
+        max(available_after_obligations - living_minimum, Decimal('0.00'))
+    )
     goals = _build_goals(
         user_id=user_id,
         preferences=preferences,
@@ -140,12 +182,19 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
         period_end=period_end,
     )
     goal_allocations = _allocate_goal_contributions(goals, affordable_for_goals)
-    savings = _decimal(sum((_decimal(item['recommended_contribution']) for item in goals), Decimal('0.00')))
+    savings = _decimal(
+        sum(
+            (_decimal(item['recommended_contribution']) for item in goals),
+            Decimal('0.00'),
+        )
+    )
     emergency_savings = _decimal(goals[0]['recommended_contribution'])
     emergency_month_complete = _decimal(goals[0]['monthly_remaining']) <= 0
 
     extra_repayment_target = _pick_extra_repayment_target(debt_items)
-    surplus_after_minimums = _decimal(max(affordable_for_goals - savings, Decimal('0.00')))
+    surplus_after_minimums = _decimal(
+        max(affordable_for_goals - savings, Decimal('0.00'))
+    )
     extra_repayment = Decimal('0.00')
     if extra_repayment_target and surplus_after_minimums > 0:
         extra_repayment = _extra_repayment_amount(
@@ -155,17 +204,27 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
             emergency_target,
             monthly_needs,
         )
-        planned_early_amount = _decimal(extra_repayment_target.get('planned_early_repayment_amount'))
+        planned_early_amount = _decimal(
+            extra_repayment_target.get('planned_early_repayment_amount')
+        )
         if planned_early_amount > 0:
             extra_repayment = _decimal(min(extra_repayment, planned_early_amount))
-        extra_repayment = _decimal(min(
-            extra_repayment,
-            _decimal(extra_repayment_target.get('projected_remaining_after_plan')),
-        ))
+        extra_repayment = _decimal(
+            min(
+                extra_repayment,
+                _decimal(extra_repayment_target.get('projected_remaining_after_plan')),
+            )
+        )
 
-    living_budget = _decimal(income_total - obligations_total - savings - extra_repayment)
-    weekly_limit = _decimal(max(living_budget, Decimal('0.00')) * MONTHS_PER_YEAR / Decimal('52'))
-    daily_limit = _decimal(max(living_budget, Decimal('0.00')) * MONTHS_PER_YEAR / Decimal('365'))
+    living_budget = _decimal(
+        income_total - obligations_total - savings - extra_repayment
+    )
+    weekly_limit = _decimal(
+        max(living_budget, Decimal('0.00')) * MONTHS_PER_YEAR / Decimal('52')
+    )
+    daily_limit = _decimal(
+        max(living_budget, Decimal('0.00')) * MONTHS_PER_YEAR / Decimal('365')
+    )
     deficit = _decimal(max(-living_budget, Decimal('0.00')))
 
     allocation = _build_allocation(
@@ -211,22 +270,33 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
         except FinancialDataUnavailable:
             window_daily_error = FinancialDataUnavailable.code
 
-    allocation_totals = dict.fromkeys((
-        'allocated_income', 'allocation_balance', 'allocation_is_balanced',
-        'window_shortfall', 'living_reserve_shortfall',
-    ))
+    allocation_totals = dict.fromkeys(
+        (
+            'allocated_income',
+            'allocation_balance',
+            'allocation_is_balanced',
+            'window_shortfall',
+            'living_reserve_shortfall',
+        )
+    )
     if pay_plan is not None:
-        allocated_income = _decimal(sum(
-            (_decimal(item['allocated_total']) for item in pay_plan['allocations']), Decimal('0.00'),
-        ))
+        allocated_income = _decimal(
+            sum(
+                (_decimal(item['allocated_total']) for item in pay_plan['allocations']),
+                Decimal('0.00'),
+            )
+        )
         allocation_balance = _decimal(income_total - allocated_income)
         allocation_totals = {
             'allocated_income': _float(allocated_income),
             'allocation_balance': _float(allocation_balance),
             'allocation_is_balanced': allocation_balance == 0,
-            'window_shortfall': _float(sum(
-                (_decimal(item['amount']) for item in pay_plan['shortfalls']), Decimal('0.00'),
-            )),
+            'window_shortfall': _float(
+                sum(
+                    (_decimal(item['amount']) for item in pay_plan['shortfalls']),
+                    Decimal('0.00'),
+                )
+            ),
             'living_reserve_shortfall': pay_plan['reserve_shortfall'],
         }
     state = _financial_state(income_total, obligations_total, living_minimum)
@@ -269,19 +339,27 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
             'start': period_start,
             'end': period_end,
             'label': f'{MONTH_LABELS[period_start.month]} {period_start.year}',
-            'is_current': period_start.year == today.year and period_start.month == today.month,
+            'is_current': period_start.year == today.year
+            and period_start.month == today.month,
             'previous': period_start - relativedelta(months=1),
             'next': period_start + relativedelta(months=1),
             'default_transaction_date': (
-                today if period_start <= today < period_end
-                else period_last_day if period_start < today
+                today
+                if period_start <= today < period_end
+                else period_last_day
+                if period_start < today
                 else period_start
             ),
         },
         'preferences': {
-            **{key: _float(value) if isinstance(value, Decimal) else value for key, value in preferences.items()},
+            **{
+                key: _float(value) if isinstance(value, Decimal) else value
+                for key, value in preferences.items()
+            },
             'strategy_label': STRATEGY_LABELS[preferences['strategy']],
-            'target_mode_label': TARGET_MODE_LABELS[preferences['emergency_fund_target_mode']],
+            'target_mode_label': TARGET_MODE_LABELS[
+                preferences['emergency_fund_target_mode']
+            ],
         },
         'income': income_summary,
         'debt_items': debt_items,
@@ -295,7 +373,9 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
         'income_allocations': pay_plan['allocations'] if pay_plan is not None else None,
         'shortfalls': pay_plan['shortfalls'] if pay_plan is not None else None,
         'awaiting_obligations': pay_plan['awaiting'] if pay_plan is not None else None,
-        'covered_by_previous_period': pay_plan['covered_by_previous'] if pay_plan is not None else None,
+        'covered_by_previous_period': pay_plan['covered_by_previous']
+        if pay_plan is not None
+        else None,
         'window_daily': window_daily,
         'window_daily_error': window_daily_error,
         'analysis': analysis,
@@ -319,7 +399,9 @@ def build_financial_plan(user_id, preference=None, today=None, year=None, month=
             'emergency_current': _float(emergency_current),
             'emergency_target': _float(emergency_target),
             'emergency_gap': _float(emergency_gap),
-            'emergency_progress': _percent(min(emergency_current, emergency_target), emergency_target),
+            'emergency_progress': _percent(
+                min(emergency_current, emergency_target), emergency_target
+            ),
             **allocation_totals,
         },
     }
@@ -329,7 +411,9 @@ def current_window_daily(user_id, today=None):
     """Everyday money per day until the next income, or ``None`` without pay periods."""
     if user_id is None:
         return None
-    plan = build_financial_plan(user_id, get_financial_plan_preference(user_id), today=today)
+    plan = build_financial_plan(
+        user_id, get_financial_plan_preference(user_id), today=today
+    )
     if plan['window_daily_error']:
         raise FinancialDataUnavailable(FinancialDataUnavailable.message)
     return plan['window_daily']
@@ -348,27 +432,32 @@ def _build_emergency_fund_summary(user_id, period_start=None, period_end=None):
     query = EmergencyFundTransaction.query.filter_by(user_id=user_id)
     if period_end is not None:
         query = query.filter(EmergencyFundTransaction.transaction_date < period_end)
-    transactions = (
-        query
-        .order_by(
-            EmergencyFundTransaction.transaction_date.desc(),
-            EmergencyFundTransaction.created_at.desc(),
-            EmergencyFundTransaction.id.desc(),
-        )
-        .all()
-    )
+    transactions = query.order_by(
+        EmergencyFundTransaction.transaction_date.desc(),
+        EmergencyFundTransaction.created_at.desc(),
+        EmergencyFundTransaction.id.desc(),
+    ).all()
 
     deposits = sum(
-        (_decimal(item.amount) for item in transactions if item.transaction_type == 'deposit'),
+        (
+            _decimal(item.amount)
+            for item in transactions
+            if item.transaction_type == 'deposit'
+        ),
         Decimal('0.00'),
     )
     withdrawals = sum(
-        (_decimal(item.amount) for item in transactions if item.transaction_type == 'withdrawal'),
+        (
+            _decimal(item.amount)
+            for item in transactions
+            if item.transaction_type == 'withdrawal'
+        ),
         Decimal('0.00'),
     )
     deposits_in_period = sum(
         (
-            _decimal(item.amount) for item in transactions
+            _decimal(item.amount)
+            for item in transactions
             if item.transaction_type == 'deposit'
             and (period_start is None or item.transaction_date >= period_start)
         ),
@@ -376,7 +465,8 @@ def _build_emergency_fund_summary(user_id, period_start=None, period_end=None):
     )
     withdrawals_in_period = sum(
         (
-            _decimal(item.amount) for item in transactions
+            _decimal(item.amount)
+            for item in transactions
             if item.transaction_type == 'withdrawal'
             and (period_start is None or item.transaction_date >= period_start)
         ),
@@ -392,7 +482,9 @@ def _build_emergency_fund_summary(user_id, period_start=None, period_end=None):
             {
                 'id': item.id,
                 'transaction_type': item.transaction_type,
-                'type_label': 'Пополнение' if item.transaction_type == 'deposit' else 'Снятие',
+                'type_label': 'Пополнение'
+                if item.transaction_type == 'deposit'
+                else 'Снятие',
                 'amount': _float(item.amount),
                 'transaction_date': item.transaction_date,
                 'comment': item.comment,
@@ -402,7 +494,9 @@ def _build_emergency_fund_summary(user_id, period_start=None, period_end=None):
     }
 
 
-def _build_goals(user_id, preferences, emergency_fund, emergency_target, period_start, period_end):
+def _build_goals(
+    user_id, preferences, emergency_fund, emergency_target, period_start, period_end
+):
     emergency_balance = _decimal(emergency_fund['balance'])
     emergency_gap = max(emergency_target - emergency_balance, Decimal('0.00'))
     emergency_monthly_progress = max(
@@ -411,40 +505,48 @@ def _build_goals(user_id, preferences, emergency_fund, emergency_target, period_
         Decimal('0.00'),
     )
     emergency_monthly_remaining = min(
-        max(preferences['desired_monthly_savings'] - emergency_monthly_progress, Decimal('0.00')),
+        max(
+            preferences['desired_monthly_savings'] - emergency_monthly_progress,
+            Decimal('0.00'),
+        ),
         emergency_gap,
     )
-    goals = [{
-        'key': 'emergency',
-        'id': None,
-        'name': 'Финансовая подушка',
-        'is_system': True,
-        'priority': 1,
-        'target_amount': _float(emergency_target),
-        'target_mode': preferences['emergency_fund_target_mode'],
-        'target_mode_label': TARGET_MODE_LABELS[preferences['emergency_fund_target_mode']],
-        'monthly_contribution': _float(preferences['desired_monthly_savings']),
-        'target_date': None,
-        'note': 'Резерв на непредвиденные расходы. Эта цель всегда остается первой.',
-        'balance': _float(emergency_balance),
-        'deposits': emergency_fund['deposits'],
-        'withdrawals': emergency_fund['withdrawals'],
-        'deposited_this_month': emergency_fund['deposits_in_period'],
-        'withdrawn_this_month': emergency_fund['withdrawals_in_period'],
-        'monthly_progress': _float(emergency_monthly_progress),
-        'monthly_remaining': _float(emergency_monthly_remaining),
-        'gap': _float(emergency_gap),
-        'progress': _percent(min(emergency_balance, emergency_target), emergency_target),
-        'transactions': emergency_fund['transactions'],
-        'recommended_contribution': 0.0,
-        'monthly_shortfall': 0.0,
-    }]
+    goals = [
+        {
+            'key': 'emergency',
+            'id': None,
+            'name': 'Финансовая подушка',
+            'is_system': True,
+            'priority': 1,
+            'target_amount': _float(emergency_target),
+            'target_mode': preferences['emergency_fund_target_mode'],
+            'target_mode_label': TARGET_MODE_LABELS[
+                preferences['emergency_fund_target_mode']
+            ],
+            'monthly_contribution': _float(preferences['desired_monthly_savings']),
+            'target_date': None,
+            'note': 'Резерв на непредвиденные расходы. Эта цель всегда остается первой.',
+            'balance': _float(emergency_balance),
+            'deposits': emergency_fund['deposits'],
+            'withdrawals': emergency_fund['withdrawals'],
+            'deposited_this_month': emergency_fund['deposits_in_period'],
+            'withdrawn_this_month': emergency_fund['withdrawals_in_period'],
+            'monthly_progress': _float(emergency_monthly_progress),
+            'monthly_remaining': _float(emergency_monthly_remaining),
+            'gap': _float(emergency_gap),
+            'progress': _percent(
+                min(emergency_balance, emergency_target), emergency_target
+            ),
+            'transactions': emergency_fund['transactions'],
+            'recommended_contribution': 0.0,
+            'monthly_shortfall': 0.0,
+        }
+    ]
 
     if user_id is None:
         return goals
     custom_goals = (
-        FinancialGoal.query
-        .filter_by(user_id=user_id)
+        FinancialGoal.query.filter_by(user_id=user_id)
         .order_by(FinancialGoal.priority.asc(), FinancialGoal.id.asc())
         .all()
     )
@@ -455,38 +557,43 @@ def _build_goals(user_id, preferences, emergency_fund, emergency_target, period_
         target = _decimal(goal.target_amount)
         gap = max(target - balance, Decimal('0.00'))
         monthly_progress = max(
-            _decimal(summary['deposits_in_period']) - _decimal(summary['withdrawals_in_period']),
+            _decimal(summary['deposits_in_period'])
+            - _decimal(summary['withdrawals_in_period']),
             Decimal('0.00'),
         )
         monthly_remaining = min(
-            max(_decimal(goal.monthly_contribution) - monthly_progress, Decimal('0.00')),
+            max(
+                _decimal(goal.monthly_contribution) - monthly_progress, Decimal('0.00')
+            ),
             gap,
         )
-        goals.append({
-            'key': f'goal-{goal.id}',
-            'id': goal.id,
-            'name': goal.name,
-            'is_system': False,
-            'priority': index,
-            'target_amount': _float(target),
-            'target_mode': 'fixed',
-            'target_mode_label': 'Фиксированная сумма',
-            'monthly_contribution': _float(goal.monthly_contribution),
-            'target_date': goal.target_date,
-            'note': goal.note,
-            'balance': _float(balance),
-            'deposits': summary['deposits'],
-            'withdrawals': summary['withdrawals'],
-            'deposited_this_month': summary['deposits_in_period'],
-            'withdrawn_this_month': summary['withdrawals_in_period'],
-            'monthly_progress': _float(monthly_progress),
-            'monthly_remaining': _float(monthly_remaining),
-            'gap': _float(gap),
-            'progress': _percent(min(balance, target), target),
-            'transactions': summary['transactions'],
-            'recommended_contribution': 0.0,
-            'monthly_shortfall': 0.0,
-        })
+        goals.append(
+            {
+                'key': f'goal-{goal.id}',
+                'id': goal.id,
+                'name': goal.name,
+                'is_system': False,
+                'priority': index,
+                'target_amount': _float(target),
+                'target_mode': 'fixed',
+                'target_mode_label': 'Фиксированная сумма',
+                'monthly_contribution': _float(goal.monthly_contribution),
+                'target_date': goal.target_date,
+                'note': goal.note,
+                'balance': _float(balance),
+                'deposits': summary['deposits'],
+                'withdrawals': summary['withdrawals'],
+                'deposited_this_month': summary['deposits_in_period'],
+                'withdrawn_this_month': summary['withdrawals_in_period'],
+                'monthly_progress': _float(monthly_progress),
+                'monthly_remaining': _float(monthly_remaining),
+                'gap': _float(gap),
+                'progress': _percent(min(balance, target), target),
+                'transactions': summary['transactions'],
+                'recommended_contribution': 0.0,
+                'monthly_shortfall': 0.0,
+            }
+        )
     return goals
 
 
@@ -498,7 +605,9 @@ def _allocate_goal_contributions(goals, affordable_amount):
         gap = _decimal(goal['gap'])
         contribution = _decimal(min(planned, gap, remaining))
         goal['recommended_contribution'] = _float(contribution)
-        goal['monthly_shortfall'] = _float(max(min(planned, gap) - contribution, Decimal('0.00')))
+        goal['monthly_shortfall'] = _float(
+            max(min(planned, gap) - contribution, Decimal('0.00'))
+        )
         remaining = _decimal(remaining - contribution)
         if contribution > 0:
             allocations.append(goal)
@@ -509,26 +618,31 @@ def _summarize_goal_transactions(goal_id, period_start=None, period_end=None):
     query = FinancialGoalTransaction.query.filter_by(goal_id=goal_id)
     if period_end is not None:
         query = query.filter(FinancialGoalTransaction.transaction_date < period_end)
-    transactions = (
-        query
-        .order_by(
-            FinancialGoalTransaction.transaction_date.desc(),
-            FinancialGoalTransaction.created_at.desc(),
-            FinancialGoalTransaction.id.desc(),
-        )
-        .all()
-    )
+    transactions = query.order_by(
+        FinancialGoalTransaction.transaction_date.desc(),
+        FinancialGoalTransaction.created_at.desc(),
+        FinancialGoalTransaction.id.desc(),
+    ).all()
     deposits = sum(
-        (_decimal(item.amount) for item in transactions if item.transaction_type == 'deposit'),
+        (
+            _decimal(item.amount)
+            for item in transactions
+            if item.transaction_type == 'deposit'
+        ),
         Decimal('0.00'),
     )
     withdrawals = sum(
-        (_decimal(item.amount) for item in transactions if item.transaction_type == 'withdrawal'),
+        (
+            _decimal(item.amount)
+            for item in transactions
+            if item.transaction_type == 'withdrawal'
+        ),
         Decimal('0.00'),
     )
     deposits_in_period = sum(
         (
-            _decimal(item.amount) for item in transactions
+            _decimal(item.amount)
+            for item in transactions
             if item.transaction_type == 'deposit'
             and (period_start is None or item.transaction_date >= period_start)
         ),
@@ -536,7 +650,8 @@ def _summarize_goal_transactions(goal_id, period_start=None, period_end=None):
     )
     withdrawals_in_period = sum(
         (
-            _decimal(item.amount) for item in transactions
+            _decimal(item.amount)
+            for item in transactions
             if item.transaction_type == 'withdrawal'
             and (period_start is None or item.transaction_date >= period_start)
         ),
@@ -552,7 +667,9 @@ def _summarize_goal_transactions(goal_id, period_start=None, period_end=None):
             {
                 'id': item.id,
                 'transaction_type': item.transaction_type,
-                'type_label': 'Пополнение' if item.transaction_type == 'deposit' else 'Снятие',
+                'type_label': 'Пополнение'
+                if item.transaction_type == 'deposit'
+                else 'Снятие',
                 'amount': _float(item.amount),
                 'transaction_date': item.transaction_date,
                 'comment': item.comment,
@@ -568,18 +685,22 @@ def _load_sources(user_id, period_start, period_end):
         return (
             list(summary['active_debts']),
             list(summary['incomes_this_month']),
-            [expense for expense in summary['expenses_this_month'] if getattr(expense, 'is_monthly', False)],
+            [
+                expense
+                for expense in summary['expenses_this_month']
+                if getattr(expense, 'is_monthly', False)
+            ],
         )
 
     debts = (
-        Debt.query
-        .filter(Debt.user_id == user_id, Debt.status == 'active', Debt.remaining_amount > 0)
+        Debt.query.filter(
+            Debt.user_id == user_id, Debt.status == 'active', Debt.remaining_amount > 0
+        )
         .order_by(Debt.next_payment_date.asc(), Debt.id.asc())
         .all()
     )
     incomes = (
-        Income.query
-        .filter(
+        Income.query.filter(
             Income.user_id == user_id,
             Income.income_date >= period_start,
             Income.income_date < period_end,
@@ -588,13 +709,15 @@ def _load_sources(user_id, period_start, period_end):
         .all()
     )
     recurring_expenses = (
-        Expense.query
-        .filter(Expense.user_id == user_id, Expense.is_monthly.is_(True))
+        Expense.query.filter(Expense.user_id == user_id, Expense.is_monthly.is_(True))
         .order_by(Expense.expense_date.asc(), Expense.id.asc())
         .all()
     )
-    recurring_expenses = [expense for expense in recurring_expenses
-                          if not monthly_series_stopped(user_id, expense.monthly_group_id, period_start)]
+    recurring_expenses = [
+        expense
+        for expense in recurring_expenses
+        if not monthly_series_stopped(user_id, expense.monthly_group_id, period_start)
+    ]
     return debts, incomes, recurring_expenses
 
 
@@ -607,8 +730,10 @@ def _load_pay_history(user_id, period_start, period_end):
         db.session.query(Income.income_date, Income.category, Income.pay_period_mode)
         .filter(
             Income.user_id == user_id,
-            Income.income_date >= period_start - relativedelta(days=PAY_HISTORY_LOOKBACK_DAYS),
-            Income.income_date < period_end + relativedelta(days=PAY_HISTORY_LOOKAHEAD_DAYS),
+            Income.income_date
+            >= period_start - relativedelta(days=PAY_HISTORY_LOOKBACK_DAYS),
+            Income.income_date
+            < period_end + relativedelta(days=PAY_HISTORY_LOOKAHEAD_DAYS),
         )
         .all()
     )
@@ -641,21 +766,28 @@ def _everyday_spending(user_id, start, until):
 def _build_income_summary(incomes, period_start=None):
     items = []
     for income in incomes:
-        items.append({
-            'id': income.id,
-            'amount': _float(income.amount),
-            'category': income.category,
-            'category_label': INCOME_CATEGORY_LABELS.get(income.category, 'Доход'),
-            'source': income.source or INCOME_CATEGORY_LABELS.get(income.category, 'Источник не указан'),
-            'date': income.income_date,
-            'pay_period_mode': getattr(income, 'pay_period_mode', None),
-        })
+        items.append(
+            {
+                'id': income.id,
+                'amount': _float(income.amount),
+                'category': income.category,
+                'category_label': INCOME_CATEGORY_LABELS.get(income.category, 'Доход'),
+                'source': income.source
+                or INCOME_CATEGORY_LABELS.get(income.category, 'Источник не указан'),
+                'date': income.income_date,
+                'pay_period_mode': getattr(income, 'pay_period_mode', None),
+            }
+        )
     latest_date = max((item['date'] for item in items), default=None)
     period_date = period_start or latest_date
-    period_label = f'{MONTH_LABELS[period_date.month]} {period_date.year}' if period_date else None
+    period_label = (
+        f'{MONTH_LABELS[period_date.month]} {period_date.year}' if period_date else None
+    )
     return {
         'items': items,
-        'total': _float(sum((_decimal(item['amount']) for item in items), Decimal('0.00'))),
+        'total': _float(
+            sum((_decimal(item['amount']) for item in items), Decimal('0.00'))
+        ),
         'latest_date': latest_date,
         'period_label': period_label,
     }
@@ -678,17 +810,21 @@ def _build_debt_items(debts, today, planning_horizon_end):
             # Arrears can contain the entire balance; the monthly budget reserves
             # one installment, while overdue totals remain visible separately.
             row = dict(planned_rows[0])
-            row['payment'] = _float(min(
-                _decimal(row.get('payment')) - _decimal(row.get('penalty')),
-                minimum_payment + monthly_fee,
-            ))
+            row['payment'] = _float(
+                min(
+                    _decimal(row.get('payment')) - _decimal(row.get('penalty')),
+                    minimum_payment + monthly_fee,
+                )
+            )
             if _decimal(row['payment']) < _decimal(planned_rows[0].get('payment')):
                 row['remaining'] = _float(debt.remaining_amount)
             planned_rows = [row]
-        scheduled_amount = _decimal(sum(
-            (_decimal(row.get('payment')) for row in planned_rows),
-            Decimal('0.00'),
-        ))
+        scheduled_amount = _decimal(
+            sum(
+                (_decimal(row.get('payment')) for row in planned_rows),
+                Decimal('0.00'),
+            )
+        )
         paid_toward_next_payment = Decimal('0.00')
         applied_payment_credit = Decimal('0.00')
         partially_paid_due_date = None
@@ -714,10 +850,12 @@ def _build_debt_items(debts, today, planning_horizon_end):
                 scheduled_amount = _decimal(scheduled_amount + paid_toward_next_payment)
 
         if schedule is not None:
-            monthly_amount = _decimal(sum(
-                (_decimal(row.get('payment')) for row in outstanding_rows),
-                Decimal('0.00'),
-            ))
+            monthly_amount = _decimal(
+                sum(
+                    (_decimal(row.get('payment')) for row in outstanding_rows),
+                    Decimal('0.00'),
+                )
+            )
         else:
             # Conservative fallback: keep the required payment in the plan when
             # an incomplete debt record prevents the detailed schedule from building.
@@ -740,7 +878,9 @@ def _build_debt_items(debts, today, planning_horizon_end):
                 _decimal(debt.remaining_amount),
             )
 
-        scheduled_payments_count = len(outstanding_rows) if schedule is not None else int(monthly_amount > 0)
+        scheduled_payments_count = (
+            len(outstanding_rows) if schedule is not None else int(monthly_amount > 0)
+        )
         interval_label = _debt_interval_label(debt.debt_type, scheduled_payments_count)
         next_payment_date = (
             date.fromisoformat(outstanding_rows[0]['payment_date'])
@@ -757,16 +897,29 @@ def _build_debt_items(debts, today, planning_horizon_end):
             for row in outstanding_rows
         ]
         if schedule is None and monthly_amount > 0:
-            planned_payments = [{
-                'amount': _float(monthly_amount - (unpaid_penalty if debt.debt_type == 'split' else 0)),
-                'due_date': next_payment_date if next_payment_date and next_payment_date >= today else None,
-            }]
+            planned_payments = [
+                {
+                    'amount': _float(
+                        monthly_amount
+                        - (unpaid_penalty if debt.debt_type == 'split' else 0)
+                    ),
+                    'due_date': next_payment_date
+                    if next_payment_date and next_payment_date >= today
+                    else None,
+                }
+            ]
         if unpaid_penalty > 0 and debt.debt_type == 'split':
-            planned_payments = [{'amount': _float(unpaid_penalty), 'due_date': today}] + planned_payments
+            planned_payments = [
+                {'amount': _float(unpaid_penalty), 'due_date': today}
+            ] + planned_payments
 
         end_date, payments_left = _debt_completion(debt, today, schedule=schedule)
         months_left = _months_until(today, end_date) if end_date else None
-        effective_rate = debt.interest_rate_for(today) if hasattr(debt, 'interest_rate_for') else debt.interest_rate
+        effective_rate = (
+            debt.interest_rate_for(today)
+            if hasattr(debt, 'interest_rate_for')
+            else debt.interest_rate
+        )
         item = {
             'id': debt.id,
             'bank_name': debt.bank_name,
@@ -775,7 +928,9 @@ def _build_debt_items(debts, today, planning_horizon_end):
             'debt_type': debt.debt_type,
             'debt_type_label': Debt.DEBT_TYPE_LABELS.get(debt.debt_type, 'Долг'),
             'remaining': _float(accrual['total'] if accrual else debt.remaining_amount),
-            'principal': _float(accrual['principal'] if accrual else debt.remaining_amount),
+            'principal': _float(
+                accrual['principal'] if accrual else debt.remaining_amount
+            ),
             'calculation_valid': not accrual or accrual['data_consistent'],
             'is_overdue': bool(accrual and accrual['is_overdue']),
             'overdue_amount': _float(accrual['overdue_amount'] if accrual else 0),
@@ -789,9 +944,15 @@ def _build_debt_items(debts, today, planning_horizon_end):
             'scheduled_payments_count': scheduled_payments_count,
             'planned_payments': planned_payments,
             'projected_remaining_after_plan': _float(projected_remaining_after_plan),
-            'interest_rate': _float(effective_rate) if effective_rate is not None else None,
-            'early_repayment_enabled': bool(getattr(debt, 'early_repayment_enabled', False)),
-            'planned_total_payment_amount': _float(getattr(debt, 'planned_early_repayment_amount', 0)),
+            'interest_rate': _float(effective_rate)
+            if effective_rate is not None
+            else None,
+            'early_repayment_enabled': bool(
+                getattr(debt, 'early_repayment_enabled', False)
+            ),
+            'planned_total_payment_amount': _float(
+                getattr(debt, 'planned_early_repayment_amount', 0)
+            ),
             'planned_early_repayment_amount': _float(
                 debt.effective_planned_early_repayment_amount()
                 if hasattr(debt, 'effective_planned_early_repayment_amount')
@@ -806,45 +967,57 @@ def _build_debt_items(debts, today, planning_horizon_end):
         items.append(item)
 
         if (
-            schedule is None and debt.debt_type != 'split'
-            and debt.next_payment_date and debt.next_payment_date < today
+            schedule is None
+            and debt.debt_type != 'split'
+            and debt.next_payment_date
+            and debt.next_payment_date < today
             and not item['is_overdue']
         ):
-            gaps.append({
-                'kind': 'stale_date',
-                'debt_id': debt.id,
-                'title': f'Для «{item["label"]}» дата следующего платежа указана в прошлом.',
-                'detail': 'Дата следующего платежа указана в прошлом, проверьте график по долгу.',
-            })
+            gaps.append(
+                {
+                    'kind': 'stale_date',
+                    'debt_id': debt.id,
+                    'title': f'Для «{item["label"]}» дата следующего платежа указана в прошлом.',
+                    'detail': 'Дата следующего платежа указана в прошлом, проверьте график по долгу.',
+                }
+            )
 
         if minimum_payment <= 0 and debt.debt_type != 'split':
-            gaps.append({
-                'kind': 'payment',
-                'debt_id': debt.id,
-                'title': f'Для «{item["label"]}» не указан обязательный платеж.',
-                'detail': 'Долг найден, но его сумма не включена в ежемесячное распределение.',
-            })
+            gaps.append(
+                {
+                    'kind': 'payment',
+                    'debt_id': debt.id,
+                    'title': f'Для «{item["label"]}» не указан обязательный платеж.',
+                    'detail': 'Долг найден, но его сумма не включена в ежемесячное распределение.',
+                }
+            )
         if effective_rate is None and debt.debt_type != 'split':
-            gaps.append({
-                'kind': 'rate',
-                'debt_id': debt.id,
-                'title': f'Для «{item["label"]}» не указана процентная ставка.',
-                'detail': 'План платежей рассчитан, но приоритет досрочного погашения менее точен.',
-            })
+            gaps.append(
+                {
+                    'kind': 'rate',
+                    'debt_id': debt.id,
+                    'title': f'Для «{item["label"]}» не указана процентная ставка.',
+                    'detail': 'План платежей рассчитан, но приоритет досрочного погашения менее точен.',
+                }
+            )
         if not item['next_payment_date']:
-            gaps.append({
-                'kind': 'date',
-                'debt_id': debt.id,
-                'title': f'Для «{item["label"]}» не указана дата следующего платежа.',
-                'detail': 'Ежемесячная сумма учтена, но дата освобождения денег недоступна.',
-            })
+            gaps.append(
+                {
+                    'kind': 'date',
+                    'debt_id': debt.id,
+                    'title': f'Для «{item["label"]}» не указана дата следующего платежа.',
+                    'detail': 'Ежемесячная сумма учтена, но дата освобождения денег недоступна.',
+                }
+            )
         elif minimum_payment > 0 and end_date is None:
-            gaps.append({
-                'kind': 'schedule',
-                'debt_id': debt.id,
-                'title': f'Для «{item["label"]}» не удалось построить срок погашения.',
-                'detail': 'Платеж включен в бюджет, но параметры долга нужно проверить для прогноза.',
-            })
+            gaps.append(
+                {
+                    'kind': 'schedule',
+                    'debt_id': debt.id,
+                    'title': f'Для «{item["label"]}» не удалось построить срок погашения.',
+                    'detail': 'Платеж включен в бюджет, но параметры долга нужно проверить для прогноза.',
+                }
+            )
     return items, gaps
 
 
@@ -861,7 +1034,8 @@ def _planned_schedule_rows(schedule, planning_horizon_end, calculation_date):
     if not schedule:
         return []
     return [
-        row for row in schedule.get('rows', [])
+        row
+        for row in schedule.get('rows', [])
         if (
             row.get('status') != 'paid'
             and (
@@ -912,22 +1086,33 @@ def _build_recurring_expense_items(expenses, today):
             today.month,
             min(current.expense_date.day, today.day),
         )
-        searchable_text = ' '.join(filter(None, (current.title, current.comment))).lower()
-        items.append({
-            'id': current.id,
-            'amount': _float(current.amount),
-            'title': current.title,
-            'category': current.category,
-            'repayment_debt_id': current.repayment_debt_id,
-            'category_label': EXPENSE_CATEGORY_LABELS.get(current.category, 'Другое'),
-            'expense_date': current.expense_date,
-            'due_date': due_date,
-            'is_family_support': any(marker in searchable_text for marker in FAMILY_SUPPORT_MARKERS),
-            'excluded_as_debt_duplicate': False,
-            'duplicate_debt_label': None,
-            'potential_debt_duplicate': False,
-        })
-    return sorted(items, key=lambda item: (item['due_date'], -item['amount'], item['title'].lower()))
+        searchable_text = ' '.join(
+            filter(None, (current.title, current.comment))
+        ).lower()
+        items.append(
+            {
+                'id': current.id,
+                'amount': _float(current.amount),
+                'title': current.title,
+                'category': current.category,
+                'repayment_debt_id': current.repayment_debt_id,
+                'category_label': EXPENSE_CATEGORY_LABELS.get(
+                    current.category, 'Другое'
+                ),
+                'expense_date': current.expense_date,
+                'due_date': due_date,
+                'is_family_support': any(
+                    marker in searchable_text for marker in FAMILY_SUPPORT_MARKERS
+                ),
+                'excluded_as_debt_duplicate': False,
+                'duplicate_debt_label': None,
+                'potential_debt_duplicate': False,
+            }
+        )
+    return sorted(
+        items,
+        key=lambda item: (item['due_date'], -item['amount'], item['title'].lower()),
+    )
 
 
 def _build_next_month_recurring_obligations(expenses, period_end, debt_items):
@@ -968,8 +1153,11 @@ def _mark_debt_expense_duplicates(expense_items, debt_items):
             debt = next((item for item in debt_items if item['id'] == linked_id), None)
             # The link declares repayment, but only one fully represented monthly
             # obligation can be omitted. Mismatches remain visible and counted.
-            if (debt is not None and linked_id not in matched_debts
-                    and _decimal(expense['amount']) == _decimal(debt['monthly_amount'])):
+            if (
+                debt is not None
+                and linked_id not in matched_debts
+                and _decimal(expense['amount']) == _decimal(debt['monthly_amount'])
+            ):
                 expense['excluded_as_debt_duplicate'] = True
                 expense['duplicate_debt_label'] = debt['label']
                 matched_debts.add(linked_id)
@@ -978,8 +1166,14 @@ def _mark_debt_expense_duplicates(expense_items, debt_items):
             continue
         expense_title = _search_key(expense['title'])
         for debt in debt_items:
-            debt_names = (_search_key(debt['bank_name']), _search_key(debt['product_name']))
-            amount_matches = abs(_decimal(expense['amount']) - _decimal(debt['monthly_amount'])) <= MONEY
+            debt_names = (
+                _search_key(debt['bank_name']),
+                _search_key(debt['product_name']),
+            )
+            amount_matches = (
+                abs(_decimal(expense['amount']) - _decimal(debt['monthly_amount']))
+                <= MONEY
+            )
             title_matches = any(name and name in expense_title for name in debt_names)
             if amount_matches or title_matches:
                 expense['potential_debt_duplicate'] = True
@@ -988,9 +1182,8 @@ def _mark_debt_expense_duplicates(expense_items, debt_items):
 
 
 def _debt_completion(debt, today, schedule=None):
-    if (
-        not debt.next_payment_date
-        or (_decimal(debt.minimum_payment) <= 0 and debt.debt_type != 'split')
+    if not debt.next_payment_date or (
+        _decimal(debt.minimum_payment) <= 0 and debt.debt_type != 'split'
     ):
         return None, None
     if schedule is None:
@@ -999,8 +1192,10 @@ def _debt_completion(debt, today, schedule=None):
         except (ValueError, ArithmeticError):
             return None, None
     future_rows = [
-        row for row in schedule.get('rows', [])
-        if date.fromisoformat(row['payment_date']) >= today and row.get('status') != 'paid'
+        row
+        for row in schedule.get('rows', [])
+        if date.fromisoformat(row['payment_date']) >= today
+        and row.get('status') != 'paid'
     ]
     if not future_rows:
         return None, 0
@@ -1020,7 +1215,8 @@ def _pick_extra_repayment_target(debt_items):
     if not debt_items:
         return None
     configured_targets = [
-        item for item in debt_items
+        item
+        for item in debt_items
         if (
             item['debt_type'] == 'consumer_credit'
             and item['early_repayment_enabled']
@@ -1038,14 +1234,24 @@ def _pick_extra_repayment_target(debt_items):
     )
 
 
-def _extra_repayment_amount(surplus, strategy, current_fund, target_fund, monthly_needs):
+def _extra_repayment_amount(
+    surplus, strategy, current_fund, target_fund, monthly_needs
+):
     reserve_floor = min(monthly_needs, target_fund)
     if current_fund < reserve_floor:
         return Decimal('0.00')
     if current_fund < target_fund:
-        ratio = {'safe': Decimal('0'), 'balanced': Decimal('0.25'), 'aggressive': Decimal('0.50')}[strategy]
+        ratio = {
+            'safe': Decimal('0'),
+            'balanced': Decimal('0.25'),
+            'aggressive': Decimal('0.50'),
+        }[strategy]
     else:
-        ratio = {'safe': Decimal('0.25'), 'balanced': Decimal('0.60'), 'aggressive': Decimal('1')}[strategy]
+        ratio = {
+            'safe': Decimal('0.25'),
+            'balanced': Decimal('0.60'),
+            'aggressive': Decimal('1'),
+        }[strategy]
     return _decimal(surplus * ratio)
 
 
@@ -1063,58 +1269,75 @@ def _build_allocation(
     for debt in debt_items:
         if debt['monthly_amount'] <= 0:
             continue
-        planned_payments = debt.get('planned_payments') or [{
-            'amount': debt['monthly_amount'],
-            'due_date': debt['next_payment_date'],
-        }]
+        planned_payments = debt.get('planned_payments') or [
+            {
+                'amount': debt['monthly_amount'],
+                'due_date': debt['next_payment_date'],
+            }
+        ]
         payment_count = len(planned_payments)
         for index, payment in enumerate(planned_payments, start=1):
             base_detail = debt['interval_label']
             if payment_count > 1:
                 base_detail = f'платёж {index} из {payment_count} по графику'
             paid_toward_next_payment = _decimal(debt.get('paid_toward_next_payment'))
-            if payment['due_date'] == debt.get('partially_paid_due_date') and paid_toward_next_payment > 0:
+            if (
+                payment['due_date'] == debt.get('partially_paid_due_date')
+                and paid_toward_next_payment > 0
+            ):
                 base_detail = (
                     f'{base_detail} · уже внесено '
                     f'{format_currency(paid_toward_next_payment)}'
                 )
-            obligations.append({
-                'kind': 'debt',
-                'icon': 'bi-bank',
-                'label': debt['label'],
-                'detail': _detail_with_due_date(base_detail, payment['due_date']),
-                'base_detail': base_detail,
-                'amount': payment['amount'],
-                'source_id': debt['id'],
-                'due_date': payment['due_date'],
-            })
+            obligations.append(
+                {
+                    'kind': 'debt',
+                    'icon': 'bi-bank',
+                    'label': debt['label'],
+                    'detail': _detail_with_due_date(base_detail, payment['due_date']),
+                    'base_detail': base_detail,
+                    'amount': payment['amount'],
+                    'source_id': debt['id'],
+                    'due_date': payment['due_date'],
+                }
+            )
     for expense in support_items:
-        obligations.append({
-            'kind': 'support',
-            'icon': 'bi-people',
-            'label': expense['title'],
-            'detail': _detail_with_due_date('регулярная помощь', expense['due_date']),
-            'base_detail': 'регулярная помощь',
-            'amount': expense['amount'],
-            'source_id': expense['id'],
-            'due_date': expense['due_date'],
-        })
+        obligations.append(
+            {
+                'kind': 'support',
+                'icon': 'bi-people',
+                'label': expense['title'],
+                'detail': _detail_with_due_date(
+                    'регулярная помощь', expense['due_date']
+                ),
+                'base_detail': 'регулярная помощь',
+                'amount': expense['amount'],
+                'source_id': expense['id'],
+                'due_date': expense['due_date'],
+            }
+        )
     for expense in regular_items:
-        obligations.append({
-            'kind': 'expense',
-            'icon': 'bi-repeat',
-            'label': expense['title'],
-            'detail': _detail_with_due_date(expense['category_label'], expense['due_date']),
-            'base_detail': expense['category_label'],
-            'amount': expense['amount'],
-            'source_id': expense['id'],
-            'due_date': expense['due_date'],
-        })
-    obligations.sort(key=lambda item: (
-        item['due_date'] is None,
-        item['due_date'] or date.max,
-        item['label'].lower(),
-    ))
+        obligations.append(
+            {
+                'kind': 'expense',
+                'icon': 'bi-repeat',
+                'label': expense['title'],
+                'detail': _detail_with_due_date(
+                    expense['category_label'], expense['due_date']
+                ),
+                'base_detail': expense['category_label'],
+                'amount': expense['amount'],
+                'source_id': expense['id'],
+                'due_date': expense['due_date'],
+            }
+        )
+    obligations.sort(
+        key=lambda item: (
+            item['due_date'] is None,
+            item['due_date'] or date.max,
+            item['label'].lower(),
+        )
+    )
     items = list(obligations)
     for goal in goal_allocations:
         monthly_plan = _decimal(goal['monthly_contribution'])
@@ -1130,44 +1353,52 @@ def _build_allocation(
             )
         detail_parts.append(f'приоритет №{goal["priority"]}')
         detail = ' · '.join(detail_parts)
-        items.append({
-            'kind': 'savings',
-            'icon': 'bi-shield-check' if goal['is_system'] else 'bi-bullseye',
-            'label': goal['name'],
-            'detail': detail,
-            'base_detail': detail,
-            'amount': goal['recommended_contribution'],
-            'goal_priority': goal['priority'],
-            'goal_monthly_plan': goal['monthly_contribution'],
-            'goal_monthly_progress': goal['monthly_progress'],
-            'goal_monthly_remaining': goal['monthly_remaining'],
-            'goal_recommended': goal['recommended_contribution'],
-        })
+        items.append(
+            {
+                'kind': 'savings',
+                'icon': 'bi-shield-check' if goal['is_system'] else 'bi-bullseye',
+                'label': goal['name'],
+                'detail': detail,
+                'base_detail': detail,
+                'amount': goal['recommended_contribution'],
+                'goal_priority': goal['priority'],
+                'goal_monthly_plan': goal['monthly_contribution'],
+                'goal_monthly_progress': goal['monthly_progress'],
+                'goal_monthly_remaining': goal['monthly_remaining'],
+                'goal_recommended': goal['recommended_contribution'],
+            }
+        )
     if extra_repayment > 0 and extra_repayment_target:
-        items.append({
-            'kind': 'extra',
-            'icon': 'bi-lightning-charge',
-            'label': f'Досрочно: {extra_repayment_target["label"]}',
-            'detail': 'сверх обязательного платежа',
-            'amount': _float(extra_repayment),
-            'source_id': extra_repayment_target['id'],
-        })
+        items.append(
+            {
+                'kind': 'extra',
+                'icon': 'bi-lightning-charge',
+                'label': f'Досрочно: {extra_repayment_target["label"]}',
+                'detail': 'сверх обязательного платежа',
+                'amount': _float(extra_repayment),
+                'source_id': extra_repayment_target['id'],
+            }
+        )
     if living_budget > 0:
-        items.append({
-            'kind': 'living',
-            'icon': 'bi-bag-check',
-            'label': 'Повседневные расходы',
-            'detail': 'доступно после распределения',
-            'amount': _float(living_budget),
-        })
+        items.append(
+            {
+                'kind': 'living',
+                'icon': 'bi-bag-check',
+                'label': 'Повседневные расходы',
+                'detail': 'доступно после распределения',
+                'amount': _float(living_budget),
+            }
+        )
     if deficit > 0:
-        items.append({
-            'kind': 'deficit',
-            'icon': 'bi-exclamation-triangle',
-            'label': 'Непокрытый дефицит',
-            'detail': 'обязательства превышают доступный доход',
-            'amount': _float(deficit),
-        })
+        items.append(
+            {
+                'kind': 'deficit',
+                'icon': 'bi-exclamation-triangle',
+                'label': 'Непокрытый дефицит',
+                'detail': 'обязательства превышают доступный доход',
+                'amount': _float(deficit),
+            }
+        )
     return items
 
 
@@ -1222,15 +1453,23 @@ def _build_analysis(
             f'Для полного плана не хватает {format_currency(abs(living_budget))}; накопления временно не рекомендуются.'
         )
     if savings > 0:
-        details.append(f'В финансовую подушку можно направить {format_currency(savings)}.')
+        details.append(
+            f'В финансовую подушку можно направить {format_currency(savings)}.'
+        )
     elif emergency_gap > 0 and emergency_month_complete:
         details.append('План пополнения финансовой подушки на этот месяц уже выполнен.')
     elif emergency_gap > 0 and living_budget >= 0:
-        details.append('Накопления не заложены: свободная сумма не превышает выбранный минимум на жизнь.')
+        details.append(
+            'Накопления не заложены: свободная сумма не превышает выбранный минимум на жизнь.'
+        )
     if extra_repayment > 0:
-        details.append(f'На досрочное погашение доступно {format_currency(extra_repayment)}.')
+        details.append(
+            f'На досрочное погашение доступно {format_currency(extra_repayment)}.'
+        )
     elif emergency_gap > 0:
-        details.append('Досрочное погашение пока отложено до создания минимального резерва.')
+        details.append(
+            'Досрочное погашение пока отложено до создания минимального резерва.'
+        )
     return {'title': state['label'], 'lead': lead, 'details': details}
 
 
@@ -1245,72 +1484,84 @@ def _build_recommendations(
     living_minimum,
     emergency_month_complete=False,
 ):
-    items = [{
-        'stage': 'Сейчас',
-        'title': 'Сначала зарезервировать обязательные платежи',
-        'amount': _float(obligations_total),
-        'reason': 'Эти суммы уже найдены в действующих долгах и регулярных расходах.',
-        'tone': 'primary',
-    }]
+    items = [
+        {
+            'stage': 'Сейчас',
+            'title': 'Сначала зарезервировать обязательные платежи',
+            'amount': _float(obligations_total),
+            'reason': 'Эти суммы уже найдены в действующих долгах и регулярных расходах.',
+            'tone': 'primary',
+        }
+    ]
     if emergency_gap > 0:
-        items.append({
-            'stage': 'Приоритет №1',
-            'title': (
-                'План пополнения подушки на месяц выполнен'
-                if emergency_month_complete
-                else 'Продолжить формирование финансовой подушки'
-            ),
-            'amount': None if emergency_month_complete else _float(savings),
-            'reason': (
-                'Следующее плановое пополнение будет рассчитано для нового месяца.'
-                if emergency_month_complete
-                else (
-                    f'До выбранной цели не хватает {format_currency(emergency_gap)}. '
-                    'Резерв снижает риск нового долга при непредвиденных расходах.'
-                )
-            ),
-            'tone': 'success',
-        })
+        items.append(
+            {
+                'stage': 'Приоритет №1',
+                'title': (
+                    'План пополнения подушки на месяц выполнен'
+                    if emergency_month_complete
+                    else 'Продолжить формирование финансовой подушки'
+                ),
+                'amount': None if emergency_month_complete else _float(savings),
+                'reason': (
+                    'Следующее плановое пополнение будет рассчитано для нового месяца.'
+                    if emergency_month_complete
+                    else (
+                        f'До выбранной цели не хватает {format_currency(emergency_gap)}. '
+                        'Резерв снижает риск нового долга при непредвиденных расходах.'
+                    )
+                ),
+                'tone': 'success',
+            }
+        )
 
     small_debts = [
-        debt for debt in debt_items
-        if debt['remaining'] <= max(debt['monthly_amount'] * 6, 50000) and debt['remaining'] > 0
+        debt
+        for debt in debt_items
+        if debt['remaining'] <= max(debt['monthly_amount'] * 6, 50000)
+        and debt['remaining'] > 0
     ]
     if small_debts:
         target = min(small_debts, key=lambda debt: debt['remaining'])
-        items.append({
-            'stage': 'Следующий шаг',
-            'title': f'Закрыть небольшой долг: {target["label"]}',
-            'amount': target['remaining'],
-            'reason': (
-                f'После закрытия освободится около {format_currency(target["monthly_amount"])} в месяц '
-                'для накоплений или основного кредита.'
-            ),
-            'tone': 'warning',
-        })
+        items.append(
+            {
+                'stage': 'Следующий шаг',
+                'title': f'Закрыть небольшой долг: {target["label"]}',
+                'amount': target['remaining'],
+                'reason': (
+                    f'После закрытия освободится около {format_currency(target["monthly_amount"])} в месяц '
+                    'для накоплений или основного кредита.'
+                ),
+                'tone': 'warning',
+            }
+        )
     if extra_repayment_target:
-        items.append({
-            'stage': 'Досрочное погашение',
-            'title': f'{format_currency(extra_repayment)} → {extra_repayment_target["label"]}',
-            'amount': None,
-            'reason': (
-                'Сейчас дополнительный платеж равен нулю, потому что финансовая подушка ниже безопасного уровня.'
-                if extra_repayment <= 0 and emergency_gap > 0
-                else 'Цель выбрана по максимальной известной ставке среди активных долгов.'
-            ),
-            'tone': 'neutral',
-        })
+        items.append(
+            {
+                'stage': 'Досрочное погашение',
+                'title': f'{format_currency(extra_repayment)} → {extra_repayment_target["label"]}',
+                'amount': None,
+                'reason': (
+                    'Сейчас дополнительный платеж равен нулю, потому что финансовая подушка ниже безопасного уровня.'
+                    if extra_repayment <= 0 and emergency_gap > 0
+                    else 'Цель выбрана по максимальной известной ставке среди активных долгов.'
+                ),
+                'tone': 'neutral',
+            }
+        )
     if living_budget < living_minimum:
-        items.append({
-            'stage': 'Контроль риска',
-            'title': 'Не увеличивать накопления за счет повседневного бюджета',
-            'amount': None,
-            'reason': (
-                f'Доступно {format_currency(max(living_budget, 0))}, что ниже выбранного минимума '
-                f'{format_currency(living_minimum)}.'
-            ),
-            'tone': 'danger',
-        })
+        items.append(
+            {
+                'stage': 'Контроль риска',
+                'title': 'Не увеличивать накопления за счет повседневного бюджета',
+                'amount': None,
+                'reason': (
+                    f'Доступно {format_currency(max(living_budget, 0))}, что ниже выбранного минимума '
+                    f'{format_currency(living_minimum)}.'
+                ),
+                'tone': 'danger',
+            }
+        )
     return items
 
 
@@ -1327,23 +1578,27 @@ def _build_forecast(debt_items, savings, emergency_gap, strategy, today):
         key=lambda item: item['end_date'],
     )[:4]:
         released = _decimal(debt['monthly_amount'])
-        events.append({
-            'kind': 'debt_closed',
-            'date': debt['end_date'],
-            'months_from_now': debt['months_left'],
-            'title': f'Закроется {debt["label"]}',
-            'released': _float(released),
-            'savings_amount': _float(released * savings_ratio),
-            'debt_amount': _float(released * debt_ratio),
-            'description': (
-                'Высвободившийся платеж можно разделить между подушкой и досрочным погашением '
-                'в пропорции выбранной стратегии.'
-            ),
-        })
+        events.append(
+            {
+                'kind': 'debt_closed',
+                'date': debt['end_date'],
+                'months_from_now': debt['months_left'],
+                'title': f'Закроется {debt["label"]}',
+                'released': _float(released),
+                'savings_amount': _float(released * savings_ratio),
+                'debt_amount': _float(released * debt_ratio),
+                'description': (
+                    'Высвободившийся платеж можно разделить между подушкой и досрочным погашением '
+                    'в пропорции выбранной стратегии.'
+                ),
+            }
+        )
 
     cushion_event = None
     if emergency_gap > 0 and savings > 0:
-        months = int((emergency_gap / savings).to_integral_value(rounding=ROUND_CEILING))
+        months = int(
+            (emergency_gap / savings).to_integral_value(rounding=ROUND_CEILING)
+        )
         target_date = today + relativedelta(months=months)
         cushion_event = {
             'kind': 'emergency_ready',
@@ -1363,25 +1618,32 @@ def _build_missing_data(income_summary, debt_gaps, recurring_items):
     items = list(debt_gaps)
     for expense in recurring_items:
         if expense.get('potential_debt_duplicate'):
-            items.append({
-                'kind': 'expenses',
-                'title': f'Проверьте погашение долга: {expense["title"]}.',
-                'detail': 'Расход включён в бюджет. Для исключения дубля выберите долг в расходе; '
-                          'сумма должна совпадать с месячным платежом в плане. '
-                          'Оплата покупки кредитной картой не является погашением долга.',
-            })
+            items.append(
+                {
+                    'kind': 'expenses',
+                    'title': f'Проверьте погашение долга: {expense["title"]}.',
+                    'detail': 'Расход включён в бюджет. Для исключения дубля выберите долг в расходе; '
+                    'сумма должна совпадать с месячным платежом в плане. '
+                    'Оплата покупки кредитной картой не является погашением долга.',
+                }
+            )
     if not income_summary['items']:
-        items.insert(0, {
-            'kind': 'income',
-            'title': 'Не указан ежемесячный доход.',
-            'detail': 'Без дохода распределение показывает только найденные обязательства.',
-        })
+        items.insert(
+            0,
+            {
+                'kind': 'income',
+                'title': 'Не указан ежемесячный доход.',
+                'detail': 'Без дохода распределение показывает только найденные обязательства.',
+            },
+        )
     if not recurring_items:
-        items.append({
-            'kind': 'expenses',
-            'title': 'Регулярные расходы не найдены.',
-            'detail': 'Коммунальные услуги, подписки и помощь можно пометить как ежемесячные в расходах.',
-        })
+        items.append(
+            {
+                'kind': 'expenses',
+                'title': 'Регулярные расходы не найдены.',
+                'detail': 'Коммунальные услуги, подписки и помощь можно пометить как ежемесячные в расходах.',
+            }
+        )
     return items
 
 
@@ -1420,4 +1682,6 @@ def _float(value):
 
 
 def _search_key(value):
-    return ''.join(character for character in str(value or '').lower() if character.isalnum())
+    return ''.join(
+        character for character in str(value or '').lower() if character.isalnum()
+    )

@@ -427,6 +427,14 @@ Managed-деплой автоматически включает `officium-month
 
 ## Тесты
 
+CI проверяет форматирование добавленных и изменённых файлов Python. Перед
+отправкой изменений запустите Ruff для файлов, над которыми работали:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install ruff==0.9.10
+.\.venv\Scripts\python.exe -m ruff format app/путь_к_файлу.py
+```
+
 Все тесты:
 
 ```powershell

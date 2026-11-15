@@ -8,7 +8,17 @@ from sqlalchemy import event
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import create_app
-from app.models import Debt, EmergencyFundTransaction, Expense, FinancialGoal, FinancialGoalTransaction, FinancialPlanPreference, Income, Payment, User
+from app.models import (
+    Debt,
+    EmergencyFundTransaction,
+    Expense,
+    FinancialGoal,
+    FinancialGoalTransaction,
+    FinancialPlanPreference,
+    Income,
+    Payment,
+    User,
+)
 from app.services.financial_plan_service import build_financial_plan
 from app.services.finance_summary_service import get_finance_summary
 from app.services.financial_data import FinancialDataUnavailable
@@ -18,13 +28,15 @@ from extensions import db
 
 class FinancialPlanTestCase(unittest.TestCase):
     def setUp(self):
-        self.app = create_app({
-            'TESTING': True,
-            'SECRET_KEY': 'financial-plan-test-secret',
-            'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
-            'SQLALCHEMY_ENGINE_OPTIONS': {},
-            'WTF_CSRF_ENABLED': False,
-        })
+        self.app = create_app(
+            {
+                'TESTING': True,
+                'SECRET_KEY': 'financial-plan-test-secret',
+                'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+                'SQLALCHEMY_ENGINE_OPTIONS': {},
+                'WTF_CSRF_ENABLED': False,
+            }
+        )
         self.client = self.app.test_client()
 
         with self.app.app_context():
@@ -46,114 +58,130 @@ class FinancialPlanTestCase(unittest.TestCase):
             db.drop_all()
 
     def _add_financial_sources(self):
-        db.session.add(Income(
-            user_id=self.user_id,
-            amount=Decimal('75000.00'),
-            category='salary',
-            source='Основная работа',
-            income_date=date(2026, 8, 5),
-        ))
-        db.session.add_all([
-            Debt(
+        db.session.add(
+            Income(
                 user_id=self.user_id,
-                bank_name='Сбер',
-                debt_type='consumer_credit',
-                product_name='Кредит',
-                total_amount=Decimal('200000.00'),
-                remaining_amount=Decimal('100000.00'),
-                minimum_payment=Decimal('16454.00'),
-                interest_rate=Decimal('18.00'),
-                next_payment_date=date(2026, 9, 5),
-                status='active',
-            ),
-            Debt(
-                user_id=self.user_id,
-                bank_name='Яндекс',
-                debt_type='split',
-                product_name='Сплит',
-                total_amount=Decimal('12000.00'),
-                remaining_amount=Decimal('8000.00'),
-                minimum_payment=Decimal('2086.00'),
-                next_payment_date=date(2026, 8, 28),
-                status='active',
-            ),
-        ])
-        db.session.add_all([
-            Expense(
-                user_id=self.user_id,
-                amount=Decimal('7000.00'),
-                category='rent',
-                title='Коммунальные услуги',
-                expense_date=date(2026, 7, 10),
-                is_monthly=True,
-                monthly_group_id='utilities',
-                generated_for_month='2026-07',
-            ),
-            Expense(
-                user_id=self.user_id,
-                amount=Decimal('7000.00'),
-                category='rent',
-                title='Коммунальные услуги',
-                expense_date=date(2026, 8, 10),
-                is_monthly=True,
-                monthly_group_id='utilities',
-                generated_for_month='2026-08',
-            ),
-            Expense(
-                user_id=self.user_id,
-                amount=Decimal('20000.00'),
-                category='other',
-                title='Помощь родственнику',
-                expense_date=date(2026, 8, 15),
-                is_monthly=True,
-                monthly_group_id='family-support',
-                generated_for_month='2026-08',
-            ),
-            Expense(
-                user_id=self.user_id,
-                amount=Decimal('16454.00'),
-                category='loans',
-                title='Платеж Сбер кредит',
-                expense_date=date(2026, 8, 5),
-                is_monthly=True,
-                monthly_group_id='duplicate-loan-payment',
-                generated_for_month='2026-08',
-            ),
-        ])
+                amount=Decimal('75000.00'),
+                category='salary',
+                source='Основная работа',
+                income_date=date(2026, 8, 5),
+            )
+        )
+        db.session.add_all(
+            [
+                Debt(
+                    user_id=self.user_id,
+                    bank_name='Сбер',
+                    debt_type='consumer_credit',
+                    product_name='Кредит',
+                    total_amount=Decimal('200000.00'),
+                    remaining_amount=Decimal('100000.00'),
+                    minimum_payment=Decimal('16454.00'),
+                    interest_rate=Decimal('18.00'),
+                    next_payment_date=date(2026, 9, 5),
+                    status='active',
+                ),
+                Debt(
+                    user_id=self.user_id,
+                    bank_name='Яндекс',
+                    debt_type='split',
+                    product_name='Сплит',
+                    total_amount=Decimal('12000.00'),
+                    remaining_amount=Decimal('8000.00'),
+                    minimum_payment=Decimal('2086.00'),
+                    next_payment_date=date(2026, 8, 28),
+                    status='active',
+                ),
+            ]
+        )
+        db.session.add_all(
+            [
+                Expense(
+                    user_id=self.user_id,
+                    amount=Decimal('7000.00'),
+                    category='rent',
+                    title='Коммунальные услуги',
+                    expense_date=date(2026, 7, 10),
+                    is_monthly=True,
+                    monthly_group_id='utilities',
+                    generated_for_month='2026-07',
+                ),
+                Expense(
+                    user_id=self.user_id,
+                    amount=Decimal('7000.00'),
+                    category='rent',
+                    title='Коммунальные услуги',
+                    expense_date=date(2026, 8, 10),
+                    is_monthly=True,
+                    monthly_group_id='utilities',
+                    generated_for_month='2026-08',
+                ),
+                Expense(
+                    user_id=self.user_id,
+                    amount=Decimal('20000.00'),
+                    category='other',
+                    title='Помощь родственнику',
+                    expense_date=date(2026, 8, 15),
+                    is_monthly=True,
+                    monthly_group_id='family-support',
+                    generated_for_month='2026-08',
+                ),
+                Expense(
+                    user_id=self.user_id,
+                    amount=Decimal('16454.00'),
+                    category='loans',
+                    title='Платеж Сбер кредит',
+                    expense_date=date(2026, 8, 5),
+                    is_monthly=True,
+                    monthly_group_id='duplicate-loan-payment',
+                    generated_for_month='2026-08',
+                ),
+            ]
+        )
         db.session.flush()
-        Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one().repayment_debt_id = (
+        Expense.query.filter_by(
+            monthly_group_id='duplicate-loan-payment'
+        ).one().repayment_debt_id = (
             Debt.query.filter_by(user_id=self.user_id, bank_name='Сбер').one().id
         )
-        db.session.add(FinancialPlanPreference(
-            user_id=self.user_id,
-            living_minimum=Decimal('20000.00'),
-            desired_monthly_savings=Decimal('5000.00'),
-            emergency_fund_target_amount=Decimal('30000.00'),
-            emergency_fund_target_mode='fixed',
-            strategy='balanced',
-        ))
-        db.session.add_all([
-            EmergencyFundTransaction(
+        db.session.add(
+            FinancialPlanPreference(
                 user_id=self.user_id,
-                transaction_type='deposit',
-                amount=Decimal('12000.00'),
-                transaction_date=date(2026, 7, 10),
-                comment='Первое пополнение',
-            ),
-            EmergencyFundTransaction(
-                user_id=self.user_id,
-                transaction_type='withdrawal',
-                amount=Decimal('2000.00'),
-                transaction_date=date(2026, 7, 15),
-                comment='Непредвиденный расход',
-            ),
-        ])
+                living_minimum=Decimal('20000.00'),
+                desired_monthly_savings=Decimal('5000.00'),
+                emergency_fund_target_amount=Decimal('30000.00'),
+                emergency_fund_target_mode='fixed',
+                strategy='balanced',
+            )
+        )
+        db.session.add_all(
+            [
+                EmergencyFundTransaction(
+                    user_id=self.user_id,
+                    transaction_type='deposit',
+                    amount=Decimal('12000.00'),
+                    transaction_date=date(2026, 7, 10),
+                    comment='Первое пополнение',
+                ),
+                EmergencyFundTransaction(
+                    user_id=self.user_id,
+                    transaction_type='withdrawal',
+                    amount=Decimal('2000.00'),
+                    transaction_date=date(2026, 7, 15),
+                    comment='Непредвиденный расход',
+                ),
+            ]
+        )
         db.session.commit()
 
     def test_builds_plan_from_existing_sources_without_duplicate_monthly_expense(self):
         with self.app.app_context():
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
         self.assertEqual(plan['totals']['income'], 75000.0)
         self.assertEqual(plan['totals']['regular_expenses'], 7000.0)
@@ -167,7 +195,9 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertEqual(len(plan['regular_items']), 1)
         self.assertEqual(len(plan['support_items']), 1)
         self.assertEqual(len(plan['excluded_recurring_items']), 1)
-        split = next(item for item in plan['debt_items'] if item['debt_type'] == 'split')
+        split = next(
+            item for item in plan['debt_items'] if item['debt_type'] == 'split'
+        )
         self.assertEqual(split['monthly_amount'], 4172.0)
         self.assertEqual(
             [item['due_date'] for item in split['planned_payments']],
@@ -176,21 +206,35 @@ class FinancialPlanTestCase(unittest.TestCase):
 
     def test_plan_recalculates_when_source_debt_changes(self):
         with self.app.app_context():
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            before = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
-            debt = Debt.query.filter_by(user_id=self.user_id, debt_type='consumer_credit').one()
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            before = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
+            debt = Debt.query.filter_by(
+                user_id=self.user_id, debt_type='consumer_credit'
+            ).one()
             debt.minimum_payment = Decimal('18000.00')
             db.session.commit()
-            after = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            after = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
-        self.assertGreater(after['totals']['debt_payments'], before['totals']['debt_payments'])
-        self.assertLess(after['totals']['living_budget'], before['totals']['living_budget'])
+        self.assertGreater(
+            after['totals']['debt_payments'], before['totals']['debt_payments']
+        )
+        self.assertLess(
+            after['totals']['living_budget'], before['totals']['living_budget']
+        )
 
     def test_independent_loan_expense_with_same_amount_is_counted(self):
         with self.app.app_context():
             debt = Debt.query.filter_by(user_id=self.user_id, bank_name='Сбер').one()
             debt.minimum_payment = Decimal('15000.00')
-            expense = Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one()
+            expense = Expense.query.filter_by(
+                monthly_group_id='duplicate-loan-payment'
+            ).one()
             expense.title = 'Рассрочка за оборудование'
             expense.amount = Decimal('15000.00')
             expense.repayment_debt_id = None
@@ -204,7 +248,9 @@ class FinancialPlanTestCase(unittest.TestCase):
 
     def test_legacy_title_match_is_visible_and_counted_without_rewriting_history(self):
         with self.app.app_context():
-            expense = Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one()
+            expense = Expense.query.filter_by(
+                monthly_group_id='duplicate-loan-payment'
+            ).one()
             expense.repayment_debt_id = None
             expense.amount = Decimal('123.45')
             db.session.commit()
@@ -216,12 +262,21 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertEqual(plan['totals']['regular_expenses'], 7123.45)
         self.assertEqual(plan['excluded_recurring_items'], [])
         self.assertEqual(plan['totals'], repeated['totals'])
-        self.assertTrue(any(item['potential_debt_duplicate'] for item in plan['regular_items']))
-        self.assertTrue(any('Расход включён в бюджет' in item['detail'] for item in plan['missing_data']))
+        self.assertTrue(
+            any(item['potential_debt_duplicate'] for item in plan['regular_items'])
+        )
+        self.assertTrue(
+            any(
+                'Расход включён в бюджет' in item['detail']
+                for item in plan['missing_data']
+            )
+        )
 
     def test_credit_card_purchase_is_an_independent_expense(self):
         with self.app.app_context():
-            expense = Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one()
+            expense = Expense.query.filter_by(
+                monthly_group_id='duplicate-loan-payment'
+            ).one()
             expense.category = 'products'
             expense.payment_method = 'card'
             expense.comment = 'Оплачено кредитной картой'
@@ -234,12 +289,20 @@ class FinancialPlanTestCase(unittest.TestCase):
 
     def test_linked_expenses_do_not_suppress_more_than_one_monthly_payment(self):
         with self.app.app_context():
-            original = Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one()
-            db.session.add(Expense(
-                user_id=self.user_id, amount=original.amount, category='loans',
-                title='Дополнительное обязательство', expense_date=date(2026, 8, 6),
-                is_monthly=True, repayment_debt_id=original.repayment_debt_id,
-            ))
+            original = Expense.query.filter_by(
+                monthly_group_id='duplicate-loan-payment'
+            ).one()
+            db.session.add(
+                Expense(
+                    user_id=self.user_id,
+                    amount=original.amount,
+                    category='loans',
+                    title='Дополнительное обязательство',
+                    expense_date=date(2026, 8, 6),
+                    is_monthly=True,
+                    repayment_debt_id=original.repayment_debt_id,
+                )
+            )
             db.session.commit()
             plan = build_financial_plan(self.user_id, today=date(2026, 8, 21))
 
@@ -248,7 +311,9 @@ class FinancialPlanTestCase(unittest.TestCase):
 
     def test_linked_mismatch_and_closed_debt_are_counted_for_reconciliation(self):
         with self.app.app_context():
-            expense = Expense.query.filter_by(monthly_group_id='duplicate-loan-payment').one()
+            expense = Expense.query.filter_by(
+                monthly_group_id='duplicate-loan-payment'
+            ).one()
             debt = db.session.get(Debt, expense.repayment_debt_id)
             for amount, status in [('16454.01', 'active'), ('16454.00', 'archived')]:
                 with self.subTest(amount=amount, status=status):
@@ -257,26 +322,46 @@ class FinancialPlanTestCase(unittest.TestCase):
                     db.session.commit()
                     plan = build_financial_plan(self.user_id, today=date(2026, 8, 21))
                     self.assertEqual(plan['excluded_recurring_items'], [])
-                    self.assertEqual(Decimal(str(plan['totals']['regular_expenses'])), Decimal(amount) + 7000)
-                    self.assertTrue(any(item['potential_debt_duplicate'] for item in plan['regular_items']))
+                    self.assertEqual(
+                        Decimal(str(plan['totals']['regular_expenses'])),
+                        Decimal(amount) + 7000,
+                    )
+                    self.assertTrue(
+                        any(
+                            item['potential_debt_duplicate']
+                            for item in plan['regular_items']
+                        )
+                    )
 
     def test_plan_prefers_configured_consumer_credit_and_caps_early_repayment(self):
         with self.app.app_context():
-            income = Income.query.filter_by(user_id=self.user_id, category='salary').one()
+            income = Income.query.filter_by(
+                user_id=self.user_id, category='salary'
+            ).one()
             income.amount = Decimal('200000.00')
-            debt = Debt.query.filter_by(user_id=self.user_id, debt_type='consumer_credit').one()
+            debt = Debt.query.filter_by(
+                user_id=self.user_id, debt_type='consumer_credit'
+            ).one()
             debt.early_repayment_enabled = True
-            debt.planned_early_repayment_amount = debt.minimum_payment + Decimal('7000.00')
+            debt.planned_early_repayment_amount = debt.minimum_payment + Decimal(
+                '7000.00'
+            )
             debt_id = debt.id
-            db.session.add(EmergencyFundTransaction(
-                user_id=self.user_id,
-                transaction_type='deposit',
-                amount=Decimal('100000.00'),
-                transaction_date=date(2026, 7, 20),
-            ))
+            db.session.add(
+                EmergencyFundTransaction(
+                    user_id=self.user_id,
+                    transaction_type='deposit',
+                    amount=Decimal('100000.00'),
+                    transaction_date=date(2026, 7, 20),
+                )
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
         self.assertEqual(plan['totals']['extra_repayment'], 7000.0)
         extra_row = next(item for item in plan['allocation'] if item['kind'] == 'extra')
@@ -285,49 +370,82 @@ class FinancialPlanTestCase(unittest.TestCase):
 
     def test_early_repayment_is_not_added_when_scheduled_payment_closes_debt(self):
         with self.app.app_context():
-            income = Income.query.filter_by(user_id=self.user_id, category='salary').one()
+            income = Income.query.filter_by(
+                user_id=self.user_id, category='salary'
+            ).one()
             income.amount = Decimal('200000.00')
-            debt = Debt.query.filter_by(user_id=self.user_id, debt_type='consumer_credit').one()
+            debt = Debt.query.filter_by(
+                user_id=self.user_id, debt_type='consumer_credit'
+            ).one()
             debt.remaining_amount = Decimal('1000.00')
             debt.early_repayment_enabled = True
-            debt.planned_early_repayment_amount = debt.minimum_payment + Decimal('700.00')
-            db.session.add(EmergencyFundTransaction(
-                user_id=self.user_id,
-                transaction_type='deposit',
-                amount=Decimal('100000.00'),
-                transaction_date=date(2026, 7, 20),
-            ))
+            debt.planned_early_repayment_amount = debt.minimum_payment + Decimal(
+                '700.00'
+            )
+            db.session.add(
+                EmergencyFundTransaction(
+                    user_id=self.user_id,
+                    transaction_type='deposit',
+                    amount=Decimal('100000.00'),
+                    transaction_date=date(2026, 7, 20),
+                )
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
-        credit = next(item for item in plan['debt_items'] if item['debt_type'] == 'consumer_credit')
+        credit = next(
+            item
+            for item in plan['debt_items']
+            if item['debt_type'] == 'consumer_credit'
+        )
         self.assertEqual(credit['projected_remaining_after_plan'], 0.0)
         self.assertEqual(plan['totals']['extra_repayment'], 0.0)
         self.assertFalse(any(item['kind'] == 'extra' for item in plan['allocation']))
 
-    def test_income_allocation_prioritizes_nearest_monthly_expenses_then_debt_dates(self):
+    def test_income_allocation_prioritizes_nearest_monthly_expenses_then_debt_dates(
+        self,
+    ):
         with self.app.app_context():
-            income = Income.query.filter_by(user_id=self.user_id, category='salary').one()
+            income = Income.query.filter_by(
+                user_id=self.user_id, category='salary'
+            ).one()
             income.amount = Decimal('30000.00')
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 5))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 5)
+            )
 
         directions = plan['income_allocations'][0]['allocations']
         # The next salary is expected on ~05.09: dates before it come first,
         # then the living reserve; the 05.09 credit waits for that salary.
         self.assertEqual(
             [item['label'] for item in directions],
-            ['Коммунальные услуги', 'Помощь родственнику', 'Яндекс — Сплит', 'Повседневные расходы'],
+            [
+                'Коммунальные услуги',
+                'Помощь родственнику',
+                'Яндекс — Сплит',
+                'Повседневные расходы',
+            ],
         )
-        self.assertEqual([item['amount'] for item in directions], [7000.0, 20000.0, 2086.0, 914.0])
+        self.assertEqual(
+            [item['amount'] for item in directions], [7000.0, 20000.0, 2086.0, 914.0]
+        )
         self.assertEqual(
             [item['due_date'] for item in directions],
             [date(2026, 8, 10), date(2026, 8, 15), date(2026, 8, 28), None],
         )
         self.assertEqual(plan['income_allocations'][0]['reserve_missing'], 19086.0)
-        self.assertIn('Сбер — Кредит', [item['label'] for item in plan['awaiting_obligations']])
+        self.assertIn(
+            'Сбер — Кредит', [item['label'] for item in plan['awaiting_obligations']]
+        )
         self.assertIn('оплатить до 10.08.2026', directions[0]['detail'])
         self.assertIn('через 5 дн.', directions[0]['detail'])
         self.assertEqual(directions[0]['urgency'], 'upcoming')
@@ -337,14 +455,31 @@ class FinancialPlanTestCase(unittest.TestCase):
         Debt.query.filter_by(user_id=self.user_id).delete()
         Expense.query.filter_by(user_id=self.user_id).delete()
         Income.query.filter_by(user_id=self.user_id).delete()
-        db.session.add_all([
-            Income(user_id=self.user_id, amount=Decimal('30000.00'), category='advance',
-                   source='Первая работа', income_date=date(2026, 9, 20)),
-            Income(user_id=self.user_id, amount=Decimal('24700.62'), category='salary',
-                   source='Первая работа', income_date=date(2026, 10, 5)),
-            Income(user_id=self.user_id, amount=Decimal('13038.50'), category='salary',
-                   source='Вторая работа', income_date=date(2026, 10, 9)),
-        ])
+        db.session.add_all(
+            [
+                Income(
+                    user_id=self.user_id,
+                    amount=Decimal('30000.00'),
+                    category='advance',
+                    source='Первая работа',
+                    income_date=date(2026, 9, 20),
+                ),
+                Income(
+                    user_id=self.user_id,
+                    amount=Decimal('24700.62'),
+                    category='salary',
+                    source='Первая работа',
+                    income_date=date(2026, 10, 5),
+                ),
+                Income(
+                    user_id=self.user_id,
+                    amount=Decimal('13038.50'),
+                    category='salary',
+                    source='Вторая работа',
+                    income_date=date(2026, 10, 9),
+                ),
+            ]
+        )
         for title, amount, day in (
             ('Музыка', '169.00', 4),
             ('Банковская подписка', '399.00', 5),
@@ -352,35 +487,43 @@ class FinancialPlanTestCase(unittest.TestCase):
             ('Нейросеть', '2000.00', 12),
             ('Аренда', '15000.00', 25),
         ):
-            db.session.add(Expense(
+            db.session.add(
+                Expense(
+                    user_id=self.user_id,
+                    amount=Decimal(amount),
+                    category='other',
+                    title=title,
+                    expense_date=date(2026, 10, day),
+                    is_monthly=True,
+                    monthly_group_id=f'scenario-{day}',
+                    generated_for_month='2026-10',
+                )
+            )
+        db.session.add(
+            Debt(
                 user_id=self.user_id,
-                amount=Decimal(amount),
-                category='other',
-                title=title,
-                expense_date=date(2026, 10, day),
-                is_monthly=True,
-                monthly_group_id=f'scenario-{day}',
-                generated_for_month='2026-10',
-            ))
-        db.session.add(Debt(
-            user_id=self.user_id,
-            bank_name='Банк',
-            debt_type='consumer_credit',
-            product_name='Кредит наличными',
-            total_amount=Decimal('100000.00'),
-            remaining_amount=Decimal('50000.00'),
-            minimum_payment=Decimal('5000.00'),
-            interest_rate=Decimal('20.00'),
-            next_payment_date=date(2026, 11, 5),
-            status='active',
-        ))
+                bank_name='Банк',
+                debt_type='consumer_credit',
+                product_name='Кредит наличными',
+                total_amount=Decimal('100000.00'),
+                remaining_amount=Decimal('50000.00'),
+                minimum_payment=Decimal('5000.00'),
+                interest_rate=Decimal('20.00'),
+                next_payment_date=date(2026, 11, 5),
+                status='active',
+            )
+        )
         db.session.commit()
 
     def test_owner_scenario_each_salary_covers_only_its_pay_window(self):
         with self.app.app_context():
             self._replace_sources_with_october_scenario()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 10, 17))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 10, 17)
+            )
 
         # The September advance only finds the next incomes; it is not October income.
         self.assertEqual(plan['totals']['income'], 37739.12)
@@ -388,14 +531,27 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertEqual(plan['totals']['allocation_balance'], 0.0)
         self.assertTrue(plan['totals']['allocation_is_balanced'])
         for income in plan['income_allocations']:
-            self.assertAlmostEqual(sum(item['amount'] for item in income['allocations']), income['amount'], places=2)
+            self.assertAlmostEqual(
+                sum(item['amount'] for item in income['allocations']),
+                income['amount'],
+                places=2,
+            )
 
         first, second = plan['income_allocations'][1], plan['income_allocations'][0]
         # The first job pays on 05.10, the second on 09.10, the advance is expected ~20.10.
-        self.assertEqual((first['next_income_date'], first['next_income_is_estimated']), (date(2026, 10, 9), False))
-        self.assertEqual((second['next_income_date'], second['next_income_is_estimated']), (date(2026, 10, 20), True))
         self.assertEqual(
-            [(item['label'], item['amount'], item['stage']) for item in first['allocations']],
+            (first['next_income_date'], first['next_income_is_estimated']),
+            (date(2026, 10, 9), False),
+        )
+        self.assertEqual(
+            (second['next_income_date'], second['next_income_is_estimated']),
+            (date(2026, 10, 20), True),
+        )
+        self.assertEqual(
+            [
+                (item['label'], item['amount'], item['stage'])
+                for item in first['allocations']
+            ],
             [
                 ('Банковская подписка', 399.0, 'due'),
                 ('Мобильная связь', 500.0, 'due'),
@@ -422,31 +578,68 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertEqual(plan['awaiting_obligations'], [])
         # 04.10 comes before the first October income: the 20.09 advance reached it.
         self.assertEqual(
-            [(item['label'], item['amount'], item['expected_income_date']) for item in plan['covered_by_previous_period']],
+            [
+                (item['label'], item['amount'], item['expected_income_date'])
+                for item in plan['covered_by_previous_period']
+            ],
             [('Музыка', 169.0, date(2026, 9, 20))],
         )
 
     def test_advance_pays_next_month_recurring_expenses_of_its_window(self):
         with self.app.app_context():
             self._replace_sources_with_october_scenario()
-            db.session.add_all([
-                Income(user_id=self.user_id, amount=Decimal('30000.00'), category='advance',
-                       source='Первая работа', income_date=date(2026, 10, 20)),
-                Expense(user_id=self.user_id, amount=Decimal('299.00'), category='subscriptions',
-                        title='Подписка', expense_date=date(2026, 10, 3), is_monthly=True,
-                        monthly_group_id='scenario-3', generated_for_month='2026-10'),
-                Expense(user_id=self.user_id, amount=Decimal('3000.00'), category='other',
-                        title='Помощь маме', expense_date=date(2026, 10, 1), is_monthly=True,
-                        monthly_group_id='scenario-1', generated_for_month='2026-10'),
-                # Mirrors the credit payment that the debt itself already plans.
-                Expense(user_id=self.user_id, amount=Decimal('5000.00'), category='loans',
-                        title='Кредит наличными', expense_date=date(2026, 10, 2), is_monthly=True,
-                        repayment_debt_id=Debt.query.filter_by(user_id=self.user_id).one().id,
-                        monthly_group_id='scenario-2', generated_for_month='2026-10'),
-            ])
+            db.session.add_all(
+                [
+                    Income(
+                        user_id=self.user_id,
+                        amount=Decimal('30000.00'),
+                        category='advance',
+                        source='Первая работа',
+                        income_date=date(2026, 10, 20),
+                    ),
+                    Expense(
+                        user_id=self.user_id,
+                        amount=Decimal('299.00'),
+                        category='subscriptions',
+                        title='Подписка',
+                        expense_date=date(2026, 10, 3),
+                        is_monthly=True,
+                        monthly_group_id='scenario-3',
+                        generated_for_month='2026-10',
+                    ),
+                    Expense(
+                        user_id=self.user_id,
+                        amount=Decimal('3000.00'),
+                        category='other',
+                        title='Помощь маме',
+                        expense_date=date(2026, 10, 1),
+                        is_monthly=True,
+                        monthly_group_id='scenario-1',
+                        generated_for_month='2026-10',
+                    ),
+                    # Mirrors the credit payment that the debt itself already plans.
+                    Expense(
+                        user_id=self.user_id,
+                        amount=Decimal('5000.00'),
+                        category='loans',
+                        title='Кредит наличными',
+                        expense_date=date(2026, 10, 2),
+                        is_monthly=True,
+                        repayment_debt_id=Debt.query.filter_by(user_id=self.user_id)
+                        .one()
+                        .id,
+                        monthly_group_id='scenario-2',
+                        generated_for_month='2026-10',
+                    ),
+                ]
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 10, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 10, 21)
+            )
 
         # Month totals still count one occurrence of every recurring expense.
         self.assertEqual(plan['totals']['regular_expenses'], 18367.0)
@@ -455,7 +648,10 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertEqual(plan['totals']['obligations'], 26367.0)
         self.assertAlmostEqual(
             plan['totals']['living_budget'],
-            67739.12 - 26367.0 - plan['totals']['recommended_savings'] - plan['totals']['extra_repayment'],
+            67739.12
+            - 26367.0
+            - plan['totals']['recommended_savings']
+            - plan['totals']['extra_repayment'],
             places=2,
         )
         self.assertEqual(plan['totals']['allocation_balance'], 0.0)
@@ -465,52 +661,87 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertEqual(advance['next_income_date'], date(2026, 11, 5))
         self.assertTrue(advance['next_income_is_estimated'])
         for income in plan['income_allocations']:
-            self.assertAlmostEqual(sum(item['amount'] for item in income['allocations']), income['amount'], places=2)
+            self.assertAlmostEqual(
+                sum(item['amount'] for item in income['allocations']),
+                income['amount'],
+                places=2,
+            )
 
         directed = [
             (item['label'], item.get('due_date'))
-            for income in plan['income_allocations'] for item in income['allocations']
+            for income in plan['income_allocations']
+            for item in income['allocations']
         ]
         # Next month's occurrences before ~05.11 take the month's free money.
         self.assertIn(('Помощь маме', date(2026, 11, 1)), directed)
         self.assertIn(('Подписка', date(2026, 11, 3)), directed)
         subscription = next(
-            item for income in plan['income_allocations'] for item in income['allocations']
+            item
+            for income in plan['income_allocations']
+            for item in income['allocations']
             if item['label'] == 'Подписка'
         )
         self.assertIn('03.11.2026', subscription['detail'])
         self.assertNotIn('Кредит наличными', [label for label, _ in directed])
         # 03.10 is before the first October income: the September advance covered it.
         self.assertNotIn(('Подписка', date(2026, 10, 3)), directed)
-        self.assertIn('Подписка', [item['label'] for item in plan['covered_by_previous_period']])
-        self.assertNotIn('Подписка', [item['label'] for item in plan['awaiting_obligations']])
+        self.assertIn(
+            'Подписка', [item['label'] for item in plan['covered_by_previous_period']]
+        )
+        self.assertNotIn(
+            'Подписка', [item['label'] for item in plan['awaiting_obligations']]
+        )
         self.assertEqual(plan['shortfalls'], [])
 
     def test_advance_limits_what_the_salary_pays_and_next_month_payment_waits(self):
         with self.app.app_context():
-            db.session.add(Income(
-                user_id=self.user_id,
-                amount=Decimal('25000.00'),
-                category='advance',
-                source='Основная работа',
-                income_date=date(2026, 8, 20),
-            ))
+            db.session.add(
+                Income(
+                    user_id=self.user_id,
+                    amount=Decimal('25000.00'),
+                    category='advance',
+                    source='Основная работа',
+                    income_date=date(2026, 8, 20),
+                )
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
         advance, salary = plan['income_allocations']
-        self.assertEqual((salary['next_income_date'], salary['next_income_is_estimated']), (date(2026, 8, 20), False))
         self.assertEqual(
-            [(item['label'], item['stage']) for item in salary['allocations'] if item.get('due_date')],
-            [('Коммунальные услуги', 'due'), ('Помощь родственнику', 'due'), ('Яндекс — Сплит', 'ahead')],
+            (salary['next_income_date'], salary['next_income_is_estimated']),
+            (date(2026, 8, 20), False),
+        )
+        self.assertEqual(
+            [
+                (item['label'], item['stage'])
+                for item in salary['allocations']
+                if item.get('due_date')
+            ],
+            [
+                ('Коммунальные услуги', 'due'),
+                ('Помощь родственнику', 'due'),
+                ('Яндекс — Сплит', 'ahead'),
+            ],
         )
         self.assertEqual(salary['allocations'][-1]['kind'], 'living')
-        self.assertEqual((advance['next_income_date'], advance['next_income_is_estimated']), (date(2026, 9, 5), True))
-        credit = next(item for item in advance['allocations'] if item['label'] == 'Сбер — Кредит')
+        self.assertEqual(
+            (advance['next_income_date'], advance['next_income_is_estimated']),
+            (date(2026, 9, 5), True),
+        )
+        credit = next(
+            item for item in advance['allocations'] if item['label'] == 'Сбер — Кредит'
+        )
         self.assertEqual(credit['stage'], 'ahead')
         awaiting = {item['label']: item for item in plan['awaiting_obligations']}
-        self.assertEqual(awaiting['Сбер — Кредит']['expected_income_date'], date(2026, 9, 5))
+        self.assertEqual(
+            awaiting['Сбер — Кредит']['expected_income_date'], date(2026, 9, 5)
+        )
         self.assertTrue(awaiting['Сбер — Кредит']['expected_income_is_estimated'])
         self.assertEqual(
             awaiting['Сбер — Кредит']['amount'] + awaiting['Сбер — Кредит']['prepaid'],
@@ -520,76 +751,141 @@ class FinancialPlanTestCase(unittest.TestCase):
 
     def test_neighbouring_salary_history_bounds_windows_but_not_month_totals(self):
         with self.app.app_context():
-            db.session.add_all([
-                Income(user_id=self.user_id, amount=Decimal('40000.00'), category='advance',
-                       source='Основная работа', income_date=date(2026, 7, 20)),
-                Income(user_id=self.user_id, amount=Decimal('60000.00'), category='salary',
-                       source='Основная работа', income_date=date(2026, 9, 5)),
-                Income(user_id=self.user_id, amount=Decimal('9000.00'), category='bonus',
-                       source='Премия', income_date=date(2026, 9, 1)),
-            ])
+            db.session.add_all(
+                [
+                    Income(
+                        user_id=self.user_id,
+                        amount=Decimal('40000.00'),
+                        category='advance',
+                        source='Основная работа',
+                        income_date=date(2026, 7, 20),
+                    ),
+                    Income(
+                        user_id=self.user_id,
+                        amount=Decimal('60000.00'),
+                        category='salary',
+                        source='Основная работа',
+                        income_date=date(2026, 9, 5),
+                    ),
+                    Income(
+                        user_id=self.user_id,
+                        amount=Decimal('9000.00'),
+                        category='bonus',
+                        source='Премия',
+                        income_date=date(2026, 9, 1),
+                    ),
+                ]
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
         self.assertEqual(plan['totals']['income'], 75000.0)
         self.assertEqual(plan['totals']['allocated_income'], 75000.0)
-        self.assertEqual([item['date'] for item in plan['income_allocations']], [date(2026, 8, 5)])
+        self.assertEqual(
+            [item['date'] for item in plan['income_allocations']], [date(2026, 8, 5)]
+        )
         salary = plan['income_allocations'][0]
         # The July advance on the 20th makes the next income an advance on ~20.08,
         # before the recorded September salary.
-        self.assertEqual((salary['next_income_date'], salary['next_income_is_estimated']), (date(2026, 8, 20), True))
+        self.assertEqual(
+            (salary['next_income_date'], salary['next_income_is_estimated']),
+            (date(2026, 8, 20), True),
+        )
         awaiting = {item['label']: item for item in plan['awaiting_obligations']}
-        self.assertEqual(awaiting['Сбер — Кредит']['expected_income_date'], date(2026, 8, 20))
+        self.assertEqual(
+            awaiting['Сбер — Кредит']['expected_income_date'], date(2026, 8, 20)
+        )
         self.assertTrue(awaiting['Сбер — Кредит']['expected_income_is_estimated'])
 
     def test_past_month_knows_the_next_salary_and_has_nothing_awaiting(self):
         with self.app.app_context():
-            db.session.add_all([
-                Income(user_id=self.user_id, amount=Decimal('25000.00'), category='advance',
-                       source='Основная работа', income_date=date(2026, 8, 20)),
-                Income(user_id=self.user_id, amount=Decimal('75000.00'), category='salary',
-                       source='Основная работа', income_date=date(2026, 9, 5)),
-            ])
+            db.session.add_all(
+                [
+                    Income(
+                        user_id=self.user_id,
+                        amount=Decimal('25000.00'),
+                        category='advance',
+                        source='Основная работа',
+                        income_date=date(2026, 8, 20),
+                    ),
+                    Income(
+                        user_id=self.user_id,
+                        amount=Decimal('75000.00'),
+                        category='salary',
+                        source='Основная работа',
+                        income_date=date(2026, 9, 5),
+                    ),
+                ]
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 10, 10), year=2026, month=8)
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 10, 10), year=2026, month=8
+            )
 
         self.assertEqual(plan['totals']['income'], 100000.0)
         self.assertEqual(plan['awaiting_obligations'], [])
         advance = plan['income_allocations'][0]
-        self.assertEqual((advance['next_income_date'], advance['next_income_is_estimated']), (date(2026, 9, 5), False))
+        self.assertEqual(
+            (advance['next_income_date'], advance['next_income_is_estimated']),
+            (date(2026, 9, 5), False),
+        )
         self.assertTrue(plan['totals']['allocation_is_balanced'])
 
     def test_partially_paid_debt_is_directed_with_its_remaining_amount(self):
         with self.app.app_context():
-            debt = Debt.query.filter_by(user_id=self.user_id, debt_type='consumer_credit').one()
+            debt = Debt.query.filter_by(
+                user_id=self.user_id, debt_type='consumer_credit'
+            ).one()
             debt.remaining_amount = Decimal('95000.00')
-            db.session.add(Payment(
-                debt_id=debt.id,
-                amount=Decimal('5000.00'),
-                principal_amount=Decimal('5000.00'),
-                interest_amount=Decimal('0.00'),
-                fee_amount=Decimal('0.00'),
-                payment_date=date(2026, 8, 20),
-                is_early_repayment=False,
-                remaining_after_payment=Decimal('95000.00'),
-            ))
+            db.session.add(
+                Payment(
+                    debt_id=debt.id,
+                    amount=Decimal('5000.00'),
+                    principal_amount=Decimal('5000.00'),
+                    interest_amount=Decimal('0.00'),
+                    fee_amount=Decimal('0.00'),
+                    payment_date=date(2026, 8, 20),
+                    is_early_repayment=False,
+                    remaining_after_payment=Decimal('95000.00'),
+                )
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
         # The 05.09 payment is due with the next salary; only what is still owed waits.
-        credit = next(item for item in plan['awaiting_obligations'] if item['label'] == 'Сбер — Кредит')
+        credit = next(
+            item
+            for item in plan['awaiting_obligations']
+            if item['label'] == 'Сбер — Кредит'
+        )
         self.assertEqual(credit['amount'], 11454.0)
         self.assertIn('уже внесено', credit['detail'])
 
     def test_demo_plan_has_pay_periods_without_reading_salary_history(self):
-        from app.services.financial_plan_service import _everyday_spending, _load_pay_history
+        from app.services.financial_plan_service import (
+            _everyday_spending,
+            _load_pay_history,
+        )
 
         # Outside an application context any database access would fail.
         self.assertIsNone(_load_pay_history(None, date(2026, 8, 1), date(2026, 9, 1)))
-        self.assertEqual(_everyday_spending(None, date(2026, 8, 1), date(2026, 8, 21)), Decimal('0.00'))
+        self.assertEqual(
+            _everyday_spending(None, date(2026, 8, 1), date(2026, 8, 21)),
+            Decimal('0.00'),
+        )
         with self.app.app_context():
             plan = build_financial_plan(None, today=date(2026, 8, 21))
         self.assertTrue(plan['income_allocations'])
@@ -607,7 +903,9 @@ class FinancialPlanTestCase(unittest.TestCase):
     def _fail_select(self, *fragments):
         def fail_query(conn, cursor, statement, parameters, context, executemany):
             sql = statement.lower().strip()
-            if sql.startswith('select') and all(fragment in sql for fragment in fragments):
+            if sql.startswith('select') and all(
+                fragment in sql for fragment in fragments
+            ):
                 raise SQLAlchemyError('private query details')
 
         with self.app.app_context():
@@ -626,9 +924,17 @@ class FinancialPlanTestCase(unittest.TestCase):
             self.assertEqual(plan['window_daily']['spent'], 0)
             self.assertIsNone(plan['window_daily_error'])
 
-        with self._fail_select('sum(expenses.amount)', 'expenses.is_monthly'), patch(
-            'app.services.financial_plan_service.financial_today', return_value=today
-        ), patch('app.services.finance_summary_service.financial_today', return_value=today):
+        with (
+            self._fail_select('sum(expenses.amount)', 'expenses.is_monthly'),
+            patch(
+                'app.services.financial_plan_service.financial_today',
+                return_value=today,
+            ),
+            patch(
+                'app.services.finance_summary_service.financial_today',
+                return_value=today,
+            ),
+        ):
             with self.app.app_context():
                 plan = build_financial_plan(self.user_id, today=today)
                 self.assertIsNone(plan['window_daily'])
@@ -638,13 +944,16 @@ class FinancialPlanTestCase(unittest.TestCase):
             page = self.client.get('/financial-plan')
             self.assertEqual(dashboard.status_code, 200)
             self.assertEqual(page.status_code, 200)
-            self.assertIn('Дневной лимит временно недоступен', dashboard.get_data(as_text=True))
+            self.assertIn(
+                'Дневной лимит временно недоступен', dashboard.get_data(as_text=True)
+            )
             self.assertIn('Расчёт временно недоступен', page.get_data(as_text=True))
             self.assertNotIn('Дневной ориентир', page.get_data(as_text=True))
 
     def test_failed_pay_history_hides_only_pay_period_calculations(self):
-        with self.app.app_context(), self._fail_select(
-            'select incomes.income_date', 'incomes.pay_period_mode'
+        with (
+            self.app.app_context(),
+            self._fail_select('select incomes.income_date', 'incomes.pay_period_mode'),
         ):
             plan = build_financial_plan(self.user_id, today=date(2026, 8, 21))
         self.assertEqual(plan['pay_period_error'], 'data_unavailable')
@@ -683,13 +992,18 @@ class FinancialPlanTestCase(unittest.TestCase):
             response = self.client.get('/api/debts')
             page = self.client.get('/finance')
         self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.get_json(), {
-            'success': False,
-            'code': 'data_unavailable',
-            'error': FinancialDataUnavailable.message,
-        })
+        self.assertEqual(
+            response.get_json(),
+            {
+                'success': False,
+                'code': 'data_unavailable',
+                'error': FinancialDataUnavailable.message,
+            },
+        )
         self.assertEqual(page.status_code, 200)
-        self.assertIn('Данные о долгах временно недоступны', page.get_data(as_text=True))
+        self.assertIn(
+            'Данные о долгах временно недоступны', page.get_data(as_text=True)
+        )
         self.assertIn('finance-balance', page.get_data(as_text=True))
 
     def test_empty_month_keeps_decimal_zero_balance(self):
@@ -701,18 +1015,22 @@ class FinancialPlanTestCase(unittest.TestCase):
 
     def test_restored_cashflow_returns_same_balance_to_the_kopeck(self):
         with self.app.app_context():
-            db.session.add(Expense(
-                user_id=self.user_id,
-                amount=Decimal('12.34'),
-                title='Покупка',
-                category='other',
-                expense_date=date(2026, 6, 1),
-            ))
+            db.session.add(
+                Expense(
+                    user_id=self.user_id,
+                    amount=Decimal('12.34'),
+                    title='Покупка',
+                    category='other',
+                    expense_date=date(2026, 6, 1),
+                )
+            )
             db.session.commit()
             for _ in range(2):
                 summary = get_finance_summary(self.user_id, 2026, 6)
                 self.assertEqual(summary['free_balance'], Decimal('-12.34'))
-                with self._fail_select('sum(expenses.amount)', 'expenses.expense_date <'):
+                with self._fail_select(
+                    'sum(expenses.amount)', 'expenses.expense_date <'
+                ):
                     with self.assertRaises(FinancialDataUnavailable):
                         get_finance_summary(self.user_id, 2026, 6)
 
@@ -726,20 +1044,27 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertNotIn('Что делать с деньгами сейчас', page.get_data(as_text=True))
         self.assertEqual(dashboard.status_code, 200)
         self.assertIn('balance-hero__amount', dashboard.get_data(as_text=True))
-        self.assertIn('Дневной лимит временно недоступен', dashboard.get_data(as_text=True))
+        self.assertIn(
+            'Дневной лимит временно недоступен', dashboard.get_data(as_text=True)
+        )
 
     def test_income_form_saves_and_validates_the_pay_period_mark(self):
         self._login()
-        response = self.client.post('/incomes', data={
-            'amount': '12000',
-            'category': 'other',
-            'income_date': '2026-08-25',
-            'source': 'Основной заказчик',
-            'pay_period_mode': 'start',
-        })
+        response = self.client.post(
+            '/incomes',
+            data={
+                'amount': '12000',
+                'category': 'other',
+                'income_date': '2026-08-25',
+                'source': 'Основной заказчик',
+                'pay_period_mode': 'start',
+            },
+        )
         self.assertEqual(response.status_code, 302)
         with self.app.app_context():
-            income = Income.query.filter_by(user_id=self.user_id, source='Основной заказчик').one()
+            income = Income.query.filter_by(
+                user_id=self.user_id, source='Основной заказчик'
+            ).one()
             income_id = income.id
             self.assertEqual(income.pay_period_mode, 'start')
 
@@ -747,39 +1072,53 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertIn('name="pay_period_mode"', page)
         self.assertIn('value="start" selected', page)
 
-        response = self.client.post(f'/incomes/edit/{income_id}', data={
-            'amount': '12000',
-            'category': 'other',
-            'income_date': '2026-08-25',
-            'source': 'Основной заказчик',
-            'pay_period_mode': '',
-        })
+        response = self.client.post(
+            f'/incomes/edit/{income_id}',
+            data={
+                'amount': '12000',
+                'category': 'other',
+                'income_date': '2026-08-25',
+                'source': 'Основной заказчик',
+                'pay_period_mode': '',
+            },
+        )
         self.assertEqual(response.status_code, 302)
         with self.app.app_context():
             self.assertIsNone(db.session.get(Income, income_id).pay_period_mode)
 
-        response = self.client.post(f'/incomes/edit/{income_id}', data={
-            'amount': '12000',
-            'category': 'other',
-            'income_date': '2026-08-25',
-            'pay_period_mode': 'weekly',
-        })
+        response = self.client.post(
+            f'/incomes/edit/{income_id}',
+            data={
+                'amount': '12000',
+                'category': 'other',
+                'income_date': '2026-08-25',
+                'pay_period_mode': 'weekly',
+            },
+        )
         self.assertEqual(response.status_code, 200)
-        self.assertIn('Выберите корректный вид поступления', response.get_data(as_text=True))
+        self.assertIn(
+            'Выберите корректный вид поступления', response.get_data(as_text=True)
+        )
 
     def test_marked_income_opens_a_pay_period_in_the_plan(self):
         with self.app.app_context():
-            db.session.add(Income(
-                user_id=self.user_id,
-                amount=Decimal('12000.00'),
-                category='other',
-                source='Основной заказчик',
-                income_date=date(2026, 8, 12),
-                pay_period_mode='start',
-            ))
+            db.session.add(
+                Income(
+                    user_id=self.user_id,
+                    amount=Decimal('12000.00'),
+                    category='other',
+                    source='Основной заказчик',
+                    income_date=date(2026, 8, 12),
+                    pay_period_mode='start',
+                )
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
         # Marked as a main payment, the 12.08 income is the salary's next income.
         salary = plan['income_allocations'][1]
@@ -788,41 +1127,69 @@ class FinancialPlanTestCase(unittest.TestCase):
 
     def test_window_daily_limit_counts_everyday_spending_only(self):
         with self.app.app_context():
-            db.session.add_all([
-                Expense(user_id=self.user_id, amount=Decimal('1500.00'), category='products',
-                        title='Продукты', expense_date=date(2026, 8, 7), is_monthly=False),
-                Expense(user_id=self.user_id, amount=Decimal('900.00'), category='products',
-                        title='Продукты после даты', expense_date=date(2026, 8, 25), is_monthly=False),
-            ])
+            db.session.add_all(
+                [
+                    Expense(
+                        user_id=self.user_id,
+                        amount=Decimal('1500.00'),
+                        category='products',
+                        title='Продукты',
+                        expense_date=date(2026, 8, 7),
+                        is_monthly=False,
+                    ),
+                    Expense(
+                        user_id=self.user_id,
+                        amount=Decimal('900.00'),
+                        category='products',
+                        title='Продукты после даты',
+                        expense_date=date(2026, 8, 25),
+                        is_monthly=False,
+                    ),
+                ]
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
-            past = build_financial_plan(self.user_id, preference, today=date(2026, 10, 1), year=2026, month=8)
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
+            past = build_financial_plan(
+                self.user_id, preference, today=date(2026, 10, 1), year=2026, month=8
+            )
 
         window = plan['window_daily']
         self.assertEqual(window['start'], date(2026, 8, 5))
         # Recurring expenses are obligations, and spending after today is not counted yet.
         self.assertEqual(window['spent'], 1500.0)
         living = sum(
-            item['amount'] for item in plan['income_allocations'][0]['allocations'] if item['kind'] == 'living'
+            item['amount']
+            for item in plan['income_allocations'][0]['allocations']
+            if item['kind'] == 'living'
         )
         self.assertEqual(window['living'], living)
         # The next salary is expected on ~05.09.
-        self.assertEqual((window['end'], window['end_is_estimated']), (date(2026, 9, 5), True))
+        self.assertEqual(
+            (window['end'], window['end_is_estimated']), (date(2026, 9, 5), True)
+        )
         self.assertEqual(window['days_left'], 15)
-        self.assertAlmostEqual(window['daily'], round((living - 1500.0) / 15, 2), places=2)
+        self.assertAlmostEqual(
+            window['daily'], round((living - 1500.0) / 15, 2), places=2
+        )
         self.assertIsNone(past['window_daily'])
 
     def test_dashboard_shows_daily_money_until_the_next_income(self):
         today = date.today()
         with self.app.app_context():
-            db.session.add(Income(
-                user_id=self.user_id,
-                amount=Decimal('50000.00'),
-                category='salary',
-                source='Основная работа',
-                income_date=today,
-            ))
+            db.session.add(
+                Income(
+                    user_id=self.user_id,
+                    amount=Decimal('50000.00'),
+                    category='salary',
+                    source='Основная работа',
+                    income_date=today,
+                )
+            )
             db.session.commit()
         self._login()
         dashboard = self.client.get('/').get_data(as_text=True)
@@ -835,52 +1202,73 @@ class FinancialPlanTestCase(unittest.TestCase):
 
     def test_missing_rate_keeps_distribution_and_adds_explanation(self):
         with self.app.app_context():
-            debt = Debt.query.filter_by(user_id=self.user_id, debt_type='consumer_credit').one()
+            debt = Debt.query.filter_by(
+                user_id=self.user_id, debt_type='consumer_credit'
+            ).one()
             debt.interest_rate = None
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
         self.assertGreater(plan['totals']['debt_payments'], 0)
         self.assertTrue(any(item['kind'] == 'rate' for item in plan['missing_data']))
 
-    def test_partial_required_payment_reduces_current_cycle_but_early_payment_does_not(self):
+    def test_partial_required_payment_reduces_current_cycle_but_early_payment_does_not(
+        self,
+    ):
         with self.app.app_context():
-            debt = Debt.query.filter_by(user_id=self.user_id, debt_type='consumer_credit').one()
+            debt = Debt.query.filter_by(
+                user_id=self.user_id, debt_type='consumer_credit'
+            ).one()
             debt.remaining_amount = Decimal('92000.00')
-            db.session.add_all([
-                Payment(
-                    debt_id=debt.id,
-                    amount=Decimal('5000.00'),
-                    principal_amount=Decimal('5000.00'),
-                    interest_amount=Decimal('0.00'),
-                    fee_amount=Decimal('0.00'),
-                    payment_date=date(2026, 8, 20),
-                    is_early_repayment=False,
-                    remaining_after_payment=Decimal('95000.00'),
-                ),
-                Payment(
-                    debt_id=debt.id,
-                    amount=Decimal('3000.00'),
-                    principal_amount=Decimal('3000.00'),
-                    interest_amount=Decimal('0.00'),
-                    fee_amount=Decimal('0.00'),
-                    payment_date=date(2026, 8, 20),
-                    is_early_repayment=True,
-                    remaining_after_payment=Decimal('92000.00'),
-                ),
-            ])
+            db.session.add_all(
+                [
+                    Payment(
+                        debt_id=debt.id,
+                        amount=Decimal('5000.00'),
+                        principal_amount=Decimal('5000.00'),
+                        interest_amount=Decimal('0.00'),
+                        fee_amount=Decimal('0.00'),
+                        payment_date=date(2026, 8, 20),
+                        is_early_repayment=False,
+                        remaining_after_payment=Decimal('95000.00'),
+                    ),
+                    Payment(
+                        debt_id=debt.id,
+                        amount=Decimal('3000.00'),
+                        principal_amount=Decimal('3000.00'),
+                        interest_amount=Decimal('0.00'),
+                        fee_amount=Decimal('0.00'),
+                        payment_date=date(2026, 8, 20),
+                        is_early_repayment=True,
+                        remaining_after_payment=Decimal('92000.00'),
+                    ),
+                ]
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
-        credit = next(item for item in plan['debt_items'] if item['debt_type'] == 'consumer_credit')
+        credit = next(
+            item
+            for item in plan['debt_items']
+            if item['debt_type'] == 'consumer_credit'
+        )
         self.assertEqual(credit['scheduled_amount'], 16454.0)
         self.assertEqual(credit['paid_toward_next_payment'], 5000.0)
         self.assertEqual(credit['monthly_amount'], 11454.0)
         self.assertEqual(plan['totals']['debt_payments'], 15626.0)
         credit_allocation = next(
-            item for item in plan['allocation']
+            item
+            for item in plan['allocation']
             if item['kind'] == 'debt' and item['source_id'] == credit['id']
         )
         self.assertEqual(credit_allocation['amount'], 11454.0)
@@ -889,23 +1277,35 @@ class FinancialPlanTestCase(unittest.TestCase):
 
     def test_partial_final_payment_does_not_reduce_current_principal_twice(self):
         with self.app.app_context():
-            debt = Debt.query.filter_by(user_id=self.user_id, debt_type='consumer_credit').one()
+            debt = Debt.query.filter_by(
+                user_id=self.user_id, debt_type='consumer_credit'
+            ).one()
             debt.remaining_amount = Decimal('500.00')
-            db.session.add(Payment(
-                debt_id=debt.id,
-                amount=Decimal('500.00'),
-                principal_amount=Decimal('500.00'),
-                interest_amount=Decimal('0.00'),
-                fee_amount=Decimal('0.00'),
-                payment_date=date(2026, 8, 20),
-                is_early_repayment=False,
-                remaining_after_payment=Decimal('500.00'),
-            ))
+            db.session.add(
+                Payment(
+                    debt_id=debt.id,
+                    amount=Decimal('500.00'),
+                    principal_amount=Decimal('500.00'),
+                    interest_amount=Decimal('0.00'),
+                    fee_amount=Decimal('0.00'),
+                    payment_date=date(2026, 8, 20),
+                    is_early_repayment=False,
+                    remaining_after_payment=Decimal('500.00'),
+                )
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
-        credit = next(item for item in plan['debt_items'] if item['debt_type'] == 'consumer_credit')
+        credit = next(
+            item
+            for item in plan['debt_items']
+            if item['debt_type'] == 'consumer_credit'
+        )
         self.assertEqual(credit['paid_toward_next_payment'], 500.0)
         # Still due: the 500 principal plus its interest, credited once; the
         # scheduled amount shows the whole cycle (paid part included).
@@ -919,18 +1319,24 @@ class FinancialPlanTestCase(unittest.TestCase):
             session['_user_id'] = str(self.user_id)
             session['_fresh'] = True
 
-        response = self.client.post('/financial-plan', data={
-            'living_minimum': '25000',
-            'desired_monthly_savings': '6000',
-            'emergency_fund_target_amount': '50000',
-            'emergency_fund_target_mode': 'fixed',
-            'strategy': 'safe',
-        }, follow_redirects=True)
+        response = self.client.post(
+            '/financial-plan',
+            data={
+                'living_minimum': '25000',
+                'desired_monthly_savings': '6000',
+                'emergency_fund_target_amount': '50000',
+                'emergency_fund_target_mode': 'fixed',
+                'strategy': 'safe',
+            },
+            follow_redirects=True,
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('Финансовый план', response.get_data(as_text=True))
         with self.app.app_context():
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
             self.assertEqual(preference.living_minimum, Decimal('25000.00'))
             self.assertEqual(preference.strategy, 'safe')
 
@@ -946,40 +1352,55 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertIn('Новая цель', page_html)
         self.assertNotIn('id="emergency-fund"', page_html)
 
-        edit_response = self.client.post('/financial-plan/goals/emergency/edit', data={
-            'target_mode': 'three_months',
-            'target_amount': '100000',
-            'monthly_contribution': '7000',
-        })
+        edit_response = self.client.post(
+            '/financial-plan/goals/emergency/edit',
+            data={
+                'target_mode': 'three_months',
+                'target_amount': '100000',
+                'monthly_contribution': '7000',
+            },
+        )
         self.assertEqual(edit_response.status_code, 302)
         with self.app.app_context():
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
             self.assertEqual(preference.emergency_fund_target_mode, 'three_months')
-            self.assertEqual(preference.emergency_fund_target_amount, Decimal('100000.00'))
+            self.assertEqual(
+                preference.emergency_fund_target_amount, Decimal('100000.00')
+            )
             self.assertEqual(preference.desired_monthly_savings, Decimal('7000.00'))
 
     def test_plan_uses_selected_month_income_and_counts_every_income(self):
         with self.app.app_context():
-            db.session.add_all([
-                Income(
-                    user_id=self.user_id,
-                    amount=Decimal('50000.00'),
-                    category='salary',
-                    source='Основная работа',
-                    income_date=date(2026, 9, 5),
-                ),
-                Income(
-                    user_id=self.user_id,
-                    amount=Decimal('9000.00'),
-                    category='goal_withdrawal',
-                    source='Снятие с цели: Отпуск',
-                    income_date=date(2026, 9, 8),
-                ),
-            ])
+            db.session.add_all(
+                [
+                    Income(
+                        user_id=self.user_id,
+                        amount=Decimal('50000.00'),
+                        category='salary',
+                        source='Основная работа',
+                        income_date=date(2026, 9, 5),
+                    ),
+                    Income(
+                        user_id=self.user_id,
+                        amount=Decimal('9000.00'),
+                        category='goal_withdrawal',
+                        source='Снятие с цели: Отпуск',
+                        income_date=date(2026, 9, 8),
+                    ),
+                ]
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            august = build_financial_plan(self.user_id, preference, today=date(2026, 9, 10), year=2026, month=8)
-            september = build_financial_plan(self.user_id, preference, today=date(2026, 9, 10), year=2026, month=9)
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            august = build_financial_plan(
+                self.user_id, preference, today=date(2026, 9, 10), year=2026, month=8
+            )
+            september = build_financial_plan(
+                self.user_id, preference, today=date(2026, 9, 10), year=2026, month=9
+            )
 
         self.assertEqual(august['totals']['income'], 75000.0)
         # A manually entered legacy 'goal_withdrawal' income is an income like any
@@ -990,22 +1411,30 @@ class FinancialPlanTestCase(unittest.TestCase):
         with self.client.session_transaction() as session:
             session['_user_id'] = str(self.user_id)
             session['_fresh'] = True
-        page_html = self.client.get('/financial-plan?year=2026&month=9').get_data(as_text=True)
+        page_html = self.client.get('/financial-plan?year=2026&month=9').get_data(
+            as_text=True
+        )
         self.assertIn('План на сентябрь 2026', page_html)
         self.assertIn('value="9" selected', page_html)
 
     def test_each_income_entry_gets_allocation_within_its_actual_amount(self):
         with self.app.app_context():
-            db.session.add(Income(
-                user_id=self.user_id,
-                amount=Decimal('25000.00'),
-                category='advance',
-                source='Основная работа',
-                income_date=date(2026, 8, 20),
-            ))
+            db.session.add(
+                Income(
+                    user_id=self.user_id,
+                    amount=Decimal('25000.00'),
+                    category='advance',
+                    source='Основная работа',
+                    income_date=date(2026, 8, 20),
+                )
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
         self.assertEqual(plan['totals']['income'], 100000.0)
         self.assertEqual(len(plan['income_allocations']), 2)
@@ -1034,32 +1463,41 @@ class FinancialPlanTestCase(unittest.TestCase):
             )
             db.session.add(goal)
             db.session.flush()
-            db.session.add_all([
-                FinancialGoalTransaction(
-                    goal_id=goal.id,
-                    transaction_type='deposit',
-                    amount=Decimal('2500.00'),
-                    transaction_date=date(2026, 8, 7),
-                ),
-                FinancialGoalTransaction(
-                    goal_id=goal.id,
-                    transaction_type='withdrawal',
-                    amount=Decimal('500.00'),
-                    transaction_date=date(2026, 8, 9),
-                ),
-            ])
+            db.session.add_all(
+                [
+                    FinancialGoalTransaction(
+                        goal_id=goal.id,
+                        transaction_type='deposit',
+                        amount=Decimal('2500.00'),
+                        transaction_date=date(2026, 8, 7),
+                    ),
+                    FinancialGoalTransaction(
+                        goal_id=goal.id,
+                        transaction_type='withdrawal',
+                        amount=Decimal('500.00'),
+                        transaction_date=date(2026, 8, 9),
+                    ),
+                ]
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
-        custom_goal = next(item for item in plan['goals'] if item['name'] == 'Помощь сестре')
+        custom_goal = next(
+            item for item in plan['goals'] if item['name'] == 'Помощь сестре'
+        )
         self.assertEqual(custom_goal['monthly_progress'], 2000.0)
         self.assertEqual(custom_goal['monthly_remaining'], 4000.0)
         self.assertEqual(custom_goal['recommended_contribution'], 2374.0)
         self.assertEqual(custom_goal['monthly_shortfall'], 1626.0)
 
         goal_row = next(
-            item for item in plan['allocation']
+            item
+            for item in plan['allocation']
             if item['kind'] == 'savings' and item['label'] == 'Помощь сестре'
         )
         self.assertEqual(goal_row['amount'], 2374.0)
@@ -1079,17 +1517,25 @@ class FinancialPlanTestCase(unittest.TestCase):
             )
             db.session.add(goal)
             db.session.flush()
-            db.session.add(FinancialGoalTransaction(
-                goal_id=goal.id,
-                transaction_type='deposit',
-                amount=Decimal('2000.00'),
-                transaction_date=date(2026, 7, 9),
-            ))
+            db.session.add(
+                FinancialGoalTransaction(
+                    goal_id=goal.id,
+                    transaction_type='deposit',
+                    amount=Decimal('2000.00'),
+                    transaction_date=date(2026, 7, 9),
+                )
+            )
             db.session.commit()
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
 
-        custom_goal = next(item for item in plan['goals'] if item['name'] == 'Небольшая цель')
+        custom_goal = next(
+            item for item in plan['goals'] if item['name'] == 'Небольшая цель'
+        )
         self.assertEqual(custom_goal['gap'], 500.0)
         self.assertEqual(custom_goal['monthly_remaining'], 500.0)
         self.assertEqual(custom_goal['recommended_contribution'], 500.0)
@@ -1099,16 +1545,21 @@ class FinancialPlanTestCase(unittest.TestCase):
             session['_user_id'] = str(self.user_id)
             session['_fresh'] = True
 
-        response = self.client.post('/financial-plan/salary-income?year=2026&month=9', data={
-            'amount': '25 000',
-            'category': 'salary',
-            'income_date': '2026-09-05',
-            'source': 'Основная работа',
-            'comment': 'Часть заработной платы',
-        })
+        response = self.client.post(
+            '/financial-plan/salary-income?year=2026&month=9',
+            data={
+                'amount': '25 000',
+                'category': 'salary',
+                'income_date': '2026-09-05',
+                'source': 'Основная работа',
+                'comment': 'Часть заработной платы',
+            },
+        )
 
         self.assertEqual(response.status_code, 302)
-        self.assertIn('/financial-plan?year=2026&month=9#income-allocation-', response.location)
+        self.assertIn(
+            '/financial-plan?year=2026&month=9#income-allocation-', response.location
+        )
         with self.app.app_context():
             income = Income.query.filter_by(
                 user_id=self.user_id,
@@ -1117,7 +1568,9 @@ class FinancialPlanTestCase(unittest.TestCase):
             ).one()
             income_id = income.id
             self.assertEqual(income.category, 'salary')
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
             plan = build_financial_plan(
                 self.user_id,
                 preference,
@@ -1129,7 +1582,9 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertEqual(plan['income_allocations'][0]['id'], income_id)
         self.assertEqual(plan['income_allocations'][0]['allocated_total'], 25000.0)
 
-        page_html = self.client.get('/financial-plan?year=2026&month=9').get_data(as_text=True)
+        page_html = self.client.get('/financial-plan?year=2026&month=9').get_data(
+            as_text=True
+        )
         self.assertIn('Распределение отдельных поступлений', page_html)
         self.assertIn('Добавить зарплатное поступление', page_html)
         self.assertIn(f'id="income-allocation-{income_id}"', page_html)
@@ -1140,13 +1595,16 @@ class FinancialPlanTestCase(unittest.TestCase):
             session['_user_id'] = str(self.user_id)
             session['_fresh'] = True
 
-        response = self.client.post('/incomes', data={
-            'amount': '18000',
-            'category': 'advance',
-            'income_date': '2026-09-22',
-            'source': 'Работодатель',
-            'comment': '',
-        })
+        response = self.client.post(
+            '/incomes',
+            data={
+                'amount': '18000',
+                'category': 'advance',
+                'income_date': '2026-09-22',
+                'source': 'Работодатель',
+                'comment': '',
+            },
+        )
         self.assertEqual(response.status_code, 302)
 
         with self.app.app_context():
@@ -1156,7 +1614,9 @@ class FinancialPlanTestCase(unittest.TestCase):
             ).one()
             income_id = income.id
 
-        page_html = self.client.get('/financial-plan?year=2026&month=9').get_data(as_text=True)
+        page_html = self.client.get('/financial-plan?year=2026&month=9').get_data(
+            as_text=True
+        )
         self.assertIn(f'id="income-allocation-{income_id}"', page_html)
         self.assertIn('Работодатель', page_html)
         self.assertIn('18\xa0000\xa0₽', page_html)
@@ -1166,53 +1626,82 @@ class FinancialPlanTestCase(unittest.TestCase):
             session['_user_id'] = str(self.user_id)
             session['_fresh'] = True
 
-        deposit_response = self.client.post('/financial-plan/emergency-fund', data={
-            'transaction_type': 'deposit',
-            'amount': '3000',
-            'transaction_date': '2026-08-21',
-            'comment': 'Перевод в резерв',
-        })
+        deposit_response = self.client.post(
+            '/financial-plan/emergency-fund',
+            data={
+                'transaction_type': 'deposit',
+                'amount': '3000',
+                'transaction_date': '2026-08-21',
+                'comment': 'Перевод в резерв',
+            },
+        )
         self.assertEqual(deposit_response.status_code, 302)
 
-        withdrawal_response = self.client.post('/financial-plan/emergency-fund', data={
-            'transaction_type': 'withdrawal',
-            'amount': '1000',
-            'transaction_date': '2026-08-21',
-            'comment': 'Срочная покупка',
-        })
+        withdrawal_response = self.client.post(
+            '/financial-plan/emergency-fund',
+            data={
+                'transaction_type': 'withdrawal',
+                'amount': '1000',
+                'transaction_date': '2026-08-21',
+                'comment': 'Срочная покупка',
+            },
+        )
         self.assertEqual(withdrawal_response.status_code, 302)
 
         with self.app.app_context():
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
             added_deposit = EmergencyFundTransaction.query.filter_by(
                 user_id=self.user_id,
                 comment='Перевод в резерв',
             ).one()
             added_deposit_id = added_deposit.id
             # Transfers to and from the fund are not incomes or expenses.
-            self.assertEqual(Expense.query.filter_by(user_id=self.user_id, category='savings').count(), 0)
-            self.assertEqual(Income.query.filter_by(user_id=self.user_id, category='goal_withdrawal').count(), 0)
+            self.assertEqual(
+                Expense.query.filter_by(
+                    user_id=self.user_id, category='savings'
+                ).count(),
+                0,
+            )
+            self.assertEqual(
+                Income.query.filter_by(
+                    user_id=self.user_id, category='goal_withdrawal'
+                ).count(),
+                0,
+            )
             report = get_finance_summary(self.user_id, year=2026, month=8)
             self.assertEqual(report['total_expenses'], 43454.0)
             self.assertEqual(report['total_incomes'], 75000.0)
             self.assertEqual(report['goal_transfers']['deposits'], Decimal('3000.00'))
-            self.assertEqual(report['goal_transfers']['withdrawals'], Decimal('1000.00'))
+            self.assertEqual(
+                report['goal_transfers']['withdrawals'], Decimal('1000.00')
+            )
             self.assertEqual(report['goal_transfers']['net'], Decimal('2000.00'))
             self.assertEqual(
                 report['free_balance'],
-                report['total_incomes'] - report['total_expenses'] - report['total_payments'] - Decimal('2000.00'),
+                report['total_incomes']
+                - report['total_expenses']
+                - report['total_payments']
+                - Decimal('2000.00'),
             )
         self.assertEqual(plan['totals']['emergency_current'], 12000.0)
         self.assertEqual(plan['goals'][0]['monthly_progress'], 2000.0)
         self.assertEqual(plan['goals'][0]['monthly_remaining'], 3000.0)
 
-        invalid_response = self.client.post('/financial-plan/emergency-fund', data={
-            'transaction_type': 'withdrawal',
-            'amount': '50000',
-            'transaction_date': '2026-08-21',
-            'comment': '',
-        }, follow_redirects=True)
+        invalid_response = self.client.post(
+            '/financial-plan/emergency-fund',
+            data={
+                'transaction_type': 'withdrawal',
+                'amount': '50000',
+                'transaction_date': '2026-08-21',
+                'comment': '',
+            },
+            follow_redirects=True,
+        )
         self.assertIn('Нельзя снять больше', invalid_response.get_data(as_text=True))
 
         delete_response = self.client.post(
@@ -1220,8 +1709,12 @@ class FinancialPlanTestCase(unittest.TestCase):
         )
         self.assertEqual(delete_response.status_code, 302)
         with self.app.app_context():
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
         self.assertEqual(plan['totals']['emergency_current'], 9000.0)
 
     def test_custom_goal_repeats_fund_operations_and_follows_emergency_priority(self):
@@ -1229,44 +1722,70 @@ class FinancialPlanTestCase(unittest.TestCase):
             session['_user_id'] = str(self.user_id)
             session['_fresh'] = True
 
-        create_response = self.client.post('/financial-plan/goals', data={
-            'name': 'MacBook',
-            'target_amount': '120000',
-            'monthly_contribution': '2000',
-            'target_date': '2027-08-21',
-            'note': 'Рабочий ноутбук',
-        })
+        create_response = self.client.post(
+            '/financial-plan/goals',
+            data={
+                'name': 'MacBook',
+                'target_amount': '120000',
+                'monthly_contribution': '2000',
+                'target_date': '2027-08-21',
+                'note': 'Рабочий ноутбук',
+            },
+        )
         self.assertEqual(create_response.status_code, 302)
 
         with self.app.app_context():
-            goal = FinancialGoal.query.filter_by(user_id=self.user_id, name='MacBook').one()
+            goal = FinancialGoal.query.filter_by(
+                user_id=self.user_id, name='MacBook'
+            ).one()
             goal_id = goal.id
             self.assertEqual(goal.priority, 2)
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
-            savings_rows = [item for item in plan['allocation'] if item['kind'] == 'savings']
-            self.assertEqual([item['label'] for item in savings_rows], ['Финансовая подушка', 'MacBook'])
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
+            savings_rows = [
+                item for item in plan['allocation'] if item['kind'] == 'savings'
+            ]
+            self.assertEqual(
+                [item['label'] for item in savings_rows],
+                ['Финансовая подушка', 'MacBook'],
+            )
 
-        deposit_response = self.client.post(f'/financial-plan/goals/{goal_id}/transactions', data={
-            'transaction_type': 'deposit',
-            'amount': '15000',
-            'transaction_date': '2026-08-21',
-            'comment': 'Старт',
-        })
+        deposit_response = self.client.post(
+            f'/financial-plan/goals/{goal_id}/transactions',
+            data={
+                'transaction_type': 'deposit',
+                'amount': '15000',
+                'transaction_date': '2026-08-21',
+                'comment': 'Старт',
+            },
+        )
         self.assertEqual(deposit_response.status_code, 302)
 
-        withdrawal_response = self.client.post(f'/financial-plan/goals/{goal_id}/transactions', data={
-            'transaction_type': 'withdrawal',
-            'amount': '3000',
-            'transaction_date': '2026-08-22',
-            'comment': 'Вернул часть',
-        })
+        withdrawal_response = self.client.post(
+            f'/financial-plan/goals/{goal_id}/transactions',
+            data={
+                'transaction_type': 'withdrawal',
+                'amount': '3000',
+                'transaction_date': '2026-08-22',
+                'comment': 'Вернул часть',
+            },
+        )
         self.assertEqual(withdrawal_response.status_code, 302)
 
         with self.app.app_context():
-            preference = FinancialPlanPreference.query.filter_by(user_id=self.user_id).one()
-            plan = build_financial_plan(self.user_id, preference, today=date(2026, 8, 21))
-            custom_goal = next(item for item in plan['goals'] if item['name'] == 'MacBook')
+            preference = FinancialPlanPreference.query.filter_by(
+                user_id=self.user_id
+            ).one()
+            plan = build_financial_plan(
+                self.user_id, preference, today=date(2026, 8, 21)
+            )
+            custom_goal = next(
+                item for item in plan['goals'] if item['name'] == 'MacBook'
+            )
             self.assertEqual(plan['goals'][0]['name'], 'Финансовая подушка')
             self.assertTrue(plan['goals'][0]['is_system'])
             self.assertEqual(custom_goal['priority'], 2)
@@ -1275,16 +1794,34 @@ class FinancialPlanTestCase(unittest.TestCase):
             self.assertEqual(custom_goal['withdrawals'], 3000.0)
             self.assertEqual(custom_goal['deposited_this_month'], 15000.0)
             self.assertEqual(custom_goal['monthly_remaining'], 0.0)
-            savings_rows = [item for item in plan['allocation'] if item['kind'] == 'savings']
-            self.assertEqual([item['label'] for item in savings_rows], ['Финансовая подушка'])
-            self.assertEqual(Expense.query.filter_by(user_id=self.user_id, category='savings').count(), 0)
-            self.assertEqual(Income.query.filter_by(user_id=self.user_id, category='goal_withdrawal').count(), 0)
+            savings_rows = [
+                item for item in plan['allocation'] if item['kind'] == 'savings'
+            ]
+            self.assertEqual(
+                [item['label'] for item in savings_rows], ['Финансовая подушка']
+            )
+            self.assertEqual(
+                Expense.query.filter_by(
+                    user_id=self.user_id, category='savings'
+                ).count(),
+                0,
+            )
+            self.assertEqual(
+                Income.query.filter_by(
+                    user_id=self.user_id, category='goal_withdrawal'
+                ).count(),
+                0,
+            )
 
-        invalid_response = self.client.post(f'/financial-plan/goals/{goal_id}/transactions', data={
-            'transaction_type': 'withdrawal',
-            'amount': '50000',
-            'transaction_date': '2026-08-23',
-        }, follow_redirects=True)
+        invalid_response = self.client.post(
+            f'/financial-plan/goals/{goal_id}/transactions',
+            data={
+                'transaction_type': 'withdrawal',
+                'amount': '50000',
+                'transaction_date': '2026-08-23',
+            },
+            follow_redirects=True,
+        )
         self.assertIn('Нельзя снять больше', invalid_response.get_data(as_text=True))
 
         page_html = self.client.get('/financial-plan').get_data(as_text=True)
@@ -1297,7 +1834,9 @@ class FinancialPlanTestCase(unittest.TestCase):
         self.assertEqual(delete_response.status_code, 302)
         with self.app.app_context():
             self.assertIsNone(db.session.get(FinancialGoal, goal_id))
-            self.assertEqual(FinancialGoalTransaction.query.filter_by(goal_id=goal_id).count(), 0)
+            self.assertEqual(
+                FinancialGoalTransaction.query.filter_by(goal_id=goal_id).count(), 0
+            )
 
 
 if __name__ == '__main__':

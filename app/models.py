@@ -23,22 +23,39 @@ class User(UserMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     telegram_id = db.Column(db.BigInteger, unique=True, nullable=False)
-    vehicle_notifications_enabled = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    vehicle_notifications_enabled = db.Column(
+        db.Boolean, nullable=False, default=True, server_default=db.true()
+    )
     notification_timezone = db.Column(db.String(64), nullable=True)
     notification_delivery_time = db.Column(db.String(5), nullable=True)
     notification_test_requested_at = db.Column(db.DateTime, nullable=True)
-    reminder_enabled = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
-    reminder_time = db.Column(db.String(5), nullable=False, default='10:00', server_default='10:00')
-    reminder_days_before = db.Column(db.SmallInteger, nullable=False, default=1, server_default='1')
-    timezone = db.Column(db.String(64), nullable=False, default='Europe/Moscow', server_default='Europe/Moscow')
-    hide_amounts_on_open = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    reminder_enabled = db.Column(
+        db.Boolean, nullable=False, default=True, server_default=db.true()
+    )
+    reminder_time = db.Column(
+        db.String(5), nullable=False, default='10:00', server_default='10:00'
+    )
+    reminder_days_before = db.Column(
+        db.SmallInteger, nullable=False, default=1, server_default='1'
+    )
+    timezone = db.Column(
+        db.String(64),
+        nullable=False,
+        default='Europe/Moscow',
+        server_default='Europe/Moscow',
+    )
+    hide_amounts_on_open = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=db.false()
+    )
     username = db.Column(db.String(80), nullable=True)
     first_name = db.Column(db.String(100), nullable=True)
     last_name = db.Column(db.String(100), nullable=True)
     photo_url = db.Column(db.String(255), nullable=True)
     auth_date = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
-    role = db.Column(db.Enum('user', 'admin', 'superadmin'), nullable=False, default='user')
+    role = db.Column(
+        db.Enum('user', 'admin', 'superadmin'), nullable=False, default='user'
+    )
     is_blocked = db.Column(db.Boolean, default=False, nullable=False)
     last_login_ip = db.Column(db.String(100), nullable=True)
     last_user_agent = db.Column(db.Text, nullable=True)
@@ -48,12 +65,22 @@ class User(UserMixin, db.Model):
     avatar_url = db.Column(db.String(255), nullable=True)
     # Last release whose "what's new" the user acknowledged; empty for accounts
     # that existed before the feature, which then see the current release once.
-    last_seen_release = db.Column(db.String(64), nullable=True, default=_running_release)
+    last_seen_release = db.Column(
+        db.String(64), nullable=True, default=_running_release
+    )
 
-    debts = db.relationship('Debt', back_populates='user', lazy=True, cascade='all, delete-orphan')
-    incomes = db.relationship('Income', back_populates='user', lazy=True, cascade='all, delete-orphan')
-    expenses = db.relationship('Expense', back_populates='user', lazy=True, cascade='all, delete-orphan')
-    vehicles = db.relationship('Vehicle', back_populates='user', cascade='all, delete-orphan')
+    debts = db.relationship(
+        'Debt', back_populates='user', lazy=True, cascade='all, delete-orphan'
+    )
+    incomes = db.relationship(
+        'Income', back_populates='user', lazy=True, cascade='all, delete-orphan'
+    )
+    expenses = db.relationship(
+        'Expense', back_populates='user', lazy=True, cascade='all, delete-orphan'
+    )
+    vehicles = db.relationship(
+        'Vehicle', back_populates='user', cascade='all, delete-orphan'
+    )
     financial_plan_preference = db.relationship(
         'FinancialPlanPreference',
         back_populates='user',
@@ -116,11 +143,19 @@ class Debt(db.Model):
     interest_rate_change_date = db.Column(db.Date, nullable=True)
     next_payment_date = db.Column(db.Date, nullable=True)
     is_payment_recurring = db.Column(db.Boolean, default=False, nullable=False)
-    repayment_type = db.Column(db.Enum('annuity', 'differentiated'), default='annuity', nullable=False)
-    day_count_convention = db.Column(db.Enum('actual_year', 'fixed_365', 'fixed_366'), default='actual_year', nullable=False)
+    repayment_type = db.Column(
+        db.Enum('annuity', 'differentiated'), default='annuity', nullable=False
+    )
+    day_count_convention = db.Column(
+        db.Enum('actual_year', 'fixed_365', 'fixed_366'),
+        default='actual_year',
+        nullable=False,
+    )
     include_payment_day = db.Column(db.Boolean, default=False, nullable=False)
     interest_period_start_date = db.Column(db.Date, nullable=True)
-    early_repayment_strategy = db.Column(db.Enum('reduce_term', 'reduce_payment'), default='reduce_term', nullable=False)
+    early_repayment_strategy = db.Column(
+        db.Enum('reduce_term', 'reduce_payment'), default='reduce_term', nullable=False
+    )
     early_repayment_enabled = db.Column(db.Boolean, default=False, nullable=False)
     planned_early_repayment_amount = db.Column(db.Numeric(12, 2), nullable=True)
     loan_term_months = db.Column(db.Integer, nullable=True)
@@ -142,12 +177,17 @@ class Debt(db.Model):
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     user = db.relationship('User', back_populates='debts')
-    payments = db.relationship('Payment', backref='debt', lazy=True, cascade='all, delete-orphan')
+    payments = db.relationship(
+        'Payment', backref='debt', lazy=True, cascade='all, delete-orphan'
+    )
     payment_plans = db.relationship(
-        'DebtPaymentPlan', cascade='all, delete-orphan',
+        'DebtPaymentPlan',
+        cascade='all, delete-orphan',
         order_by='DebtPaymentPlan.due_date, DebtPaymentPlan.id',
     )
-    split_purchases = db.relationship('SplitPurchase', back_populates='debt', lazy=True, cascade='all, delete-orphan')
+    split_purchases = db.relationship(
+        'SplitPurchase', back_populates='debt', lazy=True, cascade='all, delete-orphan'
+    )
 
     def interest_rate_for(self, value_date=None):
         check_date = value_date or financial_today(self)
@@ -162,6 +202,7 @@ class Debt(db.Model):
     def accrual_state(self, today=None):
         """Principal, interest, penalty, overdue and next due date as of today."""
         from app.services.debt_accrual_service import cached_debt_state
+
         return cached_debt_state(self, as_of=today or financial_today(self))
 
     def is_overdue(self, today=None):
@@ -183,11 +224,16 @@ class Debt(db.Model):
 
     def _calendar_next_payment_date(self, today=None):
         today = today or financial_today(self)
-        if self.debt_type != 'split' or not self.next_payment_date or float(self.remaining_amount or 0) <= 0:
+        if (
+            self.debt_type != 'split'
+            or not self.next_payment_date
+            or float(self.remaining_amount or 0) <= 0
+        ):
             return self.next_payment_date
 
         paid_payments = [
-            payment for payment in self.payments
+            payment
+            for payment in self.payments
             if (
                 payment.payment_date
                 and payment.payment_date <= today
@@ -203,18 +249,29 @@ class Debt(db.Model):
 
         anchor_day = last_payment_date.day
         second_day = anchor_day + 15 if anchor_day <= 15 else anchor_day - 15
-        payment_days = sorted({max(min(anchor_day, 31), 1), max(min(second_day, 31), 1)})
+        payment_days = sorted(
+            {max(min(anchor_day, 31), 1), max(min(second_day, 31), 1)}
+        )
         for month_offset in range(0, 24):
-            month_start = date(last_payment_date.year, last_payment_date.month, 1) + relativedelta(months=month_offset)
+            month_start = date(
+                last_payment_date.year, last_payment_date.month, 1
+            ) + relativedelta(months=month_offset)
             for day in payment_days:
-                candidate = date(month_start.year, month_start.month, min(day, monthrange(month_start.year, month_start.month)[1]))
+                candidate = date(
+                    month_start.year,
+                    month_start.month,
+                    min(day, monthrange(month_start.year, month_start.month)[1]),
+                )
                 if candidate > last_payment_date:
                     return candidate
 
         return self.next_payment_date
 
     def is_first_payment_pending(self):
-        if self.first_payment_amount is None or float(self.first_payment_amount or 0) <= 0:
+        if (
+            self.first_payment_amount is None
+            or float(self.first_payment_amount or 0) <= 0
+        ):
             return False
         return not any(
             (
@@ -230,7 +287,10 @@ class Debt(db.Model):
         return self.minimum_payment
 
     def effective_planned_early_repayment_amount(self):
-        if not self.early_repayment_enabled or self.planned_early_repayment_amount is None:
+        if (
+            not self.early_repayment_enabled
+            or self.planned_early_repayment_amount is None
+        ):
             return 0
         desired_total = self.planned_early_repayment_amount
         required_payment = self.minimum_payment or 0
@@ -250,44 +310,98 @@ class Debt(db.Model):
             'id': self.id,
             'bank_name': self.bank_name,
             'debt_type': self.debt_type,
-            'debt_type_label': self.DEBT_TYPE_LABELS.get(self.debt_type, self.debt_type),
+            'debt_type_label': self.DEBT_TYPE_LABELS.get(
+                self.debt_type, self.debt_type
+            ),
             'product_name': self.product_name,
             'total_amount': float(self.total_amount),
             'remaining_amount': float(self.remaining_amount),
             'current_principal': float(accrual['principal']),
             'today': today.isoformat(),
-            'minimum_payment': float(self.minimum_payment) if self.minimum_payment else None,
-            'first_payment_amount': float(self.first_payment_amount) if self.first_payment_amount is not None else None,
+            'minimum_payment': float(self.minimum_payment)
+            if self.minimum_payment
+            else None,
+            'first_payment_amount': float(self.first_payment_amount)
+            if self.first_payment_amount is not None
+            else None,
             'is_first_payment_pending': self.is_first_payment_pending(),
-            'effective_next_payment_amount': float(effective_next_payment_amount) if effective_next_payment_amount is not None else None,
+            'effective_next_payment_amount': float(effective_next_payment_amount)
+            if effective_next_payment_amount is not None
+            else None,
             'interest_rate': float(self.interest_rate) if self.interest_rate else None,
-            'interest_rate_after_change': float(self.interest_rate_after_change) if self.interest_rate_after_change else None,
-            'interest_rate_change_date': self.interest_rate_change_date.strftime('%Y-%m-%d') if self.interest_rate_change_date else None,
-            'interest_rate_change_date_display': self.interest_rate_change_date.strftime('%d.%m.%Y') if self.interest_rate_change_date else None,
-            'effective_interest_rate': float(effective_interest_rate) if effective_interest_rate else None,
-            'next_payment_date': self.next_payment_date.strftime('%Y-%m-%d') if self.next_payment_date else None,
-            'next_payment_date_display': self.next_payment_date.strftime('%d.%m.%Y') if self.next_payment_date else None,
-            'effective_next_payment_date': effective_next_payment_date.strftime('%Y-%m-%d') if effective_next_payment_date else None,
-            'effective_next_payment_date_display': effective_next_payment_date.strftime('%d.%m.%Y') if effective_next_payment_date else None,
+            'interest_rate_after_change': float(self.interest_rate_after_change)
+            if self.interest_rate_after_change
+            else None,
+            'interest_rate_change_date': self.interest_rate_change_date.strftime(
+                '%Y-%m-%d'
+            )
+            if self.interest_rate_change_date
+            else None,
+            'interest_rate_change_date_display': self.interest_rate_change_date.strftime(
+                '%d.%m.%Y'
+            )
+            if self.interest_rate_change_date
+            else None,
+            'effective_interest_rate': float(effective_interest_rate)
+            if effective_interest_rate
+            else None,
+            'next_payment_date': self.next_payment_date.strftime('%Y-%m-%d')
+            if self.next_payment_date
+            else None,
+            'next_payment_date_display': self.next_payment_date.strftime('%d.%m.%Y')
+            if self.next_payment_date
+            else None,
+            'effective_next_payment_date': effective_next_payment_date.strftime(
+                '%Y-%m-%d'
+            )
+            if effective_next_payment_date
+            else None,
+            'effective_next_payment_date_display': effective_next_payment_date.strftime(
+                '%d.%m.%Y'
+            )
+            if effective_next_payment_date
+            else None,
             'is_payment_recurring': self.is_payment_recurring,
             'repayment_type': self.repayment_type,
             'day_count_convention': self.day_count_convention,
             'include_payment_day': self.include_payment_day,
-            'interest_period_start_date': self.interest_period_start_date.strftime('%Y-%m-%d') if self.interest_period_start_date else None,
-            'interest_period_start_date_display': self.interest_period_start_date.strftime('%d.%m.%Y') if self.interest_period_start_date else None,
+            'interest_period_start_date': self.interest_period_start_date.strftime(
+                '%Y-%m-%d'
+            )
+            if self.interest_period_start_date
+            else None,
+            'interest_period_start_date_display': self.interest_period_start_date.strftime(
+                '%d.%m.%Y'
+            )
+            if self.interest_period_start_date
+            else None,
             'early_repayment_strategy': self.early_repayment_strategy,
             'early_repayment_enabled': bool(self.early_repayment_enabled),
-            'planned_early_repayment_amount': float(self.planned_early_repayment_amount) if self.planned_early_repayment_amount else None,
-            'effective_planned_early_repayment_amount': float(self.effective_planned_early_repayment_amount()),
+            'planned_early_repayment_amount': float(self.planned_early_repayment_amount)
+            if self.planned_early_repayment_amount
+            else None,
+            'effective_planned_early_repayment_amount': float(
+                self.effective_planned_early_repayment_amount()
+            ),
             'loan_term_months': self.loan_term_months,
             'monthly_fee_amount': float(self.monthly_fee_amount or 0),
-            'bank_remaining_amount': float(self.bank_remaining_amount) if self.bank_remaining_amount is not None else None,
-            'bank_remaining_delta': float(self.bank_remaining_amount - accrual['principal']) if self.bank_remaining_amount is not None else None,
+            'bank_remaining_amount': float(self.bank_remaining_amount)
+            if self.bank_remaining_amount is not None
+            else None,
+            'bank_remaining_delta': float(
+                self.bank_remaining_amount - accrual['principal']
+            )
+            if self.bank_remaining_amount is not None
+            else None,
             'comment': self.comment,
             'status': self.status,
             'days_until_payment': days_until_payment,
-            'total_debt': float(accrual['total']) if accrual['calculation_status'] == 'calculated' else None,
-            'accrued_interest': float(accrual['accrued_interest']) if accrual['calculation_status'] == 'calculated' else None,
+            'total_debt': float(accrual['total'])
+            if accrual['calculation_status'] == 'calculated'
+            else None,
+            'accrued_interest': float(accrual['accrued_interest'])
+            if accrual['calculation_status'] == 'calculated'
+            else None,
             'calculation_status': accrual['calculation_status'],
             'grace_policy': self.grace_policy,
             'penalty': float(accrual['penalty']),
@@ -296,19 +410,37 @@ class Debt(db.Model):
             'is_overdue': accrual['is_overdue'],
             'overdue_days': accrual['overdue_days'],
             'next_due_amount': float(accrual['next_due_amount']),
-            'penalty_rate': float(self.penalty_rate) if self.penalty_rate is not None else None,
+            'penalty_rate': float(self.penalty_rate)
+            if self.penalty_rate is not None
+            else None,
             'capitalize_interest': bool(self.capitalize_interest),
-            'grace_period_end_date': self.grace_period_end_date.strftime('%Y-%m-%d') if self.grace_period_end_date else None,
-            'opening_principal_amount': float(self.opening_principal_amount) if self.opening_principal_amount is not None else None,
+            'grace_period_end_date': self.grace_period_end_date.strftime('%Y-%m-%d')
+            if self.grace_period_end_date
+            else None,
+            'opening_principal_amount': float(self.opening_principal_amount)
+            if self.opening_principal_amount is not None
+            else None,
             'payment_day': self.payment_day,
             'calculation_diagnostics': accrual['diagnostics'],
             'calculation_valid': accrual['data_consistent'],
-            'accrual_start_date': self.accrual_start_date.strftime('%Y-%m-%d') if self.accrual_start_date else None,
+            'accrual_start_date': self.accrual_start_date.strftime('%Y-%m-%d')
+            if self.accrual_start_date
+            else None,
             'opening_interest_amount': float(self.opening_interest_amount or 0),
             'opening_penalty_amount': float(self.opening_penalty_amount or 0),
-            'suggested_interest_start': accrual['suggested_interest_start'].strftime('%Y-%m-%d') if accrual['suggested_interest_start'] else None,
-            'paid_percent': round((1 - float(accrual['principal']) / float(self.total_amount)) * 100, 1) if float(self.total_amount) > 0 else 100,
-            'created_at': self.created_at.strftime('%d.%m.%Y') if self.created_at else None,
+            'suggested_interest_start': accrual['suggested_interest_start'].strftime(
+                '%Y-%m-%d'
+            )
+            if accrual['suggested_interest_start']
+            else None,
+            'paid_percent': round(
+                (1 - float(accrual['principal']) / float(self.total_amount)) * 100, 1
+            )
+            if float(self.total_amount) > 0
+            else 100,
+            'created_at': self.created_at.strftime('%d.%m.%Y')
+            if self.created_at
+            else None,
         }
 
     def __repr__(self):
@@ -317,18 +449,20 @@ class Debt(db.Model):
 
 class Payment(db.Model):
     __tablename__ = 'payments'
-    __table_args__ = (
-        db.Index('ix_payments_debt_date', 'debt_id', 'payment_date'),
-    )
+    __table_args__ = (db.Index('ix_payments_debt_date', 'debt_id', 'payment_date'),)
 
     id = db.Column(db.Integer, primary_key=True)
-    debt_id = db.Column(db.Integer, db.ForeignKey('debts.id', ondelete='CASCADE'), nullable=False)
+    debt_id = db.Column(
+        db.Integer, db.ForeignKey('debts.id', ondelete='CASCADE'), nullable=False
+    )
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     principal_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     interest_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     fee_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     penalty_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
-    breakdown_source = db.Column(db.Enum('auto', 'manual'), default='auto', nullable=False)
+    breakdown_source = db.Column(
+        db.Enum('auto', 'manual'), default='auto', nullable=False
+    )
     payment_date = db.Column(db.Date, nullable=False, default=date.today)
     comment = db.Column(db.Text, nullable=True)
     is_early_repayment = db.Column(db.Boolean, default=False, nullable=False)
@@ -338,8 +472,12 @@ class Payment(db.Model):
     created_at = db.Column(db.DateTime, default=utc_now)
 
     def to_dict(self, state=None):
-        principal_amount = self.principal_amount if self.principal_amount is not None else self.amount
-        interest_amount = self.interest_amount if self.interest_amount is not None else 0
+        principal_amount = (
+            self.principal_amount if self.principal_amount is not None else self.amount
+        )
+        interest_amount = (
+            self.interest_amount if self.interest_amount is not None else 0
+        )
         fee_amount = self.fee_amount if self.fee_amount is not None else 0
         scheduled_payment_amount = self.scheduled_payment_amount or 0
         early_repayment_amount = (
@@ -356,20 +494,32 @@ class Payment(db.Model):
             'fee_amount': float(fee_amount),
             'penalty_amount': float(self.penalty_amount or 0),
             'breakdown_source': self.breakdown_source or 'auto',
-            'payment_date': self.payment_date.strftime('%d.%m.%Y') if self.payment_date else None,
-            'payment_date_iso': self.payment_date.strftime('%Y-%m-%d') if self.payment_date else None,
+            'payment_date': self.payment_date.strftime('%d.%m.%Y')
+            if self.payment_date
+            else None,
+            'payment_date_iso': self.payment_date.strftime('%Y-%m-%d')
+            if self.payment_date
+            else None,
             'comment': self.comment,
             'is_early_repayment': self.is_early_repayment,
             'scheduled_payment_amount': float(scheduled_payment_amount),
             'early_repayment_amount': float(early_repayment_amount),
             'remaining_after_payment': float(self.remaining_after_payment),
-            'bank_remaining_after_payment': float(self.bank_remaining_after_payment) if self.bank_remaining_after_payment is not None else None,
-            'created_at': self.created_at.strftime('%d.%m.%Y %H:%M') if self.created_at else None,
+            'bank_remaining_after_payment': float(self.bank_remaining_after_payment)
+            if self.bank_remaining_after_payment is not None
+            else None,
+            'created_at': self.created_at.strftime('%d.%m.%Y %H:%M')
+            if self.created_at
+            else None,
         }
         allocation = state['allocations'].get(self.id) if state else None
         if allocation:
-            for field, key in (('principal_amount', 'principal'), ('interest_amount', 'interest'),
-                               ('penalty_amount', 'penalty'), ('remaining_after_payment', 'remaining_after')):
+            for field, key in (
+                ('principal_amount', 'principal'),
+                ('interest_amount', 'interest'),
+                ('penalty_amount', 'penalty'),
+                ('remaining_after_payment', 'remaining_after'),
+            ):
                 result[field] = float(allocation[key])
         return result
 
@@ -382,7 +532,12 @@ class DebtPaymentPlan(db.Model):
     __table_args__ = {'sqlite_autoincrement': True}
 
     id = db.Column(db.Integer, primary_key=True)
-    debt_id = db.Column(db.Integer, db.ForeignKey('debts.id', ondelete='CASCADE'), nullable=False, index=True)
+    debt_id = db.Column(
+        db.Integer,
+        db.ForeignKey('debts.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     due_date = db.Column(db.Date, nullable=False)
     comment = db.Column(db.Text)
@@ -416,10 +571,16 @@ class SplitPurchase(db.Model):
             'debt_id': self.debt_id,
             'title': self.title,
             'amount': float(self.amount),
-            'purchase_date': self.purchase_date.strftime('%Y-%m-%d') if self.purchase_date else None,
-            'purchase_date_display': self.purchase_date.strftime('%d.%m.%Y') if self.purchase_date else None,
+            'purchase_date': self.purchase_date.strftime('%Y-%m-%d')
+            if self.purchase_date
+            else None,
+            'purchase_date_display': self.purchase_date.strftime('%d.%m.%Y')
+            if self.purchase_date
+            else None,
             'installments_count': self.installments_count,
-            'created_at': self.created_at.strftime('%d.%m.%Y %H:%M') if self.created_at else None,
+            'created_at': self.created_at.strftime('%d.%m.%Y %H:%M')
+            if self.created_at
+            else None,
         }
 
     def __repr__(self):
@@ -428,14 +589,25 @@ class SplitPurchase(db.Model):
 
 class Income(db.Model):
     __tablename__ = 'incomes'
-    __table_args__ = (
-        db.Index('ix_incomes_user_date', 'user_id', 'income_date'),
-    )
+    __table_args__ = (db.Index('ix_incomes_user_date', 'user_id', 'income_date'),)
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
-    category = db.Column(db.Enum('salary', 'advance', 'side_job', 'debt_return', 'bonus', 'scholarship', 'vacation_pay', 'goal_withdrawal', 'other'), nullable=False)
+    category = db.Column(
+        db.Enum(
+            'salary',
+            'advance',
+            'side_job',
+            'debt_return',
+            'bonus',
+            'scholarship',
+            'vacation_pay',
+            'goal_withdrawal',
+            'other',
+        ),
+        nullable=False,
+    )
     source = db.Column(db.String(150), nullable=True)
     income_date = db.Column(db.Date, nullable=False)
     comment = db.Column(db.Text, nullable=True)
@@ -452,10 +624,16 @@ class Income(db.Model):
             'amount': float(self.amount),
             'category': self.category,
             'source': self.source,
-            'income_date': self.income_date.strftime('%Y-%m-%d') if self.income_date else None,
-            'income_date_display': self.income_date.strftime('%d.%m.%Y') if self.income_date else None,
+            'income_date': self.income_date.strftime('%Y-%m-%d')
+            if self.income_date
+            else None,
+            'income_date_display': self.income_date.strftime('%d.%m.%Y')
+            if self.income_date
+            else None,
             'comment': self.comment,
-            'created_at': self.created_at.strftime('%d.%m.%Y %H:%M') if self.created_at else None,
+            'created_at': self.created_at.strftime('%d.%m.%Y %H:%M')
+            if self.created_at
+            else None,
         }
 
     def __repr__(self):
@@ -465,15 +643,24 @@ class Income(db.Model):
 class BankImportEntry(db.Model):
     __tablename__ = 'bank_import_entries'
     __table_args__ = (
-        db.UniqueConstraint('user_id', 'transaction_key', name='uq_bank_import_transaction'),
+        db.UniqueConstraint(
+            'user_id', 'transaction_key', name='uq_bank_import_transaction'
+        ),
         db.Index('ix_bank_import_fallback', 'user_id', 'fallback_key'),
     )
 
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True
+    )
     file_row_key = db.Column(db.String(64), primary_key=True)
     transaction_key = db.Column(db.String(64))
     fallback_key = db.Column(db.String(64), nullable=False)
-    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', ondelete='CASCADE'), nullable=False, index=True)
+    expense_id = db.Column(
+        db.Integer,
+        db.ForeignKey('expenses.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
     expense = db.relationship('Expense', back_populates='bank_import_entries')
 
 
@@ -488,30 +675,60 @@ class Expense(db.Model):
             'generated_for_month',
             unique=True,
         ),
-        db.Index('ix_expenses_monthly_active', 'is_monthly', 'user_id', 'monthly_group_id'),
+        db.Index(
+            'ix_expenses_monthly_active', 'is_monthly', 'user_id', 'monthly_group_id'
+        ),
     )
 
     vehicle_cost_kind = db.Column(db.String(20))
     id = db.Column(db.Integer, primary_key=True)
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_expenses_vehicle_id', ondelete='SET NULL'), index=True, nullable=True)
+    vehicle_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'vehicles.id', name='fk_expenses_vehicle_id', ondelete='SET NULL'
+        ),
+        index=True,
+        nullable=True,
+    )
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
-    category = db.Column(db.Enum('products', 'transport', 'communication', 'rent', 'loans', 'restaurants', 'entertainment', 'health', 'education', 'clothing', 'subscriptions', 'savings', 'other'), nullable=False)
+    category = db.Column(
+        db.Enum(
+            'products',
+            'transport',
+            'communication',
+            'rent',
+            'loans',
+            'restaurants',
+            'entertainment',
+            'health',
+            'education',
+            'clothing',
+            'subscriptions',
+            'savings',
+            'other',
+        ),
+        nullable=False,
+    )
     title = db.Column(db.String(150), nullable=False)
     expense_date = db.Column(db.Date, nullable=False)
     payment_method = db.Column(db.String(80), nullable=True)
     repayment_debt_id = db.Column(
         db.Integer,
-        db.ForeignKey('debts.id', name='fk_expenses_repayment_debt_id', ondelete='SET NULL'),
+        db.ForeignKey(
+            'debts.id', name='fk_expenses_repayment_debt_id', ondelete='SET NULL'
+        ),
         nullable=True,
         index=True,
     )
     comment = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
-    
+
     # Поля для ежемесячных расходов
     is_monthly = db.Column(db.Boolean, default=False, nullable=False)
-    monthly_is_automatic = db.Column(db.Boolean, default=False, server_default=db.false(), nullable=False)
+    monthly_is_automatic = db.Column(
+        db.Boolean, default=False, server_default=db.false(), nullable=False
+    )
     monthly_group_id = db.Column(db.String(36), nullable=True)
     generated_from_id = db.Column(
         db.Integer,
@@ -528,7 +745,9 @@ class Expense(db.Model):
 
     user = db.relationship('User', back_populates='expenses')
     bank_import_entries = db.relationship(
-        'BankImportEntry', back_populates='expense', cascade='all, delete-orphan',
+        'BankImportEntry',
+        back_populates='expense',
+        cascade='all, delete-orphan',
     )
 
     def to_dict(self):
@@ -537,12 +756,18 @@ class Expense(db.Model):
             'amount': float(self.amount),
             'category': self.category,
             'title': self.title,
-            'expense_date': self.expense_date.strftime('%Y-%m-%d') if self.expense_date else None,
-            'expense_date_display': self.expense_date.strftime('%d.%m.%Y') if self.expense_date else None,
+            'expense_date': self.expense_date.strftime('%Y-%m-%d')
+            if self.expense_date
+            else None,
+            'expense_date_display': self.expense_date.strftime('%d.%m.%Y')
+            if self.expense_date
+            else None,
             'payment_method': self.payment_method,
             'repayment_debt_id': self.repayment_debt_id,
             'comment': self.comment,
-            'created_at': self.created_at.strftime('%d.%m.%Y %H:%M') if self.created_at else None,
+            'created_at': self.created_at.strftime('%d.%m.%Y %H:%M')
+            if self.created_at
+            else None,
             'is_monthly': self.is_monthly,
             'monthly_group_id': self.monthly_group_id,
             'generated_from_id': self.generated_from_id,
@@ -550,7 +775,8 @@ class Expense(db.Model):
             'monthly_anchor_day': self.monthly_anchor_day,
             'monthly_settings_updated_at': (
                 self.monthly_settings_updated_at.isoformat()
-                if self.monthly_settings_updated_at else None
+                if self.monthly_settings_updated_at
+                else None
             ),
         }
 
@@ -561,7 +787,9 @@ class Expense(db.Model):
 class MonthlyExpenseStop(db.Model):
     __tablename__ = 'monthly_expense_stops'
 
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True
+    )
     monthly_group_id = db.Column(db.String(36), primary_key=True)
     stopped_from = db.Column(db.Date, nullable=False)
 
@@ -569,19 +797,30 @@ class MonthlyExpenseStop(db.Model):
 class MonthlyExpenseReminderLog(db.Model):
     __tablename__ = 'monthly_expense_reminder_logs'
     __table_args__ = (
-        db.UniqueConstraint('monthly_expense_id', 'due_date', name='uq_monthly_reminder_occurrence'),
+        db.UniqueConstraint(
+            'monthly_expense_id', 'due_date', name='uq_monthly_reminder_occurrence'
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
-    monthly_expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    monthly_expense_id = db.Column(
+        db.Integer, db.ForeignKey('expenses.id', ondelete='CASCADE'), nullable=False
+    )
     due_date = db.Column(db.Date, nullable=False)
     sent_at = db.Column(db.DateTime, nullable=False, default=utc_now)
 
 
 class RegistrationCountry(db.Model):
     __tablename__ = 'registration_countries'
-    __table_args__ = (db.UniqueConstraint('code', name='uq_registration_countries_code'),)
+    __table_args__ = (
+        db.UniqueConstraint('code', name='uq_registration_countries_code'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(8), nullable=False)
     name = db.Column(db.String(100), nullable=False)
@@ -595,11 +834,20 @@ class Vehicle(db.Model):
     __tablename__ = 'vehicles'
     __table_args__ = (
         db.UniqueConstraint('user_id', 'name', name='uq_vehicles_user_name'),
-        db.CheckConstraint("default_payer = 'self' OR is_company = 1", name='ck_vehicles_company_payer'),
-        db.CheckConstraint('mileage_reminder_days >= 0', name='ck_vehicles_reminder_days'),
+        db.CheckConstraint(
+            "default_payer = 'self' OR is_company = 1", name='ck_vehicles_company_payer'
+        ),
+        db.CheckConstraint(
+            'mileage_reminder_days >= 0', name='ck_vehicles_reminder_days'
+        ),
     )
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', name='fk_vehicles_user_id'), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', name='fk_vehicles_user_id'),
+        nullable=False,
+        index=True,
+    )
     name = db.Column(db.String(150), nullable=False)
     kind = db.Column(db.String(20), nullable=False)
     body_type = db.Column(db.String(20), nullable=False)
@@ -609,7 +857,10 @@ class Vehicle(db.Model):
     model = db.Column(db.String(80))
     year = db.Column(db.String(20))
     vin = db.Column(db.String(40))
-    registration_country_id = db.Column(db.Integer, db.ForeignKey('registration_countries.id', name='fk_vehicles_country_id'))
+    registration_country_id = db.Column(
+        db.Integer,
+        db.ForeignKey('registration_countries.id', name='fk_vehicles_country_id'),
+    )
     plate = db.Column(db.String(12))
     is_company = db.Column(db.Boolean, nullable=False, default=False)
     default_payer = db.Column(db.String(20), nullable=False, default='self')
@@ -617,24 +868,42 @@ class Vehicle(db.Model):
     archived_at = db.Column(db.DateTime)
     archive_reason = db.Column(db.String(20))
     archive_note = db.Column(db.String(2000))
-    tractor_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_vehicles_tractor_id', ondelete='SET NULL'))
+    tractor_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'vehicles.id', name='fk_vehicles_tractor_id', ondelete='SET NULL'
+        ),
+    )
     mileage_reminder_days = db.Column(db.Integer, nullable=False, default=30)
     mileage_snooze_until = db.Column(db.Date)
     created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
-    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+    updated_at = db.Column(
+        db.DateTime, nullable=False, default=utc_now, onupdate=utc_now
+    )
     user = db.relationship('User', back_populates='vehicles')
     country = db.relationship('RegistrationCountry')
     tractor = db.relationship('Vehicle', remote_side=[id], backref='trailers')
-    refuelings = db.relationship('VehicleRefueling', cascade='all, delete-orphan', back_populates='vehicle')
-    costs = db.relationship('VehicleCost', cascade='all, delete-orphan', back_populates='vehicle')
-    readings = db.relationship('VehicleOdometerReading', cascade='all, delete-orphan', back_populates='vehicle')
+    refuelings = db.relationship(
+        'VehicleRefueling', cascade='all, delete-orphan', back_populates='vehicle'
+    )
+    costs = db.relationship(
+        'VehicleCost', cascade='all, delete-orphan', back_populates='vehicle'
+    )
+    readings = db.relationship(
+        'VehicleOdometerReading', cascade='all, delete-orphan', back_populates='vehicle'
+    )
 
 
 class ConsumableTemplate(db.Model):
     __tablename__ = 'consumable_templates'
     __table_args__ = (
-        db.CheckConstraint("template_set IN ('passenger', 'truck')", name='ck_consumable_template_set'),
-        db.CheckConstraint('(interval_km > 0 OR interval_km IS NULL) AND (interval_months > 0 OR interval_months IS NULL) AND (interval_km IS NOT NULL OR interval_months IS NOT NULL)', name='ck_consumable_template_intervals'),
+        db.CheckConstraint(
+            "template_set IN ('passenger', 'truck')", name='ck_consumable_template_set'
+        ),
+        db.CheckConstraint(
+            '(interval_km > 0 OR interval_km IS NULL) AND (interval_months > 0 OR interval_months IS NULL) AND (interval_km IS NOT NULL OR interval_months IS NOT NULL)',
+            name='ck_consumable_template_intervals',
+        ),
     )
     id = db.Column(db.Integer, primary_key=True)
     template_set = db.Column(db.String(20), nullable=False)
@@ -646,73 +915,162 @@ class ConsumableTemplate(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
 
 
-vehicle_service_items = db.Table('vehicle_service_items',
-    db.Column('service_record_id', db.Integer, db.ForeignKey('vehicle_service_records.id', name='fk_service_items_record', ondelete='CASCADE'), primary_key=True),
-    db.Column('maintenance_item_id', db.Integer, db.ForeignKey('vehicle_maintenance_items.id', name='fk_service_items_item', ondelete='CASCADE'), primary_key=True),
+vehicle_service_items = db.Table(
+    'vehicle_service_items',
+    db.Column(
+        'service_record_id',
+        db.Integer,
+        db.ForeignKey(
+            'vehicle_service_records.id',
+            name='fk_service_items_record',
+            ondelete='CASCADE',
+        ),
+        primary_key=True,
+    ),
+    db.Column(
+        'maintenance_item_id',
+        db.Integer,
+        db.ForeignKey(
+            'vehicle_maintenance_items.id',
+            name='fk_service_items_item',
+            ondelete='CASCADE',
+        ),
+        primary_key=True,
+    ),
 )
 
 
 class VehicleMaintenanceItem(db.Model):
     __tablename__ = 'vehicle_maintenance_items'
     __table_args__ = (
-        db.CheckConstraint('(interval_km > 0 OR interval_km IS NULL) AND (interval_months > 0 OR interval_months IS NULL) AND (interval_km IS NOT NULL OR interval_months IS NOT NULL)', name='ck_maintenance_item_intervals'),
-        db.CheckConstraint('last_done_km >= 0 OR last_done_km IS NULL', name='ck_maintenance_item_km'),
+        db.CheckConstraint(
+            '(interval_km > 0 OR interval_km IS NULL) AND (interval_months > 0 OR interval_months IS NULL) AND (interval_km IS NOT NULL OR interval_months IS NOT NULL)',
+            name='ck_maintenance_item_intervals',
+        ),
+        db.CheckConstraint(
+            'last_done_km >= 0 OR last_done_km IS NULL', name='ck_maintenance_item_km'
+        ),
     )
     id = db.Column(db.Integer, primary_key=True)
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_maintenance_item_vehicle', ondelete='CASCADE'), nullable=False, index=True)
-    template_id = db.Column(db.Integer, db.ForeignKey('consumable_templates.id', name='fk_maintenance_item_template', ondelete='SET NULL'))
+    vehicle_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'vehicles.id', name='fk_maintenance_item_vehicle', ondelete='CASCADE'
+        ),
+        nullable=False,
+        index=True,
+    )
+    template_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'consumable_templates.id',
+            name='fk_maintenance_item_template',
+            ondelete='SET NULL',
+        ),
+    )
     name = db.Column(db.String(150), nullable=False)
     interval_km = db.Column(db.Integer)
     interval_months = db.Column(db.Integer)
     last_done_date = db.Column(db.Date)
     last_done_km = db.Column(db.Integer)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
-    vehicle = db.relationship('Vehicle', backref=db.backref('maintenance_items', cascade='all, delete-orphan'))
+    vehicle = db.relationship(
+        'Vehicle', backref=db.backref('maintenance_items', cascade='all, delete-orphan')
+    )
 
 
 class VehicleServiceRecord(db.Model):
     __tablename__ = 'vehicle_service_records'
     __table_args__ = (
-        db.CheckConstraint('odometer_km >= 0 OR odometer_km IS NULL', name='ck_service_record_km'),
+        db.CheckConstraint(
+            'odometer_km >= 0 OR odometer_km IS NULL', name='ck_service_record_km'
+        ),
     )
     id = db.Column(db.Integer, primary_key=True)
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_service_record_vehicle', ondelete='CASCADE'), nullable=False, index=True)
+    vehicle_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'vehicles.id', name='fk_service_record_vehicle', ondelete='CASCADE'
+        ),
+        nullable=False,
+        index=True,
+    )
     service_date = db.Column(db.Date, nullable=False)
     odometer_km = db.Column(db.Integer)
     comment = db.Column(db.String(2000))
-    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', name='fk_service_record_expense', ondelete='SET NULL'))
-    vehicle_cost_id = db.Column(db.Integer, db.ForeignKey('vehicle_costs.id', name='fk_service_record_cost', ondelete='SET NULL'))
+    expense_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'expenses.id', name='fk_service_record_expense', ondelete='SET NULL'
+        ),
+    )
+    vehicle_cost_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'vehicle_costs.id', name='fk_service_record_cost', ondelete='SET NULL'
+        ),
+    )
     items = db.relationship('VehicleMaintenanceItem', secondary=vehicle_service_items)
-    vehicle = db.relationship('Vehicle', backref=db.backref('service_records', cascade='all, delete-orphan'))
+    vehicle = db.relationship(
+        'Vehicle', backref=db.backref('service_records', cascade='all, delete-orphan')
+    )
 
 
 class VehicleDefect(db.Model):
     __tablename__ = 'vehicle_defects'
     __table_args__ = (
-        db.CheckConstraint("severity IN ('critical', 'attention', 'minor')", name='ck_vehicle_defect_severity'),
-        db.CheckConstraint("status IN ('open', 'fixed')", name='ck_vehicle_defect_status'),
-        db.CheckConstraint("(status = 'open' AND fixed_date IS NULL) OR (status = 'fixed' AND fixed_date IS NOT NULL AND fixed_date >= found_date)", name='ck_vehicle_defect_dates'),
+        db.CheckConstraint(
+            "severity IN ('critical', 'attention', 'minor')",
+            name='ck_vehicle_defect_severity',
+        ),
+        db.CheckConstraint(
+            "status IN ('open', 'fixed')", name='ck_vehicle_defect_status'
+        ),
+        db.CheckConstraint(
+            "(status = 'open' AND fixed_date IS NULL) OR (status = 'fixed' AND fixed_date IS NOT NULL AND fixed_date >= found_date)",
+            name='ck_vehicle_defect_dates',
+        ),
     )
     id = db.Column(db.Integer, primary_key=True)
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_defect_vehicle', ondelete='CASCADE'), nullable=False, index=True)
+    vehicle_id = db.Column(
+        db.Integer,
+        db.ForeignKey('vehicles.id', name='fk_defect_vehicle', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
     title = db.Column(db.String(150), nullable=False)
     severity = db.Column(db.String(20), nullable=False)
     status = db.Column(db.String(20), nullable=False, default='open')
     found_date = db.Column(db.Date, nullable=False)
     fixed_date = db.Column(db.Date)
-    service_record_id = db.Column(db.Integer, db.ForeignKey('vehicle_service_records.id', name='fk_defect_service', ondelete='SET NULL'))
+    service_record_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'vehicle_service_records.id', name='fk_defect_service', ondelete='SET NULL'
+        ),
+    )
     comment = db.Column(db.String(2000))
-    vehicle = db.relationship('Vehicle', backref=db.backref('defects', cascade='all, delete-orphan'))
+    vehicle = db.relationship(
+        'Vehicle', backref=db.backref('defects', cascade='all, delete-orphan')
+    )
 
 
 class VehicleOdometerReading(db.Model):
     __tablename__ = 'vehicle_odometer_readings'
     __table_args__ = (
-        db.UniqueConstraint('vehicle_id', 'reading_date', name='uq_vehicle_reading_date'),
+        db.UniqueConstraint(
+            'vehicle_id', 'reading_date', name='uq_vehicle_reading_date'
+        ),
         db.CheckConstraint('odometer_km >= 0', name='ck_vehicle_reading_nonnegative'),
     )
     id = db.Column(db.Integer, primary_key=True)
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_vehicle_reading_vehicle_id', ondelete='CASCADE'), nullable=False)
+    vehicle_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'vehicles.id', name='fk_vehicle_reading_vehicle_id', ondelete='CASCADE'
+        ),
+        nullable=False,
+    )
     reading_date = db.Column(db.Date, nullable=False)
     odometer_km = db.Column(db.Integer, nullable=False)
     source = db.Column(db.String(20), nullable=False, default='manual')
@@ -732,7 +1090,9 @@ class FinancialPlanPreference(db.Model):
     )
     living_minimum = db.Column(db.Numeric(12, 2), nullable=False, default=20000)
     desired_monthly_savings = db.Column(db.Numeric(12, 2), nullable=False, default=5000)
-    emergency_fund_target_amount = db.Column(db.Numeric(12, 2), nullable=False, default=30000)
+    emergency_fund_target_amount = db.Column(
+        db.Numeric(12, 2), nullable=False, default=30000
+    )
     emergency_fund_target_mode = db.Column(
         db.Enum('fixed', 'one_month', 'three_months'),
         nullable=False,
@@ -744,7 +1104,9 @@ class FinancialPlanPreference(db.Model):
         default='balanced',
     )
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
-    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
 
     user = db.relationship('User', back_populates='financial_plan_preference')
 
@@ -755,12 +1117,18 @@ class FinancialPlanPreference(db.Model):
 class EmergencyFundTransaction(db.Model):
     __tablename__ = 'emergency_fund_transactions'
     __table_args__ = (
-        db.CheckConstraint('amount > 0', name='ck_emergency_fund_transaction_amount_positive'),
-        db.Index('ix_emergency_fund_transactions_user_date', 'user_id', 'transaction_date'),
+        db.CheckConstraint(
+            'amount > 0', name='ck_emergency_fund_transaction_amount_positive'
+        ),
+        db.Index(
+            'ix_emergency_fund_transactions_user_date', 'user_id', 'transaction_date'
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False
+    )
     transaction_type = db.Column(
         db.Enum('deposit', 'withdrawal'),
         nullable=False,
@@ -779,13 +1147,19 @@ class EmergencyFundTransaction(db.Model):
 class FinancialGoal(db.Model):
     __tablename__ = 'financial_goals'
     __table_args__ = (
-        db.CheckConstraint('target_amount > 0', name='ck_financial_goal_target_positive'),
-        db.CheckConstraint('monthly_contribution >= 0', name='ck_financial_goal_monthly_nonnegative'),
+        db.CheckConstraint(
+            'target_amount > 0', name='ck_financial_goal_target_positive'
+        ),
+        db.CheckConstraint(
+            'monthly_contribution >= 0', name='ck_financial_goal_monthly_nonnegative'
+        ),
         db.Index('ix_financial_goals_user_priority', 'user_id', 'priority'),
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False
+    )
     name = db.Column(db.String(120), nullable=False)
     target_amount = db.Column(db.Numeric(12, 2), nullable=False)
     monthly_contribution = db.Column(db.Numeric(12, 2), nullable=False, default=0)
@@ -793,7 +1167,9 @@ class FinancialGoal(db.Model):
     note = db.Column(db.String(500), nullable=True)
     priority = db.Column(db.Integer, nullable=False, default=2)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
-    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
 
     user = db.relationship('User', back_populates='financial_goals')
     transactions = db.relationship(
@@ -811,12 +1187,20 @@ class FinancialGoal(db.Model):
 class FinancialGoalTransaction(db.Model):
     __tablename__ = 'financial_goal_transactions'
     __table_args__ = (
-        db.CheckConstraint('amount > 0', name='ck_financial_goal_transaction_amount_positive'),
-        db.Index('ix_financial_goal_transactions_goal_date', 'goal_id', 'transaction_date'),
+        db.CheckConstraint(
+            'amount > 0', name='ck_financial_goal_transaction_amount_positive'
+        ),
+        db.Index(
+            'ix_financial_goal_transactions_goal_date', 'goal_id', 'transaction_date'
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    goal_id = db.Column(db.Integer, db.ForeignKey('financial_goals.id', ondelete='CASCADE'), nullable=False)
+    goal_id = db.Column(
+        db.Integer,
+        db.ForeignKey('financial_goals.id', ondelete='CASCADE'),
+        nullable=False,
+    )
     transaction_type = db.Column(db.Enum('deposit', 'withdrawal'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     transaction_date = db.Column(db.Date, nullable=False, default=date.today)
@@ -846,12 +1230,16 @@ class AppSetting(db.Model):
 class UpdateNotificationDelivery(db.Model):
     __tablename__ = 'update_notification_deliveries'
     __table_args__ = (
-        db.UniqueConstraint('event_key', 'user_id', name='uq_update_notification_recipient'),
+        db.UniqueConstraint(
+            'event_key', 'user_id', name='uq_update_notification_recipient'
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
     event_key = db.Column(db.String(180), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False
+    )
     status = db.Column(db.String(16), nullable=False, default='reserved')
     failure_kind = db.Column(db.String(40), nullable=True)
     attempted_at = db.Column(db.DateTime, nullable=False, default=utc_now)
@@ -860,11 +1248,16 @@ class UpdateNotificationDelivery(db.Model):
 class DictionaryEntry(db.Model):
     __tablename__ = 'dictionary_entries'
     __table_args__ = (
-        db.UniqueConstraint('dictionary_type', 'value', name='uq_dictionary_type_value'),
+        db.UniqueConstraint(
+            'dictionary_type', 'value', name='uq_dictionary_type_value'
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    dictionary_type = db.Column(db.Enum('bank', 'comment_template', 'interest_rate', 'product_type'), nullable=False)
+    dictionary_type = db.Column(
+        db.Enum('bank', 'comment_template', 'interest_rate', 'product_type'),
+        nullable=False,
+    )
     value = db.Column(db.String(150), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now)
@@ -878,7 +1271,9 @@ class ActivityLog(db.Model):
     __tablename__ = 'activity_logs'
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True
+    )
     action = db.Column(db.String(100), nullable=False)
     entity_type = db.Column(db.String(50), nullable=True)
     entity_id = db.Column(db.Integer, nullable=True)
@@ -909,9 +1304,13 @@ class ImpersonationSession(db.Model):
     END_REASONS = ('manual', 'timeout', 'logout', 'blocked', 'invalid')
 
     id = db.Column(db.Integer, primary_key=True)
-    admin_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    admin_user_id = db.Column(
+        db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True
+    )
     actor_label = db.Column(db.String(64), nullable=False)
-    target_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    target_user_id = db.Column(
+        db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True
+    )
     target_label = db.Column(db.String(64), nullable=False)
     reason = db.Column(db.String(200), nullable=True)
     read_only = db.Column(db.Boolean, nullable=False, default=True)
@@ -931,7 +1330,9 @@ class ImpersonationSession(db.Model):
         return self.ended_at is None
 
     def __repr__(self):
-        return f'<ImpersonationSession {self.id} {self.actor_label}->{self.target_label}>'
+        return (
+            f'<ImpersonationSession {self.id} {self.actor_label}->{self.target_label}>'
+        )
 
 
 class TelegramProcessedUpdate(db.Model):
@@ -979,7 +1380,9 @@ class FeedbackReport(db.Model):
 class TelegramConversationState(db.Model):
     __tablename__ = 'telegram_conversation_states'
     __table_args__ = (
-        db.UniqueConstraint('telegram_id', name='uq_telegram_conversation_states_telegram_id'),
+        db.UniqueConstraint(
+            'telegram_id', name='uq_telegram_conversation_states_telegram_id'
+        ),
         db.Index('ix_telegram_conversation_states_telegram_id', 'telegram_id'),
         db.Index('ix_telegram_conversation_states_expires_at', 'expires_at'),
     )
@@ -992,7 +1395,9 @@ class TelegramConversationState(db.Model):
     data = db.Column(db.Text, nullable=False, default='{}')
     expires_at = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
-    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
 
     def __repr__(self):
         return f'<TelegramConversationState {self.telegram_id}:{self.flow}:{self.step}>'
@@ -1002,8 +1407,18 @@ class VehicleCost(db.Model):
     __tablename__ = 'vehicle_costs'
     __table_args__ = (db.CheckConstraint('amount > 0', name='ck_vehicle_costs_amount'),)
     id = db.Column(db.Integer, primary_key=True)
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_vehicle_costs_vehicle'), nullable=False, index=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', name='fk_vehicle_costs_user'), nullable=False, index=True)
+    vehicle_id = db.Column(
+        db.Integer,
+        db.ForeignKey('vehicles.id', name='fk_vehicle_costs_vehicle'),
+        nullable=False,
+        index=True,
+    )
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', name='fk_vehicle_costs_user'),
+        nullable=False,
+        index=True,
+    )
     cost_date = db.Column(db.Date, nullable=False, index=True)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     kind = db.Column(db.String(20), nullable=False)
@@ -1013,30 +1428,52 @@ class VehicleCost(db.Model):
     paid_by_driver = db.Column(db.Boolean, nullable=False, default=False)
     reimbursed_at = db.Column(db.Date)
     created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
-    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+    updated_at = db.Column(
+        db.DateTime, nullable=False, default=utc_now, onupdate=utc_now
+    )
     vehicle = db.relationship('Vehicle', back_populates='costs')
 
 
 class VehicleRefueling(db.Model):
     __tablename__ = 'vehicle_refuelings'
     __table_args__ = (
-        db.UniqueConstraint('vehicle_id', 'refuel_date', name='uq_vehicle_refueling_date'),
+        db.UniqueConstraint(
+            'vehicle_id', 'refuel_date', name='uq_vehicle_refueling_date'
+        ),
         db.CheckConstraint('liters > 0', name='ck_refueling_liters_positive'),
         db.CheckConstraint('price_per_liter > 0', name='ck_refueling_price_positive'),
         db.CheckConstraint('total_amount > 0', name='ck_refueling_total_positive'),
-        db.CheckConstraint('odometer_km >= 0 OR odometer_km IS NULL', name='ck_refueling_odometer_nonnegative'),
-        db.CheckConstraint("payer IN ('self', 'organization')", name='ck_refueling_payer'),
+        db.CheckConstraint(
+            'odometer_km >= 0 OR odometer_km IS NULL',
+            name='ck_refueling_odometer_nonnegative',
+        ),
+        db.CheckConstraint(
+            "payer IN ('self', 'organization')", name='ck_refueling_payer'
+        ),
     )
     id = db.Column(db.Integer, primary_key=True)
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_refueling_vehicle', ondelete='CASCADE'), nullable=False, index=True)
+    vehicle_id = db.Column(
+        db.Integer,
+        db.ForeignKey('vehicles.id', name='fk_refueling_vehicle', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
     refuel_date = db.Column(db.Date, nullable=False)
     odometer_km = db.Column(db.Integer)
     liters = db.Column(db.Numeric(10, 3), nullable=False)
     price_per_liter = db.Column(db.Numeric(10, 2), nullable=False)
     total_amount = db.Column(db.Numeric(12, 2), nullable=False)
     payer = db.Column(db.String(20), nullable=False)
-    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', name='fk_refueling_expense', ondelete='SET NULL'))
-    vehicle_cost_id = db.Column(db.Integer, db.ForeignKey('vehicle_costs.id', name='fk_refueling_cost', ondelete='SET NULL'))
+    expense_id = db.Column(
+        db.Integer,
+        db.ForeignKey('expenses.id', name='fk_refueling_expense', ondelete='SET NULL'),
+    )
+    vehicle_cost_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'vehicle_costs.id', name='fk_refueling_cost', ondelete='SET NULL'
+        ),
+    )
     is_full_tank = db.Column(db.Boolean, nullable=False, default=True)
     station_name = db.Column(db.String(150))
     comment = db.Column(db.String(2000))
@@ -1047,38 +1484,78 @@ class VehicleRefueling(db.Model):
 class VehicleDocument(db.Model):
     __tablename__ = 'vehicle_documents'
     id = db.Column(db.Integer, primary_key=True)
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_document_vehicle', ondelete='CASCADE'), nullable=False, index=True)
+    vehicle_id = db.Column(
+        db.Integer,
+        db.ForeignKey('vehicles.id', name='fk_document_vehicle', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
     kind = db.Column(db.String(20), nullable=False)
     title = db.Column(db.String(150))
     issued_date = db.Column(db.Date)
     expires_at = db.Column(db.Date)
     amount = db.Column(db.Numeric(12, 2))
-    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id', name='fk_document_expense', ondelete='SET NULL'))
-    vehicle_cost_id = db.Column(db.Integer, db.ForeignKey('vehicle_costs.id', name='fk_document_cost', ondelete='SET NULL'))
+    expense_id = db.Column(
+        db.Integer,
+        db.ForeignKey('expenses.id', name='fk_document_expense', ondelete='SET NULL'),
+    )
+    vehicle_cost_id = db.Column(
+        db.Integer,
+        db.ForeignKey('vehicle_costs.id', name='fk_document_cost', ondelete='SET NULL'),
+    )
     comment = db.Column(db.String(2000))
     created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
-    vehicle = db.relationship('Vehicle', backref=db.backref('documents', cascade='all, delete-orphan'))
+    vehicle = db.relationship(
+        'Vehicle', backref=db.backref('documents', cascade='all, delete-orphan')
+    )
     __table_args__ = (
-        db.UniqueConstraint('vehicle_id', 'kind', name='uq_vehicle_document_active_kind'),
-        db.CheckConstraint("kind IN ('osago','kasko','tech_inspection','pts','sts','license','other')", name='ck_vehicle_document_kind'),
-        db.CheckConstraint('expires_at IS NULL OR issued_date IS NULL OR expires_at >= issued_date', name='ck_vehicle_document_dates'),
-        db.CheckConstraint('amount IS NULL OR amount > 0', name='ck_vehicle_document_amount_positive'),
+        db.UniqueConstraint(
+            'vehicle_id', 'kind', name='uq_vehicle_document_active_kind'
+        ),
+        db.CheckConstraint(
+            "kind IN ('osago','kasko','tech_inspection','pts','sts','license','other')",
+            name='ck_vehicle_document_kind',
+        ),
+        db.CheckConstraint(
+            'expires_at IS NULL OR issued_date IS NULL OR expires_at >= issued_date',
+            name='ck_vehicle_document_dates',
+        ),
+        db.CheckConstraint(
+            'amount IS NULL OR amount > 0', name='ck_vehicle_document_amount_positive'
+        ),
     )
 
 
 class VehicleAttachment(db.Model):
     __tablename__ = 'vehicle_attachments'
     __table_args__ = (
-        db.CheckConstraint("kind IN ('vehicle','defect','document','expense','vehicle_cost','service_record')", name='ck_attachment_kind'),
-        db.CheckConstraint('size_bytes > 0 AND size_bytes <= 5242880', name='ck_attachment_size'),
-        db.CheckConstraint("mime_type IN ('image/jpeg','image/png','image/webp')", name='ck_attachment_mime'),
+        db.CheckConstraint(
+            "kind IN ('vehicle','defect','document','expense','vehicle_cost','service_record')",
+            name='ck_attachment_kind',
+        ),
+        db.CheckConstraint(
+            'size_bytes > 0 AND size_bytes <= 5242880', name='ck_attachment_size'
+        ),
+        db.CheckConstraint(
+            "mime_type IN ('image/jpeg','image/png','image/webp')",
+            name='ck_attachment_mime',
+        ),
         db.Index('ix_attachment_user_vehicle', 'user_id', 'vehicle_id'),
         db.Index('ix_attachment_entity', 'kind', 'entity_id'),
         db.Index('ix_attachment_sha256_user', 'user_id', 'sha256'),
     )
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE', name='fk_attachment_user'), nullable=False, index=True)
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', ondelete='CASCADE', name='fk_attachment_vehicle'), nullable=False)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', ondelete='CASCADE', name='fk_attachment_user'),
+        nullable=False,
+        index=True,
+    )
+    vehicle_id = db.Column(
+        db.Integer,
+        db.ForeignKey('vehicles.id', ondelete='CASCADE', name='fk_attachment_vehicle'),
+        nullable=False,
+    )
     kind = db.Column(db.String(30), nullable=False)
     entity_id = db.Column(db.Integer)
     file_path = db.Column(db.String(255), nullable=False)
@@ -1090,16 +1567,32 @@ class VehicleAttachment(db.Model):
     sha256 = db.Column(db.String(64), nullable=False)
     caption = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
-    vehicle = db.relationship('Vehicle', backref=db.backref('attachments', cascade='all, delete-orphan'))
+    vehicle = db.relationship(
+        'Vehicle', backref=db.backref('attachments', cascade='all, delete-orphan')
+    )
 
 
 class VehicleNotificationLog(db.Model):
     __tablename__ = 'vehicle_notification_log'
-    __table_args__ = (db.UniqueConstraint('user_id', 'kind', 'payload_hash', name='uq_notification_log_day'),)
+    __table_args__ = (
+        db.UniqueConstraint(
+            'user_id', 'kind', 'payload_hash', name='uq_notification_log_day'
+        ),
+    )
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', name='fk_notification_user', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', name='fk_notification_user', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
     kind = db.Column(db.String(30), nullable=False)
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id', name='fk_notification_vehicle', ondelete='SET NULL'))
+    vehicle_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            'vehicles.id', name='fk_notification_vehicle', ondelete='SET NULL'
+        ),
+    )
     sent_at = db.Column(db.DateTime, nullable=False, default=utc_now)
     payload_hash = db.Column(db.String(64), nullable=False)
     delivered = db.Column(db.Boolean, nullable=False, default=False)

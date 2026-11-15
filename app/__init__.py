@@ -22,7 +22,10 @@ from app.admin_presenters import (
     admin_role_label,
     admin_status_label,
 )
-from app.services.telegram_frame_service import TelegramFrameSessionInterface, apply_frame_headers
+from app.services.telegram_frame_service import (
+    TelegramFrameSessionInterface,
+    apply_frame_headers,
+)
 from app.utils import display_value, value_is_enabled
 
 login_manager = LoginManager()
@@ -45,7 +48,9 @@ def resolve_instance_path(base_dir, environ=None):
         return os.path.abspath(configured)
     release_dir = os.path.realpath(base_dir)
     if os.path.isfile(os.path.join(release_dir, '.officium-release-ready')):
-        shared_instance = os.path.join(os.path.dirname(os.path.dirname(release_dir)), 'shared', 'instance')
+        shared_instance = os.path.join(
+            os.path.dirname(os.path.dirname(release_dir)), 'shared', 'instance'
+        )
         if os.path.isdir(shared_instance):
             return shared_instance
     return None
@@ -76,18 +81,27 @@ def create_app(config_overrides=None):
     db.init_app(app)
     Migrate(app, db)
     login_manager.init_app(app)
+
     @app.before_request
     def vehicle_feature_gate():
-        if (request.path == '/vehicles' or request.path.startswith('/vehicles/') or request.path.startswith('/admin/registration-countries') or request.path.startswith('/admin/consumable-templates')) and not app.config.get('VEHICLES_ENABLED'):
+        if (
+            request.path == '/vehicles'
+            or request.path.startswith('/vehicles/')
+            or request.path.startswith('/admin/registration-countries')
+            or request.path.startswith('/admin/consumable-templates')
+        ) and not app.config.get('VEHICLES_ENABLED'):
             abort(404)
 
     csrf = CSRFProtect()
     csrf.init_app(app)
 
     from app.amount_privacy import display_money, private_amount
+
     app.jinja_env.filters['money'] = display_money
     app.jinja_env.filters['private_amount'] = private_amount
-    app.jinja_env.filters['distance'] = lambda value: f'{int(value):,}'.replace(',', ' ') if value is not None else '—'
+    app.jinja_env.filters['distance'] = (
+        lambda value: f'{int(value):,}'.replace(',', ' ') if value is not None else '—'
+    )
     app.jinja_env.filters['display'] = display_value
     app.jinja_env.filters['admin_field'] = admin_field_label
     app.jinja_env.filters['admin_role'] = admin_role_label
@@ -97,7 +111,21 @@ def create_app(config_overrides=None):
     app.jinja_env.filters['admin_event_tone'] = admin_event_tone
     app.jinja_env.filters['admin_event_icon'] = admin_event_icon
 
-    from app.routes import auth, admin, debts, documentation, payments, incomes, expenses, goals, main, profile, telegram_bot, whats_new, vehicles
+    from app.routes import (
+        auth,
+        admin,
+        debts,
+        documentation,
+        payments,
+        incomes,
+        expenses,
+        goals,
+        main,
+        profile,
+        telegram_bot,
+        whats_new,
+        vehicles,
+    )
 
     auth.init_app(app)
     admin.init_app(app)
@@ -113,20 +141,30 @@ def create_app(config_overrides=None):
     whats_new.init_app(app)
     vehicles.init_app(app)
     from app.routes import vehicle_notifications
+
     vehicle_notifications.init_app(app, csrf)
     _register_root_icons(app)
 
     def error_response(status_code):
         messages = {
-            400: ('Некорректный запрос', 'Проверьте введённые данные и повторите попытку.'),
+            400: (
+                'Некорректный запрос',
+                'Проверьте введённые данные и повторите попытку.',
+            ),
             403: ('Доступ запрещён', 'У вас нет прав для выполнения этого действия.'),
-            404: ('Страница не найдена', 'Проверьте адрес или вернитесь на главную страницу.'),
+            404: (
+                'Страница не найдена',
+                'Проверьте адрес или вернитесь на главную страницу.',
+            ),
             413: (
                 'Файл слишком большой',
                 'Максимальный размер загружаемого файла — '
                 f'{max(1, int(app.config.get("MAX_CONTENT_LENGTH") or 0) // (1024 * 1024))} МБ.',
             ),
-            500: ('Внутренняя ошибка', 'Не удалось выполнить запрос. Повторите попытку позже.'),
+            500: (
+                'Внутренняя ошибка',
+                'Не удалось выполнить запрос. Повторите попытку позже.',
+            ),
         }
         title, message = messages[status_code]
         if request.path.startswith('/api/') or request.path == '/telegram/webhook':
@@ -157,7 +195,9 @@ def create_app(config_overrides=None):
     @app.errorhandler(FinancialDataUnavailable)
     def financial_data_error(error):
         if request.path.startswith('/api/'):
-            return jsonify({'success': False, 'error': error.message, 'code': error.code}), 503
+            return jsonify(
+                {'success': False, 'error': error.message, 'code': error.code}
+            ), 503
         return render_template(
             'error.html',
             status_code=503,
@@ -170,7 +210,9 @@ def create_app(config_overrides=None):
         db.session.rollback()
         app.logger.exception('Database error while handling the request')
         try:
-            is_admin_page = request.path.startswith('/admin') and getattr(current_user, 'is_admin', False)
+            is_admin_page = request.path.startswith('/admin') and getattr(
+                current_user, 'is_admin', False
+            )
         except SQLAlchemyError:
             db.session.rollback()
             is_admin_page = False
@@ -188,10 +230,16 @@ def create_app(config_overrides=None):
     def add_security_headers(response):
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         apply_frame_headers(response, request, app.config)
-        response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
-        response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+        response.headers.setdefault(
+            'Referrer-Policy', 'strict-origin-when-cross-origin'
+        )
+        response.headers.setdefault(
+            'Permissions-Policy', 'camera=(), microphone=(), geolocation=()'
+        )
         if app.config.get('ENVIRONMENT') == 'production':
-            response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+            response.headers.setdefault(
+                'Strict-Transport-Security', 'max-age=31536000; includeSubDomains'
+            )
         return response
 
     register_cli_commands(app)
@@ -217,11 +265,14 @@ def _configure_secret_key(app):
 def _validate_runtime_config(app):
     polling_workers = app.config['TELEGRAM_POLLING_WORKERS']
     if type(polling_workers) is not int or not 1 <= polling_workers <= 16:
-        raise RuntimeError('TELEGRAM_POLLING_WORKERS must be an integer between 1 and 16.')
+        raise RuntimeError(
+            'TELEGRAM_POLLING_WORKERS must be an integer between 1 and 16.'
+        )
 
-    if value_is_enabled(app.config.get('TELEGRAM_MINI_APP_ENABLED')) and not str(
-        app.config.get('OFFICIUM_PUBLIC_URL') or ''
-    ).strip():
+    if (
+        value_is_enabled(app.config.get('TELEGRAM_MINI_APP_ENABLED'))
+        and not str(app.config.get('OFFICIUM_PUBLIC_URL') or '').strip()
+    ):
         app.logger.error(
             'Telegram Mini App requires OFFICIUM_PUBLIC_URL (HTTPS). '
             'Configure <OFFICIUM_PUBLIC_URL>/telegram-app in @BotFather: '
@@ -247,15 +298,24 @@ def _validate_runtime_config(app):
         '-'.join(('dev', 'secret', 'key', 'change', 'in', 'production')),
     }
     if secret_key in weak_secrets or len(secret_key) < 32:
-        raise RuntimeError('SECRET_KEY must be a unique random value of at least 32 characters in production.')
+        raise RuntimeError(
+            'SECRET_KEY must be a unique random value of at least 32 characters in production.'
+        )
     telegram_features_enabled = any(
         app.config.get(key)
-        for key in ('TELEGRAM_LOGIN_ENABLED', 'TELEGRAM_MINI_APP_ENABLED', 'TELEGRAM_BOT_ENABLED')
+        for key in (
+            'TELEGRAM_LOGIN_ENABLED',
+            'TELEGRAM_MINI_APP_ENABLED',
+            'TELEGRAM_BOT_ENABLED',
+        )
     )
     if telegram_features_enabled and not app.config.get('TELEGRAM_BOT_TOKEN'):
-        raise RuntimeError('TELEGRAM_BOT_TOKEN is required when Telegram features are enabled.')
+        raise RuntimeError(
+            'TELEGRAM_BOT_TOKEN is required when Telegram features are enabled.'
+        )
     if (
-        app.config.get('TELEGRAM_LOGIN_ENABLED') or app.config.get('TELEGRAM_MINI_APP_ENABLED')
+        app.config.get('TELEGRAM_LOGIN_ENABLED')
+        or app.config.get('TELEGRAM_MINI_APP_ENABLED')
     ) and not str(app.config.get('TELEGRAM_BOT_USERNAME') or '').strip():
         raise RuntimeError(
             'TELEGRAM_BOT_USERNAME is required when Telegram login or Mini App is enabled.'
@@ -265,13 +325,21 @@ def _validate_runtime_config(app):
         and app.config.get('TELEGRAM_RECEIVE_MODE', 'webhook') == 'webhook'
         and not app.config.get('TELEGRAM_WEBHOOK_SECRET')
     ):
-        raise RuntimeError('TELEGRAM_WEBHOOK_SECRET is required when the Telegram bot is enabled.')
+        raise RuntimeError(
+            'TELEGRAM_WEBHOOK_SECRET is required when the Telegram bot is enabled.'
+        )
     if app.config.get('GOOGLE_LOGIN_ENABLED') and not (
         app.config.get('GOOGLE_CLIENT_ID') and app.config.get('GOOGLE_CLIENT_SECRET')
     ):
-        raise RuntimeError('Google OAuth credentials are required when Google login is enabled.')
-    if app.config.get('ADMIN_LOGIN_ENABLED') and not app.config.get('ADMIN_PASSWORD_HASH'):
-        raise RuntimeError('An admin password hash is required when emergency admin login is enabled.')
+        raise RuntimeError(
+            'Google OAuth credentials are required when Google login is enabled.'
+        )
+    if app.config.get('ADMIN_LOGIN_ENABLED') and not app.config.get(
+        'ADMIN_PASSWORD_HASH'
+    ):
+        raise RuntimeError(
+            'An admin password hash is required when emergency admin login is enabled.'
+        )
 
 
 def _register_root_icons(app):
@@ -326,7 +394,11 @@ def register_cli_commands(app):
         )
         app.logger.info(
             'Import cleanup finished: removed=%s removed_bytes=%s kept=%s kept_bytes=%s errors=%s',
-            stats.removed, stats.removed_bytes, stats.kept, stats.kept_bytes, stats.errors,
+            stats.removed,
+            stats.removed_bytes,
+            stats.kept,
+            stats.kept_bytes,
+            stats.errors,
         )
         if stats.errors:
             raise click.ClickException('Some expired import files could not be removed')
@@ -336,7 +408,11 @@ def register_cli_commands(app):
         """Report free space of the instance filesystem; exit 2 when it is critical."""
         from app.services.import_storage_service import disk_status
 
-        path = app.instance_path if os.path.isdir(app.instance_path) else os.path.dirname(app.instance_path)
+        path = (
+            app.instance_path
+            if os.path.isdir(app.instance_path)
+            else os.path.dirname(app.instance_path)
+        )
         status = disk_status(
             path,
             int(app.config.get('DISK_WARN_FREE_BYTES')),
@@ -356,29 +432,50 @@ def register_cli_commands(app):
             app.logger.warning(line)
 
     @app.cli.command('notify-updates')
-    @click.option('--dry-run', is_flag=True, help='Inspect notifications without sending or saving anything.')
+    @click.option(
+        '--dry-run',
+        is_flag=True,
+        help='Inspect notifications without sending or saving anything.',
+    )
     @click.option('--force', is_flag=True, help='Ignore the release check interval.')
     def notify_updates(dry_run, force):
         """Notify administrators about releases and completed server updates."""
         import json
         from app.services.update_notifier import notify_updates as notify
-        click.echo(json.dumps(notify(dry_run=dry_run, force=force), ensure_ascii=False, sort_keys=True))
+
+        click.echo(
+            json.dumps(
+                notify(dry_run=dry_run, force=force), ensure_ascii=False, sort_keys=True
+            )
+        )
 
     @app.cli.command('telegram-diagnostics')
-    @click.option('--network', is_flag=True, help='Explicitly query getMe/getWebhookInfo (once per 60 seconds).')
+    @click.option(
+        '--network',
+        is_flag=True,
+        help='Explicitly query getMe/getWebhookInfo (once per 60 seconds).',
+    )
     def telegram_diagnostics(network):
         """Operator-only diagnostics. Never sends a message or changes a webhook."""
         import json
         from app.services.telegram_diagnostics_service import diagnose
-        click.echo(json.dumps(diagnose(network=network), ensure_ascii=False, sort_keys=True))
+
+        click.echo(
+            json.dumps(diagnose(network=network), ensure_ascii=False, sort_keys=True)
+        )
 
     @app.cli.command('telegram-setup')
-    @click.option('--dry-run', is_flag=True, help='Report service configuration without network requests or changes.')
+    @click.option(
+        '--dry-run',
+        is_flag=True,
+        help='Report service configuration without network requests or changes.',
+    )
     def telegram_setup(dry_run):
         """Configure Telegram reception and report the required services."""
         import json
         from app.services.telegram_setup_service import setup
         from app.services.telegram_transport import TelegramDeliveryError
+
         try:
             state = setup(dry_run=dry_run)
         except (ValueError, TelegramDeliveryError) as exc:
@@ -386,7 +483,11 @@ def register_cli_commands(app):
         click.echo(json.dumps(state, sort_keys=True))
 
     @app.cli.command('telegram-poll')
-    @click.option('--remove-webhook', is_flag=True, help='Remove the webhook without dropping queued commands.')
+    @click.option(
+        '--remove-webhook',
+        is_flag=True,
+        help='Remove the webhook without dropping queued commands.',
+    )
     def telegram_poll(remove_webhook):
         """Receive Telegram commands through an outbound connection."""
         import signal
@@ -407,30 +508,42 @@ def register_cli_commands(app):
     def send_vehicle_notifications():
         """Send daily vehicle reminders (also used by the systemd timer)."""
         from app.services.vehicle_notification_service import send_due_notifications
+
         stats = send_due_notifications()
         click.echo(str(stats))
         if stats['failed']:
             raise click.ClickException('Some vehicle notifications failed')
 
     @app.cli.command('send-monthly-expense-reminders')
-    @click.option('--dry-run', is_flag=True, help='Count planned reminders without sending or saving anything.')
+    @click.option(
+        '--dry-run',
+        is_flag=True,
+        help='Count planned reminders without sending or saving anything.',
+    )
     def send_monthly_expense_reminders(dry_run):
         """Send reminders about upcoming monthly expense charges."""
         from app.services.monthly_reminders import run
+
         count = run(dry_run=dry_run)
         click.echo(f'{"Messages planned" if dry_run else "Messages sent"}: {count}')
 
     @app.cli.command('generate-monthly-expenses')
-    @click.option('--user-id', type=int, default=None, help='Generate for specific user ID')
-    @click.option('--month', type=str, default=None, help='Target month in YYYY-MM format')
+    @click.option(
+        '--user-id', type=int, default=None, help='Generate for specific user ID'
+    )
+    @click.option(
+        '--month', type=str, default=None, help='Target month in YYYY-MM format'
+    )
     def generate_monthly_expenses(user_id, month):
         """Generate monthly recurring expenses for the specified or current month."""
-        from app.services.monthly_expenses_service import generate_monthly_expenses as gen_expenses
-        
+        from app.services.monthly_expenses_service import (
+            generate_monthly_expenses as gen_expenses,
+        )
+
         stats = gen_expenses(user_id=user_id, target_month=month)
-        click.echo(f"Generated: {stats['created']} expenses")
-        click.echo(f"Skipped: {stats['skipped']} (already exist)")
-        click.echo(f"Errors: {stats['errors']}")
+        click.echo(f'Generated: {stats["created"]} expenses')
+        click.echo(f'Skipped: {stats["skipped"]} (already exist)')
+        click.echo(f'Errors: {stats["errors"]}')
         app.logger.info(
             'Monthly expense generation finished: target=%s created=%s skipped=%s errors=%s',
             stats['target_month'],
@@ -439,15 +552,28 @@ def register_cli_commands(app):
             stats['errors'],
         )
         if stats['errors'] > 0:
-            raise click.ClickException('Monthly expense generation completed with errors')
+            raise click.ClickException(
+                'Monthly expense generation completed with errors'
+            )
 
     @app.cli.command('send-telegram-reminders')
-    @click.option('--days', type=int, default=None, help='Notify about debt payments due within this many days')
-    @click.option('--dry-run', is_flag=True, help='Count reminders without sending Telegram messages')
+    @click.option(
+        '--days',
+        type=int,
+        default=None,
+        help='Notify about debt payments due within this many days',
+    )
+    @click.option(
+        '--dry-run',
+        is_flag=True,
+        help='Count reminders without sending Telegram messages',
+    )
     def send_telegram_reminders(days, dry_run):
         """Send Telegram reminders about overdue and upcoming debt payments."""
         if not app.config.get('TELEGRAM_BOT_ENABLED', False):
-            click.echo('Telegram bot is disabled. Set TELEGRAM_BOT_ENABLED=true to enable reminders.')
+            click.echo(
+                'Telegram bot is disabled. Set TELEGRAM_BOT_ENABLED=true to enable reminders.'
+            )
             return
         if not app.config.get('TELEGRAM_BOT_TOKEN'):
             click.echo('TELEGRAM_BOT_TOKEN is not configured.')
@@ -456,8 +582,10 @@ def register_cli_commands(app):
         from app.services.telegram_bot_service import send_debt_reminders
 
         stats = send_debt_reminders(days=days, dry_run=dry_run)
-        click.echo(f"Users checked: {stats['users_checked']}")
-        click.echo(f"Messages: {stats['messages']}")
-        click.echo(f"Errors: {stats['errors']}")
+        click.echo(f'Users checked: {stats["users_checked"]}')
+        click.echo(f'Messages: {stats["messages"]}')
+        click.echo(f'Errors: {stats["errors"]}')
         if stats['errors']:
-            raise click.ClickException('Some Telegram reminders failed; do not blindly retry the batch.')
+            raise click.ClickException(
+                'Some Telegram reminders failed; do not blindly retry the batch.'
+            )
