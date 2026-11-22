@@ -12,12 +12,21 @@
   function theme() {
     const color = getComputedStyle(document.body).color;
     Chart.defaults.color = color;
-    Object.values(charts).forEach(chart => {chart.options.plugins = {legend:{labels:{color}}}; chart.update();});
+    Object.values(charts).forEach(chart => {
+      chart.options.plugins.legend.labels.color = color;
+      chart.update();
+    });
   }
   Chart.defaults.color = getComputedStyle(document.body).color;
   render('monthly','bar',labels,[{label:'Личные, ₽',data:report.monthly.map(r=>Number(r.total_self)),backgroundColor:colors[0]}, {label:'Организация, ₽',data:report.monthly.map(r=>Number(r.total_organization)),backgroundColor:colors[1]}],{scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}}});
   render('kinds','doughnut',report.kinds.map(([key,label])=>label),[{data:report.kinds.map(([k])=>report.vehicles.reduce((s,v)=>s+Number(v.by_kind[k]),0)),backgroundColor:colors}]);
-  render('distance','line',labels,[{label:'₽/км',data:report.monthly.map(r=>r.cost_per_km===null?null:Number(r.cost_per_km)),borderColor:colors[2],spanGaps:false}],{scales:{y:{beginAtZero:true}}});
+  render('distance','line',labels,[{label:'₽/км',data:report.monthly.map(r=>r.cost_per_km===null?null:Number(r.cost_per_km)),borderColor:colors[2],spanGaps:false}],{
+    scales:{y:{beginAtZero:true}},
+    plugins:{tooltip:{callbacks:{label(context) {
+      const estimate = report.monthly[context.dataIndex].estimated_mileage ? ' (оценка)' : '';
+      return `${context.formattedValue} ₽/км${estimate}`;
+    }}}}
+  });
   document.querySelectorAll('[data-chart]').forEach(row => row.addEventListener('focus', () => {
     const chart = charts[row.dataset.chart], index = Number(row.dataset.index);
     const active = chart.data.datasets.map((_,datasetIndex)=>({datasetIndex,index}));
