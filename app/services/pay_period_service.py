@@ -17,6 +17,7 @@ reserve or an uncovered obligation becomes a warning on the income card.
 Dates at the start of the month that the previous month's last income was
 expected to cover are listed as covered by it.
 """
+
 import calendar
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -73,9 +74,17 @@ def main_payment_dates(income_items, history_incomes=()):
         (item['date'], item['category'], item.get('pay_period_mode'))
         for item in list(income_items) + list(history_incomes or ())
     ]
-    dates = {day for day, category, mode in entries if day and is_main_payment(category, mode)}
+    dates = {
+        day
+        for day, category, mode in entries
+        if day and is_main_payment(category, mode)
+    }
     if not dates:
-        dates = {day for day, _category, mode in entries if day and mode != PAY_PERIOD_MODE_JOIN}
+        dates = {
+            day
+            for day, _category, mode in entries
+            if day and mode != PAY_PERIOD_MODE_JOIN
+        }
     return dates
 
 
@@ -87,7 +96,10 @@ def next_income_after(day, payment_dates):
     recorded = min((other for other in payment_dates if other > day), default=None)
     expected = min(
         (
-            projected for projected in (other + relativedelta(months=1) for other in payment_dates)
+            projected
+            for projected in (
+                other + relativedelta(months=1) for other in payment_dates
+            )
             if projected > day
         ),
         default=None,
@@ -118,7 +130,9 @@ def recommend_income_allocation(
     """
     period_end = period_end or _month_end(period_start)
     living_minimum = _decimal(living_minimum)
-    incomes = sorted(income_items, key=lambda item: (item['date'] or date.min, item['id'] or 0))
+    incomes = sorted(
+        income_items, key=lambda item: (item['date'] or date.min, item['id'] or 0)
+    )
     payment_dates = main_payment_dates(incomes, history_incomes)
 
     obligations = []
@@ -140,7 +154,10 @@ def recommend_income_allocation(
     covered_by_previous = []
     if incomes:
         covered_by_previous = _cover_from_previous_month(
-            obligations, payment_dates, period_start, incomes[0]['date'],
+            obligations,
+            payment_dates,
+            period_start,
+            incomes[0]['date'],
         )
 
     reserved_until = None
@@ -154,8 +171,12 @@ def recommend_income_allocation(
         if reserved_until is not None and day < reserved_until:
             # An income inside a span already reserved for first tops up what
             # the earlier incomes could not keep.
-            catch_up = _decimal(sum((_decimal(row['reserve_missing']) for row in short_rows), ZERO))
-            needed = _decimal(catch_up + _reserve_needed(living_minimum, reserved_until, horizon))
+            catch_up = _decimal(
+                sum((_decimal(row['reserve_missing']) for row in short_rows), ZERO)
+            )
+            needed = _decimal(
+                catch_up + _reserve_needed(living_minimum, reserved_until, horizon)
+            )
         else:
             short_rows = []
             catch_up = ZERO
@@ -184,9 +205,15 @@ def recommend_income_allocation(
             continue
         next_date = owner['next_income_date']
         if next_date is not None and due_date is not None and due_date >= next_date:
-            awaiting.append(_notice(
-                entry, entry['remaining'], 'awaiting', next_date, owner['next_income_is_estimated'],
-            ))
+            awaiting.append(
+                _notice(
+                    entry,
+                    entry['remaining'],
+                    'awaiting',
+                    next_date,
+                    owner['next_income_is_estimated'],
+                )
+            )
             continue
         notice = _notice(entry, entry['remaining'], 'insufficient', None, False)
         owner['shortfalls'].append(notice)
@@ -197,7 +224,9 @@ def recommend_income_allocation(
         'shortfalls': sorted(uncovered, key=_by_due_date),
         'awaiting': sorted(awaiting, key=_by_due_date),
         'covered_by_previous': sorted(covered_by_previous, key=_by_due_date),
-        'reserve_shortfall': _float(sum((_decimal(row['reserve_missing']) for row in rows), ZERO)),
+        'reserve_shortfall': _float(
+            sum((_decimal(row['reserve_missing']) for row in rows), ZERO)
+        ),
     }
 
 
@@ -207,17 +236,27 @@ def window_daily_limit(allocations, today, spent, period_end):
     ``spent(start, today)`` returns the everyday expenses recorded in that range.
     """
     current = [
-        row for row in allocations
-        if row['date'] and row['date'] <= today and (row['next_income_date'] or period_end) > today
+        row
+        for row in allocations
+        if row['date']
+        and row['date'] <= today
+        and (row['next_income_date'] or period_end) > today
     ]
     if not current:
         return None
     end = min(row['next_income_date'] or period_end for row in current)
     start = min(row['date'] for row in current)
-    living = _decimal(sum(
-        (_decimal(item['amount']) for row in current for item in row['allocations'] if item['kind'] == 'living'),
-        ZERO,
-    ))
+    living = _decimal(
+        sum(
+            (
+                _decimal(item['amount'])
+                for row in current
+                for item in row['allocations']
+                if item['kind'] == 'living'
+            ),
+            ZERO,
+        )
+    )
     spent_amount = _decimal(spent(start, today))
     available = _decimal(living - spent_amount)
     days_left = (end - today).days
@@ -226,7 +265,9 @@ def window_daily_limit(allocations, today, spent, period_end):
         'start': start,
         'end': end if has_next else None,
         'end_is_estimated': any(
-            row['next_income_is_estimated'] for row in current if row['next_income_date'] == end
+            row['next_income_is_estimated']
+            for row in current
+            if row['next_income_date'] == end
         ),
         'living': _float(living),
         'spent': _float(spent_amount),
@@ -236,23 +277,34 @@ def window_daily_limit(allocations, today, spent, period_end):
     }
 
 
-def _cover_from_previous_month(obligations, payment_dates, period_start, first_income_date):
+def _cover_from_previous_month(
+    obligations, payment_dates, period_start, first_income_date
+):
     """Dates before the month's first income that the previous month's income reached."""
-    previous_payments = sorted((day for day in payment_dates if day < period_start), reverse=True)
+    previous_payments = sorted(
+        (day for day in payment_dates if day < period_start), reverse=True
+    )
     covered = []
     for entry in obligations:
         due_date = entry['item'].get('due_date')
-        if entry['next_month'] or due_date is None or not period_start <= due_date < first_income_date:
+        if (
+            entry['next_month']
+            or due_date is None
+            or not period_start <= due_date < first_income_date
+        ):
             continue
         source = next(
             (
-                payment for payment in previous_payments
+                payment
+                for payment in previous_payments
                 if due_date < (next_income_after(payment, payment_dates)[0] or date.max)
             ),
             None,
         )
         if source is not None:
-            covered.append(_notice(entry, entry['remaining'], 'previous_period', source, False))
+            covered.append(
+                _notice(entry, entry['remaining'], 'previous_period', source, False)
+            )
             entry['remaining'] = ZERO
     return covered
 
@@ -273,14 +325,27 @@ def _allocate(income, obligations, pools, day, horizon, ahead_until, reserve_nee
             available = _decimal(available - directed)
             entry['remaining'] = _decimal(entry['remaining'] - directed)
 
-    dated = [entry for entry in obligations if entry['item'].get('due_date') is not None]
+    dated = [
+        entry for entry in obligations if entry['item'].get('due_date') is not None
+    ]
     undated = [entry for entry in obligations if entry['item'].get('due_date') is None]
     direct([entry for entry in dated if entry['item']['due_date'] < day], 'overdue')
-    direct([entry for entry in dated if day <= entry['item']['due_date'] < horizon] + undated, 'due')
+    direct(
+        [entry for entry in dated if day <= entry['item']['due_date'] < horizon]
+        + undated,
+        'due',
+    )
 
     reserve = _decimal(min(available, reserve_needed))
     available = _decimal(available - reserve)
-    direct([entry for entry in dated if horizon <= entry['item']['due_date'] < ahead_until], 'ahead')
+    direct(
+        [
+            entry
+            for entry in dated
+            if horizon <= entry['item']['due_date'] < ahead_until
+        ],
+        'ahead',
+    )
     direct(pools, 'pool')
     living = _decimal(reserve + available)
     if living > 0:
@@ -312,14 +377,26 @@ def _responsible_row(rows, due_date):
 
 
 def _reserve_needed(living_minimum, start, end):
-    if living_minimum <= 0 or end <= start:
+    """Prorate each calendar month over [start, end), then round the sum to cents."""
+    if living_minimum <= 0:
         return ZERO
-    month_days = calendar.monthrange(start.year, start.month)[1]
-    return _decimal(living_minimum * (end - start).days / month_days)
+
+    reserve = ZERO
+    while start < end:
+        month_days = calendar.monthrange(start.year, start.month)[1]
+        days_in_span = min((end - start).days, month_days - start.day + 1)
+        reserve += living_minimum * days_in_span / month_days
+        start += timedelta(days=days_in_span)
+    return _decimal(reserve)
 
 
 def _entry(item, amount, next_month=False):
-    return {'item': item, 'initial': amount, 'remaining': amount, 'next_month': next_month}
+    return {
+        'item': item,
+        'initial': amount,
+        'remaining': amount,
+        'next_month': next_month,
+    }
 
 
 def _obligation_order(entry):
@@ -363,7 +440,9 @@ def _direction_row(entry, directed, income_date, stage):
         'amount': _float(directed),
         'due_date': due_date,
         'stage': stage,
-        'urgency': stage if stage in ('overdue', 'ahead') else _urgency(due_date, income_date),
+        'urgency': stage
+        if stage in ('overdue', 'ahead')
+        else _urgency(due_date, income_date),
     }
 
 
@@ -403,7 +482,9 @@ def _notice(entry, amount, reason, income_date, estimated):
         'reason': reason,
         'expected_income_date': income_date,
         'expected_income_is_estimated': estimated,
-        'prepaid': _float(entry['initial'] - _decimal(amount)) if reason == 'awaiting' else 0.0,
+        'prepaid': _float(entry['initial'] - _decimal(amount))
+        if reason == 'awaiting'
+        else 0.0,
     }
 
 

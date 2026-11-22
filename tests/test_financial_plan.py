@@ -442,7 +442,8 @@ class FinancialPlanTestCase(unittest.TestCase):
             [item['due_date'] for item in directions],
             [date(2026, 8, 10), date(2026, 8, 15), date(2026, 8, 28), None],
         )
-        self.assertEqual(plan['income_allocations'][0]['reserve_missing'], 19086.0)
+        # The 20,000 minimum covers 27/31 of August and 4/30 of September.
+        self.assertEqual(plan['income_allocations'][0]['reserve_missing'], 19172.02)
         self.assertIn(
             'Сбер — Кредит', [item['label'] for item in plan['awaiting_obligations']]
         )
