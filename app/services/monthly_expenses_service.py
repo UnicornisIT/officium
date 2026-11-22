@@ -8,7 +8,7 @@ from flask import current_app
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Expense, MonthlyExpenseStop, User
+from app.models import Expense, MonthlyExpenseStop, User, Vehicle
 from app.time_utils import as_utc, financial_today
 from extensions import db
 
@@ -154,6 +154,55 @@ def _group_expenses(user_id, monthly_group_id):
     ).order_by(Expense.expense_date.asc(), Expense.id.asc()).all()
 
 
+def expected_monthly_expenses(user_id, month_start, expenses, *, include_missing):
+    stops = {
+        stop.monthly_group_id
+        for stop in MonthlyExpenseStop.query.filter(
+            MonthlyExpenseStop.user_id == user_id,
+            MonthlyExpenseStop.stopped_from <= month_start,
+        )
+    }
+    expected = [
+        expense
+        for expense in expenses
+        if expense.monthly_is_automatic
+        and expense.is_monthly
+        and expense.monthly_group_id not in stops
+    ]
+    if not include_missing:
+        return expected
+
+    occupied = {expense.monthly_group_id for expense in expenses}
+    groups = {}
+    for expense in Expense.query.filter(
+        Expense.user_id == user_id,
+        Expense.is_monthly.is_(True),
+        Expense.monthly_group_id.is_not(None),
+    ):
+        if (
+            expense.monthly_group_id not in occupied
+            and expense.monthly_group_id not in stops
+        ):
+            groups.setdefault(expense.monthly_group_id, []).append(expense)
+
+    for group in groups.values():
+        origin = _pick_origin_expense(group)
+        if _month_start(_month_key(origin.expense_date)) >= month_start:
+            continue
+        settings = _pick_settings_expense(group)
+        if settings.vehicle_id:
+            vehicle = db.session.get(Vehicle, settings.vehicle_id)
+            if vehicle and vehicle.archived_at:
+                continue
+        anchor_day = (
+            settings.monthly_anchor_day
+            or origin.monthly_anchor_day
+            or origin.expense_date.day
+        )
+        expected.append(_create_monthly_copy(settings, origin, month_start, anchor_day))
+    return expected
+
+
 def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, end_month, source_expense=None, *, commit=True):
     """Create missing monthly copies for one group in an inclusive month range."""
     stats = _stats(user_id=user_id, target_month=_month_key(end_month))
@@ -168,7 +217,6 @@ def generate_monthly_expenses_between(user_id, monthly_group_id, start_month, en
         source_expense = _pick_settings_expense(active_expenses)
 
     if source_expense.vehicle_id:
-        from app.models import Vehicle
         vehicle = db.session.get(Vehicle, source_expense.vehicle_id)
         if vehicle and vehicle.archived_at:
             return stats
@@ -264,11 +312,12 @@ def refresh_future_monthly_expenses(source_expense, previous_settings):
         Expense.user_id == source_expense.user_id,
         Expense.monthly_group_id == source_expense.monthly_group_id,
         Expense.is_monthly == True,  # noqa: E712
+        Expense.monthly_is_automatic.is_(True),
         Expense.generated_from_id.isnot(None),
         Expense.id != source_expense.id,
         Expense.expense_date > cutoff,
         Expense.monthly_settings_updated_at
-        == previous_settings["monthly_settings_updated_at"],
+        == previous_settings['monthly_settings_updated_at'],
     ).all()
     for copy in copies:
         month = copy.generated_for_month or _month_key(copy.expense_date)

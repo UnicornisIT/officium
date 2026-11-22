@@ -175,7 +175,9 @@ def init_app(app):
             **summary,
             debts=summary.get('active_debts', ()),
             active_count=len(summary.get('active_debts', ())),
-            daily_budget=summary['free_balance'] / days_left if days_left else 0,
+            daily_budget=summary['balance_after_expected'] / days_left
+            if days_left
+            else 0,
             window_daily=window_daily,
             window_daily_error=window_daily_error,
         )
@@ -216,7 +218,9 @@ def init_app(app):
             'finance.html',
             **summary,
             active_count=len(summary.get('active_debts', ())),
-            daily_budget=summary['free_balance'] / days_left if days_left else 0,
+            daily_budget=summary['balance_after_expected'] / days_left
+            if days_left
+            else 0,
             year_options=year_options,
             month_options=month_options,
         )

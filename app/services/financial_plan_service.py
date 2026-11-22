@@ -754,6 +754,7 @@ def _everyday_spending(user_id, start, until):
         .filter(
             Expense.user_id == user_id,
             Expense.is_monthly.is_(False),
+            Expense.monthly_is_automatic.is_(False),
             Expense.expense_date >= start,
             Expense.expense_date <= until,
         )
@@ -1100,6 +1101,10 @@ def _build_recurring_expense_items(expenses, today):
                     current.category, 'Другое'
                 ),
                 'expense_date': current.expense_date,
+                'payment_confirmed': (
+                    current.expense_date.replace(day=1) == today.replace(day=1)
+                    and not current.monthly_is_automatic
+                ),
                 'due_date': due_date,
                 'is_family_support': any(
                     marker in searchable_text for marker in FAMILY_SUPPORT_MARKERS

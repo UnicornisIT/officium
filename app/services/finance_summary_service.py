@@ -11,6 +11,7 @@ from app.services.financial_data import FinancialDataUnavailable, require_financ
 from app.services.goal_service import empty_goal_transfers, month_transfers
 from app.services.expense_title_service import clean_expense_title, expense_group_key
 from app.services.mortgage_interest_service import mortgage_month_interest
+from app.services.monthly_expenses_service import expected_monthly_expenses
 from app.utils import EXPENSE_CATEGORIES, PAYMENT_METHODS
 
 
@@ -82,7 +83,8 @@ def _expense_view(expense):
         ),
         'expense_date': getattr(expense, 'expense_date', None),
         'payment_method_label': PAYMENT_METHOD_LABELS.get(payment_method, 'Не указан'),
-        'is_monthly': bool(getattr(expense, 'is_monthly', False)),
+        'is_monthly': _is_recurring(expense),
+        'is_expected': bool(expense.monthly_is_automatic),
     }
 
 
@@ -205,13 +207,13 @@ def _build_expense_title_breakdown(expense_items, total_expenses):
     return breakdown[:12]
 
 
-def _payment_expense_overlap(expenses, payments):
+def _is_recurring(expense):
+    return bool(expense.is_monthly or expense.monthly_group_id)
+
+
+def _payment_expense_overlap(expenses, unmatched):
     # Only an explicit debt link and an exact date/amount match identify the
     # same cash movement. Consume matches so repeated entries cannot reuse it.
-    unmatched = Counter(
-        (payment.debt_id, payment.payment_date, _money_value(payment.amount))
-        for payment in payments
-    )
     overlap = recurring_overlap = ZERO
     for expense in expenses:
         key = (
@@ -223,18 +225,24 @@ def _payment_expense_overlap(expenses, payments):
             continue
         unmatched[key] -= 1
         overlap += key[2]
-        if expense.is_monthly:
+        if _is_recurring(expense):
             recurring_overlap += key[2]
     return overlap, recurring_overlap
 
 
 def _with_finance_insights(summary):
     expenses = summary.get('expenses_this_month', [])
+    expected_expenses = summary.get('expected_expenses_this_month', [])
     total_expenses = _money_value(summary.get('total_expenses', 0))
     total_incomes = _money_value(summary.get('total_incomes', 0))
     total_payments = _money_value(summary.get('total_payments', 0))
-    overlap, recurring_overlap = _payment_expense_overlap(
-        expenses, summary.get('payments_this_month', [])
+    unmatched_payments = Counter(
+        (payment.debt_id, payment.payment_date, _money_value(payment.amount))
+        for payment in summary.get('payments_this_month', [])
+    )
+    overlap, recurring_overlap = _payment_expense_overlap(expenses, unmatched_payments)
+    expected_overlap, _ = _payment_expense_overlap(
+        expected_expenses, unmatched_payments
     )
     goal_transfers_net = _money_value(
         (summary.get('goal_transfers') or {}).get('net', 0)
@@ -249,6 +257,9 @@ def _with_finance_insights(summary):
     recurring_expenses = [item for item in expense_items if item['is_monthly']]
     recurring_expenses_total = sum(
         (item['amount'] for item in recurring_expenses), ZERO
+    )
+    expected_expenses_total = sum(
+        (_money_value(expense.amount) for expense in expected_expenses), ZERO
     )
     one_time_expenses_total = max(
         total_expenses - recurring_expenses_total - (overlap - recurring_overlap), ZERO
@@ -267,30 +278,36 @@ def _with_finance_insights(summary):
         and month_start.month == today.month
     )
     average_daily_expenses = total_expenses / elapsed_days if elapsed_days else ZERO
-    projected_expenses = (
-        average_daily_expenses * month_days
-        if is_current_month and elapsed_days
-        else total_expenses
-    )
-    projected_balance = (
-        total_incomes
-        - projected_expenses
-        - total_payments
-        + overlap
-        - goal_transfers_net
-        if is_current_month
-        else free_balance
-    )
+    projected_expenses = total_expenses
+    projected_balance = free_balance
+    balance_after_expected = free_balance
+    if month_end and month_end > today:
+        balance_after_expected -= expected_expenses_total - expected_overlap
+        projected_expenses += expected_expenses_total
+        if is_current_month:
+            projected_expenses += _money_value(
+                one_time_expenses_total * (month_days - elapsed_days) / elapsed_days
+            )
+        projected_balance = (
+            total_incomes
+            - projected_expenses
+            - total_payments
+            + overlap
+            + expected_overlap
+            - goal_transfers_net
+        )
 
     summary.update(
         {
             'free_balance': free_balance,
+            'balance_after_expected': balance_after_expected,
             'cashflow': {
                 'total_outflow': total_outflow,
                 'payments_in_expenses': overlap,
                 'payments_outside_expenses': total_payments - overlap,
                 'goal_transfers_net': goal_transfers_net,
                 'recurring_expenses_total': recurring_expenses_total,
+                'expected_expenses_total': expected_expenses_total,
                 'one_time_expenses_total': one_time_expenses_total,
                 'required_outflow': required_outflow,
                 'flexible_outflow': one_time_expenses_total,
@@ -320,7 +337,8 @@ def _with_finance_insights(summary):
                 expense_items, key=lambda item: item['amount'], reverse=True
             )[:5],
             'recurring_expenses_this_month': sorted(
-                recurring_expenses,
+                recurring_expenses
+                + [_expense_view(expense) for expense in expected_expenses],
                 key=lambda item: (item['expense_date'] or date.max, item['title']),
             ),
             'top_spending_days': _build_spending_days(expenses, total_expenses),
@@ -615,10 +633,16 @@ def _cashflow_summary(user_id, period):
         .filter(Income.income_date >= month_start, Income.income_date < month_end)
         .all()
     )
-    expenses_this_month = (
+    month_expenses = (
         Expense.query.filter_by(user_id=user_id)
         .filter(Expense.expense_date >= month_start, Expense.expense_date < month_end)
         .all()
+    )
+    expenses_this_month = [
+        expense for expense in month_expenses if not expense.monthly_is_automatic
+    ]
+    expected_expenses = expected_monthly_expenses(
+        user_id, month_start, month_expenses, include_missing=month_end > today
     )
     # Archiving changes obligations, not the history of recorded payments.
     payments_this_month = (
@@ -636,11 +660,8 @@ def _cashflow_summary(user_id, period):
         .filter(Income.income_date >= month_start, Income.income_date < month_end)
         .scalar()
     )
-    total_expenses = _money_value(
-        Expense.query.with_entities(func.coalesce(func.sum(Expense.amount), 0))
-        .filter_by(user_id=user_id)
-        .filter(Expense.expense_date >= month_start, Expense.expense_date < month_end)
-        .scalar()
+    total_expenses = sum(
+        (_money_value(expense.amount) for expense in expenses_this_month), ZERO
     )
     total_payments = sum(
         (_money_value(payment.amount) for payment in payments_this_month), ZERO
@@ -652,6 +673,7 @@ def _cashflow_summary(user_id, period):
             **period,
             'incomes_this_month': incomes_this_month,
             'expenses_this_month': expenses_this_month,
+            'expected_expenses_this_month': expected_expenses,
             'payments_this_month': payments_this_month,
             'total_incomes': total_incomes,
             'total_expenses': total_expenses,

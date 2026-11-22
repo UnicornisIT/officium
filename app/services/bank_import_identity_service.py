@@ -95,7 +95,9 @@ def legacy_match_exists(user_id, row):
             Expense.expense_date == row.expense_date,
             Expense.amount == row.amount,
             Expense.title == row.title,
-            Expense.id != row.monthly_match_id if row.monthly_match_id else True,
+            Expense.id != row.monthly_match_id
+            if isinstance(row.monthly_match_id, int)
+            else True,
             ~db.session.query(BankImportEntry)
             .filter_by(expense_id=Expense.id)
             .exists(),

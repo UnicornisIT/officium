@@ -662,6 +662,7 @@
                         <div>
                             <strong>{{ item.title }}</strong>
                             <span>
+                                {{ 'Оплачено' if item.payment_confirmed else 'Плановое обязательство' }} ·
                                 {% if item.excluded_as_debt_duplicate %}
                                 Уже учтено в «{{ item.duplicate_debt_label }}»
                                 {% elif item.potential_debt_duplicate %}

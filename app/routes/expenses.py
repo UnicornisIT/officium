@@ -17,7 +17,9 @@ from app.services.bank_statement_import_service import (
 from app.services.expense_title_service import expense_group_key
 from app.services.history_month_service import month_key, resolve_active_month
 from app.services.monthly_expenses_service import (
+    expected_monthly_expenses,
     find_monthly_expense_for_month,
+    generate_monthly_expenses_between,
     generate_monthly_expenses_from_start_date,
     refresh_future_monthly_expenses,
     snapshot_monthly_expense_settings,
@@ -161,7 +163,7 @@ def init_app(app):
                 .order_by(Expense.expense_date.desc())
                 .all()
             )
-        groups = group_entries_by_month(expenses_list, 'expense_date')
+        groups = _expense_history_groups(expenses_list)
         active_month = resolve_active_month(groups, request.args.get('month'))
         return render_template(
             'expenses.html',
@@ -373,7 +375,9 @@ def init_app(app):
                 )
 
             if action == 'update_monthly':
-                monthly_expense = _get_import_monthly_match(monthly_match_id)
+                monthly_expense = _get_import_monthly_match(
+                    monthly_match_id, expense_date
+                )
                 if not monthly_expense:
                     raise ValueError(
                         'Ежемесячный расход для одной из строк не найден. Загрузите выписку еще раз.'
@@ -423,6 +427,7 @@ def init_app(app):
         if request.method == 'POST':
             try:
                 values = _expense_form_values()
+                values['confirm_payment'] = request.form.get('confirm_payment') == 'on'
                 photo = request.files.get('file')
                 if (
                     photo
@@ -460,7 +465,7 @@ def init_app(app):
             .order_by(Expense.expense_date.desc())
             .all()
         )
-        groups = group_entries_by_month(expenses_list, 'expense_date')
+        groups = _expense_history_groups(expenses_list)
         # After a failed POST the expense was rolled back, so this is its stored month.
         active_month = resolve_active_month(groups, month_key(expense.expense_date))
         return render_template(
@@ -508,6 +513,20 @@ def init_app(app):
         return redirect(url_for('expenses', success='Расход удалён'))
 
 
+def _expense_history_groups(expenses):
+    groups = group_entries_by_month(expenses, 'expense_date')
+    for group in groups:
+        group['total_amount'] = sum(
+            (
+                Decimal(str(expense.amount))
+                for expense in group['items']
+                if not expense.monthly_is_automatic
+            ),
+            Decimal('0.00'),
+        )
+    return groups
+
+
 def _stopped_monthly_groups():
     return {
         stop.monthly_group_id
@@ -533,8 +552,12 @@ def _prepare_import_rows(rows, statement_digest):
 
 def _mark_import_monthly_matches(rows):
     matched_rows = []
+    candidates_by_month = {}
     for row in rows:
-        match = _find_import_monthly_match(row)
+        month = row.expense_date.replace(day=1)
+        if month not in candidates_by_month:
+            candidates_by_month[month] = _monthly_expenses_for_import_month(month)
+        match = _find_import_monthly_match(row, candidates_by_month[month])
         if not match:
             continue
         _apply_monthly_match(row, match)
@@ -557,8 +580,7 @@ def _mark_import_monthly_matches(rows):
             row.default_import_action = 'update_monthly' if row is chosen else 'create'
 
 
-def _find_import_monthly_match(row):
-    candidates = _monthly_expenses_for_import_month(row.expense_date)
+def _find_import_monthly_match(row, candidates):
     best = None
     best_rank = None
     for expense in candidates:
@@ -569,7 +591,7 @@ def _find_import_monthly_match(row):
             continue
         amount_diff = abs(row.amount - Decimal(str(expense.amount)))
         date_diff = abs((row.expense_date - expense.expense_date).days)
-        rank = (-score, amount_diff, date_diff, expense.id or 0)
+        rank = (-score, amount_diff, date_diff, expense.id or expense.generated_from_id)
         if best_rank is None or rank < best_rank:
             best = expense
             best_rank = rank
@@ -577,27 +599,35 @@ def _find_import_monthly_match(row):
     return best
 
 
-def _monthly_expenses_for_import_month(expense_date):
-    start = date(expense_date.year, expense_date.month, 1)
+def _monthly_expenses_for_import_month(start):
     end = date(
-        expense_date.year + (1 if expense_date.month == 12 else 0),
-        1 if expense_date.month == 12 else expense_date.month + 1,
+        start.year + (1 if start.month == 12 else 0),
+        1 if start.month == 12 else start.month + 1,
         1,
     )
-    month = expense_date.strftime('%Y-%m')
-    return Expense.query.filter(
+    month = month_key(start)
+    expenses = Expense.query.filter(
         Expense.user_id == current_user.id,
-        Expense.is_monthly == True,  # noqa: E712
         Expense.monthly_group_id.isnot(None),
         or_(
             Expense.generated_for_month == month,
             (Expense.expense_date >= start) & (Expense.expense_date < end),
         ),
     ).all()
+    expected = expected_monthly_expenses(
+        current_user.id, start, expenses, include_missing=True
+    )
+    return [
+        expense
+        for expense in expenses
+        if expense.is_monthly and not expense.monthly_is_automatic
+    ] + expected
 
 
 def _apply_monthly_match(row, expense):
-    row.monthly_match_id = expense.id
+    row.monthly_match_id = (
+        expense.id or f'{expense.generated_from_id}:{expense.generated_for_month}'
+    )
     row.monthly_match_title = expense.title
     row.monthly_match_amount = str(expense.amount)
     row.monthly_match_category = expense.category
@@ -663,17 +693,35 @@ def _monthly_title_key(title):
     return key
 
 
-def _get_import_monthly_match(monthly_id):
+def _get_import_monthly_match(monthly_id, expense_date):
     if not monthly_id:
         return None
+    source_id, _, planned_month = str(monthly_id).partition(':')
     try:
-        monthly_id = int(monthly_id)
-    except (TypeError, ValueError):
+        monthly_id = int(source_id)
+    except ValueError:
         return None
     expense = db.session.get(Expense, monthly_id)
-    if not expense or expense.user_id != current_user.id or not expense.is_monthly:
+    if not expense or expense.user_id != current_user.id:
         return None
-    return expense
+    if not planned_month:
+        return expense if expense.is_monthly else None
+    if not expense.monthly_group_id or planned_month != month_key(expense_date):
+        return None
+
+    # The scheduler may have created the occurrence since preview. Use its
+    # existing row or create it inside the import's transaction.
+    generate_monthly_expenses_between(
+        expense.user_id,
+        expense.monthly_group_id,
+        planned_month,
+        planned_month,
+        commit=False,
+    )
+    match = find_monthly_expense_for_month(
+        expense.user_id, expense.monthly_group_id, planned_month
+    )
+    return match if match and match.is_monthly else None
 
 
 def _update_monthly_expense_from_import(

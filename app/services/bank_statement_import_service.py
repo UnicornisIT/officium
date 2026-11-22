@@ -323,7 +323,7 @@ class ImportedExpenseRow:
     raw_amount: str = ''
     row_number: int = 0
     duplicate: bool = False
-    monthly_match_id: int = None
+    monthly_match_id: int | str | None = None
     monthly_match_title: str = ''
     monthly_match_amount: str = ''
     monthly_match_category: str = ''

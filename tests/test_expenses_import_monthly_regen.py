@@ -58,7 +58,9 @@ class ExpensesImportMonthlyRegenTestCase(unittest.TestCase):
             db.session.remove()
             db.drop_all()
 
-    def import_statement(self, invalid_second_row=False, expense_date="2025-02-15"):
+    def import_statement(
+        self, invalid_second_row=False, expense_date='2025-02-15', duplicate=False
+    ):
         statement_date = date.fromisoformat(expense_date).strftime("%d.%m.%Y")
         statement = (
             "Дата операции;Описание операции;Сумма операции;Категория;Карта\n"
@@ -77,7 +79,10 @@ class ExpensesImportMonthlyRegenTestCase(unittest.TestCase):
         )
         self.assertEqual(preview.status_code, 200)
         html = preview.get_data(as_text=True)
-        self.assertRegex(html, r'name="action_0"[\s\S]*value="update_monthly" selected')
+        default_action = 'skip' if duplicate else 'update_monthly'
+        self.assertRegex(
+            html, rf'name="action_0"[\s\S]*value="{default_action}" selected'
+        )
         token = re.search(r'name="import_token" value="([^"]+)"', html).group(1)
         data = {
             "import_token": token,
@@ -124,6 +129,32 @@ class ExpensesImportMonthlyRegenTestCase(unittest.TestCase):
             self.assertEqual(expenses[2].monthly_anchor_day, 15)
             self.assertEqual(expenses[2].comment, "Statement import")
             self.assertEqual(expenses[2].generated_from_id, expenses[0].id)
+
+    def test_import_before_scheduler_confirms_one_occurrence_and_reimport_skips_it(
+        self,
+    ):
+        statement_date = '2025-03-15'
+        with self.app.app_context():
+            self.assertFalse(
+                Expense.query.filter_by(generated_for_month='2025-03').first()
+            )
+
+        self.assertEqual(
+            self.import_statement(expense_date=statement_date).status_code, 302
+        )
+        self.assertEqual(
+            self.import_statement(
+                expense_date=statement_date, duplicate=True
+            ).status_code,
+            302,
+        )
+
+        with self.app.app_context():
+            march = Expense.query.filter_by(generated_for_month='2025-03').one()
+            self.assertFalse(march.monthly_is_automatic)
+            self.assertEqual(march.expense_date, date.fromisoformat(statement_date))
+            self.assertEqual(march.amount, Decimal('900.00'))
+            self.assertEqual(Expense.query.count(), 3)
 
     def test_invalid_later_row_rolls_back_update_and_generated_copies(self):
         response = self.import_statement(invalid_second_row=True)

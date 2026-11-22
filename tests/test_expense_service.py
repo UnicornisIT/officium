@@ -108,6 +108,29 @@ class ExpenseServiceTestCase(unittest.TestCase):
         }).status_code, 302)
         self.assertIsNone(expense.repayment_debt_id)
 
+    def test_web_edit_confirms_payment_only_when_requested(self):
+        origin = self.create(is_monthly=True)
+        occurrence = Expense.query.filter_by(
+            monthly_group_id=origin.monthly_group_id, generated_for_month='2026-02'
+        ).one()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session['_user_id'] = str(self.owner_id)
+            session['_fresh'] = True
+
+        path = f'/expenses/edit/{occurrence.id}'
+        self.assertIn('Оплата не подтверждена', client.get(path).get_data(as_text=True))
+        values = self.values | {'is_monthly': 'on', 'expense_date': '2026-02-28'}
+        self.assertEqual(client.post(path, data=values).status_code, 302)
+        self.assertTrue(occurrence.monthly_is_automatic)
+        self.assertEqual(
+            client.post(path, data=values | {'confirm_payment': 'on'}).status_code, 302
+        )
+        self.assertFalse(occurrence.monthly_is_automatic)
+        self.assertEqual(
+            Expense.query.filter_by(monthly_group_id=origin.monthly_group_id).count(), 3
+        )
+
     def test_invalid_create_and_update_leave_data_and_log_unchanged(self):
         expense = self.create()
         for field, invalid in [
@@ -281,7 +304,15 @@ class ExpenseServiceTestCase(unittest.TestCase):
         june = Expense.query.filter_by(monthly_group_id=group_id, generated_for_month='2026-06').one()
         august = Expense.query.filter_by(monthly_group_id=group_id, generated_for_month='2026-08').one()
         self.assertTrue(august.monthly_is_automatic)
-        self.update(august, is_monthly=True, expense_date='2026-08-31', amount='2000')
+        self.update(august, is_monthly=True, expense_date='2026-08-31', amount='1999')
+        self.assertTrue(august.monthly_is_automatic)
+        self.update(
+            august,
+            is_monthly=True,
+            expense_date='2026-08-31',
+            amount='2000',
+            confirm_payment=True,
+        )
         self.assertFalse(august.monthly_is_automatic)
         history = [row.to_dict() for row in Expense.query.filter(
             Expense.monthly_group_id == group_id, Expense.expense_date <= date(2026, 6, 15),
@@ -289,7 +320,7 @@ class ExpenseServiceTestCase(unittest.TestCase):
         august_id, june_id = august.id, june.id
 
         stop_expense_recurrence(user_id=self.owner_id, expense_id=june_id)
-        self.assertFalse(june.monthly_is_automatic)
+        self.assertTrue(june.monthly_is_automatic)
         self.assertEqual(db.session.get(MonthlyExpenseStop, (self.owner_id, group_id)).stopped_from, date(2026, 7, 1))
         self.assertIsNotNone(db.session.get(Expense, august_id))
         self.assertEqual(Expense.query.filter_by(monthly_group_id=group_id, generated_for_month='2026-07').count(), 0)

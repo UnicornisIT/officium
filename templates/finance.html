@@ -68,7 +68,7 @@
             </div>
             <i class="bi bi-dash-lg finance-equation__sign"></i>
             <div class="finance-equation__item">
-                <span>Расходы</span>
+                <span>Подтверждённые расходы</span>
                 <strong>{{ total_expenses|money }}</strong>
             </div>
             <i class="bi bi-dash-lg finance-equation__sign"></i>
@@ -175,7 +175,7 @@
                         <span style="width: {{ [cashflow.free_balance_percent, 100]|min }}%"></span>
                     </div>
                     <div class="finance-load__meta">
-                        {% if cashflow.is_current_month %}
+                        {% if month_end > today %}
                         Прогноз остатка: {{ cashflow.projected_balance|money }}
                         {% else %}
                         Финальный остаток: {{ free_balance|money }}
@@ -324,7 +324,7 @@
                 <div class="finance-panel__header">
                     <div>
                         <h2>Регулярные расходы</h2>
-                        <p>Ежемесячные траты: {{ cashflow.recurring_expenses_total|money }}.</p>
+                        <p>Оплачено {{ cashflow.recurring_expenses_total|money }} · {{ 'Ожидается' if month_end > today else 'Без подтверждения' }} {{ cashflow.expected_expenses_total|money }}</p>
                     </div>
                 </div>
 
@@ -334,7 +334,7 @@
                     <div class="compact-money-row">
                         <div>
                             <strong>{{ expense.title }}</strong>
-                            <span>{{ expense.category_label }}</span>
+                            <span>{{ expense.expense_date.strftime('%d.%m.%Y') }} · {{ 'Оплата не подтверждена' if expense.is_expected else 'Оплачено' }}</span>
                         </div>
                         <strong>{{ expense.amount|money }}</strong>
                     </div>
@@ -343,8 +343,7 @@
                 {% else %}
                 <div class="finance-empty finance-empty--small">
                     <i class="bi bi-repeat"></i>
-                    <strong>Регулярных списаний нет</strong>
-                    <span>Все расходы за выбранный месяц сейчас считаются разовыми.</span>
+                    <strong>Регулярных расходов нет</strong>
                 </div>
                 {% endif %}
             </section>

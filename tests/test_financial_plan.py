@@ -966,7 +966,7 @@ class FinancialPlanTestCase(unittest.TestCase):
         self._login()
         with self.client.session_transaction() as session:
             session['telegram_mini_app'] = True
-        with self._fail_select('sum(expenses.amount)', 'expenses.expense_date <'):
+        with self._fail_select('from expenses', 'expenses.expense_date <'):
             with self.app.app_context():
                 user = db.session.get(User, self.user_id)
                 with self.assertRaises(FinancialDataUnavailable):
@@ -1028,9 +1028,7 @@ class FinancialPlanTestCase(unittest.TestCase):
             for _ in range(2):
                 summary = get_finance_summary(self.user_id, 2026, 6)
                 self.assertEqual(summary['free_balance'], Decimal('-12.34'))
-                with self._fail_select(
-                    'sum(expenses.amount)', 'expenses.expense_date <'
-                ):
+                with self._fail_select('from expenses', 'expenses.expense_date <'):
                     with self.assertRaises(FinancialDataUnavailable):
                         get_finance_summary(self.user_id, 2026, 6)
 

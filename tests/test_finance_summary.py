@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from app import create_app
 from app.models import Debt, Expense, Income, Payment, User
+from app.services.expense_service import create_expense, stop_expense_recurrence
 from app.services.finance_summary_service import get_finance_summary
 from app.services.financial_plan_service import build_financial_plan
 from extensions import db
@@ -75,6 +76,103 @@ class FinanceSummaryTestCase(unittest.TestCase):
                 self.assertEqual(restored['total_payments'], before['total_payments'])
                 self.assertEqual(restored['cashflow'], before['cashflow'])
                 self.assertEqual(len(restored['payments_this_month']), 1)
+
+    def test_subscription_is_counted_once_in_forecast_and_only_after_confirmation_in_actuals(
+        self,
+    ):
+        with (
+            self.app.app_context(),
+            patch('app.services.finance_summary_service.financial_today') as clock,
+        ):
+            clock.return_value = date(2026, 11, 1)
+            subscription = Expense(
+                user_id=self.user_id,
+                amount=Decimal('3000.00'),
+                category='subscriptions',
+                title='Подписка',
+                expense_date=date(2026, 11, 28),
+                is_monthly=True,
+                monthly_is_automatic=True,
+            )
+            db.session.add(subscription)
+            db.session.commit()
+
+            before = get_finance_summary(self.user_id)
+            self.assertEqual(
+                before['cashflow']['projected_expenses'], Decimal('3000.00')
+            )
+            self.assertEqual(before['total_expenses'], Decimal('0.00'))
+            self.assertEqual(before['expense_category_breakdown'], [])
+            self.assertEqual(
+                before['cashflow']['expected_expenses_total'], Decimal('3000.00')
+            )
+
+            clock.return_value = date(2026, 11, 29)
+            overdue = get_finance_summary(self.user_id)
+            self.assertEqual(overdue['total_expenses'], Decimal('0.00'))
+
+            subscription.monthly_is_automatic = False
+            db.session.commit()
+            after = get_finance_summary(self.user_id)
+            self.assertEqual(after['total_expenses'], Decimal('3000.00'))
+            self.assertEqual(
+                after['cashflow']['projected_expenses'], Decimal('3000.00')
+            )
+            self.assertEqual(
+                after['cashflow']['expected_expenses_total'], Decimal('0.00')
+            )
+
+    def test_rollover_forecast_uses_missing_occurrence_without_writing_and_respects_stop(
+        self,
+    ):
+        self.app.config['MONTHLY_EXPENSES_TODAY'] = date(2026, 12, 31)
+        with (
+            self.app.app_context(),
+            patch(
+                'app.services.finance_summary_service.financial_today',
+                return_value=date(2027, 1, 3),
+            ),
+        ):
+            subscription = create_expense(
+                user_id=self.user_id,
+                amount='3000.01',
+                category='subscriptions',
+                title='Подписка',
+                expense_date='2026-12-31',
+                is_monthly=True,
+            )
+            db.session.add(
+                Expense(
+                    user_id=self.user_id,
+                    amount=Decimal('10.01'),
+                    category='other',
+                    title='Покупка',
+                    expense_date=date(2027, 1, 2),
+                )
+            )
+            db.session.commit()
+
+            for _ in range(2):
+                summary = get_finance_summary(self.user_id)
+                self.assertEqual(summary['total_expenses'], Decimal('10.01'))
+                self.assertEqual(
+                    summary['cashflow']['projected_expenses'], Decimal('3103.45')
+                )
+                self.assertEqual(
+                    summary['recurring_expenses_this_month'][0]['expense_date'],
+                    date(2027, 1, 31),
+                )
+                self.assertEqual(Expense.query.count(), 2)
+
+            stop_expense_recurrence(user_id=self.user_id, expense_id=subscription.id)
+            self.assertEqual(
+                get_finance_summary(self.user_id)['cashflow']['projected_expenses'],
+                Decimal('103.44'),
+            )
+            self.assertEqual(
+                get_finance_summary(self.user_id, 2026, 12)['total_expenses'],
+                Decimal('3000.01'),
+            )
 
     def test_deleting_archived_debt_does_not_change_displayed_month(self):
         with self.app.app_context(), patch('app.services.finance_summary_service.financial_today') as clock:

@@ -145,8 +145,24 @@ def create_expense(*, user_id, amount, title, expense_date, category=None,
     return _save(expense, 'expense_create', commit, defer_commit)
 
 
-def update_expense(*, user_id, expense_id, amount, category, title, expense_date,
-                   payment_method=None, comment=None, is_monthly=False, commit=True, vehicle_id=_UNCHANGED, defer_commit=False, repayment_debt_id=_UNCHANGED, **extra_fields):
+def update_expense(
+    *,
+    user_id,
+    expense_id,
+    amount,
+    category,
+    title,
+    expense_date,
+    payment_method=None,
+    comment=None,
+    is_monthly=False,
+    commit=True,
+    vehicle_id=_UNCHANGED,
+    defer_commit=False,
+    repayment_debt_id=_UNCHANGED,
+    confirm_payment=False,
+    **extra_fields,
+):
     _check_options(extra_fields)
     expense = _owned_expense(user_id, expense_id)
     values = _validate(amount=amount, category=category, title=title, expense_date=expense_date,
@@ -168,7 +184,8 @@ def update_expense(*, user_id, expense_id, amount, category, title, expense_date
     ):
         raise ValueError('Для этого ежемесячного расхода уже есть запись в выбранном месяце.')
     expense.vehicle_id = vehicle_id
-    expense.monthly_is_automatic = False
+    if confirm_payment:
+        expense.monthly_is_automatic = False
     for key, value in values.items():
         setattr(expense, key, value)
     if is_monthly:
@@ -204,7 +221,6 @@ def stop_expense_recurrence(*, user_id, expense_id, commit=True):
     if expense.vehicle_id and _existing_vehicle(user_id, expense.vehicle_id).archived_at:
         raise ValueError('Автомобиль в архиве: сначала восстановите его, чтобы изменить расход.')
     stopped_from = expense.expense_date.replace(day=1) + relativedelta(months=1)
-    expense.monthly_is_automatic = False
     _stop_monthly_series(expense, stopped_from)
     record_activity('expense_repeat_stop', db.session.get(User, user_id), entity_type='expense',
                     entity_id=expense.id, description=expense.category, commit=False)
