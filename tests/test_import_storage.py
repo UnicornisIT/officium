@@ -22,12 +22,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app import create_app, resolve_instance_path
-from app.models import Expense, User
+from app.models import BankImportEntry, Expense, User
 from app.services import import_storage_service as storage
 from app.services.bank_statement_import_service import parse_bank_statement
 from extensions import db
 
-CSV_HEADER = 'Сбербанк Онлайн\nДата операции;Описание операции;Сумма операции;Категория;Карта\n'
+CSV_HEADER = (
+    'Сбербанк Онлайн\nДата операции;Описание операции;Сумма операции;Категория;Карта\n'
+)
 
 
 def statement(*lines):
@@ -35,8 +37,10 @@ def statement(*lines):
 
 
 def expense_lines(count, start=0):
-    return [f'{index % 28 + 1:02d}.07.2026;SYNTH SHOP {index};-{100 + index},00;Супермаркеты;*0000'
-            for index in range(start, start + count)]
+    return [
+        f'{index % 28 + 1:02d}.07.2026;SYNTH SHOP {index};-{100 + index},00;Супермаркеты;*0000'
+        for index in range(start, start + count)
+    ]
 
 
 DiskUsage = namedtuple('DiskUsage', 'total used free')
@@ -50,7 +54,9 @@ class InstancePathTestCase(unittest.TestCase):
     def make_release(self, with_shared=True):
         release = self.root / 'releases' / 'v1.0.0-0123456789ab'
         release.mkdir(parents=True)
-        (release / '.officium-release-ready').write_text('0' * 40 + '\n', encoding='utf-8')
+        (release / '.officium-release-ready').write_text(
+            '0' * 40 + '\n', encoding='utf-8'
+        )
         if with_shared:
             (self.root / 'shared' / 'instance').mkdir(parents=True)
         return release
@@ -78,7 +84,9 @@ class InstancePathTestCase(unittest.TestCase):
         release = self.make_release()
         explicit = self.root / 'elsewhere'
         self.assertEqual(
-            resolve_instance_path(str(release), environ={'OFFICIUM_INSTANCE_PATH': str(explicit)}),
+            resolve_instance_path(
+                str(release), environ={'OFFICIUM_INSTANCE_PATH': str(explicit)}
+            ),
             str(explicit),
         )
 
@@ -129,7 +137,12 @@ class ImportStorageAppTestCase(unittest.TestCase):
             db.engine.dispose()
 
     def add_user(self, telegram_id, username):
-        user = User(telegram_id=telegram_id, username=username, first_name='Synthetic', role='user')
+        user = User(
+            telegram_id=telegram_id,
+            username=username,
+            first_name='Synthetic',
+            role='user',
+        )
         db.session.add(user)
         db.session.commit()
         return user.id
@@ -147,22 +160,26 @@ class ImportStorageAppTestCase(unittest.TestCase):
         )
 
     def preview_token(self, response):
-        match = re.search(r'name="import_token" value="([^"]+)"', response.get_data(as_text=True))
+        match = re.search(
+            r'name="import_token" value="([^"]+)"', response.get_data(as_text=True)
+        )
         self.assertIsNotNone(match, response.get_data(as_text=True)[:500])
         return match.group(1)
 
     def confirm(self, client, token, rows=1, **fields):
         form = {'import_token': token, 'row_count': str(rows)}
         for index in range(rows):
-            form.update({
-                f'action_{index}': 'create',
-                f'expense_date_{index}': '2026-07-01',
-                f'title_{index}': f'SYNTH SHOP {index}',
-                f'category_{index}': 'products',
-                f'amount_{index}': f'{100 + index}.00',
-                f'payment_method_{index}': 'card',
-                f'comment_{index}': 'Импорт выписки: Сбер',
-            })
+            form.update(
+                {
+                    f'action_{index}': 'create',
+                    f'expense_date_{index}': '2026-07-01',
+                    f'title_{index}': f'SYNTH SHOP {index}',
+                    f'category_{index}': 'products',
+                    f'amount_{index}': f'{100 + index}.00',
+                    f'payment_method_{index}': 'card',
+                    f'comment_{index}': 'Импорт выписки: Сбер',
+                }
+            )
         form.update(fields)
         return client.post('/expenses/import/confirm', data=form)
 
@@ -177,13 +194,129 @@ class ImportStorageAppTestCase(unittest.TestCase):
 
 
 class ImportFlowTestCase(ImportStorageAppTestCase):
+    def test_two_previews_of_same_file_only_import_once(self):
+        self.login(self.client, self.user_id)
+        data = statement(*expense_lines(1))
+        first = self.preview_token(self.upload(self.client, data))
+        second = self.preview_token(self.upload(self.client, data, 'renamed.csv'))
+
+        self.assertEqual(self.confirm(self.client, first).status_code, 302)
+        self.assertEqual(self.confirm(self.client, second).status_code, 302)
+        self.assertEqual(self.expense_count(), 1)
+        repeated = self.upload(self.client, data)
+        self.assertIn('Точный дубликат', repeated.get_data(as_text=True))
+
+    def test_parallel_confirmations_of_separate_previews_only_import_once(self):
+        clients = [self.app.test_client(), self.app.test_client()]
+        data = statement(*expense_lines(1))
+        for client in clients:
+            self.login(client, self.user_id)
+        tokens = [self.preview_token(self.upload(client, data)) for client in clients]
+        barrier = threading.Barrier(2)
+        statuses = []
+
+        def confirm(client, token):
+            barrier.wait(timeout=10)
+            statuses.append(self.confirm(client, token).status_code)
+
+        threads = [
+            threading.Thread(target=confirm, args=pair) for pair in zip(clients, tokens)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=15)
+
+        self.assertEqual(statuses, [302, 302])
+        self.assertEqual(self.expense_count(), 1)
+
+    def test_identical_rows_in_one_file_are_separate_and_reexport_is_possible_duplicate(
+        self,
+    ):
+        self.login(self.client, self.user_id)
+        line = expense_lines(1)[0]
+        token = self.preview_token(self.upload(self.client, statement(line, line)))
+        self.assertEqual(
+            self.confirm(
+                self.client, token, rows=2, title_1='SYNTH SHOP 0', amount_1='100'
+            ).status_code,
+            302,
+        )
+        self.assertEqual(self.expense_count(), 2)
+
+        reexport = statement(line.replace('-100,00', '-100,001'))
+        preview = self.upload(self.client, reexport)
+        html = preview.get_data(as_text=True)
+        self.assertIn('Возможный дубликат', html)
+        self.assertRegex(html, r'name="action_0"[\s\S]*value="skip" selected')
+        self.assertEqual(
+            self.confirm(
+                self.client, self.preview_token(preview), action_0='skip'
+            ).status_code,
+            302,
+        )
+        self.assertEqual(self.expense_count(), 2)
+        token = self.preview_token(self.upload(self.client, reexport))
+        self.assertEqual(self.confirm(self.client, token).status_code, 302)
+        self.assertEqual(self.expense_count(), 3)
+
+    def test_bank_transaction_ids_distinguish_purchases_and_are_scoped_to_source_and_user(
+        self,
+    ):
+        self.login(self.client, self.user_id)
+        other = self.app.test_client()
+        self.login(other, self.other_user_id)
+
+        def export(transaction_id, bank='Сбербанк Онлайн', card='*0000', trailing=''):
+            header = CSV_HEADER.rstrip('\n').replace('Сбербанк Онлайн', bank)
+            line = expense_lines(1)[0].replace('*0000', card)
+            return (
+                f'{header};Transaction ID\n{line};{transaction_id}\n{trailing}'.encode(
+                    'cp1251'
+                )
+            )
+
+        token = self.preview_token(self.upload(self.client, export('a')))
+        self.assertEqual(
+            self.confirm(
+                self.client, token, title_0='Edited title', amount_0='99.99'
+            ).status_code,
+            302,
+        )
+        repeat = self.upload(self.client, export('a', trailing='\n'))
+        self.assertIn('Точный дубликат', repeat.get_data(as_text=True))
+        self.assertEqual(
+            self.confirm(self.client, self.preview_token(repeat)).status_code, 302
+        )
+        self.assertEqual(self.expense_count(), 1)
+
+        for client, data in (
+            (self.client, export('b')),
+            (self.client, export('a', bank='Т-Банк')),
+            (self.client, export('a', card='*1111')),
+            (other, export('a')),
+        ):
+            preview = self.upload(client, data)
+            self.assertNotIn('дубликат', preview.get_data(as_text=True))
+            self.assertEqual(
+                self.confirm(client, self.preview_token(preview)).status_code, 302
+            )
+        self.assertEqual(self.expense_count(), 4)
+        self.assertEqual(self.expense_count(self.other_user_id), 1)
+
     def test_preview_is_stored_outside_the_release_and_confirmed(self):
         self.login(self.client, self.user_id)
         response = self.upload(self.client, statement(*expense_lines(1)))
         self.assertEqual(response.status_code, 200)
         token = self.preview_token(response)
         self.assertEqual(self.stored_files(), [f'u{self.user_id}-{token}.json'])
-        self.assertFalse((Path(self.app.instance_path) / 'bank_imports' / f'u{self.user_id}-{token}.json').exists())
+        self.assertFalse(
+            (
+                Path(self.app.instance_path)
+                / 'bank_imports'
+                / f'u{self.user_id}-{token}.json'
+            ).exists()
+        )
 
         response = self.confirm(self.client, token)
         self.assertEqual(response.status_code, 302)
@@ -196,18 +329,41 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
         # complete metadata schema instead of searching raw JSON for "100".
         now = datetime.now(timezone.utc).replace(microsecond=861005)
         with patch.object(storage, 'utc_now', return_value=now):
-            token = self.preview_token(self.upload(self.client, statement(*expense_lines(3))))
-        raw = (self.storage_dir / f'u{self.user_id}-{token}.json').read_text(encoding='utf-8')
+            token = self.preview_token(
+                self.upload(self.client, statement(*expense_lines(3)))
+            )
+        raw = (self.storage_dir / f'u{self.user_id}-{token}.json').read_text(
+            encoding='utf-8'
+        )
         self.assertNotIn('SYNTH', raw)
         payload = json.loads(raw)
-        self.assertEqual(set(payload), {'version', 'user_id', 'created_at', 'row_count', 'monthly_match_ids'})
+        self.assertEqual(
+            set(payload),
+            {
+                'version',
+                'user_id',
+                'created_at',
+                'row_count',
+                'monthly_match_ids',
+                'row_keys',
+                'possible_duplicates',
+            },
+        )
+        for file_key, transaction_key, fallback_key in payload['row_keys']:
+            self.assertRegex(file_key, r'^[a-f0-9]{64}$')
+            self.assertIsNone(transaction_key)
+            self.assertRegex(fallback_key, r'^[a-f0-9]{64}$')
         self.assertEqual(payload['version'], storage.PAYLOAD_VERSION)
         self.assertEqual(payload['created_at'], now.replace(tzinfo=None).isoformat())
         self.assertEqual(payload['monthly_match_ids'], [None, None, None])
         self.assertEqual(payload['row_count'], 3)
         self.assertEqual(payload['user_id'], self.user_id)
         if os.name == 'posix':
-            self.assertEqual(os.stat(self.storage_dir / f'u{self.user_id}-{token}.json').st_mode & 0o777, 0o600)
+            self.assertEqual(
+                os.stat(self.storage_dir / f'u{self.user_id}-{token}.json').st_mode
+                & 0o777,
+                0o600,
+            )
             self.assertEqual(os.stat(self.storage_dir).st_mode & 0o777, 0o700)
 
     def test_largest_accepted_statement_imports_all_rows(self):
@@ -217,7 +373,8 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
         self.assertEqual(response.status_code, 200)
         token = self.preview_token(response)
         size = (self.storage_dir / f'u{self.user_id}-{token}.json').stat().st_size
-        self.assertLess(size, 16 * 1024)
+        # Each row can now carry three SHA-256 fingerprints and its action metadata.
+        self.assertLess(size, 512 + rows * 230)
         response = self.confirm(self.client, token, rows=rows)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.expense_count(), rows)
@@ -241,7 +398,9 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
 
     def test_restart_between_preview_and_confirmation(self):
         self.login(self.client, self.user_id)
-        token = self.preview_token(self.upload(self.client, statement(*expense_lines(1))))
+        token = self.preview_token(
+            self.upload(self.client, statement(*expense_lines(1)))
+        )
         restarted = self.make_app()
         client = restarted.test_client()
         self.login(client, self.user_id)
@@ -250,7 +409,9 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
 
     def test_second_confirmation_does_not_duplicate_expenses(self):
         self.login(self.client, self.user_id)
-        token = self.preview_token(self.upload(self.client, statement(*expense_lines(2))))
+        token = self.preview_token(
+            self.upload(self.client, statement(*expense_lines(2)))
+        )
         self.assertEqual(self.confirm(self.client, token, rows=2).status_code, 302)
         second = self.confirm(self.client, token, rows=2)
         self.assertEqual(second.status_code, 410)
@@ -259,7 +420,9 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
 
     def test_confirmation_in_progress_blocks_a_parallel_one(self):
         self.login(self.client, self.user_id)
-        token = self.preview_token(self.upload(self.client, statement(*expense_lines(1))))
+        token = self.preview_token(
+            self.upload(self.client, statement(*expense_lines(1)))
+        )
         with self.app.test_request_context():
             claim = storage.claimed_preview(self.user_id, token)
             with claim:
@@ -274,16 +437,25 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
 
     def test_failed_confirmation_keeps_data_and_preview(self):
         with self.app.app_context():
-            db.session.add(Expense(
-                user_id=self.user_id, amount=Decimal('5.00'), category='products',
-                title='Existing synthetic', expense_date=__import__('datetime').date(2026, 6, 1),
-            ))
+            db.session.add(
+                Expense(
+                    user_id=self.user_id,
+                    amount=Decimal('5.00'),
+                    category='products',
+                    title='Existing synthetic',
+                    expense_date=__import__('datetime').date(2026, 6, 1),
+                )
+            )
             db.session.commit()
         self.login(self.client, self.user_id)
-        token = self.preview_token(self.upload(self.client, statement(*expense_lines(2))))
+        token = self.preview_token(
+            self.upload(self.client, statement(*expense_lines(2)))
+        )
         response = self.confirm(self.client, token, rows=2, category_1='not-a-category')
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.expense_count(), 1)
+        with self.app.app_context():
+            self.assertEqual(BankImportEntry.query.count(), 0)
         self.assertEqual(self.stored_files(), [f'u{self.user_id}-{token}.json'])
 
         self.assertEqual(self.confirm(self.client, token, rows=2).status_code, 302)
@@ -291,9 +463,16 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
 
     def test_database_failure_rolls_back_and_keeps_preview(self):
         self.login(self.client, self.user_id)
-        token = self.preview_token(self.upload(self.client, statement(*expense_lines(2))))
-        with patch('extensions.db.session.commit', side_effect=RuntimeError('synthetic database outage')), \
-                self.assertLogs(self.app.logger, level='ERROR') as logs:
+        token = self.preview_token(
+            self.upload(self.client, statement(*expense_lines(2)))
+        )
+        with (
+            patch(
+                'extensions.db.session.commit',
+                side_effect=RuntimeError('synthetic database outage'),
+            ),
+            self.assertLogs(self.app.logger, level='ERROR') as logs,
+        ):
             response = self.confirm(self.client, token, rows=2)
         self.assertEqual(response.status_code, 500)
         self.assertIn('Данные не были сохранены', response.get_data(as_text=True))
@@ -305,15 +484,21 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
         other = self.app.test_client()
         self.login(self.client, self.user_id)
         self.login(other, self.other_user_id)
-        token_one = self.preview_token(self.upload(self.client, statement(*expense_lines(1))))
-        token_two = self.preview_token(self.upload(other, statement(*expense_lines(1, start=50))))
+        token_one = self.preview_token(
+            self.upload(self.client, statement(*expense_lines(1)))
+        )
+        token_two = self.preview_token(
+            self.upload(other, statement(*expense_lines(1, start=50)))
+        )
 
         stolen = self.confirm(other, token_one)
         self.assertEqual(stolen.status_code, 410)
         self.assertEqual(self.expense_count(self.other_user_id), 0)
 
         self.assertEqual(self.confirm(self.client, token_one).status_code, 302)
-        self.assertEqual(self.confirm(other, token_two, title_0='SYNTH SHOP 50').status_code, 302)
+        self.assertEqual(
+            self.confirm(other, token_two, title_0='SYNTH SHOP 50').status_code, 302
+        )
         self.assertEqual(self.expense_count(self.user_id), 1)
         self.assertEqual(self.expense_count(self.other_user_id), 1)
 
@@ -324,12 +509,18 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
             client = self.app.test_client()
             self.login(client, user_id)
             response = self.upload(client, statement(*expense_lines(5, start=start)))
-            results[user_id] = (response.status_code, client, self.preview_token(response))
+            results[user_id] = (
+                response.status_code,
+                client,
+                self.preview_token(response),
+            )
 
         app = self.make_app(IMPORT_PARSE_WAIT_SECONDS=10)
         self.app = app
-        threads = [threading.Thread(target=run, args=(user_id, start))
-                   for user_id, start in ((self.user_id, 0), (self.other_user_id, 100))]
+        threads = [
+            threading.Thread(target=run, args=(user_id, start))
+            for user_id, start in ((self.user_id, 0), (self.other_user_id, 100))
+        ]
         for thread in threads:
             thread.start()
         for thread in threads:
@@ -343,7 +534,9 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
         self.login(client, self.user_id)
         tokens = []
         for _attempt in range(3):
-            tokens.append(self.preview_token(self.upload(client, statement(*expense_lines(1)))))
+            tokens.append(
+                self.preview_token(self.upload(client, statement(*expense_lines(1))))
+            )
             time.sleep(0.02)
         self.assertEqual(len(self.stored_files()), 2)
         self.assertNotIn(f'u{self.user_id}-{tokens[0]}.json', self.stored_files())
@@ -353,12 +546,17 @@ class ImportFlowTestCase(ImportStorageAppTestCase):
     def test_legacy_preview_file_is_still_confirmed(self):
         self.storage_dir.mkdir(parents=True)
         token = 'L' * 32
-        (self.storage_dir / f'{token}.json').write_text(json.dumps({
-            'user_id': self.user_id,
-            'created_at': __import__('datetime').datetime.utcnow().isoformat(),
-            'bank': 'sber',
-            'rows': [{'title': 'SYNTH SHOP 0', 'monthly_match_id': None}],
-        }), encoding='utf-8')
+        (self.storage_dir / f'{token}.json').write_text(
+            json.dumps(
+                {
+                    'user_id': self.user_id,
+                    'created_at': __import__('datetime').datetime.utcnow().isoformat(),
+                    'bank': 'sber',
+                    'rows': [{'title': 'SYNTH SHOP 0', 'monthly_match_id': None}],
+                }
+            ),
+            encoding='utf-8',
+        )
         self.login(self.client, self.user_id)
         self.assertEqual(self.confirm(self.client, token).status_code, 302)
         self.assertEqual(self.expense_count(), 1)
@@ -371,18 +569,25 @@ class ImportLimitsTestCase(ImportStorageAppTestCase):
         app = self.make_app(IMPORT_DISK_RESERVE_BYTES=512 * 1024 * 1024)
         client = app.test_client()
         self.login(client, self.user_id)
-        with patch('shutil.disk_usage', return_value=DiskUsage(10 * 2**30, 10 * 2**30 - 300 * 2**20, 300 * 2**20)):
+        with patch(
+            'shutil.disk_usage',
+            return_value=DiskUsage(10 * 2**30, 10 * 2**30 - 300 * 2**20, 300 * 2**20),
+        ):
             response = self.upload(client, statement(*expense_lines(1)))
         self.assertEqual(response.status_code, 507)
         self.assertIn('мало свободного места', response.get_data(as_text=True))
-        self.assertEqual([name for name in self.stored_files() if not name.startswith('.')], [])
+        self.assertEqual(
+            [name for name in self.stored_files() if not name.startswith('.')], []
+        )
 
     def test_storage_quota_refuses_the_preview(self):
         app = self.make_app(IMPORT_STORAGE_MAX_FILES=1)
         first, second = app.test_client(), app.test_client()
         self.login(first, self.user_id)
         self.login(second, self.other_user_id)
-        self.assertEqual(self.upload(first, statement(*expense_lines(1))).status_code, 200)
+        self.assertEqual(
+            self.upload(first, statement(*expense_lines(1))).status_code, 200
+        )
         response = self.upload(second, statement(*expense_lines(1)))
         self.assertEqual(response.status_code, 507)
         self.assertIn('хранилище импорта заполнено', response.get_data(as_text=True))
@@ -390,9 +595,13 @@ class ImportLimitsTestCase(ImportStorageAppTestCase):
 
     def test_disk_full_during_write_leaves_no_partial_file(self):
         self.login(self.client, self.user_id)
-        with patch('app.services.import_storage_service.os.write',
-                   side_effect=OSError(errno.ENOSPC, 'No space left on device')), \
-                self.assertLogs(self.app.logger, level='ERROR') as logs:
+        with (
+            patch(
+                'app.services.import_storage_service.os.write',
+                side_effect=OSError(errno.ENOSPC, 'No space left on device'),
+            ),
+            self.assertLogs(self.app.logger, level='ERROR') as logs,
+        ):
             response = self.upload(self.client, statement(*expense_lines(1)))
         self.assertEqual(response.status_code, 507)
         self.assertIn('закончилось место', response.get_data(as_text=True))
@@ -401,16 +610,22 @@ class ImportLimitsTestCase(ImportStorageAppTestCase):
 
     def test_read_only_storage_answers_503_not_500(self):
         self.login(self.client, self.user_id)
-        with patch('app.services.import_storage_service.os.makedirs',
-                   side_effect=OSError(errno.EROFS, 'Read-only file system')), \
-                self.assertLogs(self.app.logger, level='ERROR'):
+        with (
+            patch(
+                'app.services.import_storage_service.os.makedirs',
+                side_effect=OSError(errno.EROFS, 'Read-only file system'),
+            ),
+            self.assertLogs(self.app.logger, level='ERROR'),
+        ):
             response = self.upload(self.client, statement(*expense_lines(1)))
         self.assertEqual(response.status_code, 503)
         self.assertIn('недоступно для записи', response.get_data(as_text=True))
 
     def test_permission_denied_on_read_answers_503(self):
         self.login(self.client, self.user_id)
-        token = self.preview_token(self.upload(self.client, statement(*expense_lines(1))))
+        token = self.preview_token(
+            self.upload(self.client, statement(*expense_lines(1)))
+        )
         real_open = open
 
         def denied(path, *args, **kwargs):
@@ -418,7 +633,10 @@ class ImportLimitsTestCase(ImportStorageAppTestCase):
                 raise OSError(errno.EACCES, 'Permission denied')
             return real_open(path, *args, **kwargs)
 
-        with patch('builtins.open', denied), self.assertLogs(self.app.logger, level='ERROR'):
+        with (
+            patch('builtins.open', denied),
+            self.assertLogs(self.app.logger, level='ERROR'),
+        ):
             response = self.confirm(self.client, token)
         self.assertEqual(response.status_code, 503)
         self.assertEqual(self.expense_count(), 0)
@@ -435,9 +653,13 @@ class ImportLimitsTestCase(ImportStorageAppTestCase):
 
     def test_unexpected_parser_failure_is_logged_without_content(self):
         self.login(self.client, self.user_id)
-        with patch('app.routes.expenses.parse_bank_statement',
-                   side_effect=RuntimeError('SYNTH SHOP 4242 card *0000 amount 999')), \
-                self.assertLogs(self.app.logger, level='ERROR') as logs:
+        with (
+            patch(
+                'app.routes.expenses.parse_bank_statement',
+                side_effect=RuntimeError('SYNTH SHOP 4242 card *0000 amount 999'),
+            ),
+            self.assertLogs(self.app.logger, level='ERROR') as logs,
+        ):
             response = self.upload(self.client, statement(*expense_lines(1)))
         self.assertEqual(response.status_code, 500)
         output = '\n'.join(logs.output)
@@ -509,7 +731,9 @@ class ImportCleanupTestCase(ImportStorageAppTestCase):
 
     def test_expired_preview_is_refused_and_removed(self):
         self.login(self.client, self.user_id)
-        token = self.preview_token(self.upload(self.client, statement(*expense_lines(1))))
+        token = self.preview_token(
+            self.upload(self.client, statement(*expense_lines(1)))
+        )
         path = self.storage_dir / f'u{self.user_id}-{token}.json'
         payload = json.loads(path.read_text(encoding='utf-8'))
         payload['created_at'] = '2020-01-01T00:00:00'
@@ -523,7 +747,10 @@ class ImportCleanupTestCase(ImportStorageAppTestCase):
 
 class StorageCheckCommandTestCase(ImportStorageAppTestCase):
     def run_check(self, free_bytes):
-        with patch('shutil.disk_usage', return_value=DiskUsage(10 * 2**30, 10 * 2**30 - free_bytes, free_bytes)):
+        with patch(
+            'shutil.disk_usage',
+            return_value=DiskUsage(10 * 2**30, 10 * 2**30 - free_bytes, free_bytes),
+        ):
             return self.app.test_cli_runner().invoke(args=['storage-check'])
 
     def test_levels(self):
@@ -551,7 +778,9 @@ class StreamingParserTestCase(unittest.TestCase):
                     strings.append(value)
                     cells.append(f'<c r="{ref}" t="s"><v>{len(strings) - 1}</v></c>')
                 else:
-                    cells.append(f'<c r="{ref}" t="inlineStr"><is><t>{value}</t></is></c>')
+                    cells.append(
+                        f'<c r="{ref}" t="inlineStr"><is><t>{value}</t></is></c>'
+                    )
             xml_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -561,18 +790,30 @@ class StreamingParserTestCase(unittest.TestCase):
             )
             if shared:
                 items = ''.join(f'<si><t>{value}</t></si>' for value in strings)
-                archive.writestr('xl/sharedStrings.xml', f'<sst xmlns="{ns}">{items}</sst>')
+                archive.writestr(
+                    'xl/sharedStrings.xml', f'<sst xmlns="{ns}">{items}</sst>'
+                )
         return buffer.getvalue()
 
     def rows(self, count):
         header = ['Дата операции', 'Описание операции', 'Сумма операции', 'Категория']
-        return [header] + [[f'{i % 28 + 1:02d}.07.2026', f'SYNTH SHOP {i}', f'-{100 + i},00', 'Покупки']
-                           for i in range(count)]
+        return [header] + [
+            [
+                f'{i % 28 + 1:02d}.07.2026',
+                f'SYNTH SHOP {i}',
+                f'-{100 + i},00',
+                'Покупки',
+            ]
+            for i in range(count)
+        ]
 
     def test_xlsx_with_shared_strings_matches_inline_strings(self):
         inline = parse_bank_statement(self.xlsx(self.rows(30)), 'a.xlsx')
         shared = parse_bank_statement(self.xlsx(self.rows(30), shared=True), 'a.xlsx')
-        self.assertEqual([row.to_dict() for row in inline.rows], [row.to_dict() for row in shared.rows])
+        self.assertEqual(
+            [row.to_dict() for row in inline.rows],
+            [row.to_dict() for row in shared.rows],
+        )
         self.assertEqual(len(inline.rows), 30)
         self.assertEqual(inline.rows[-1].row_number, 31)
 
@@ -584,17 +825,23 @@ class StreamingParserTestCase(unittest.TestCase):
 
     def test_source_row_limit(self):
         with self.assertRaisesRegex(ValueError, 'больше 20 строк'):
-            parse_bank_statement(statement(*expense_lines(50)), 'a.csv', max_source_rows=20)
-        result = parse_bank_statement(statement(*expense_lines(18)), 'a.csv', max_source_rows=20)
+            parse_bank_statement(
+                statement(*expense_lines(50)), 'a.csv', max_source_rows=20
+            )
+        result = parse_bank_statement(
+            statement(*expense_lines(18)), 'a.csv', max_source_rows=20
+        )
         self.assertEqual(len(result.rows), 18)
 
     def test_corrupt_xlsx_is_a_user_error(self):
         broken = bytearray(self.xlsx(self.rows(5)))
         with self.assertRaises(ValueError):
-            parse_bank_statement(bytes(broken[:len(broken) // 2]), 'a.xlsx')
+            parse_bank_statement(bytes(broken[: len(broken) // 2]), 'a.xlsx')
 
     def test_csv_with_quoted_multiline_field(self):
-        data = (CSV_HEADER + '01.07.2026;"SYNTH\nSHOP";-100,00;Супермаркеты;*0000\n').encode('cp1251')
+        data = (
+            CSV_HEADER + '01.07.2026;"SYNTH\nSHOP";-100,00;Супермаркеты;*0000\n'
+        ).encode('cp1251')
         result = parse_bank_statement(data, 'a.csv')
         self.assertEqual(len(result.rows), 1)
         self.assertEqual(result.rows[0].amount, Decimal('100.00'))

@@ -13,7 +13,13 @@ from uuid import uuid4
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Debt, Income, TelegramConversationState, TelegramProcessedUpdate, User
+from app.models import (
+    Debt,
+    Income,
+    TelegramConversationState,
+    TelegramProcessedUpdate,
+    User,
+)
 from app.services.telegram_transport import api_request, require_accepted
 from app.services.telegram_links_service import application_url
 from app.services.telegram_mini_app_check_service import check_mini_app_registered
@@ -21,6 +27,7 @@ from app.services import feedback_service as feedback
 from app.services.debt_accrual_service import accrual_start_date, default_penalty_rate
 from app.services.debt_service import check_debt_limit
 from app.services.finance_summary_service import get_finance_summary
+from app.services.financial_data import FinancialDataUnavailable
 from app.services.payment_service import add_payment
 from app.services.expense_service import create_expense
 from app.time_utils import account_calendar, as_utc, financial_today, utc_now
@@ -306,7 +313,9 @@ def handle_telegram_update(update):
     callback_query_id = context.get('callback_query_id')
 
     if not chat_id:
-        return TelegramBotResult(chat_id=None, reply_text=None, callback_query_id=callback_query_id)
+        return TelegramBotResult(
+            chat_id=None, reply_text=None, callback_query_id=callback_query_id
+        )
     if not telegram_bot_enabled(current_app.config):
         return TelegramBotResult(
             chat_id=chat_id,
@@ -314,7 +323,10 @@ def handle_telegram_update(update):
             callback_query_id=callback_query_id,
             callback_answer_text='Команды бота отключены администратором.',
         )
-    if current_app.config.get('TELEGRAM_PRIVATE_CHAT_ONLY', True) and chat_type != 'private':
+    if (
+        current_app.config.get('TELEGRAM_PRIVATE_CHAT_ONLY', True)
+        and chat_type != 'private'
+    ):
         return TelegramBotResult(
             chat_id=chat_id,
             reply_text='Для безопасности я работаю только в личном чате.',
@@ -414,7 +426,9 @@ def _send_typing_indicator(update):
     if chat_id is None or not telegram_bot_enabled(current_app.config):
         return
     try:
-        api_request('sendChatAction', {'chat_id': chat_id, 'action': 'typing'}, timeout=(2, 3))
+        api_request(
+            'sendChatAction', {'chat_id': chat_id, 'action': 'typing'}, timeout=(2, 3)
+        )
     except Exception:
         current_app.logger.debug('Telegram typing indicator failed.')
 
@@ -463,22 +477,34 @@ def process_telegram_text_result(user, text, chat_id=None):
             _clear_state(user)
             return _begin_flow(user, chat_id, command)
 
-        if command in {'help', 'privacy', 'debts', 'summary'} or (command in FLOW_COMMANDS and tokens):
+        if command in {'help', 'privacy', 'debts', 'summary'} or (
+            command in FLOW_COMMANDS and tokens
+        ):
             if state:
                 _clear_state(user)
             return _process_stateless_command(user, chat_id, command, tokens)
 
-        return _result(chat_id, 'Не понял команду. Нажмите кнопку ниже или напишите /help.', MAIN_MENU_KEYBOARD)
+        return _result(
+            chat_id,
+            'Не понял команду. Нажмите кнопку ниже или напишите /help.',
+            MAIN_MENU_KEYBOARD,
+        )
     except ValueError as exc:
         db.session.rollback()
-        return _result(chat_id or user.telegram_id, f'Не записал: {exc}', MAIN_MENU_KEYBOARD)
+        return _result(
+            chat_id or user.telegram_id, f'Не записал: {exc}', MAIN_MENU_KEYBOARD
+        )
     except Exception:  # pragma: no cover - defensive logging for production webhooks
         db.session.rollback()
         try:
             current_app.logger.warning('Telegram bot command failed.')
         except RuntimeError:
             pass
-        return _result(chat_id or user.telegram_id, 'Не получилось сохранить запись. Попробуйте позже.', MAIN_MENU_KEYBOARD)
+        return _result(
+            chat_id or user.telegram_id,
+            'Не получилось сохранить запись. Попробуйте позже.',
+            MAIN_MENU_KEYBOARD,
+        )
 
 
 @account_calendar
@@ -486,7 +512,12 @@ def process_telegram_callback_result(user, chat_id, callback_data):
     try:
         if callback_data == 'tg:cancel':
             _clear_state(user)
-            return _result(chat_id, 'Отменил текущий ввод.', MAIN_MENU_KEYBOARD, callback_answer_text='Отменено')
+            return _result(
+                chat_id,
+                'Отменил текущий ввод.',
+                MAIN_MENU_KEYBOARD,
+                callback_answer_text='Отменено',
+            )
 
         state = _get_active_state(user)
         if not state:
@@ -513,39 +544,78 @@ def process_telegram_callback_result(user, chat_id, callback_data):
 
         if callback_data == 'tg:confirm':
             if state.step != 'confirm':
-                return _result(chat_id, 'Сначала заполните все поля.', _cancel_keyboard())
-            return _finish_conversation(user, chat_id, state, callback_answer_text='Сохранено')
+                return _result(
+                    chat_id, 'Сначала заполните все поля.', _cancel_keyboard()
+                )
+            return _finish_conversation(
+                user, chat_id, state, callback_answer_text='Сохранено'
+            )
 
         if callback_data == 'tg:skip':
             return _process_skip_callback(user, chat_id, state)
 
         if callback_data.startswith('tg:date:'):
-            return _process_date_callback(user, chat_id, state, callback_data.rsplit(':', 1)[-1])
+            return _process_date_callback(
+                user, chat_id, state, callback_data.rsplit(':', 1)[-1]
+            )
 
-        if callback_data.startswith('tg:expense_category:') and state.flow == 'expense' and state.step == 'category':
-            return _set_expense_category(user, chat_id, state, callback_data.rsplit(':', 1)[-1])
+        if (
+            callback_data.startswith('tg:expense_category:')
+            and state.flow == 'expense'
+            and state.step == 'category'
+        ):
+            return _set_expense_category(
+                user, chat_id, state, callback_data.rsplit(':', 1)[-1]
+            )
 
-        if callback_data.startswith('tg:income_category:') and state.flow == 'income' and state.step == 'category':
-            return _set_income_category(user, chat_id, state, callback_data.rsplit(':', 1)[-1])
+        if (
+            callback_data.startswith('tg:income_category:')
+            and state.flow == 'income'
+            and state.step == 'category'
+        ):
+            return _set_income_category(
+                user, chat_id, state, callback_data.rsplit(':', 1)[-1]
+            )
 
-        if callback_data.startswith('tg:debt_type:') and state.flow == 'debt' and state.step == 'debt_type':
-            return _set_debt_type(user, chat_id, state, callback_data.rsplit(':', 1)[-1])
+        if (
+            callback_data.startswith('tg:debt_type:')
+            and state.flow == 'debt'
+            and state.step == 'debt_type'
+        ):
+            return _set_debt_type(
+                user, chat_id, state, callback_data.rsplit(':', 1)[-1]
+            )
 
-        if callback_data.startswith('tg:payment_debt:') and state.flow == 'payment' and state.step == 'debt':
+        if (
+            callback_data.startswith('tg:payment_debt:')
+            and state.flow == 'payment'
+            and state.step == 'debt'
+        ):
             debt_id = callback_data.rsplit(':', 1)[-1]
             return _set_payment_debt(user, chat_id, state, debt_id)
 
-        return _result(chat_id, 'Эта кнопка уже не подходит к текущему шагу.', _cancel_keyboard())
+        return _result(
+            chat_id, 'Эта кнопка уже не подходит к текущему шагу.', _cancel_keyboard()
+        )
     except ValueError as exc:
         db.session.rollback()
-        return _result(chat_id, f'Не записал: {exc}', MAIN_MENU_KEYBOARD, callback_answer_text='Ошибка')
+        return _result(
+            chat_id,
+            f'Не записал: {exc}',
+            MAIN_MENU_KEYBOARD,
+            callback_answer_text='Ошибка',
+        )
     except Exception:  # pragma: no cover
         db.session.rollback()
         try:
             current_app.logger.warning('Telegram bot callback failed.')
         except RuntimeError:
             pass
-        return _result(chat_id, 'Не получилось обработать кнопку. Попробуйте позже.', MAIN_MENU_KEYBOARD)
+        return _result(
+            chat_id,
+            'Не получилось обработать кнопку. Попробуйте позже.',
+            MAIN_MENU_KEYBOARD,
+        )
 
 
 def deliver_telegram_result(result, *, sender=None, callback_answerer=None):
@@ -554,7 +624,9 @@ def deliver_telegram_result(result, *, sender=None, callback_answerer=None):
     accepted = True
     if result.callback_query_id:
         try:
-            if not callback_answerer(result.callback_query_id, result.callback_answer_text):
+            if not callback_answerer(
+                result.callback_query_id, result.callback_answer_text
+            ):
                 accepted = False
                 current_app.logger.warning('Telegram callback answer rejected.')
         except Exception:
@@ -562,7 +634,9 @@ def deliver_telegram_result(result, *, sender=None, callback_answerer=None):
             current_app.logger.warning('Telegram callback answer failed.')
     if result.chat_id is not None and result.reply_text:
         try:
-            if not sender(result.chat_id, result.reply_text, reply_markup=result.reply_markup):
+            if not sender(
+                result.chat_id, result.reply_text, reply_markup=result.reply_markup
+            ):
                 accepted = False
                 current_app.logger.warning('Telegram reply rejected.')
         except Exception:
@@ -602,8 +676,12 @@ class TelegramDeliveryQueue:
                 logger.warning('Telegram delivery worker failed.')
 
 
-def deliver_telegram_result_async(result, *, executor=None, sender=None, callback_answerer=None):
-    if not result.callback_query_id and (result.chat_id is None or not result.reply_text):
+def deliver_telegram_result_async(
+    result, *, executor=None, sender=None, callback_answerer=None
+):
+    if not result.callback_query_id and (
+        result.chat_id is None or not result.reply_text
+    ):
         return
 
     app = current_app._get_current_object()
@@ -613,19 +691,29 @@ def deliver_telegram_result_async(result, *, executor=None, sender=None, callbac
     def deliver():
         # The worker gets its own Flask context and SQLAlchemy session scope.
         with app.app_context():
-            if deliver_telegram_result(result, sender=sender, callback_answerer=callback_answerer):
+            if deliver_telegram_result(
+                result, sender=sender, callback_answerer=callback_answerer
+            ):
                 app.logger.info('Telegram delivery completed.')
 
-    key = ('chat', str(result.chat_id)) if result.chat_id is not None else ('callback', result.callback_query_id)
+    key = (
+        ('chat', str(result.chat_id))
+        if result.chat_id is not None
+        else ('callback', result.callback_query_id)
+    )
     try:
-        app.extensions['telegram_delivery_queue'].submit(executor, key, deliver, app.logger)
+        app.extensions['telegram_delivery_queue'].submit(
+            executor, key, deliver, app.logger
+        )
     except RuntimeError:
         app.logger.warning('Telegram delivery could not be queued.')
     else:
         app.logger.debug('telegram delivery queued: chat_id=%s', result.chat_id)
 
 
-def send_telegram_message(chat_id, text, bot_token=None, reply_markup=None, parse_mode=None):
+def send_telegram_message(
+    chat_id, text, bot_token=None, reply_markup=None, parse_mode=None
+):
     token = bot_token
     if token is None:
         token = current_app.config.get('TELEGRAM_BOT_TOKEN', '')
@@ -661,14 +749,18 @@ def answer_telegram_callback_query(callback_query_id, text=None, bot_token=None)
 def send_debt_reminders(days=None, dry_run=False, sender=send_telegram_message):
     if days is None:
         # The admin setting wins; TELEGRAM_REMINDER_DAYS is the fallback until it is saved.
-        days = get_setting('payment_warning_days', current_app.config.get('TELEGRAM_REMINDER_DAYS', 7))
+        days = get_setting(
+            'payment_warning_days', current_app.config.get('TELEGRAM_REMINDER_DAYS', 7)
+        )
     days = int(days)
     stats = {'users_checked': 0, 'messages': 0, 'errors': 0}
 
     users = User.query.filter(User.telegram_id > 0, User.is_blocked.is_(False)).all()
     for user in users:
         stats['users_checked'] += 1
-        message = build_debt_reminder_message(user, today=financial_today(user), days=days)
+        message = build_debt_reminder_message(
+            user, today=financial_today(user), days=days
+        )
         if not message:
             continue
         stats['messages'] += 1
@@ -677,7 +769,9 @@ def send_debt_reminders(days=None, dry_run=False, sender=send_telegram_message):
         try:
             if not sender(user.telegram_id, message, reply_markup=MAIN_MENU_KEYBOARD):
                 stats['errors'] += 1
-                current_app.logger.warning('Telegram reminder rejected: user_id=%s', user.id)
+                current_app.logger.warning(
+                    'Telegram reminder rejected: user_id=%s', user.id
+                )
         except Exception:
             stats['errors'] += 1
             current_app.logger.warning('Telegram reminder failed: user_id=%s', user.id)
@@ -711,7 +805,11 @@ def build_debt_reminder_message(user, today=None, days=7):
                 line += f' (в т. ч. неустойка {_format_money(state["penalty"])})'
         else:
             timing = 'сегодня' if diff == 0 else f'через {diff} дн.'
-            amount = state['next_due_amount'] or debt.effective_next_payment_amount() or state['total']
+            amount = (
+                state['next_due_amount']
+                or debt.effective_next_payment_amount()
+                or state['total']
+            )
             line = f'{debt.bank_name} {debt.product_name}: {timing}, платеж {_format_money(amount)}'
         lines.append(f'{line}, задолженность {_format_money(state["total"])}')
     return '\n'.join(lines)
@@ -734,26 +832,46 @@ def _process_stateless_command(user, chat_id, command, tokens):
         return _result(chat_id, _list_debts(user), MAIN_MENU_KEYBOARD)
     if command == 'summary':
         return _result(chat_id, _build_summary(user), MAIN_MENU_KEYBOARD)
-    return _result(chat_id, 'Не понял команду. Нажмите кнопку ниже или напишите /help.', MAIN_MENU_KEYBOARD)
+    return _result(
+        chat_id,
+        'Не понял команду. Нажмите кнопку ниже или напишите /help.',
+        MAIN_MENU_KEYBOARD,
+    )
 
 
 def _begin_flow(user, chat_id, flow):
     if flow == 'expense':
         _save_state(user, chat_id, flow='expense', step='amount', data={})
-        return _result(chat_id, 'Введите сумму расхода. Например: 850', _cancel_keyboard())
+        return _result(
+            chat_id, 'Введите сумму расхода. Например: 850', _cancel_keyboard()
+        )
     if flow == 'income':
         _save_state(user, chat_id, flow='income', step='amount', data={})
-        return _result(chat_id, 'Введите сумму дохода. Например: 120000', _cancel_keyboard())
+        return _result(
+            chat_id, 'Введите сумму дохода. Например: 120000', _cancel_keyboard()
+        )
     if flow == 'debt':
         _save_state(user, chat_id, flow='debt', step='amount', data={})
-        return _result(chat_id, 'Введите сумму долга. Например: 300000', _cancel_keyboard())
+        return _result(
+            chat_id, 'Введите сумму долга. Например: 300000', _cancel_keyboard()
+        )
     if flow == 'payment':
-        debts = Debt.query.filter_by(user_id=user.id, status='active').order_by(Debt.id.asc()).all()
+        debts = (
+            Debt.query.filter_by(user_id=user.id, status='active')
+            .order_by(Debt.id.asc())
+            .all()
+        )
         if not debts:
-            return _result(chat_id, 'Активных долгов нет. Сначала добавьте долг.', MAIN_MENU_KEYBOARD)
+            return _result(
+                chat_id,
+                'Активных долгов нет. Сначала добавьте долг.',
+                MAIN_MENU_KEYBOARD,
+            )
         _save_state(user, chat_id, flow='payment', step='debt', data={})
         if len(debts) == 1:
-            return _set_payment_debt(user, chat_id, _get_active_state(user), debts[0].id)
+            return _set_payment_debt(
+                user, chat_id, _get_active_state(user), debts[0].id
+            )
         return _result(chat_id, 'Выберите долг для платежа:', _debt_keyboard(debts))
     return _result(chat_id, 'Не понял действие.', MAIN_MENU_KEYBOARD)
 
@@ -768,7 +886,9 @@ def _process_state_message(user, chat_id, state, text):
         if key in REJECT_WORDS:
             _clear_state(user)
             return _result(chat_id, 'Отменил сохранение.', MAIN_MENU_KEYBOARD)
-        return _result(chat_id, 'Нажмите "Сохранить" или "Отмена".', _confirm_keyboard())
+        return _result(
+            chat_id, 'Нажмите "Сохранить" или "Отмена".', _confirm_keyboard()
+        )
 
     if state.flow == 'expense':
         return _process_expense_message(user, chat_id, state, text)
@@ -780,7 +900,9 @@ def _process_state_message(user, chat_id, state, text):
         return _process_payment_message(user, chat_id, state, text)
 
     _clear_state(user)
-    return _result(chat_id, 'Сценарий устарел. Выберите действие заново.', MAIN_MENU_KEYBOARD)
+    return _result(
+        chat_id, 'Сценарий устарел. Выберите действие заново.', MAIN_MENU_KEYBOARD
+    )
 
 
 def _feedback_keyboard(data):
@@ -843,26 +965,46 @@ def _process_expense_message(user, chat_id, state, text):
         if amount <= 0:
             raise ValueError('Сумма расхода должна быть больше нуля.')
         data['amount'] = str(amount)
-        _save_state(user, chat_id, flow='expense', step='category', data=data, state=state)
-        return _result(chat_id, 'Выберите категорию расхода:', _choice_keyboard('expense_category', EXPENSE_LABELS))
+        _save_state(
+            user, chat_id, flow='expense', step='category', data=data, state=state
+        )
+        return _result(
+            chat_id,
+            'Выберите категорию расхода:',
+            _choice_keyboard('expense_category', EXPENSE_LABELS),
+        )
 
     if state.step == 'category':
         category = EXPENSE_ALIASES.get(_word_key(text))
         if not category:
-            return _result(chat_id, 'Не понял категорию. Выберите кнопку или напишите название категории.', _choice_keyboard('expense_category', EXPENSE_LABELS))
+            return _result(
+                chat_id,
+                'Не понял категорию. Выберите кнопку или напишите название категории.',
+                _choice_keyboard('expense_category', EXPENSE_LABELS),
+            )
         return _set_expense_category(user, chat_id, state, category)
 
     if state.step == 'title':
-        data['title'] = str(text).strip()[:150] or EXPENSE_LABELS.get(data.get('category'), 'Расход')
+        data['title'] = str(text).strip()[:150] or EXPENSE_LABELS.get(
+            data.get('category'), 'Расход'
+        )
         _save_state(user, chat_id, flow='expense', step='date', data=data, state=state)
-        return _result(chat_id, 'Когда был расход? Можно написать дату или выбрать кнопку.', _date_keyboard(include_skip=False))
+        return _result(
+            chat_id,
+            'Когда был расход? Можно написать дату или выбрать кнопку.',
+            _date_keyboard(include_skip=False),
+        )
 
     if state.step == 'date':
         data['expense_date'] = _parse_date_value(text).isoformat()
-        _save_state(user, chat_id, flow='expense', step='confirm', data=data, state=state)
+        _save_state(
+            user, chat_id, flow='expense', step='confirm', data=data, state=state
+        )
         return _expense_confirm_result(chat_id, data)
 
-    return _result(chat_id, 'Сценарий расхода устарел. Начните заново.', MAIN_MENU_KEYBOARD)
+    return _result(
+        chat_id, 'Сценарий расхода устарел. Начните заново.', MAIN_MENU_KEYBOARD
+    )
 
 
 def _process_income_message(user, chat_id, state, text):
@@ -872,26 +1014,46 @@ def _process_income_message(user, chat_id, state, text):
         if amount <= 0:
             raise ValueError('Сумма дохода должна быть больше нуля.')
         data['amount'] = str(amount)
-        _save_state(user, chat_id, flow='income', step='category', data=data, state=state)
-        return _result(chat_id, 'Выберите категорию дохода:', _choice_keyboard('income_category', INCOME_LABELS))
+        _save_state(
+            user, chat_id, flow='income', step='category', data=data, state=state
+        )
+        return _result(
+            chat_id,
+            'Выберите категорию дохода:',
+            _choice_keyboard('income_category', INCOME_LABELS),
+        )
 
     if state.step == 'category':
         category = INCOME_ALIASES.get(_word_key(text))
         if not category:
-            return _result(chat_id, 'Не понял категорию. Выберите кнопку или напишите название категории.', _choice_keyboard('income_category', INCOME_LABELS))
+            return _result(
+                chat_id,
+                'Не понял категорию. Выберите кнопку или напишите название категории.',
+                _choice_keyboard('income_category', INCOME_LABELS),
+            )
         return _set_income_category(user, chat_id, state, category)
 
     if state.step == 'source':
-        data['source'] = str(text).strip()[:150] or INCOME_LABELS.get(data.get('category'), 'Доход')
+        data['source'] = str(text).strip()[:150] or INCOME_LABELS.get(
+            data.get('category'), 'Доход'
+        )
         _save_state(user, chat_id, flow='income', step='date', data=data, state=state)
-        return _result(chat_id, 'Когда был доход? Можно написать дату или выбрать кнопку.', _date_keyboard(include_skip=False))
+        return _result(
+            chat_id,
+            'Когда был доход? Можно написать дату или выбрать кнопку.',
+            _date_keyboard(include_skip=False),
+        )
 
     if state.step == 'date':
         data['income_date'] = _parse_date_value(text).isoformat()
-        _save_state(user, chat_id, flow='income', step='confirm', data=data, state=state)
+        _save_state(
+            user, chat_id, flow='income', step='confirm', data=data, state=state
+        )
         return _income_confirm_result(chat_id, data)
 
-    return _result(chat_id, 'Сценарий дохода устарел. Начните заново.', MAIN_MENU_KEYBOARD)
+    return _result(
+        chat_id, 'Сценарий дохода устарел. Начните заново.', MAIN_MENU_KEYBOARD
+    )
 
 
 def _process_debt_message(user, chat_id, state, text):
@@ -901,7 +1063,9 @@ def _process_debt_message(user, chat_id, state, text):
         if amount <= 0:
             raise ValueError('Сумма долга должна быть больше нуля.')
         data['amount'] = str(amount)
-        _save_state(user, chat_id, flow='debt', step='bank_name', data=data, state=state)
+        _save_state(
+            user, chat_id, flow='debt', step='bank_name', data=data, state=state
+        )
         return _result(chat_id, 'Введите банк или кредитора.', _cancel_keyboard())
 
     if state.step == 'bank_name':
@@ -909,38 +1073,70 @@ def _process_debt_message(user, chat_id, state, text):
         if not bank_name:
             raise ValueError('Банк или кредитор обязательны.')
         data['bank_name'] = bank_name[:100]
-        _save_state(user, chat_id, flow='debt', step='debt_type', data=data, state=state)
-        return _result(chat_id, 'Выберите тип долга:', _choice_keyboard('debt_type', DEBT_TYPE_LABELS))
+        _save_state(
+            user, chat_id, flow='debt', step='debt_type', data=data, state=state
+        )
+        return _result(
+            chat_id,
+            'Выберите тип долга:',
+            _choice_keyboard('debt_type', DEBT_TYPE_LABELS),
+        )
 
     if state.step == 'debt_type':
         debt_type = DEBT_TYPE_ALIASES.get(_word_key(text))
         if not debt_type:
-            return _result(chat_id, 'Не понял тип долга. Выберите кнопку.', _choice_keyboard('debt_type', DEBT_TYPE_LABELS))
+            return _result(
+                chat_id,
+                'Не понял тип долга. Выберите кнопку.',
+                _choice_keyboard('debt_type', DEBT_TYPE_LABELS),
+            )
         return _set_debt_type(user, chat_id, state, debt_type)
 
     if state.step == 'product_name':
-        data['product_name'] = str(text).strip()[:150] or DEBT_TYPE_LABELS.get(data.get('debt_type'), 'Долг')
-        _save_state(user, chat_id, flow='debt', step='minimum_payment', data=data, state=state)
-        return _result(chat_id, 'Введите минимальный платеж или нажмите "Пропустить".', _skip_keyboard())
+        data['product_name'] = str(text).strip()[:150] or DEBT_TYPE_LABELS.get(
+            data.get('debt_type'), 'Долг'
+        )
+        _save_state(
+            user, chat_id, flow='debt', step='minimum_payment', data=data, state=state
+        )
+        return _result(
+            chat_id,
+            'Введите минимальный платеж или нажмите "Пропустить".',
+            _skip_keyboard(),
+        )
 
     if state.step == 'minimum_payment':
         amount = _parse_money(text)
         data['minimum_payment'] = str(amount)
-        _save_state(user, chat_id, flow='debt', step='interest_rate', data=data, state=state)
-        return _result(chat_id, 'Введите процентную ставку или нажмите "Пропустить".', _skip_keyboard())
+        _save_state(
+            user, chat_id, flow='debt', step='interest_rate', data=data, state=state
+        )
+        return _result(
+            chat_id,
+            'Введите процентную ставку или нажмите "Пропустить".',
+            _skip_keyboard(),
+        )
 
     if state.step == 'interest_rate':
         rate = _parse_money(text)
         data['interest_rate'] = str(rate)
-        _save_state(user, chat_id, flow='debt', step='next_payment_date', data=data, state=state)
-        return _result(chat_id, 'Введите дату следующего платежа или нажмите "Пропустить".', _date_keyboard(include_skip=True))
+        _save_state(
+            user, chat_id, flow='debt', step='next_payment_date', data=data, state=state
+        )
+        return _result(
+            chat_id,
+            'Введите дату следующего платежа или нажмите "Пропустить".',
+            _date_keyboard(include_skip=True),
+        )
 
     if state.step == 'next_payment_date':
         data['next_payment_date'] = _parse_date_value(text).isoformat()
         _save_state(user, chat_id, flow='debt', step='confirm', data=data, state=state)
         return _debt_confirm_result(chat_id, data)
 
-    return _result(chat_id, 'Сценарий долга устарел. Начните заново.', MAIN_MENU_KEYBOARD)
+    return _result(
+        chat_id, 'Сценарий долга устарел. Начните заново.', MAIN_MENU_KEYBOARD
+    )
 
 
 def _process_payment_message(user, chat_id, state, text):
@@ -948,8 +1144,14 @@ def _process_payment_message(user, chat_id, state, text):
     if state.step == 'debt':
         debt = _find_debt(user, _split_tokens(text))
         data['debt_id'] = debt.id
-        _save_state(user, chat_id, flow='payment', step='amount', data=data, state=state)
-        return _result(chat_id, f'Долг: #{debt.id} {debt.bank_name} {debt.product_name}.\nВведите сумму платежа.', _cancel_keyboard())
+        _save_state(
+            user, chat_id, flow='payment', step='amount', data=data, state=state
+        )
+        return _result(
+            chat_id,
+            f'Долг: #{debt.id} {debt.bank_name} {debt.product_name}.\nВведите сумму платежа.',
+            _cancel_keyboard(),
+        )
 
     if state.step == 'amount':
         amount = _parse_money(text)
@@ -957,17 +1159,27 @@ def _process_payment_message(user, chat_id, state, text):
             raise ValueError('Сумма платежа должна быть больше нуля.')
         data['amount'] = str(amount)
         _save_state(user, chat_id, flow='payment', step='date', data=data, state=state)
-        return _result(chat_id, 'Когда был платеж? Можно написать дату или выбрать кнопку.', _date_keyboard(include_skip=False))
+        return _result(
+            chat_id,
+            'Когда был платеж? Можно написать дату или выбрать кнопку.',
+            _date_keyboard(include_skip=False),
+        )
 
     if state.step == 'date':
         payment_date = _parse_date_value(text)
         if payment_date > financial_today():
-            raise ValueError('Укажите фактическую дату оплаты. Будущий платеж можно запланировать в Mini App.')
+            raise ValueError(
+                'Укажите фактическую дату оплаты. Будущий платеж можно запланировать в Mini App.'
+            )
         data['payment_date'] = payment_date.isoformat()
-        _save_state(user, chat_id, flow='payment', step='confirm', data=data, state=state)
+        _save_state(
+            user, chat_id, flow='payment', step='confirm', data=data, state=state
+        )
         return _payment_confirm_result(user, chat_id, data)
 
-    return _result(chat_id, 'Сценарий платежа устарел. Начните заново.', MAIN_MENU_KEYBOARD)
+    return _result(
+        chat_id, 'Сценарий платежа устарел. Начните заново.', MAIN_MENU_KEYBOARD
+    )
 
 
 def _process_skip_callback(user, chat_id, state):
@@ -975,27 +1187,58 @@ def _process_skip_callback(user, chat_id, state):
     if state.flow == 'expense' and state.step == 'title':
         data['title'] = EXPENSE_LABELS.get(data.get('category'), 'Расход')
         _save_state(user, chat_id, flow='expense', step='date', data=data, state=state)
-        return _result(chat_id, 'Когда был расход? Можно написать дату или выбрать кнопку.', _date_keyboard(include_skip=False), callback_answer_text='Пропущено')
+        return _result(
+            chat_id,
+            'Когда был расход? Можно написать дату или выбрать кнопку.',
+            _date_keyboard(include_skip=False),
+            callback_answer_text='Пропущено',
+        )
 
     if state.flow == 'income' and state.step == 'source':
         data['source'] = INCOME_LABELS.get(data.get('category'), 'Доход')
         _save_state(user, chat_id, flow='income', step='date', data=data, state=state)
-        return _result(chat_id, 'Когда был доход? Можно написать дату или выбрать кнопку.', _date_keyboard(include_skip=False), callback_answer_text='Пропущено')
+        return _result(
+            chat_id,
+            'Когда был доход? Можно написать дату или выбрать кнопку.',
+            _date_keyboard(include_skip=False),
+            callback_answer_text='Пропущено',
+        )
 
     if state.flow == 'debt' and state.step == 'product_name':
         data['product_name'] = DEBT_TYPE_LABELS.get(data.get('debt_type'), 'Долг')
-        _save_state(user, chat_id, flow='debt', step='minimum_payment', data=data, state=state)
-        return _result(chat_id, 'Введите минимальный платеж или нажмите "Пропустить".', _skip_keyboard(), callback_answer_text='Пропущено')
+        _save_state(
+            user, chat_id, flow='debt', step='minimum_payment', data=data, state=state
+        )
+        return _result(
+            chat_id,
+            'Введите минимальный платеж или нажмите "Пропустить".',
+            _skip_keyboard(),
+            callback_answer_text='Пропущено',
+        )
 
     if state.flow == 'debt' and state.step == 'minimum_payment':
         data['minimum_payment'] = None
-        _save_state(user, chat_id, flow='debt', step='interest_rate', data=data, state=state)
-        return _result(chat_id, 'Введите процентную ставку или нажмите "Пропустить".', _skip_keyboard(), callback_answer_text='Пропущено')
+        _save_state(
+            user, chat_id, flow='debt', step='interest_rate', data=data, state=state
+        )
+        return _result(
+            chat_id,
+            'Введите процентную ставку или нажмите "Пропустить".',
+            _skip_keyboard(),
+            callback_answer_text='Пропущено',
+        )
 
     if state.flow == 'debt' and state.step == 'interest_rate':
         data['interest_rate'] = None
-        _save_state(user, chat_id, flow='debt', step='next_payment_date', data=data, state=state)
-        return _result(chat_id, 'Введите дату следующего платежа или нажмите "Пропустить".', _date_keyboard(include_skip=True), callback_answer_text='Пропущено')
+        _save_state(
+            user, chat_id, flow='debt', step='next_payment_date', data=data, state=state
+        )
+        return _result(
+            chat_id,
+            'Введите дату следующего платежа или нажмите "Пропустить".',
+            _date_keyboard(include_skip=True),
+            callback_answer_text='Пропущено',
+        )
 
     if state.flow == 'debt' and state.step == 'next_payment_date':
         data['next_payment_date'] = None
@@ -1021,15 +1264,21 @@ def _process_date_callback(user, chat_id, state, value):
 
     if state.flow == 'expense':
         data['expense_date'] = value_date.isoformat()
-        _save_state(user, chat_id, flow='expense', step='confirm', data=data, state=state)
+        _save_state(
+            user, chat_id, flow='expense', step='confirm', data=data, state=state
+        )
         result = _expense_confirm_result(chat_id, data)
     elif state.flow == 'income':
         data['income_date'] = value_date.isoformat()
-        _save_state(user, chat_id, flow='income', step='confirm', data=data, state=state)
+        _save_state(
+            user, chat_id, flow='income', step='confirm', data=data, state=state
+        )
         result = _income_confirm_result(chat_id, data)
     elif state.flow == 'payment':
         data['payment_date'] = value_date.isoformat()
-        _save_state(user, chat_id, flow='payment', step='confirm', data=data, state=state)
+        _save_state(
+            user, chat_id, flow='payment', step='confirm', data=data, state=state
+        )
         result = _payment_confirm_result(user, chat_id, data)
     elif state.flow == 'debt':
         data['next_payment_date'] = value_date.isoformat()
@@ -1048,7 +1297,12 @@ def _set_expense_category(user, chat_id, state, category):
     data = _state_data(state)
     data['category'] = category
     _save_state(user, chat_id, flow='expense', step='title', data=data, state=state)
-    return _result(chat_id, 'Что купили или за что заплатили?', _skip_keyboard(), callback_answer_text='Категория выбрана')
+    return _result(
+        chat_id,
+        'Что купили или за что заплатили?',
+        _skip_keyboard(),
+        callback_answer_text='Категория выбрана',
+    )
 
 
 def _set_income_category(user, chat_id, state, category):
@@ -1057,7 +1311,12 @@ def _set_income_category(user, chat_id, state, category):
     data = _state_data(state)
     data['category'] = category
     _save_state(user, chat_id, flow='income', step='source', data=data, state=state)
-    return _result(chat_id, 'Укажите источник дохода.', _skip_keyboard(), callback_answer_text='Категория выбрана')
+    return _result(
+        chat_id,
+        'Укажите источник дохода.',
+        _skip_keyboard(),
+        callback_answer_text='Категория выбрана',
+    )
 
 
 def _set_debt_type(user, chat_id, state, debt_type):
@@ -1066,11 +1325,18 @@ def _set_debt_type(user, chat_id, state, debt_type):
     data = _state_data(state)
     data['debt_type'] = debt_type
     _save_state(user, chat_id, flow='debt', step='product_name', data=data, state=state)
-    return _result(chat_id, 'Введите название продукта или нажмите "Пропустить".', _skip_keyboard(), callback_answer_text='Тип выбран')
+    return _result(
+        chat_id,
+        'Введите название продукта или нажмите "Пропустить".',
+        _skip_keyboard(),
+        callback_answer_text='Тип выбран',
+    )
 
 
 def _set_payment_debt(user, chat_id, state, debt_id):
-    debt = Debt.query.filter_by(id=int(debt_id), user_id=user.id, status='active').first()
+    debt = Debt.query.filter_by(
+        id=int(debt_id), user_id=user.id, status='active'
+    ).first()
     if not debt:
         raise ValueError('Долг не найден.')
     data = _state_data(state)
@@ -1092,33 +1358,51 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
             user_id=user.id,
             amount=_parse_money(data['amount']),
             category=data['category'],
-            title=(data.get('title') or EXPENSE_LABELS.get(data['category'], 'Расход'))[:150],
+            title=(data.get('title') or EXPENSE_LABELS.get(data['category'], 'Расход'))[
+                :150
+            ],
             expense_date=_parse_date_value(data['expense_date']),
-            payment_method=data.get('payment_method') if data.get('payment_method') in PAYMENT_METHOD_LABELS else 'card',
+            payment_method=data.get('payment_method')
+            if data.get('payment_method') in PAYMENT_METHOD_LABELS
+            else 'card',
             comment='Telegram',
         )
         _clear_state(user)
         db.session.commit()
-        return _result(chat_id, f'Записал расход: {_format_money(expense.amount)} — {expense.title}.', MAIN_MENU_KEYBOARD, callback_answer_text)
+        return _result(
+            chat_id,
+            f'Записал расход: {_format_money(expense.amount)} — {expense.title}.',
+            MAIN_MENU_KEYBOARD,
+            callback_answer_text,
+        )
 
     if state.flow == 'income':
         income = Income(
             user_id=user.id,
             amount=_parse_money(data['amount']),
             category=data['category'],
-            source=(data.get('source') or INCOME_LABELS.get(data['category'], 'Доход'))[:150],
+            source=(data.get('source') or INCOME_LABELS.get(data['category'], 'Доход'))[
+                :150
+            ],
             income_date=_parse_date_value(data['income_date']),
             comment='Telegram',
         )
         db.session.add(income)
         _clear_state(user)
         db.session.commit()
-        return _result(chat_id, f'Записал доход: {_format_money(income.amount)} — {income.source}.', MAIN_MENU_KEYBOARD, callback_answer_text)
+        return _result(
+            chat_id,
+            f'Записал доход: {_format_money(income.amount)} — {income.source}.',
+            MAIN_MENU_KEYBOARD,
+            callback_answer_text,
+        )
 
     if state.flow == 'debt':
         next_payment_date = _parse_optional_date(data.get('next_payment_date'))
         amount = _parse_money(data['amount'])
-        minimum_payment = _parse_optional_money(data.get('minimum_payment'), 'Минимальный платеж')
+        minimum_payment = _parse_optional_money(
+            data.get('minimum_payment'), 'Минимальный платеж'
+        )
         interest_rate = _parse_optional_money(data.get('interest_rate'), 'Ставка')
         if minimum_payment is not None and minimum_payment > amount:
             raise ValueError('Минимальный платеж не может превышать сумму долга.')
@@ -1129,14 +1413,21 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
             user_id=user.id,
             bank_name=data['bank_name'][:100],
             debt_type=data['debt_type'],
-            product_name=(data.get('product_name') or DEBT_TYPE_LABELS.get(data['debt_type'], 'Долг'))[:150],
+            product_name=(
+                data.get('product_name')
+                or DEBT_TYPE_LABELS.get(data['debt_type'], 'Долг')
+            )[:150],
             total_amount=amount,
             remaining_amount=amount,
-            opening_principal_amount=amount if data['debt_type'] in ('consumer_credit', 'mortgage') else None,
+            opening_principal_amount=amount
+            if data['debt_type'] in ('consumer_credit', 'mortgage')
+            else None,
             minimum_payment=minimum_payment,
             interest_rate=interest_rate,
             next_payment_date=next_payment_date,
-            payment_day=next_payment_date.day if next_payment_date and data['debt_type'] != 'split' else None,
+            payment_day=next_payment_date.day
+            if next_payment_date and data['debt_type'] != 'split'
+            else None,
             is_payment_recurring=bool(next_payment_date),
             penalty_rate=default_penalty_rate(data['debt_type']),
             status='active',
@@ -1146,15 +1437,24 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
         db.session.add(debt)
         _clear_state(user)
         db.session.commit()
-        return _result(chat_id, f'Добавил долг #{debt.id}: {debt.bank_name} {debt.product_name} на {_format_money(debt.remaining_amount)}.', MAIN_MENU_KEYBOARD, callback_answer_text)
+        return _result(
+            chat_id,
+            f'Добавил долг #{debt.id}: {debt.bank_name} {debt.product_name} на {_format_money(debt.remaining_amount)}.',
+            MAIN_MENU_KEYBOARD,
+            callback_answer_text,
+        )
 
     if state.flow == 'payment':
-        debt = Debt.query.filter_by(id=int(data['debt_id']), user_id=user.id, status='active').first()
+        debt = Debt.query.filter_by(
+            id=int(data['debt_id']), user_id=user.id, status='active'
+        ).first()
         if not debt:
             raise ValueError('Долг не найден.')
         payment_date = _parse_date_value(data['payment_date'])
         if payment_date > financial_today():
-            raise ValueError('Укажите фактическую дату оплаты. Будущий платеж можно запланировать в Mini App.')
+            raise ValueError(
+                'Укажите фактическую дату оплаты. Будущий платеж можно запланировать в Mini App.'
+            )
         # add_payment commits both the payment and the completed conversation.
         _clear_state(user)
         payment = add_payment(
@@ -1182,7 +1482,9 @@ def _finish_conversation(user, chat_id, state, callback_answer_text=None):
         )
 
     _clear_state(user)
-    return _result(chat_id, 'Сценарий устарел. Выберите действие заново.', MAIN_MENU_KEYBOARD)
+    return _result(
+        chat_id, 'Сценарий устарел. Выберите действие заново.', MAIN_MENU_KEYBOARD
+    )
 
 
 def _expense_confirm_result(chat_id, data):
@@ -1227,7 +1529,11 @@ def _debt_confirm_result(chat_id, data):
 
 def _payment_confirm_result(user, chat_id, data):
     debt = Debt.query.filter_by(id=int(data['debt_id']), user_id=user.id).first()
-    debt_label = f'#{debt.id} {debt.bank_name} {debt.product_name}' if debt else f'#{data["debt_id"]}'
+    debt_label = (
+        f'#{debt.id} {debt.bank_name} {debt.product_name}'
+        if debt
+        else f'#{data["debt_id"]}'
+    )
     return _result(
         chat_id,
         'Проверьте платеж:\n'
@@ -1245,11 +1551,20 @@ def _prepare_quick_expense(user, chat_id, raw_tokens):
         raise ValueError('Сумма расхода должна быть больше нуля.')
 
     expense_date, tokens = _pull_date(tokens, options)
-    payment_method, tokens = _pull_choice(tokens, options.get('payment_method'), PAYMENT_METHOD_ALIASES)
-    category, tokens, matched = _pull_choice(tokens, options.get('category'), EXPENSE_ALIASES, return_matched=True)
+    payment_method, tokens = _pull_choice(
+        tokens, options.get('payment_method'), PAYMENT_METHOD_ALIASES
+    )
+    category, tokens, matched = _pull_choice(
+        tokens, options.get('category'), EXPENSE_ALIASES, return_matched=True
+    )
     category = category or 'other'
     payment_method = payment_method or 'card'
-    title = _join_tokens(tokens) or matched or EXPENSE_LABELS.get(category) or 'Расход из Telegram'
+    title = (
+        _join_tokens(tokens)
+        or matched
+        or EXPENSE_LABELS.get(category)
+        or 'Расход из Telegram'
+    )
 
     data = {
         'amount': str(amount),
@@ -1269,9 +1584,13 @@ def _prepare_quick_income(user, chat_id, raw_tokens):
         raise ValueError('Сумма дохода должна быть больше нуля.')
 
     income_date, tokens = _pull_date(tokens, options)
-    category, tokens, matched = _pull_choice(tokens, options.get('category'), INCOME_ALIASES, return_matched=True)
+    category, tokens, matched = _pull_choice(
+        tokens, options.get('category'), INCOME_ALIASES, return_matched=True
+    )
     category = category or 'other'
-    source = _join_tokens(tokens) or matched or INCOME_LABELS.get(category) or 'Telegram'
+    source = (
+        _join_tokens(tokens) or matched or INCOME_LABELS.get(category) or 'Telegram'
+    )
 
     data = {
         'amount': str(amount),
@@ -1289,10 +1608,16 @@ def _prepare_quick_debt(user, chat_id, raw_tokens):
     if amount <= 0:
         raise ValueError('Сумма долга должна быть больше нуля.')
 
-    next_payment_date, tokens = _pull_date(tokens, options, required=False, default_today=False)
-    debt_type, tokens, matched_type = _pull_choice(tokens, options.get('debt_type'), DEBT_TYPE_ALIASES, return_matched=True)
+    next_payment_date, tokens = _pull_date(
+        tokens, options, required=False, default_today=False
+    )
+    debt_type, tokens, matched_type = _pull_choice(
+        tokens, options.get('debt_type'), DEBT_TYPE_ALIASES, return_matched=True
+    )
     debt_type = debt_type or 'consumer_credit'
-    minimum_payment = _parse_optional_money(options.get('minimum_payment'), 'Минимальный платеж')
+    minimum_payment = _parse_optional_money(
+        options.get('minimum_payment'), 'Минимальный платеж'
+    )
     interest_rate = _parse_optional_money(options.get('interest_rate'), 'Ставка')
 
     bank_name = str(options.get('bank') or '').strip()
@@ -1302,16 +1627,24 @@ def _prepare_quick_debt(user, chat_id, raw_tokens):
             raise ValueError('Укажите банк или название долга.')
         bank_name = tokens.pop(0)
     if not product_name:
-        product_name = _join_tokens(tokens) or matched_type or DEBT_TYPE_LABELS.get(debt_type, 'Долг')
+        product_name = (
+            _join_tokens(tokens)
+            or matched_type
+            or DEBT_TYPE_LABELS.get(debt_type, 'Долг')
+        )
 
     data = {
         'amount': str(amount),
         'bank_name': bank_name[:100],
         'debt_type': debt_type,
         'product_name': product_name[:150],
-        'minimum_payment': str(minimum_payment) if minimum_payment is not None else None,
+        'minimum_payment': str(minimum_payment)
+        if minimum_payment is not None
+        else None,
         'interest_rate': str(interest_rate) if interest_rate is not None else None,
-        'next_payment_date': next_payment_date.isoformat() if next_payment_date else None,
+        'next_payment_date': next_payment_date.isoformat()
+        if next_payment_date
+        else None,
     }
     _save_state(user, chat_id, flow='debt', step='confirm', data=data)
     return _debt_confirm_result(chat_id, data)
@@ -1325,7 +1658,11 @@ def _prepare_quick_payment(user, chat_id, raw_tokens):
 
     payment_date, tokens = _pull_date(tokens, options)
     is_early_repayment, tokens = _pull_early_repayment(tokens, options)
-    tokens = [token for token in tokens if _word_key(token) not in {'долг', 'кредит', 'за', 'по'}]
+    tokens = [
+        token
+        for token in tokens
+        if _word_key(token) not in {'долг', 'кредит', 'за', 'по'}
+    ]
     debt = _find_debt(user, tokens, options.get('debt_id'))
     if debt.status != 'active':
         raise ValueError('Нельзя внести платеж в архивный долг.')
@@ -1362,7 +1699,10 @@ def _list_debts(user):
 
 
 def _build_summary(user):
-    summary = get_finance_summary(user.id)
+    try:
+        summary = get_finance_summary(user.id)
+    except FinancialDataUnavailable as exc:
+        return exc.message
     month_start = summary.get('month_start') or financial_today().replace(day=1)
     lines = [
         f'Итог за {month_start.strftime("%m.%Y")}:',
@@ -1377,7 +1717,9 @@ def _build_summary(user):
     nearest = summary.get('nearest_debt')
     if nearest:
         due_date = _effective_due_date(nearest, financial_today())
-        lines.append(f'Ближайший платеж: {nearest.bank_name} {nearest.product_name}, {_format_date(due_date)}.')
+        lines.append(
+            f'Ближайший платеж: {nearest.bank_name} {nearest.product_name}, {_format_date(due_date)}.'
+        )
     return '\n'.join(lines)
 
 
@@ -1398,13 +1740,17 @@ def _find_debt(user, tokens, debt_id=None):
     if not tokens:
         if len(debts) == 1:
             return debts[0]
-        raise ValueError('Укажите банк, продукт или id долга. Например: платеж 5000 сбер.')
+        raise ValueError(
+            'Укажите банк, продукт или id долга. Например: платеж 5000 сбер.'
+        )
 
     query = _normalize_text(_join_tokens(tokens))
     scored = []
     query_tokens = {item for item in query.split() if item}
     for debt in debts:
-        haystack = _normalize_text(f'{debt.id} {debt.bank_name} {debt.product_name} {debt.comment or ""}')
+        haystack = _normalize_text(
+            f'{debt.id} {debt.bank_name} {debt.product_name} {debt.comment or ""}'
+        )
         score = 0
         if query and query in haystack:
             score += 100
@@ -1415,14 +1761,20 @@ def _find_debt(user, tokens, debt_id=None):
             scored.append((score, debt))
 
     if not scored:
-        raise ValueError('Не нашел подходящий долг. Нажмите "Долги", чтобы посмотреть список.')
+        raise ValueError(
+            'Не нашел подходящий долг. Нажмите "Долги", чтобы посмотреть список.'
+        )
 
     scored.sort(key=lambda item: item[0], reverse=True)
     best_score = scored[0][0]
     best = [debt for score, debt in scored if score == best_score]
     if len(best) > 1:
-        variants = ', '.join(f'#{debt.id} {debt.bank_name} {debt.product_name}' for debt in best[:5])
-        raise ValueError(f'Нашлось несколько долгов: {variants}. Укажите id, например долг=#{best[0].id}.')
+        variants = ', '.join(
+            f'#{debt.id} {debt.bank_name} {debt.product_name}' for debt in best[:5]
+        )
+        raise ValueError(
+            f'Нашлось несколько долгов: {variants}. Укажите id, например долг=#{best[0].id}.'
+        )
     return best[0]
 
 
@@ -1435,9 +1787,16 @@ def _state_data(state):
 
 
 def _save_state(user, chat_id, flow, step, data, state=None):
-    state = state or TelegramConversationState.query.filter_by(telegram_id=user.telegram_id).first()
+    state = (
+        state
+        or TelegramConversationState.query.filter_by(
+            telegram_id=user.telegram_id
+        ).first()
+    )
     if not state:
-        state = TelegramConversationState(telegram_id=user.telegram_id, chat_id=chat_id, flow=flow, step=step)
+        state = TelegramConversationState(
+            telegram_id=user.telegram_id, chat_id=chat_id, flow=flow, step=step
+        )
         db.session.add(state)
     state.chat_id = chat_id
     state.flow = flow
@@ -1450,7 +1809,9 @@ def _save_state(user, chat_id, flow, step, data, state=None):
 
 
 def _get_active_state(user):
-    state = TelegramConversationState.query.filter_by(telegram_id=user.telegram_id).first()
+    state = TelegramConversationState.query.filter_by(
+        telegram_id=user.telegram_id
+    ).first()
     if not state:
         return None
     if as_utc(state.expires_at) <= utc_now():
@@ -1461,7 +1822,9 @@ def _get_active_state(user):
 
 
 def _clear_state(user):
-    state = TelegramConversationState.query.filter_by(telegram_id=user.telegram_id).first()
+    state = TelegramConversationState.query.filter_by(
+        telegram_id=user.telegram_id
+    ).first()
     if state:
         db.session.delete(state)
         db.session.flush()
@@ -1482,7 +1845,10 @@ def _commit_update_with_periodic_cleanup():
     if _CLEANUP_LOCK.acquire(blocking=False):
         try:
             now = time.monotonic()
-            if _LAST_CLEANUP_AT is None or now - _LAST_CLEANUP_AT >= _CLEANUP_INTERVAL_SECONDS:
+            if (
+                _LAST_CLEANUP_AT is None
+                or now - _LAST_CLEANUP_AT >= _CLEANUP_INTERVAL_SECONDS
+            ):
                 _cleanup_processed_updates()
                 _cleanup_expired_conversation_states()
                 db.session.commit()
@@ -1502,7 +1868,9 @@ def _cleanup_expired_conversation_states():
 
 def _cleanup_processed_updates():
     try:
-        retention_days = int(current_app.config.get('TELEGRAM_UPDATE_RETENTION_DAYS', 30))
+        retention_days = int(
+            current_app.config.get('TELEGRAM_UPDATE_RETENTION_DAYS', 30)
+        )
     except (TypeError, ValueError):
         retention_days = 30
     if retention_days <= 0:
@@ -1541,7 +1909,9 @@ def _mini_app_keyboard():
         )
     ):
         # Inline launches provide signed initData; reply-keyboard launches do not.
-        return {'inline_keyboard': [[{'text': 'Открыть Mini App', 'web_app': {'url': url}}]]}
+        return {
+            'inline_keyboard': [[{'text': 'Открыть Mini App', 'web_app': {'url': url}}]]
+        }
     return None
 
 
@@ -1549,7 +1919,9 @@ def _open_mini_app(chat_id):
     keyboard = _mini_app_keyboard()
     return _result(
         chat_id,
-        'Откройте Mini App кнопкой ниже.' if keyboard else 'Mini App сейчас недоступен.',
+        'Откройте Mini App кнопкой ниже.'
+        if keyboard
+        else 'Mini App сейчас недоступен.',
         keyboard or MAIN_MENU_KEYBOARD,
     )
 
@@ -1732,7 +2104,7 @@ def _pull_date(tokens, options, required=False, default_today=True):
     for index, token in enumerate(tokens):
         parsed = _try_parse_date_value(token)
         if parsed:
-            return parsed, tokens[:index] + tokens[index + 1:]
+            return parsed, tokens[:index] + tokens[index + 1 :]
 
     if required:
         raise ValueError('Укажите дату.')
@@ -1753,7 +2125,7 @@ def _pull_choice(tokens, option_value, aliases, return_matched=False):
         key = _word_key(token)
         value = aliases.get(key)
         if value:
-            next_tokens = tokens[:index] + tokens[index + 1:]
+            next_tokens = tokens[:index] + tokens[index + 1 :]
             if return_matched:
                 return value, next_tokens, token
             return value, next_tokens
@@ -1815,7 +2187,9 @@ def _normalize_text(value):
 
 
 def _join_tokens(tokens):
-    return ' '.join(str(token).strip() for token in tokens if str(token).strip()).strip()
+    return ' '.join(
+        str(token).strip() for token in tokens if str(token).strip()
+    ).strip()
 
 
 def _looks_like_amount(value):
@@ -1875,7 +2249,9 @@ def _parse_date_value(value):
         except ValueError:
             pass
 
-    raise ValueError(f'Не понял дату: {value}. Используйте формат 2026-07-29 или 29.07.')
+    raise ValueError(
+        f'Не понял дату: {value}. Используйте формат 2026-07-29 или 29.07.'
+    )
 
 
 def _format_money(value):
@@ -1912,7 +2288,9 @@ def _is_rate_limited(telegram_id, chat_id):
     now = time.monotonic()
     window_start = now - 60
     key = (int(telegram_id), int(chat_id or telegram_id))
-    timestamps = [item for item in _RATE_LIMIT_BUCKETS.get(key, []) if item >= window_start]
+    timestamps = [
+        item for item in _RATE_LIMIT_BUCKETS.get(key, []) if item >= window_start
+    ]
     if len(timestamps) >= limit:
         _RATE_LIMIT_BUCKETS[key] = timestamps
         return True

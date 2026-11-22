@@ -104,6 +104,12 @@
                         </label>
                     </div>
                 </div>
+                {% if edit_expense and edit_expense.monthly_is_automatic %}
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" name="confirm_payment" id="confirm_payment" {% if form_data.get('confirm_payment') %}checked{% endif %}>
+                    <label class="form-check-label" for="confirm_payment">Подтвердить оплату</label>
+                </div>
+                {% endif %}
                 <div class="d-flex gap-2 align-items-center">
                     <button type="submit" class="btn btn-danger"><i class="bi bi-floppy me-1" aria-hidden="true"></i>{{ 'Сохранить изменения' if edit_expense else 'Сохранить расход' }}</button>
                     {% if edit_expense %}
@@ -126,7 +132,7 @@
                                 <span class="history-month-title">{{ group.title }}</span>
                                 <span class="history-month-count">{{ group['items']|length }}</span>
                             </span>
-                            <span class="history-month-total">{{ group.total_amount|money }}</span>
+                            <span class="history-month-total" title="Подтверждённые расходы">{{ group.total_amount|money }}</span>
                         </button>
                     </h2>
                     <div id="collapse-{{ group.year_month }}" class="accordion-collapse collapse {% if group.year_month == active_month %}show{% endif %}" aria-labelledby="heading-{{ group.year_month }}" data-bs-parent="#expenseAccordion">
@@ -167,6 +173,9 @@
                                                     <span class="monthly-lock" title="Ежемесячный расход" aria-label="Ежемесячный расход"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
                                                 {% endif %}
                                                 </div>
+                                                {% if expense.monthly_is_automatic or expense.is_monthly or expense.monthly_group_id %}
+                                                    <small class="text-body-secondary">{{ 'Оплата не подтверждена' if expense.monthly_is_automatic else 'Оплачено' }}</small>
+                                                {% endif %}
                                             </td>
                                             {% set expense_category = dict(categories)[expense.category] %}
                                             <td class="history-category" title="{{ expense_category }}">{{ expense_category }}</td>

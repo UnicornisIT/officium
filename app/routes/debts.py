@@ -14,9 +14,16 @@ from app.services.debt_accrual_service import (
 )
 from app.services.debt_calendar_service import previous_payment_due_date
 from app.services.debt_schedule_service import build_debt_payment_schedule
+from app.services.financial_data import require_financial_data
 from app.services.payment_service import recalculate_debt
 from app.time_utils import utc_now
-from app.utils import get_setting, is_local_test_user, parse_date, parse_decimal, record_activity
+from app.utils import (
+    get_setting,
+    is_local_test_user,
+    parse_date,
+    parse_decimal,
+    record_activity,
+)
 from extensions import db
 
 
@@ -28,6 +35,7 @@ EARLY_REPAYMENT_STRATEGIES = ('reduce_term', 'reduce_payment')
 
 def init_app(app):
     @app.route('/api/debts', methods=['GET'])
+    @require_financial_data()
     def api_get_debts():
         if is_local_test_user():
             debts = get_demo_debts()
@@ -44,12 +52,19 @@ def init_app(app):
 
         query = Debt.query.filter_by(status=status, user_id=current_user.id)
         if bank_filter:
-            term = bank_filter.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            term = (
+                bank_filter.replace('\\', '\\\\')
+                .replace('%', '\\%')
+                .replace('_', '\\_')
+            )
             query = query.filter(Debt.bank_name.ilike(f'%{term}%', escape='\\'))
         if type_filter:
             query = query.filter_by(debt_type=type_filter)
 
-        debts = query.order_by(db.case((Debt.next_payment_date.is_(None), 1), else_=0), Debt.next_payment_date.asc()).all()
+        debts = query.order_by(
+            db.case((Debt.next_payment_date.is_(None), 1), else_=0),
+            Debt.next_payment_date.asc(),
+        ).all()
         return jsonify({'success': True, 'debts': [d.to_dict() for d in debts]})
 
     @app.route('/api/debts', methods=['POST'])
@@ -61,7 +76,7 @@ def init_app(app):
         try:
             bank_name = str(data.get('bank_name', '')).strip()
             if not bank_name:
-                raise ValueError("Название банка обязательно")
+                raise ValueError('Название банка обязательно')
             if len(bank_name) > 100:
                 raise ValueError('Название банка не должно превышать 100 символов')
 
@@ -71,46 +86,107 @@ def init_app(app):
 
             product_name = str(data.get('product_name', '')).strip()
             if not product_name:
-                raise ValueError("Название продукта/карты обязательно")
+                raise ValueError('Название продукта/карты обязательно')
             if len(product_name) > 150:
                 raise ValueError('Название продукта не должно превышать 150 символов')
 
-            total_amount = parse_decimal(data.get('total_amount'), 'Сумма долга', required=True)
-            remaining_amount = parse_decimal(data.get('remaining_amount'), 'Остаток долга', required=True)
-            minimum_payment = parse_decimal(data.get('minimum_payment'), 'Минимальный платеж', required=False)
-            first_payment_amount = _parse_first_payment_amount(data.get('first_payment_amount'))
-            interest_rate = parse_decimal(data.get('interest_rate'), 'Процентная ставка', required=False)
-            interest_rate_after_change = parse_decimal(data.get('interest_rate_after_change'), 'Новая процентная ставка', required=False)
-            _validate_interest_rate(interest_rate, 'Процентная ставка')
-            _validate_interest_rate(interest_rate_after_change, 'Новая процентная ставка')
-            interest_rate_change_date = parse_date(data.get('interest_rate_change_date'), 'Дата смены ставки')
-            _validate_interest_rate_change(interest_rate_after_change, interest_rate_change_date)
-            next_payment_date = parse_date(data.get('next_payment_date'), 'Дата следующего платежа')
-            is_payment_recurring = bool(data.get('is_payment_recurring')) and next_payment_date is not None
-            repayment_type = _choice(data.get('repayment_type'), REPAYMENT_TYPES, 'annuity', 'Тип графика')
-            day_count_convention = _choice(data.get('day_count_convention'), DAY_COUNT_CONVENTIONS, 'actual_year', 'База дней')
-            include_payment_day = bool(data.get('include_payment_day'))
-            interest_period_start_date = parse_date(data.get('interest_period_start_date'), 'Начало процентного периода')
-            if next_payment_date and interest_period_start_date and interest_period_start_date >= next_payment_date:
-                raise ValueError('Начало процентного периода должно быть раньше даты платежа')
-            early_repayment_strategy = _choice(data.get('early_repayment_strategy'), EARLY_REPAYMENT_STRATEGIES, 'reduce_term', 'Досрочное погашение')
-            early_repayment_enabled, planned_early_repayment_amount = _early_repayment_preferences(
-                debt_type=debt_type,
-                enabled=data.get('early_repayment_enabled'),
-                amount=data.get('planned_early_repayment_amount'),
-                minimum_payment=minimum_payment,
-                remaining_amount=remaining_amount,
+            total_amount = parse_decimal(
+                data.get('total_amount'), 'Сумма долга', required=True
             )
-            loan_term_months = _parse_positive_int(data.get('loan_term_months'), 'Срок в месяцах')
-            monthly_fee_amount = parse_decimal(data.get('monthly_fee_amount'), 'Ежемесячные комиссии', required=False) or 0
-            bank_remaining_amount = parse_decimal(data.get('bank_remaining_amount'), 'Остаток по банку', required=False)
+            remaining_amount = parse_decimal(
+                data.get('remaining_amount'), 'Остаток долга', required=True
+            )
+            minimum_payment = parse_decimal(
+                data.get('minimum_payment'), 'Минимальный платеж', required=False
+            )
+            first_payment_amount = _parse_first_payment_amount(
+                data.get('first_payment_amount')
+            )
+            interest_rate = parse_decimal(
+                data.get('interest_rate'), 'Процентная ставка', required=False
+            )
+            interest_rate_after_change = parse_decimal(
+                data.get('interest_rate_after_change'),
+                'Новая процентная ставка',
+                required=False,
+            )
+            _validate_interest_rate(interest_rate, 'Процентная ставка')
+            _validate_interest_rate(
+                interest_rate_after_change, 'Новая процентная ставка'
+            )
+            interest_rate_change_date = parse_date(
+                data.get('interest_rate_change_date'), 'Дата смены ставки'
+            )
+            _validate_interest_rate_change(
+                interest_rate_after_change, interest_rate_change_date
+            )
+            next_payment_date = parse_date(
+                data.get('next_payment_date'), 'Дата следующего платежа'
+            )
+            is_payment_recurring = (
+                bool(data.get('is_payment_recurring')) and next_payment_date is not None
+            )
+            repayment_type = _choice(
+                data.get('repayment_type'), REPAYMENT_TYPES, 'annuity', 'Тип графика'
+            )
+            day_count_convention = _choice(
+                data.get('day_count_convention'),
+                DAY_COUNT_CONVENTIONS,
+                'actual_year',
+                'База дней',
+            )
+            include_payment_day = bool(data.get('include_payment_day'))
+            interest_period_start_date = parse_date(
+                data.get('interest_period_start_date'), 'Начало процентного периода'
+            )
+            if (
+                next_payment_date
+                and interest_period_start_date
+                and interest_period_start_date >= next_payment_date
+            ):
+                raise ValueError(
+                    'Начало процентного периода должно быть раньше даты платежа'
+                )
+            early_repayment_strategy = _choice(
+                data.get('early_repayment_strategy'),
+                EARLY_REPAYMENT_STRATEGIES,
+                'reduce_term',
+                'Досрочное погашение',
+            )
+            early_repayment_enabled, planned_early_repayment_amount = (
+                _early_repayment_preferences(
+                    debt_type=debt_type,
+                    enabled=data.get('early_repayment_enabled'),
+                    amount=data.get('planned_early_repayment_amount'),
+                    minimum_payment=minimum_payment,
+                    remaining_amount=remaining_amount,
+                )
+            )
+            loan_term_months = _parse_positive_int(
+                data.get('loan_term_months'), 'Срок в месяцах'
+            )
+            monthly_fee_amount = (
+                parse_decimal(
+                    data.get('monthly_fee_amount'),
+                    'Ежемесячные комиссии',
+                    required=False,
+                )
+                or 0
+            )
+            bank_remaining_amount = parse_decimal(
+                data.get('bank_remaining_amount'), 'Остаток по банку', required=False
+            )
             if 'penalty_rate' in data:
                 penalty_rate = _parse_penalty_rate(data.get('penalty_rate'))
             else:
                 penalty_rate = default_penalty_rate(debt_type)
-            capitalize_interest = bool(data.get('capitalize_interest')) and debt_type != 'split'
+            capitalize_interest = (
+                bool(data.get('capitalize_interest')) and debt_type != 'split'
+            )
             grace_period_end_date = _parse_grace_period_end(
-                data.get('grace_period_end_date'), debt_type, interest_period_start_date,
+                data.get('grace_period_end_date'),
+                debt_type,
+                interest_period_start_date,
             )
 
             _validate_debt_amounts(total_amount, remaining_amount)
@@ -124,14 +200,18 @@ def init_app(app):
                 product_name=product_name,
                 total_amount=total_amount,
                 remaining_amount=remaining_amount,
-                opening_principal_amount=remaining_amount if debt_type in ('consumer_credit', 'mortgage') else None,
+                opening_principal_amount=remaining_amount
+                if debt_type in ('consumer_credit', 'mortgage')
+                else None,
                 minimum_payment=minimum_payment,
                 first_payment_amount=first_payment_amount,
                 interest_rate=interest_rate,
                 interest_rate_after_change=interest_rate_after_change,
                 interest_rate_change_date=interest_rate_change_date,
                 next_payment_date=next_payment_date,
-                payment_day=next_payment_date.day if next_payment_date and debt_type != 'split' else None,
+                payment_day=next_payment_date.day
+                if next_payment_date and debt_type != 'split'
+                else None,
                 is_payment_recurring=is_payment_recurring,
                 repayment_type=repayment_type,
                 day_count_convention=day_count_convention,
@@ -146,20 +226,36 @@ def init_app(app):
                 penalty_rate=penalty_rate,
                 capitalize_interest=capitalize_interest,
                 grace_period_end_date=grace_period_end_date,
-                grace_policy=_parse_grace_policy(data.get('grace_policy'), debt_type, grace_period_end_date),
+                grace_policy=_parse_grace_policy(
+                    data.get('grace_policy'), debt_type, grace_period_end_date
+                ),
                 comment=_optional_text(data.get('comment'), 2000, 'Комментарий'),
                 status='archived' if remaining_amount == Decimal('0.00') else 'active',
             )
-            explicit_start = parse_date(data.get('accrual_start_date'), 'Расчёт ведётся с')
-            if explicit_start and next_payment_date and explicit_start >= next_payment_date:
+            explicit_start = parse_date(
+                data.get('accrual_start_date'), 'Расчёт ведётся с'
+            )
+            if (
+                explicit_start
+                and next_payment_date
+                and explicit_start >= next_payment_date
+            ):
                 raise ValueError('Дата начала расчёта должна быть раньше даты платежа')
             debt.accrual_start_date = explicit_start or accrual_start_date(debt)
-            opening = parse_decimal(data.get('opening_principal_amount'), 'Основной долг на дату начала расчёта', required=False)
+            opening = parse_decimal(
+                data.get('opening_principal_amount'),
+                'Основной долг на дату начала расчёта',
+                required=False,
+            )
             if opening is not None:
                 if debt.debt_type not in ('consumer_credit', 'mortgage'):
-                    raise ValueError('Исходный основной долг задаётся только для кредита или ипотеки')
+                    raise ValueError(
+                        'Исходный основной долг задаётся только для кредита или ипотеки'
+                    )
                 if opening != remaining_amount:
-                    raise ValueError('Для нового кредита начальный основной долг должен совпадать с остатком')
+                    raise ValueError(
+                        'Для нового кредита начальный основной долг должен совпадать с остатком'
+                    )
                 debt.opening_principal_amount = opening
             db.session.add(debt)
             db.session.commit()
@@ -171,9 +267,12 @@ def init_app(app):
         except Exception:
             db.session.rollback()
             current_app.logger.exception('Failed to create debt')
-            return jsonify({'success': False, 'error': 'Не удалось сохранить долг'}), 500
+            return jsonify(
+                {'success': False, 'error': 'Не удалось сохранить долг'}
+            ), 500
 
     @app.route('/api/debts/<int:debt_id>', methods=['GET'])
+    @require_financial_data()
     def api_get_debt(debt_id):
         debt = get_user_debt(debt_id)
         if not debt:
@@ -181,13 +280,16 @@ def init_app(app):
         return jsonify({'success': True, 'debt': debt.to_dict()})
 
     @app.route('/api/debts/<int:debt_id>/schedule', methods=['GET'])
+    @require_financial_data()
     def api_get_debt_schedule(debt_id):
         debt = get_user_debt(debt_id)
         if not debt:
             return jsonify({'success': False, 'error': 'Долг не найден'}), 404
         try:
             if not debt.accrual_state()['data_consistent']:
-                raise ValueError('История платежей не согласована с остатком долга. Сверьте начальный основной долг и дату начала расчёта.')
+                raise ValueError(
+                    'История платежей не согласована с остатком долга. Сверьте начальный основной долг и дату начала расчёта.'
+                )
             schedule = build_debt_payment_schedule(debt)
             return jsonify({'success': True, 'schedule': schedule})
         except ValueError as e:
@@ -199,9 +301,16 @@ def init_app(app):
         if not debt:
             return jsonify({'success': False, 'error': 'Долг не найден'}), 404
         if debt.status != 'active':
-            return jsonify({'success': False, 'error': 'Нельзя добавлять покупку в архивный долг'}), 422
+            return jsonify(
+                {'success': False, 'error': 'Нельзя добавлять покупку в архивный долг'}
+            ), 422
         if debt.debt_type != 'split':
-            return jsonify({'success': False, 'error': 'Покупки можно добавлять только в Сплит / Рассрочку'}), 422
+            return jsonify(
+                {
+                    'success': False,
+                    'error': 'Покупки можно добавлять только в Сплит / Рассрочку',
+                }
+            ), 422
 
         data = request.get_json(silent=True)
         if not data:
@@ -212,8 +321,15 @@ def init_app(app):
             if amount <= 0:
                 raise ValueError('Сумма покупки должна быть больше нуля')
 
-            purchase_date = parse_date(data.get('purchase_date'), 'Дата покупки', required=True)
-            installments_count = _parse_positive_int(data.get('installments_count') or 4, 'Количество платежей') or 4
+            purchase_date = parse_date(
+                data.get('purchase_date'), 'Дата покупки', required=True
+            )
+            installments_count = (
+                _parse_positive_int(
+                    data.get('installments_count') or 4, 'Количество платежей'
+                )
+                or 4
+            )
             if installments_count > 24:
                 raise ValueError('Количество платежей не должно быть больше 24')
 
@@ -229,7 +345,16 @@ def init_app(app):
             debt.updated_at = utc_now()
 
             if is_local_test_user():
-                purchase.id = max((item.id or 0 for item in getattr(debt, 'split_purchases', []) or []), default=0) + 1
+                purchase.id = (
+                    max(
+                        (
+                            item.id or 0
+                            for item in getattr(debt, 'split_purchases', []) or []
+                        ),
+                        default=0,
+                    )
+                    + 1
+                )
                 debt.split_purchases.append(purchase)
             else:
                 db.session.add(purchase)
@@ -238,12 +363,14 @@ def init_app(app):
 
             invalidate_debt_state_cache(debt)
             schedule = build_debt_payment_schedule(debt)
-            return jsonify({
-                'success': True,
-                'purchase': purchase.to_dict(),
-                'debt': debt.to_dict(),
-                'schedule': schedule,
-            }), 201
+            return jsonify(
+                {
+                    'success': True,
+                    'purchase': purchase.to_dict(),
+                    'debt': debt.to_dict(),
+                    'schedule': schedule,
+                }
+            ), 201
 
         except ValueError as e:
             db.session.rollback()
@@ -251,7 +378,9 @@ def init_app(app):
         except Exception:
             db.session.rollback()
             current_app.logger.exception('Failed to add split purchase')
-            return jsonify({'success': False, 'error': 'Не удалось добавить покупку'}), 500
+            return jsonify(
+                {'success': False, 'error': 'Не удалось добавить покупку'}
+            ), 500
 
     @app.route('/api/debts/<int:debt_id>', methods=['PUT'])
     def api_update_debt(debt_id):
@@ -277,59 +406,110 @@ def init_app(app):
             if 'bank_name' in data:
                 bank_name = str(data['bank_name']).strip()
                 if not bank_name:
-                    raise ValueError("Название банка обязательно")
+                    raise ValueError('Название банка обязательно')
                 if len(bank_name) > 100:
                     raise ValueError('Название банка не должно превышать 100 символов')
                 debt.bank_name = bank_name
 
             if 'debt_type' in data:
                 if data['debt_type'] not in DEBT_TYPES:
-                    raise ValueError("Некорректный тип долга")
+                    raise ValueError('Некорректный тип долга')
                 debt.debt_type = data['debt_type']
 
             if 'product_name' in data:
                 product_name = str(data['product_name']).strip()
                 if not product_name:
-                    raise ValueError("Название продукта обязательно")
+                    raise ValueError('Название продукта обязательно')
                 if len(product_name) > 150:
-                    raise ValueError('Название продукта не должно превышать 150 символов')
+                    raise ValueError(
+                        'Название продукта не должно превышать 150 символов'
+                    )
                 debt.product_name = product_name
 
             if 'total_amount' in data:
-                debt.total_amount = parse_decimal(data['total_amount'], 'Сумма долга', required=True)
+                debt.total_amount = parse_decimal(
+                    data['total_amount'], 'Сумма долга', required=True
+                )
             if 'remaining_amount' in data:
-                debt.remaining_amount = parse_decimal(data['remaining_amount'], 'Остаток долга', required=True)
+                debt.remaining_amount = parse_decimal(
+                    data['remaining_amount'], 'Остаток долга', required=True
+                )
             if 'minimum_payment' in data:
-                debt.minimum_payment = parse_decimal(data['minimum_payment'], 'Минимальный платеж', required=False)
+                debt.minimum_payment = parse_decimal(
+                    data['minimum_payment'], 'Минимальный платеж', required=False
+                )
             if 'first_payment_amount' in data:
-                debt.first_payment_amount = _parse_first_payment_amount(data.get('first_payment_amount'))
+                debt.first_payment_amount = _parse_first_payment_amount(
+                    data.get('first_payment_amount')
+                )
             if 'interest_rate' in data:
-                debt.interest_rate = parse_decimal(data['interest_rate'], 'Процентная ставка', required=False)
+                debt.interest_rate = parse_decimal(
+                    data['interest_rate'], 'Процентная ставка', required=False
+                )
                 _validate_interest_rate(debt.interest_rate, 'Процентная ставка')
-            if 'interest_rate_after_change' in data or 'interest_rate_change_date' in data:
-                interest_rate_after_change = parse_decimal(data.get('interest_rate_after_change'), 'Новая процентная ставка', required=False)
-                interest_rate_change_date = parse_date(data.get('interest_rate_change_date'), 'Дата смены ставки')
-                _validate_interest_rate_change(interest_rate_after_change, interest_rate_change_date)
-                _validate_interest_rate(interest_rate_after_change, 'Новая процентная ставка')
+            if (
+                'interest_rate_after_change' in data
+                or 'interest_rate_change_date' in data
+            ):
+                interest_rate_after_change = parse_decimal(
+                    data.get('interest_rate_after_change'),
+                    'Новая процентная ставка',
+                    required=False,
+                )
+                interest_rate_change_date = parse_date(
+                    data.get('interest_rate_change_date'), 'Дата смены ставки'
+                )
+                _validate_interest_rate_change(
+                    interest_rate_after_change, interest_rate_change_date
+                )
+                _validate_interest_rate(
+                    interest_rate_after_change, 'Новая процентная ставка'
+                )
                 debt.interest_rate_after_change = interest_rate_after_change
                 debt.interest_rate_change_date = interest_rate_change_date
             if 'next_payment_date' in data:
-                debt.next_payment_date = parse_date(data['next_payment_date'], 'Дата следующего платежа')
+                debt.next_payment_date = parse_date(
+                    data['next_payment_date'], 'Дата следующего платежа'
+                )
                 if debt.next_payment_date and debt.debt_type != 'split':
-                    if debt.payment_day is None or not previous_next_payment_date or debt.next_payment_date.day != previous_next_payment_date.day:
+                    if (
+                        debt.payment_day is None
+                        or not previous_next_payment_date
+                        or debt.next_payment_date.day != previous_next_payment_date.day
+                    ):
                         debt.payment_day = debt.next_payment_date.day
             if 'is_payment_recurring' in data:
-                debt.is_payment_recurring = bool(data['is_payment_recurring']) and debt.next_payment_date is not None
+                debt.is_payment_recurring = (
+                    bool(data['is_payment_recurring'])
+                    and debt.next_payment_date is not None
+                )
             if 'repayment_type' in data:
-                debt.repayment_type = _choice(data.get('repayment_type'), REPAYMENT_TYPES, 'annuity', 'Тип графика')
+                debt.repayment_type = _choice(
+                    data.get('repayment_type'),
+                    REPAYMENT_TYPES,
+                    'annuity',
+                    'Тип графика',
+                )
             if 'day_count_convention' in data:
-                debt.day_count_convention = _choice(data.get('day_count_convention'), DAY_COUNT_CONVENTIONS, 'actual_year', 'База дней')
+                debt.day_count_convention = _choice(
+                    data.get('day_count_convention'),
+                    DAY_COUNT_CONVENTIONS,
+                    'actual_year',
+                    'База дней',
+                )
             if 'include_payment_day' in data:
                 debt.include_payment_day = bool(data['include_payment_day'])
             if 'interest_period_start_date' in data:
-                debt.interest_period_start_date = parse_date(data.get('interest_period_start_date'), 'Начало процентного периода')
+                debt.interest_period_start_date = parse_date(
+                    data.get('interest_period_start_date'), 'Начало процентного периода'
+                )
             if 'early_repayment_strategy' in data:
-                debt.early_repayment_strategy = _choice(data.get('early_repayment_strategy'), EARLY_REPAYMENT_STRATEGIES, 'reduce_term', 'Досрочное погашение')
+                debt.early_repayment_strategy = _choice(
+                    data.get('early_repayment_strategy'),
+                    EARLY_REPAYMENT_STRATEGIES,
+                    'reduce_term',
+                    'Досрочное погашение',
+                )
             if (
                 'debt_type' in data
                 or 'early_repayment_enabled' in data
@@ -339,19 +519,37 @@ def init_app(app):
             ):
                 enabled, planned_amount = _early_repayment_preferences(
                     debt_type=debt.debt_type,
-                    enabled=data.get('early_repayment_enabled', debt.early_repayment_enabled),
-                    amount=data.get('planned_early_repayment_amount', debt.planned_early_repayment_amount),
+                    enabled=data.get(
+                        'early_repayment_enabled', debt.early_repayment_enabled
+                    ),
+                    amount=data.get(
+                        'planned_early_repayment_amount',
+                        debt.planned_early_repayment_amount,
+                    ),
                     minimum_payment=debt.minimum_payment,
                     remaining_amount=debt.remaining_amount,
                 )
                 debt.early_repayment_enabled = enabled
                 debt.planned_early_repayment_amount = planned_amount
             if 'loan_term_months' in data:
-                debt.loan_term_months = _parse_positive_int(data.get('loan_term_months'), 'Срок в месяцах')
+                debt.loan_term_months = _parse_positive_int(
+                    data.get('loan_term_months'), 'Срок в месяцах'
+                )
             if 'monthly_fee_amount' in data:
-                debt.monthly_fee_amount = parse_decimal(data.get('monthly_fee_amount'), 'Ежемесячные комиссии', required=False) or 0
+                debt.monthly_fee_amount = (
+                    parse_decimal(
+                        data.get('monthly_fee_amount'),
+                        'Ежемесячные комиссии',
+                        required=False,
+                    )
+                    or 0
+                )
             if 'bank_remaining_amount' in data:
-                debt.bank_remaining_amount = parse_decimal(data.get('bank_remaining_amount'), 'Остаток по банку', required=False)
+                debt.bank_remaining_amount = parse_decimal(
+                    data.get('bank_remaining_amount'),
+                    'Остаток по банку',
+                    required=False,
+                )
             if 'comment' in data:
                 debt.comment = _optional_text(data['comment'], 2000, 'Комментарий')
             if 'penalty_rate' in data:
@@ -368,37 +566,82 @@ def init_app(app):
                 )
 
             debt.grace_policy = _parse_grace_policy(
-                data.get('grace_policy', debt.grace_policy), debt.debt_type, debt.grace_period_end_date,
+                data.get('grace_policy', debt.grace_policy),
+                debt.debt_type,
+                debt.grace_period_end_date,
             )
             _validate_debt_amounts(debt.total_amount, debt.remaining_amount)
-            if debt.next_payment_date and debt.interest_period_start_date and debt.interest_period_start_date >= debt.next_payment_date:
-                raise ValueError('Начало процентного периода должно быть раньше даты платежа')
-            explicit_start = parse_date(data.get('accrual_start_date'), 'Расчёт ведётся с') if 'accrual_start_date' in data else None
+            if (
+                debt.next_payment_date
+                and debt.interest_period_start_date
+                and debt.interest_period_start_date >= debt.next_payment_date
+            ):
+                raise ValueError(
+                    'Начало процентного периода должно быть раньше даты платежа'
+                )
+            explicit_start = (
+                parse_date(data.get('accrual_start_date'), 'Расчёт ведётся с')
+                if 'accrual_start_date' in data
+                else None
+            )
             _update_accrual_start(
                 debt,
                 previous_next_payment_date,
                 previous_start,
-                period_start_changed=debt.interest_period_start_date != previous_period_start,
-                explicit='accrual_start_date' in data and explicit_start != previous_start,
+                period_start_changed=debt.interest_period_start_date
+                != previous_period_start,
+                explicit='accrual_start_date' in data
+                and explicit_start != previous_start,
                 explicit_start=explicit_start,
             )
 
-            opening = parse_decimal(data.get('opening_principal_amount'), 'Основной долг на дату начала расчёта', required=False)
+            opening = parse_decimal(
+                data.get('opening_principal_amount'),
+                'Основной долг на дату начала расчёта',
+                required=False,
+            )
             if debt.debt_type not in ('consumer_credit', 'mortgage'):
                 if opening is not None:
-                    raise ValueError('Исходный основной долг задаётся только для кредита или ипотеки')
+                    raise ValueError(
+                        'Исходный основной долг задаётся только для кредита или ипотеки'
+                    )
                 debt.opening_principal_amount = None
             elif opening is not None:
                 if opening > debt.total_amount:
-                    raise ValueError('Основной долг на дату начала расчёта не может превышать сумму кредита')
+                    raise ValueError(
+                        'Основной долг на дату начала расчёта не может превышать сумму кредита'
+                    )
                 debt.opening_principal_amount = opening
             elif previous_opening is not None:
                 payments = Payment.query.filter_by(debt_id=debt.id).all()
                 if payments and debt.remaining_amount != previous_remaining:
-                    raise ValueError('Для кредита с историей укажите подтверждённый основной долг на дату начала расчёта. Текущий остаток рассчитывается по платежам.')
-                before = sum((p.principal_amount for p in payments if previous_start and p.payment_date <= previous_start), Decimal('0'))
-                after = sum((p.principal_amount for p in payments if debt.accrual_start_date and p.payment_date <= debt.accrual_start_date), Decimal('0'))
-                debt.opening_principal_amount = previous_opening + before - after + debt.remaining_amount - previous_remaining
+                    raise ValueError(
+                        'Для кредита с историей укажите подтверждённый основной долг на дату начала расчёта. Текущий остаток рассчитывается по платежам.'
+                    )
+                before = sum(
+                    (
+                        p.principal_amount
+                        for p in payments
+                        if previous_start and p.payment_date <= previous_start
+                    ),
+                    Decimal('0'),
+                )
+                after = sum(
+                    (
+                        p.principal_amount
+                        for p in payments
+                        if debt.accrual_start_date
+                        and p.payment_date <= debt.accrual_start_date
+                    ),
+                    Decimal('0'),
+                )
+                debt.opening_principal_amount = (
+                    previous_opening
+                    + before
+                    - after
+                    + debt.remaining_amount
+                    - previous_remaining
+                )
 
             debt.updated_at = utc_now()
             if not is_local_test_user():
@@ -428,7 +671,12 @@ def init_app(app):
 
     @app.route('/api/debts/<int:debt_id>/archive', methods=['POST'])
     def api_archive_debt(debt_id):
-        if str(get_setting('archive_enabled', 'true')).lower() not in ('1', 'true', 'yes', 'on'):
+        if str(get_setting('archive_enabled', 'true')).lower() not in (
+            '1',
+            'true',
+            'yes',
+            'on',
+        ):
             return jsonify({'success': False, 'error': 'Архив отключён'}), 403
         debt = get_user_debt(debt_id)
         if not debt:
@@ -442,7 +690,12 @@ def init_app(app):
 
     @app.route('/api/debts/<int:debt_id>/restore', methods=['POST'])
     def api_restore_debt(debt_id):
-        if str(get_setting('archive_enabled', 'true')).lower() not in ('1', 'true', 'yes', 'on'):
+        if str(get_setting('archive_enabled', 'true')).lower() not in (
+            '1',
+            'true',
+            'yes',
+            'on',
+        ):
             return jsonify({'success': False, 'error': 'Архив отключён'}), 403
         debt = get_user_debt(debt_id)
         if not debt:
@@ -454,7 +707,13 @@ def init_app(app):
             db.session.commit()
             db.session.refresh(debt)
         invalidate_debt_state_cache(debt)
-        return jsonify({'success': True, 'message': 'Карточка восстановлена', 'debt': debt.to_dict()})
+        return jsonify(
+            {
+                'success': True,
+                'message': 'Карточка восстановлена',
+                'debt': debt.to_dict(),
+            }
+        )
 
     @app.route('/api/debts/<int:debt_id>/delete', methods=['DELETE'])
     def api_delete_debt(debt_id):
@@ -465,12 +724,14 @@ def init_app(app):
         if not is_local_test_user():
             # SQLite installations may have foreign-key enforcement disabled.
             Expense.query.filter_by(repayment_debt_id=debt.id).update(
-                {Expense.repayment_debt_id: None}, synchronize_session='fetch',
+                {Expense.repayment_debt_id: None},
+                synchronize_session='fetch',
             )
             db.session.delete(debt)
             db.session.commit()
         else:
             from app.services.debt_service import delete_demo_debt
+
             delete_demo_debt(debt_id)
         return jsonify({'success': True, 'message': 'Карточка удалена'})
 
@@ -498,12 +759,25 @@ def _parse_grace_period_end(value, debt_type, interest_period_start_date):
     if debt_type != 'credit_card':
         return None
     grace_end = parse_date(value, 'Конец льготного периода')
-    if grace_end and interest_period_start_date and grace_end <= interest_period_start_date:
-        raise ValueError('Конец льготного периода должен быть позже начала периода процентов')
+    if (
+        grace_end
+        and interest_period_start_date
+        and grace_end <= interest_period_start_date
+    ):
+        raise ValueError(
+            'Конец льготного периода должен быть позже начала периода процентов'
+        )
     return grace_end
 
 
-def _update_accrual_start(debt, previous_next_payment_date, previous_start, period_start_changed, explicit=False, explicit_start=None):
+def _update_accrual_start(
+    debt,
+    previous_next_payment_date,
+    previous_start,
+    period_start_changed,
+    explicit=False,
+    explicit_start=None,
+):
     """Move the accrual start after an edit.
 
     - an explicit start from the form wins; moving it back re-splits the
@@ -525,14 +799,19 @@ def _update_accrual_start(debt, previous_next_payment_date, previous_start, peri
         start = explicit_start
         carry = previous_start is not None and start > previous_start
     else:
-        if next_date and previous_next_payment_date and next_date > previous_next_payment_date:
+        if (
+            next_date
+            and previous_next_payment_date
+            and next_date > previous_next_payment_date
+        ):
             cycle_start = previous_payment_due_date(debt, next_date)
             if start is None or cycle_start > start:
                 start = cycle_start
                 carry = True
         period_start = debt.interest_period_start_date
         if (
-            period_start_changed and period_start
+            period_start_changed
+            and period_start
             and (start is None or period_start > start)
             and (next_date is None or period_start < next_date)
         ):
@@ -542,8 +821,14 @@ def _update_accrual_start(debt, previous_next_payment_date, previous_start, peri
         return
 
     if carry:
-        view = DebtView(debt, next_payment_date=previous_next_payment_date, accrual_start_date=previous_start)
-        state = get_debt_state(view, as_of=start, payments=Payment.query.filter_by(debt_id=debt.id).all())
+        view = DebtView(
+            debt,
+            next_payment_date=previous_next_payment_date,
+            accrual_start_date=previous_start,
+        )
+        state = get_debt_state(
+            view, as_of=start, payments=Payment.query.filter_by(debt_id=debt.id).all()
+        )
         debt.opening_interest_amount = state['accrued_interest']
         debt.opening_penalty_amount = state['penalty']
     else:
@@ -552,13 +837,19 @@ def _update_accrual_start(debt, previous_next_payment_date, previous_start, peri
     debt.accrual_start_date = start
 
 
-def _validate_interest_rate_change(interest_rate_after_change, interest_rate_change_date):
+def _validate_interest_rate_change(
+    interest_rate_after_change, interest_rate_change_date
+):
     if interest_rate_after_change is None and interest_rate_change_date is None:
         return
     if interest_rate_after_change is None:
-        raise ValueError('Укажите новую процентную ставку или очистите дату смены ставки')
+        raise ValueError(
+            'Укажите новую процентную ставку или очистите дату смены ставки'
+        )
     if interest_rate_change_date is None:
-        raise ValueError('Укажите дату смены ставки или очистите новую процентную ставку')
+        raise ValueError(
+            'Укажите дату смены ставки или очистите новую процентную ставку'
+        )
 
 
 def _validate_interest_rate(value, field_name):
@@ -587,7 +878,9 @@ def _parse_first_payment_amount(value):
     return amount
 
 
-def _early_repayment_preferences(debt_type, enabled, amount, minimum_payment, remaining_amount):
+def _early_repayment_preferences(
+    debt_type, enabled, amount, minimum_payment, remaining_amount
+):
     if debt_type != 'consumer_credit':
         return False, None
 
@@ -604,9 +897,13 @@ def _early_repayment_preferences(debt_type, enabled, amount, minimum_payment, re
         raise ValueError('Желаемая общая сумма платежа должна быть больше нуля')
     required_payment = minimum_payment or 0
     if planned_amount <= required_payment:
-        raise ValueError('Желаемая общая сумма платежа должна быть больше минимального платежа')
+        raise ValueError(
+            'Желаемая общая сумма платежа должна быть больше минимального платежа'
+        )
     if planned_amount > remaining_amount:
-        raise ValueError('Желаемая общая сумма платежа не может превышать остаток долга')
+        raise ValueError(
+            'Желаемая общая сумма платежа не может превышать остаток долга'
+        )
     return True, planned_amount
 
 

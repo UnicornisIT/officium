@@ -1,0 +1,4 @@
+target-version = "py311"
+
+[format]
+quote-style = "single"

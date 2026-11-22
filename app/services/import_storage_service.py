@@ -3,7 +3,7 @@
 A preview is one small JSON file per upload in IMPORT_STORAGE_DIR (by default
 <instance>/bank_imports, which is <APP_ROOT>/shared/instance/bank_imports on a
 managed server). It holds no statement content: only the owner, the creation
-time, the number of preview rows and the monthly expense each row may update.
+time, the number of preview rows, their hashes, and their monthly match IDs.
 Titles, amounts and dates travel in the confirmation form, as before.
 
 File names:
@@ -35,9 +35,11 @@ from flask import current_app
 
 from app.time_utils import as_utc, utc_now
 
-PAYLOAD_VERSION = 2
+PAYLOAD_VERSION = 3
 TOKEN_RE = re.compile(r'^[A-Za-z0-9_-]{16,64}$')
-PREVIEW_RE = re.compile(r'^u(?P<user>[0-9]{1,20})-(?P<token>[A-Za-z0-9_-]{16,64})\.json$')
+PREVIEW_RE = re.compile(
+    r'^u(?P<user>[0-9]{1,20})-(?P<token>[A-Za-z0-9_-]{16,64})\.json$'
+)
 CLAIMED_RE = re.compile(r'^u[0-9]{1,20}-[A-Za-z0-9_-]{16,64}\.json\.claimed$')
 TEMPORARY_RE = re.compile(r'^\.tmp-[A-Za-z0-9_-]{8,64}$')
 LEGACY_RE = re.compile(r'^[A-Za-z0-9_-]{16,64}\.json$')
@@ -81,6 +83,8 @@ class StoredPreview:
     created_at: datetime
     row_count: int
     monthly_match_ids: list
+    row_keys: list
+    possible_duplicates: list
 
 
 @dataclass
@@ -105,7 +109,9 @@ class parse_slot:
     def __init__(self, app=None):
         app = app or current_app._get_current_object()
         limit = max(1, int(app.config.get('IMPORT_MAX_CONCURRENT_PARSES', 1)))
-        self.wait_seconds = max(0.0, float(app.config.get('IMPORT_PARSE_WAIT_SECONDS', 20)))
+        self.wait_seconds = max(
+            0.0, float(app.config.get('IMPORT_PARSE_WAIT_SECONDS', 20))
+        )
         with _parse_slots_lock:
             self.semaphore = app.extensions.setdefault(
                 'officium_import_parse_slots', threading.BoundedSemaphore(limit)
@@ -127,7 +133,11 @@ class parse_slot:
 def storage_dir(app=None):
     app = app or current_app
     configured = str(app.config.get('IMPORT_STORAGE_DIR') or '').strip()
-    return os.path.abspath(configured) if configured else os.path.join(app.instance_path, 'bank_imports')
+    return (
+        os.path.abspath(configured)
+        if configured
+        else os.path.join(app.instance_path, 'bank_imports')
+    )
 
 
 def ttl_seconds(app=None):
@@ -139,7 +149,10 @@ def _log_os_error(action, exc):
     # errno and the directory only: never file contents or user data.
     current_app.logger.error(
         'Import storage %s failed: errno=%s (%s) dir=%s',
-        action, exc.errno, errno.errorcode.get(exc.errno, '?'), storage_dir(),
+        action,
+        exc.errno,
+        errno.errorcode.get(exc.errno, '?'),
+        storage_dir(),
     )
 
 
@@ -170,7 +183,10 @@ def ensure_storage_dir():
         raise _storage_error('directory creation', exc) from exc
     if not os.path.isdir(path) or os.path.islink(path):
         current_app.logger.error('Import storage path is not a directory: %s', path)
-        raise ImportStorageError('unavailable', 'Хранилище импорта на сервере настроено неверно. Сообщите администратору.')
+        raise ImportStorageError(
+            'unavailable',
+            'Хранилище импорта на сервере настроено неверно. Сообщите администратору.',
+        )
     return path
 
 
@@ -187,7 +203,12 @@ def _scan(directory):
     managed = []
     for entry in entries:
         name = entry.name
-        if not (PREVIEW_RE.match(name) or CLAIMED_RE.match(name) or TEMPORARY_RE.match(name) or LEGACY_RE.match(name)):
+        if not (
+            PREVIEW_RE.match(name)
+            or CLAIMED_RE.match(name)
+            or TEMPORARY_RE.match(name)
+            or LEGACY_RE.match(name)
+        ):
             continue
         try:
             info = entry.stat(follow_symlinks=False)
@@ -221,7 +242,9 @@ def cleanup_expired(app=None, now=None):
     stats = CleanupStats()
     preview_limit = ttl_seconds(app)
     for name, info in _scan(directory):
-        limit = TEMPORARY_FILE_TTL_SECONDS if TEMPORARY_RE.match(name) else preview_limit
+        limit = (
+            TEMPORARY_FILE_TTL_SECONDS if TEMPORARY_RE.match(name) else preview_limit
+        )
         if now - info.st_mtime < limit:
             stats.kept += 1
             stats.kept_bytes += info.st_size
@@ -233,7 +256,9 @@ def cleanup_expired(app=None, now=None):
         except OSError as exc:
             stats.errors += 1
             app.logger.warning(
-                'Import cleanup could not remove a file: errno=%s dir=%s', exc.errno, directory,
+                'Import cleanup could not remove a file: errno=%s dir=%s',
+                exc.errno,
+                directory,
             )
     return stats
 
@@ -243,8 +268,11 @@ def _check_limits(directory, user_id, incoming_bytes):
     managed = _scan(directory)
     user_prefix = f'u{int(user_id)}-'
     pending = sorted(
-        ((info.st_mtime, name) for name, info in managed
-         if name.startswith(user_prefix) and PREVIEW_RE.match(name)),
+        (
+            (info.st_mtime, name)
+            for name, info in managed
+            if name.startswith(user_prefix) and PREVIEW_RE.match(name)
+        ),
     )
     # A new upload supersedes the user's oldest unconfirmed previews.
     per_user = max(1, int(app.config.get('IMPORT_MAX_PENDING_PER_USER', 5)))
@@ -265,7 +293,10 @@ def _check_limits(directory, user_id, incoming_bytes):
     if len(remaining) + 1 > max_files or total_bytes + incoming_bytes > max_bytes:
         app.logger.warning(
             'Import storage quota reached: files=%s bytes=%s limit_files=%s limit_bytes=%s',
-            len(remaining), total_bytes, max_files, max_bytes,
+            len(remaining),
+            total_bytes,
+            max_files,
+            max_bytes,
         )
         raise ImportStorageError(
             'quota',
@@ -280,7 +311,9 @@ def _check_limits(directory, user_id, incoming_bytes):
     if free - incoming_bytes < reserve:
         app.logger.error(
             'Import refused: free=%s bytes is below the reserve of %s bytes on %s',
-            free, reserve, directory,
+            free,
+            reserve,
+            directory,
         )
         raise ImportStorageError(
             'disk_full',
@@ -297,6 +330,8 @@ def save_preview(user_id, rows):
         'created_at': utc_now().replace(tzinfo=None).isoformat(),
         'row_count': len(rows),
         'monthly_match_ids': [getattr(row, 'monthly_match_id', None) for row in rows],
+        'row_keys': [row.import_keys for row in rows],
+        'possible_duplicates': [row.duplicate_status == 'possible' for row in rows],
     }
     data = json.dumps(payload, separators=(',', ':')).encode('utf-8')
     _check_limits(directory, user_id, len(data))
@@ -332,37 +367,62 @@ def _read_payload(path):
     except OSError as exc:
         raise _storage_error('preview read', exc) from exc
     if len(raw) > 1024 * 1024:
-        raise ImportStorageError('not_found', 'Импорт не найден. Загрузите выписку еще раз.')
+        raise ImportStorageError(
+            'not_found', 'Импорт не найден. Загрузите выписку еще раз.'
+        )
     try:
         payload = json.loads(raw.decode('utf-8'))
     except (UnicodeDecodeError, ValueError):
-        current_app.logger.warning('Import preview file is unreadable: %s', os.path.basename(path))
-        raise ImportStorageError('not_found', 'Импорт не найден. Загрузите выписку еще раз.')
+        current_app.logger.warning(
+            'Import preview file is unreadable: %s', os.path.basename(path)
+        )
+        raise ImportStorageError(
+            'not_found', 'Импорт не найден. Загрузите выписку еще раз.'
+        )
     if not isinstance(payload, dict):
-        raise ImportStorageError('not_found', 'Импорт не найден. Загрузите выписку еще раз.')
+        raise ImportStorageError(
+            'not_found', 'Импорт не найден. Загрузите выписку еще раз.'
+        )
     return payload
 
 
 def _preview_from_payload(token, payload):
-    if payload.get('version') == PAYLOAD_VERSION:
+    version = payload.get('version')
+    if version in (2, PAYLOAD_VERSION):
         row_count = int(payload.get('row_count', 0))
         match_ids = list(payload.get('monthly_match_ids') or [])
     else:
         # Files written by releases before this storage format.
         rows = payload.get('rows') or []
         row_count = len(rows)
-        match_ids = [row.get('monthly_match_id') if isinstance(row, dict) else None for row in rows]
+        match_ids = [
+            row.get('monthly_match_id') if isinstance(row, dict) else None
+            for row in rows
+        ]
     match_ids = (match_ids + [None] * row_count)[:row_count]
+    row_keys = [None] * row_count
+    possible_duplicates = [False] * row_count
+    if version == PAYLOAD_VERSION:
+        row_keys = payload.get('row_keys') or []
+        possible_duplicates = payload.get('possible_duplicates') or []
+        if len(row_keys) != row_count or len(possible_duplicates) != row_count:
+            raise ImportStorageError(
+                'not_found', 'Импорт не найден. Загрузите выписку еще раз.'
+            )
     try:
         created_at = as_utc(datetime.fromisoformat(str(payload.get('created_at'))))
     except ValueError:
-        raise ImportStorageError('not_found', 'Импорт не найден. Загрузите выписку еще раз.')
+        raise ImportStorageError(
+            'not_found', 'Импорт не найден. Загрузите выписку еще раз.'
+        )
     return StoredPreview(
         token=token,
         user_id=payload.get('user_id'),
         created_at=created_at,
         row_count=row_count,
         monthly_match_ids=match_ids,
+        row_keys=row_keys,
+        possible_duplicates=possible_duplicates,
     )
 
 
@@ -382,7 +442,9 @@ class claimed_preview:
 
     def __init__(self, user_id, token):
         if not token or not TOKEN_RE.match(token):
-            raise ImportStorageError('not_found', 'Импорт не найден. Загрузите выписку еще раз.')
+            raise ImportStorageError(
+                'not_found', 'Импорт не найден. Загрузите выписку еще раз.'
+            )
         self.user_id = int(user_id)
         self.token = token
         self.directory = storage_dir()
@@ -414,7 +476,9 @@ class claimed_preview:
                 'in_progress',
                 'Этот импорт уже подтверждается. Обновите страницу расходов через несколько секунд.',
             )
-        raise ImportStorageError('not_found', 'Импорт не найден или устарел. Загрузите выписку еще раз.')
+        raise ImportStorageError(
+            'not_found', 'Импорт не найден или устарел. Загрузите выписку еще раз.'
+        )
 
     def __enter__(self):
         self._claim()
@@ -422,17 +486,24 @@ class claimed_preview:
             payload = _read_payload(self.claimed)
             preview = _preview_from_payload(self.token, payload)
         except FileNotFoundError:
-            raise ImportStorageError('not_found', 'Импорт не найден или устарел. Загрузите выписку еще раз.')
+            raise ImportStorageError(
+                'not_found', 'Импорт не найден или устарел. Загрузите выписку еще раз.'
+            )
         except Exception:
             self._release()
             raise
         if preview.user_id != self.user_id:
             # A legacy <token>.json of another user: give it back untouched.
             self._release()
-            raise ImportStorageError('not_found', 'Этот предпросмотр импорта принадлежит другому пользователю.')
+            raise ImportStorageError(
+                'not_found',
+                'Этот предпросмотр импорта принадлежит другому пользователю.',
+            )
         if (utc_now() - preview.created_at).total_seconds() > ttl_seconds():
             self.complete()
-            raise ImportStorageError('expired', 'Предпросмотр импорта устарел. Загрузите выписку еще раз.')
+            raise ImportStorageError(
+                'expired', 'Предпросмотр импорта устарел. Загрузите выписку еще раз.'
+            )
         return preview
 
     def complete(self):

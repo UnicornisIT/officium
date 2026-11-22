@@ -1,4 +1,11 @@
 <link rel="stylesheet" href="{{ url_for('static',filename='css/vehicle-reports.css',v='tco-1') }}">
+{% macro mileage(row) -%}
+{% if row.has_mileage %}{{ row.kilometers|distance }} км{% if row.estimated_mileage %} (включает оценку){% else %} (по замерам){% endif %}{% else %}Нет данных о пробеге{% endif %}
+{%- endmacro %}
+{% macro mileage_warnings(row) -%}
+{% if row.odometer_decrease %}<small class="d-block text-muted">Пропущен интервал со снижением показаний.</small>{% endif %}
+{% if row.long_mileage_gap %}<small class="d-block text-muted">Интервал между замерами более {{ tco.long_gap_days }} дней.</small>{% endif %}
+{%- endmacro %}
 <form method="get" class="card p-3 mb-4 vehicle-tco-filters">
 {% if vehicle is defined %}<input type="hidden" name="tab" value="tco"><input type="hidden" name="vehicle_id" value="{{ vehicle.id }}">{% endif %}
 <label>Начало периода<input class="form-control" type="date" name="date_from" value="{{ tco.period.start }}" required></label>
@@ -9,21 +16,22 @@
 </form>
 <div class="vehicle-tco-summary mb-4">
 <article class="card p-3"><h2 class="h6">Траты за период</h2><strong>{{ tco.totals.total|money }}</strong></article>
-{% if vehicle is not defined or vehicle.kind!='trailer' %}<article class="card p-3"><h2 class="h6">Пробег</h2><strong>{{ tco.totals.kilometers|distance }} км</strong></article><article class="card p-3"><h2 class="h6">Стоимость 1 км</h2><strong>{{ tco.totals.cost_per_km|money if tco.totals.cost_per_km is not none else 'Нет данных о пробеге' }}</strong></article>{% endif %}
+{% if vehicle is not defined or vehicle.kind!='trailer' %}<article class="card p-3"><h2 class="h6">Пробег</h2><strong>{{ mileage(tco.totals) }}</strong>{{ mileage_warnings(tco.totals) }}</article><article class="card p-3"><h2 class="h6">Стоимость 1 км</h2><strong>{{ tco.totals.cost_per_km|money if tco.totals.cost_per_km is not none else '—' }}{% if tco.totals.cost_per_km is not none and tco.totals.estimated_mileage %} (оценка){% endif %}</strong></article>{% endif %}
 </div>
-<p class="text-muted">Пробег — разница последнего и первого замера внутри периода; для графика — внутри каждого месяца. Суммы документов без связанной траты включены в личное страхование по дате выдачи. Документы без даты не учитываются.</p>
+{% if vehicle is not defined or vehicle.kind!='trailer' %}<p class="text-muted">Пробег между замерами распределяется по дням с даты первого замера до дня перед следующим. Если граница месяца или периода делит интервал, пробег за его часть считается оценкой. Дни до первого и после последнего замера не учитываются.</p>{% endif %}
+<p class="text-muted">Суммы документов без связанной траты включены в личное страхование по дате выдачи. Документы без даты не учитываются.</p>
 {% if vehicle is defined %}<p class="alert alert-info">Прогноз на следующий месяц: <strong>{{ forecast|money if forecast is not none else 'Недостаточно данных или нестабильная история' }}</strong>. По завершённым месяцам, без сезонности и плановых трат.</p>{% endif %}
 <div class="table-responsive mb-4" tabindex="0" aria-label="Сравнение автомобилей"><table class="table vehicle-tco-table"><caption>Стоимость владения за выбранный период</caption><thead><tr><th>Автомобиль</th><th>Личные</th><th>Организация</th><th>Всего</th>{% if vehicle is not defined or vehicle.kind!='trailer' %}<th>Пробег, км</th><th>₽/км</th><th>Литры</th><th>л/100 км</th><th>₽/л</th><th>Заправки</th>{% endif %}</tr></thead><tbody>
-{% for row in tco.vehicles %}<tr><th scope="row"><a class="btn btn-sm btn-outline-primary vehicle-button" href="{{ url_for('vehicle_detail',vehicle_id=row.id,tab='tco') }}">{{ row.name }}</a></th><td>{{ row.total_self|money }}</td><td>{{ row.total_organization|money }}</td><td>{{ row.total|money }}</td>{% if vehicle is not defined or vehicle.kind!='trailer' %}<td>{{ row.kilometers|distance if row.kind!='trailer' else '—' }}</td><td>{{ row.cost_per_km|money if row.cost_per_km is not none else '—' }}</td><td>{{ row.total_liters }}</td><td>{{ row.avg_consumption if row.avg_consumption is not none else '—' }}</td><td>{{ row.avg_price_per_liter|private_amount if row.avg_price_per_liter is not none else '—' }}</td><td>{{ row.refuelings_count }}</td>{% endif %}</tr>{% else %}<tr><td colspan="10">Нет автомобилей для сравнения</td></tr>{% endfor %}
+{% for row in tco.vehicles %}<tr><th scope="row"><a class="btn btn-sm btn-outline-primary vehicle-button" href="{{ url_for('vehicle_detail',vehicle_id=row.id,tab='tco') }}">{{ row.name }}</a></th><td>{{ row.total_self|money }}</td><td>{{ row.total_organization|money }}</td><td>{{ row.total|money }}</td>{% if vehicle is not defined or vehicle.kind!='trailer' %}<td>{% if row.kind=='trailer' %}—{% else %}{{ mileage(row) }}{{ mileage_warnings(row) }}{% endif %}</td><td>{{ row.cost_per_km|money if row.cost_per_km is not none else '—' }}</td><td>{{ row.total_liters }}</td><td>{{ row.avg_consumption if row.avg_consumption is not none else '—' }}</td><td>{{ row.avg_price_per_liter|private_amount if row.avg_price_per_liter is not none else '—' }}</td><td>{{ row.refuelings_count }}</td>{% endif %}</tr>{% else %}<tr><td colspan="10">Нет автомобилей для сравнения</td></tr>{% endfor %}
 </tbody></table></div>
 <div class="vehicle-tco-charts">
 {% for key,title in [('monthly','Траты по месяцам'),('kinds','Траты по категориям'),('distance','Стоимость километра по месяцам')] %}{% if key!='distance' or vehicle is not defined or vehicle.kind!='trailer' %}
 <section class="card p-3"><h2 class="h5">{{ title }}</h2><div class="vehicle-tco-canvas"><canvas id="tco-{{ key }}" role="img" aria-label="{{ title }}. Значения доступны ниже."></canvas></div>
 <details class="mt-3"><summary>Значения: {{ title|lower }}</summary><div class="table-responsive"><table class="table"><tbody>
 {% if key=='kinds' %}{% for kind,label in cost_kinds.items() %}<tr tabindex="0" data-chart="kinds" data-index="{{ loop.index0 }}"><th scope="row">{{ label }}</th><td>{{ tco.vehicles|sum(attribute='by_kind.'+kind)|money }}</td></tr>{% endfor %}
-{% else %}{% for row in tco.monthly %}<tr tabindex="0" data-chart="{{ key }}" data-index="{{ loop.index0 }}"><th scope="row">{{ row.month.strftime('%m.%Y') }}</th><td>{% if key=='distance' %}{{ row.cost_per_km|money if row.cost_per_km is not none else 'Нет замеров' }}{% else %}Личные {{ row.total_self|money }} · Организация {{ row.total_organization|money }}{% endif %}</td></tr>{% endfor %}{% endif %}
+{% else %}{% for row in tco.monthly %}<tr tabindex="0" data-chart="{{ key }}" data-index="{{ loop.index0 }}"><th scope="row">{{ row.month.strftime('%m.%Y') }}</th><td>{% if key=='distance' %}{{ mileage(row) }}{% if row.cost_per_km is not none %} · {{ row.cost_per_km|money }}/км{% endif %}{{ mileage_warnings(row) }}{% else %}Личные {{ row.total_self|money }} · Организация {{ row.total_organization|money }}{% endif %}</td></tr>{% endfor %}{% endif %}
 </tbody></table></div></details></section>{% endif %}{% endfor %}
 </div>
 <script id="tco-data" type="application/json">{{ {'monthly':tco.monthly,'vehicles':tco.vehicles,'kinds':cost_kinds.items()|list}|tojson }}</script>
 <script defer src="{{ url_for('static',filename='vendor/chartjs/chart.umd.js') }}"></script>
-<script defer src="{{ url_for('static',filename='js/vehicle-tco.js',v='1') }}"></script>
+<script defer src="{{ url_for('static',filename='js/vehicle-tco.js',v='2') }}"></script>

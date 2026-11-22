@@ -16,9 +16,9 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) {
     const id=page.url().match(/vehicles\/(\d+)/)[1];
     // Seed through the same CSRF-protected routes used by the UI.
     const token=await page.locator('input[name=csrf_token]').first().inputValue();
-    const year=new Date().getFullYear();
-    for (const [day,km] of [[1,1000],[20,2000]]) {
-      const r=await page.request.post(`/vehicles/${id}/odometer`,{form:{csrf_token:token,reading_date:`${year}-01-${String(day).padStart(2,'0')}`,odometer_km:String(km)}});
+    const year=new Date().getFullYear()-1;
+    for (const [day,km] of [['01-31',1000],['02-04',2000]]) {
+      const r=await page.request.post(`/vehicles/${id}/odometer`,{form:{csrf_token:token,reading_date:`${year}-${day}`,odometer_km:String(km)}});
       expect(r.ok()).toBeTruthy();
     }
     const spend=await page.request.post(`/vehicles/${id}/spend`,{form:{csrf_token:token,payer:'self',amount:'10000',cost_date:`${year}-01-10`,kind:'fuel',title:'Топливо QA'}});
@@ -35,6 +35,11 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) {
     await page.locator('summary').first().click();
     await page.locator('[data-chart=monthly]').first().focus();
     await expect.poll(()=>page.evaluate(()=>Chart.getChart(document.getElementById('tco-monthly')).tooltip.opacity)).toBe(1);
+    await page.getByText('Значения: стоимость километра по месяцам',{exact:true}).click();
+    const january=page.locator('[data-chart=distance]').first();
+    await expect(january).toContainText('250 км (включает оценку)');
+    await january.focus();
+    await expect.poll(()=>page.evaluate(()=>Chart.getChart('tco-distance').tooltip.body?.[0]?.lines[0])).toBe('40 ₽/км (оценка)');
     await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     const reportURL=page.url();
     const exportURL=new URL(await page.getByRole('link',{name:'Скачать CSV'}).getAttribute('href'),reportURL);

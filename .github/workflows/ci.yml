@@ -10,6 +10,43 @@ permissions:
   contents: read
 
 jobs:
+  python-format:
+    name: Python formatting
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check ruff==0.9.10
+      - name: Check changed Python files
+        shell: python
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          import os
+          import subprocess
+          import sys
+
+          base = os.environ["BASE_SHA"]
+          if base == "0" * 40:
+              default_branch = os.environ["DEFAULT_BRANCH"]
+              base = subprocess.check_output(
+                  ["git", "merge-base", f"origin/{default_branch}", "HEAD"], text=True
+              ).strip()
+          elif subprocess.run(["git", "cat-file", "-e", f"{base}^{{commit}}"]).returncode:
+              subprocess.run(["git", "fetch", "--no-tags", "origin", base], check=True)
+
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", "--diff-filter=ACMR", "-z", base, "HEAD", "--", "*.py"]
+          )
+          files = [os.fsdecode(path) for path in changed.split(b"\0") if path]
+          if files:
+              subprocess.run([sys.executable, "-m", "ruff", "format", "--check", "--", *files], check=True)
+
   unit-integration:
     name: Python ${{ matrix.python-version }} unit/integration
     runs-on: ubuntu-24.04
